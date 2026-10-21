@@ -27,7 +27,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
       - run: npm run build -w packages/mcp
       - name: Build and publish
         working-directory: apps/desktop
@@ -49,7 +49,7 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
       - run: npm run build -w packages/mcp
       - name: Publish dbmastermind-mcp
         if: env.NODE_AUTH_TOKEN != ''

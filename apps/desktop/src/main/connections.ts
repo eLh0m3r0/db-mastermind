@@ -7,28 +7,42 @@ const FILE = 'connections.json'
 
 const SSH_SECRETS = ['password', 'privateKey', 'passphrase'] as const
 
-function transformSecrets(c: StoredConnection, fn: (v: string | undefined) => string | undefined): StoredConnection {
-  const out: StoredConnection = { ...c, password: fn(c.password) }
+async function transformSecrets(
+  c: StoredConnection,
+  fn: (v: string | undefined) => Promise<string | undefined>,
+): Promise<StoredConnection> {
+  const out: StoredConnection = { ...c, password: await fn(c.password) }
   if (c.ssh) {
     out.ssh = { ...c.ssh }
-    for (const key of SSH_SECRETS) out.ssh[key] = fn(c.ssh[key])
+    for (const key of SSH_SECRETS) out.ssh[key] = await fn(c.ssh[key])
   }
-  if (c.ssl?.key) out.ssl = { ...c.ssl, key: fn(c.ssl.key) }
+  if (c.ssl?.key) out.ssl = { ...c.ssl, key: await fn(c.ssl.key) }
   return out
 }
 
-let cache: StoredConnection[] | undefined
+let cache: StoredConnection[] = []
+
+/** Reads and decrypts saved connections. Must run after app 'ready', before anything uses them. */
+export async function loadConnections(): Promise<void> {
+  cache = await Promise.all(readJson<StoredConnection[]>(FILE, []).map((c) => transformSecrets(c, decryptSecret)))
+}
 
 export function listConnections(): StoredConnection[] {
-  if (!cache) cache = readJson<StoredConnection[]>(FILE, []).map((c) => transformSecrets(c, decryptSecret))
   return cache
 }
 
+let writes = Promise.resolve()
+
+/** Encrypts and writes in order; later saves never overtake earlier ones. */
 function persist() {
-  writeJson(
-    FILE,
-    listConnections().map((c) => transformSecrets(c, encryptSecret)),
-  )
+  const snapshot = cache
+  writes = writes
+    .then(async () => writeJson(FILE, await Promise.all(snapshot.map((c) => transformSecrets(c, encryptSecret)))))
+    .catch((err: unknown) => console.error('Could not save connections', err))
+}
+
+export function flushConnections(): Promise<void> {
+  return writes
 }
 
 export function getConnection(id: string): StoredConnection {

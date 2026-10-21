@@ -60,20 +60,23 @@ export function writeJson(file: string, value: unknown): void {
 const ENC_PREFIX = 'enc:v1:'
 const PLAIN_PREFIX = 'plain:'
 
-export function encryptSecret(value: string | undefined): string | undefined {
+export async function encryptSecret(value: string | undefined): Promise<string | undefined> {
   if (!value) return value
-  if (safeStorage.isEncryptionAvailable()) return ENC_PREFIX + safeStorage.encryptString(value).toString('base64')
+  if (await safeStorage.isAsyncEncryptionAvailable()) return ENC_PREFIX + (await safeStorage.encryptStringAsync(value)).toString('base64')
   // No OS keychain (e.g. Linux without a secret service): stored obfuscated only. Surfaced in Settings.
   return PLAIN_PREFIX + Buffer.from(value, 'utf8').toString('base64')
 }
 
-export function decryptSecret(value: string | undefined): string | undefined {
+export async function decryptSecret(value: string | undefined): Promise<string | undefined> {
   if (!value) return value
   try {
-    if (value.startsWith(ENC_PREFIX)) return safeStorage.decryptString(Buffer.from(value.slice(ENC_PREFIX.length), 'base64'))
+    if (value.startsWith(ENC_PREFIX)) {
+      return (await safeStorage.decryptStringAsync(Buffer.from(value.slice(ENC_PREFIX.length), 'base64'))).result
+    }
     if (value.startsWith(PLAIN_PREFIX)) return Buffer.from(value.slice(PLAIN_PREFIX.length), 'base64').toString('utf8')
-  } catch {
+  } catch (err) {
     // Encrypted on another machine/user (e.g. portable folder copied): the secret must be re-entered.
+    if (process.env.DBM_DEBUG) console.error('decryptSecret failed:', err)
     return undefined
   }
   return value

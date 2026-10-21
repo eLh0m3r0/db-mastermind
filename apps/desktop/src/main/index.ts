@@ -4,7 +4,8 @@ import { describeError } from '@dbmastermind/core'
 import { API_CHANNEL, type IpcResult, type MastermindApi } from '@shared/api'
 import { api, db } from './api'
 import { flushHistory } from './library'
-import { getSettings } from './settings'
+import { flushConnections, loadConnections } from './connections'
+import { getSettings, loadSettings } from './settings'
 import { isMcpMode, runMcpMode } from './mcp-mode'
 import { configureDataDir, readJson, writeJson } from './storage'
 import { checkForUpdates } from './updates'
@@ -196,8 +197,9 @@ function startApp() {
     mainWindow.focus()
   })
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     app.setAppUserModelId('dev.dbmastermind.app')
+    await Promise.all([loadConnections(), loadSettings()])
     buildMenu()
     createWindow()
     void checkForUpdates((info) => mainWindow?.webContents.send('update:available', info))
@@ -213,7 +215,7 @@ function startApp() {
     quitting = true
     event.preventDefault()
     // Close database connections cleanly (rolls back open sessions) before exiting.
-    void Promise.race([db.disconnectAll(), new Promise((r) => setTimeout(r, 3000))]).finally(() => app.quit())
+    void Promise.race([Promise.all([db.disconnectAll(), flushConnections()]), new Promise((r) => setTimeout(r, 3000))]).finally(() => app.quit())
   })
 
   app.on('window-all-closed', () => {

@@ -15,9 +15,9 @@ writeFileSync(
   ]),
 )
 const client = new Client({ name: 'check', version: '1' })
-await client.connect(new StdioClientTransport({ command: exe, args: ['--mcp'], env: { ...process.env, DBM_USER_DATA: userData } }))
+await client.connect(new StdioClientTransport({ command: exe, args: [...(process.env.APP_ARGS ? process.env.APP_ARGS.split(' ') : []), '--mcp'], env: { ...process.env, DBM_USER_DATA: process.env.USE_DATA ?? userData } }))
 const conns = await client.callTool({ name: 'list_connections', arguments: {} })
 console.log(conns.content[0].text)
-const q = await client.callTool({ name: 'run_query', arguments: { sql: 'select count(*) as n from shop.customers' } })
+const q = await client.callTool({ name: 'run_query', arguments: { sql: 'select count(*) as n from shop.customers', connection: process.env.CONN } })
 console.log(q.content[0].text)
 await client.close()

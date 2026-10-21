@@ -22,26 +22,34 @@ export function defaultSettings(): AppSettings {
 
 let cached: AppSettings | undefined
 
-function mapKeys(providers: AiProviderSettings[], fn: (v: string | undefined) => string | undefined) {
-  return providers.map((p) => ({ ...p, apiKey: fn(p.apiKey) }))
+function mapKeys(providers: AiProviderSettings[], fn: (v: string | undefined) => Promise<string | undefined>) {
+  return Promise.all(providers.map(async (p) => ({ ...p, apiKey: await fn(p.apiKey) })))
 }
 
-export function getSettings(): AppSettings {
-  if (cached) return cached
+/** Reads settings and decrypts API keys. Must run after app 'ready'. */
+export async function loadSettings(): Promise<void> {
   const defaults = defaultSettings()
   const stored = readJson<Partial<AppSettings>>(FILE, {})
   cached = {
     ...defaults,
     ...stored,
-    ai: { ...defaults.ai, ...stored.ai, providers: mapKeys(stored.ai?.providers ?? [], decryptSecret) },
+    ai: { ...defaults.ai, ...stored.ai, providers: await mapKeys(stored.ai?.providers ?? [], decryptSecret) },
     mcp: { ...defaults.mcp, ...stored.mcp },
   }
   if (!stored.mcp?.token) persist(cached)
+}
+
+export function getSettings(): AppSettings {
+  cached ??= defaultSettings()
   return cached
 }
 
+let writes = Promise.resolve()
+
 function persist(settings: AppSettings) {
-  writeJson(FILE, { ...settings, ai: { ...settings.ai, providers: mapKeys(settings.ai.providers, encryptSecret) } })
+  writes = writes
+    .then(async () => writeJson(FILE, { ...settings, ai: { ...settings.ai, providers: await mapKeys(settings.ai.providers, encryptSecret) } }))
+    .catch((err: unknown) => console.error('Could not save settings', err))
 }
 
 export function updateSettings(patch: Partial<AppSettings>): AppSettings {

@@ -2,8 +2,8 @@ import { app } from 'electron'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { DatabaseService } from '@dbmastermind/core'
 import { createMcpServer } from 'dbmastermind-mcp'
-import { listConnections } from './connections'
-import { getSettings } from './settings'
+import { listConnections, loadConnections } from './connections'
+import { getSettings, loadSettings } from './settings'
 
 export const isMcpMode = process.argv.includes('--mcp')
 
@@ -19,6 +19,7 @@ function argValue(name: string): string | undefined {
 export async function runMcpMode(): Promise<void> {
   app.dock?.hide()
   await app.whenReady()
+  await Promise.all([loadConnections(), loadSettings()])
   const only = argValue('--connection')
   const connections = listConnections().filter((c) => c.aiEnabled !== false && (!only || c.id === only || c.name === only))
   const settings = getSettings()
