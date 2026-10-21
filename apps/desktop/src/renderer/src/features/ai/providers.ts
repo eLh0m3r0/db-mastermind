@@ -21,7 +21,7 @@ export const PROVIDERS: ProviderMeta[] = [
   { id: 'ollama', label: 'Ollama (local)', description: 'Models running on this computer. Data never leaves your machine.', needsKey: false, needsBaseUrl: true, baseUrlPlaceholder: 'http://localhost:11434', kind: 'local' },
   { id: 'openai-compatible', label: 'OpenAI-compatible', description: 'LM Studio, vLLM, LiteLLM, company gateways…', needsKey: false, needsBaseUrl: true, baseUrlPlaceholder: 'http://localhost:1234/v1', kind: 'local' },
   { id: 'claude-code', label: 'Claude Code (subscription)', description: 'Uses your installed Claude Code CLI and your Claude subscription.', needsKey: false, kind: 'subscription' },
-  { id: 'codex', label: 'Codex CLI (ChatGPT subscription)', description: 'Uses your installed Codex CLI and your ChatGPT subscription.', needsKey: false, kind: 'subscription' },
+  { id: 'codex', label: 'Codex CLI (ChatGPT, beta)', description: 'Uses your installed Codex CLI and your ChatGPT subscription.', needsKey: false, kind: 'subscription' },
 ]
 
 export function providerMeta(id: AiProviderId | undefined): ProviderMeta | undefined {

@@ -14,7 +14,7 @@
   "scripts": {
     "dev": "npm run dev -w apps/desktop",
     "build": "npm run build -w packages/mcp && npm run build -w apps/desktop",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "tsc -p packages/core/tsconfig.json && tsc -p packages/mcp/tsconfig.json && tsc -p apps/desktop/tsconfig.node.json && tsc -p apps/desktop/tsconfig.web.json",
     "test": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "db:up": "docker compose -f docker-compose.test.yml up -d --wait",

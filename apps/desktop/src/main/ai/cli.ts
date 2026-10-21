@@ -116,6 +116,8 @@ export async function runCli(options: CliRunOptions): Promise<void> {
   let stderr = ''
   child.stderr.on('data', (d: Buffer) => (stderr = (stderr + d.toString()).slice(-4000)))
 
+  // Only our MCP tools are interesting to the user; agents also use internal tools (ToolSearch, TodoWrite…).
+  const ours = new Set<string>()
   const lines = createInterface({ input: child.stdout })
   lines.on('line', (line) => {
     let msg: Record<string, unknown>
@@ -130,12 +132,15 @@ export async function runCli(options: CliRunOptions): Promise<void> {
         for (const block of message?.content ?? []) {
           const b = block as { type: string; text?: string; id?: string; name?: string; input?: unknown }
           if (b.type === 'text' && b.text) options.onEvent({ type: 'text', text: b.text })
-          if (b.type === 'tool_use') options.onEvent({ type: 'tool-start', id: b.id ?? '', name: toolName(b.name ?? ''), input: b.input })
+          if (b.type === 'tool_use' && b.name?.startsWith('mcp__dbmastermind__')) {
+            ours.add(b.id ?? '')
+            options.onEvent({ type: 'tool-start', id: b.id ?? '', name: toolName(b.name), input: b.input })
+          }
         }
       } else if (msg.type === 'user') {
         for (const block of message?.content ?? []) {
           const b = block as { type: string; tool_use_id?: string; content?: unknown; is_error?: boolean }
-          if (b.type === 'tool_result') options.onEvent({ type: 'tool-end', id: b.tool_use_id ?? '', output: textOf(b.content), error: b.is_error })
+          if (b.type === 'tool_result' && ours.has(b.tool_use_id ?? '')) options.onEvent({ type: 'tool-end', id: b.tool_use_id ?? '', output: textOf(b.content), error: b.is_error })
         }
       }
     } else {

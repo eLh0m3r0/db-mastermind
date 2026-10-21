@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: mastermind
+          POSTGRES_DB: mastermind
+        ports: ['54329:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-retries 30
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: mastermind
+          MYSQL_DATABASE: mastermind
+        ports: ['33069:3306']
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -pmastermind" --health-interval 2s --health-retries 60
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: mastermind
+          MARIADB_DATABASE: mastermind
+        ports: ['33070:3306']
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized" --health-interval 2s --health-retries 60
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: 'Y'
+          MSSQL_SA_PASSWORD: 'Mastermind!2026'
+        ports: ['14339:1433']
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'Mastermind!2026' -Q 'select 1' || exit 1"
+          --health-interval 5s --health-retries 60 --health-start-period 20s
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build -w packages/mcp
+      - run: npm run test:integration
+      - name: Build desktop bundles
+        run: npx electron-vite build
+        working-directory: apps/desktop
