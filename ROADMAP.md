@@ -26,122 +26,124 @@ project's (AI) maintainer and updated with every release.
 
 ---
 
-## Milestone 0 — Foundation (v0.1) 🚧
+## Milestone 0 — Foundation (v0.1) ✅ released, polishing in v0.1.x
 
 ### Platform & distribution
 - ✅ Electron + TypeScript + React monorepo (`packages/core`, `packages/mcp`, `apps/desktop`)
-- ⬜ GitHub Actions CI: typecheck, lint, unit tests, integration tests against real PostgreSQL / MySQL /
+- ✅ GitHub Actions CI: typecheck, lint, unit tests, integration tests against real PostgreSQL / MySQL /
   MariaDB / SQL Server containers
-- ⬜ Release pipeline: tag → build for macOS (arm64 + x64), Windows (x64 + arm64), Linux (x64)
-- ⬜ Windows: portable `.zip` (settings stored next to the exe), per-user NSIS installer (no admin)
-- ⬜ Auto-update for installed builds (GitHub Releases), update notification for portable builds
-- ⬜ Settings & data stored in OS app-data dir, or `./data` next to the executable in portable mode
+- ✅ Release pipeline: tag → build for macOS (arm64 + x64), Windows (x64 + arm64), Linux (x64)
+- ✅ Windows: portable `.zip` (settings stored next to the exe), per-user NSIS installer (no admin)
+- ✅ Update notification from GitHub Releases (all builds)
+- ⬜ Silent auto-update for installed builds (needs code signing)
+- ✅ Settings & data stored in OS app-data dir, or `./data` next to the executable in portable mode
 
 ### Connections
-- ⬜ Drivers: **PostgreSQL**, **SQL Server / Azure SQL**, **MySQL**, **MariaDB**, **SQLite**
-- ⬜ Connection form with URL paste (`postgres://…`, `mysql://…`, `sqlserver://…`, JDBC strings)
-- ⬜ SSL/TLS (disable / require / verify-ca / verify-full, custom CA/cert/key)
-- ⬜ SSH tunnel (password, private key, agent)
-- ⬜ Secrets encrypted with OS keychain (Electron `safeStorage`)
-- ⬜ Connection colors, groups/folders, environment tag (dev / test / prod) with prod safety rails
-- ⬜ Read-only connection mode (enforced at session level where the DB supports it)
-- ⬜ Test connection, reconnect, keep-alive
-- ⬜ Import connections from Beekeeper Studio, DBeaver, DataGrip, `.pgpass`
+- ✅ Drivers: **PostgreSQL**, **SQL Server / Azure SQL**, **MySQL**, **MariaDB**, **SQLite**
+- ✅ Connection form with URL paste (`postgres://…`, `mysql://…`, `sqlserver://…`, JDBC strings)
+- ✅ SSL/TLS (disable / require / verify-ca / verify-full, custom CA/cert/key)
+- ✅ SSH tunnel (password, private key, agent)
+- ✅ Secrets encrypted with OS keychain (Electron `safeStorage`)
+- ✅ Connection colors, groups/folders, environment tag (dev / test / prod) with prod safety rails
+- ✅ Read-only connection mode (enforced at session level where the DB supports it)
+- ✅ Test connection, reconnect, keep-alive
+- 🚧 Import connections from Beekeeper Studio, DBeaver, DataGrip, `.pgpass`
 
 ### Schema explorer
-- ⬜ Tree: databases → schemas → tables / views / materialized views / functions / procedures / sequences
-- ⬜ Instant fuzzy filter over thousands of objects
-- ⬜ Column details (type, nullability, default, PK/FK/identity, comments) on hover
+- ✅ Tree: databases → schemas → tables / views / materialized views / functions / procedures / sequences
+- ✅ Instant fuzzy filter over thousands of objects
+- ✅ Column details (type, nullability, default, PK/FK/identity, comments) on hover
 - ⬜ Pin favourite tables, hide system schemas
-- ⬜ Context actions: open data, open structure, copy name, generate SELECT/INSERT/UPDATE/DELETE, count rows,
+- ✅ Context actions: open data, open structure, copy name, generate SELECT/INSERT/UPDATE/DELETE, count rows,
   open in diagram, ask AI about table
 
 ### Table data browser
-- ⬜ Virtualized data grid (millions of rows via paging, smooth scrolling, no row limits)
-- ⬜ Column resize, reorder, hide, pin; remembered per table
-- ⬜ Sort by multiple columns
-- ⬜ **Advanced filter builder** — nested AND/OR groups, 20+ operators (equals, contains, starts with,
+- ✅ Virtualized data grid (millions of rows via paging, smooth scrolling, no row limits)
+- 🚧 Column resize ✅ (double-click to auto-fit), reorder, hide, pin; remembered per table
+- ✅ Sort by multiple columns
+- ✅ **Advanced filter builder** — nested AND/OR groups, 20+ operators (equals, contains, starts with,
   regex, in list, between, is null, is empty, date ranges like "last 7 days"…), per-column quick filters,
   raw SQL `WHERE` mode, filters saved per table, filter presets
-- ⬜ Quick filter from cell ("filter by this value", "exclude this value")
-- ⬜ Inline editing with pending-changes panel, review generated SQL, commit/discard
-- ⬜ Insert / clone / delete rows, set NULL / DEFAULT
-- ⬜ Foreign key navigation: click an FK value → open referenced row; "referenced by" panel
-- ⬜ Cell viewer/editor for JSON, long text, binary (hex), with formatting
-- ⬜ Copy as TSV / CSV / JSON / Markdown / SQL INSERT; paste rows from spreadsheet
-- ⬜ Exact or estimated row counts
+- ✅ Quick filter from cell ("filter by this value", "exclude this value")
+- ✅ Inline editing with pending-changes panel, review generated SQL, commit/discard
+- ✅ Insert / clone / delete rows, set NULL / DEFAULT
+- ✅ Foreign key navigation: click an FK value → open referenced row; "referenced by" panel
+- 🚧 Cell viewer/editor for JSON, long text, binary (hex), with formatting (row details panel ✅)
+- 🚧 Copy as TSV / CSV / JSON / Markdown / SQL INSERT ✅; paste rows from spreadsheet
+- ✅ Exact or estimated row counts
 
 ### SQL editor
-- ⬜ CodeMirror 6 editor with dialect-aware highlighting
-- ⬜ Schema-aware autocomplete (schemas, tables, columns, aliases, keywords, functions)
-- ⬜ Run statement under cursor / selection / whole script; multiple result sets
-- ⬜ Cancel running query; elapsed timer
-- ⬜ Format SQL; comment toggle; multi-cursor
+- ✅ CodeMirror 6 editor with dialect-aware highlighting
+- ✅ Schema-aware autocomplete (schemas, tables, columns, aliases, keywords, functions)
+- ✅ Run statement under cursor / selection / whole script; multiple result sets
+- ✅ Cancel running query; elapsed timer
+- ✅ Format SQL; comment toggle; multi-cursor
 - ⬜ Query parameters (`:name`, `$1`, `?`) with prompt
-- ⬜ Query history (searchable, per connection), saved queries in folders
-- ⬜ Unlimited tabs, restored on restart (including unsaved text)
+- ✅ Query history (searchable, per connection), saved queries in folders
+- ✅ Unlimited tabs, restored on restart (including unsaved text)
 
 ### Results & export
-- ⬜ Result grid with the same capabilities as the data browser (filter/sort client-side)
-- ⬜ Export CSV, TSV, JSON, JSON Lines, Excel (.xlsx), SQL INSERT, Markdown — whole table or query result,
+- ✅ Result grid with the same capabilities as the data browser (filter/sort client-side)
+- 🚧 Export CSV, TSV, JSON, JSON Lines, Excel (.xlsx), SQL INSERT, Markdown — whole table or query result,
   streamed (no memory limit)
 
 ### General UX
-- ⬜ Command palette (`Ctrl/Cmd+K`), customizable keyboard shortcuts
-- ⬜ Light / dark / system theme
+- ✅ Command palette (`Ctrl/Cmd+K`), customizable keyboard shortcuts
+- ✅ Light / dark / system theme
 - ⬜ English + Czech UI (i18n-ready)
 
 ---
 
-## Milestone 1 — Relationships & diagrams (v0.2)
+## Milestone 1 — Relationships & diagrams (v0.2) 🚧
 
-- ⬜ **Interactive ER diagram** of a schema or a selection of tables (auto layout, crow's-foot notation)
-- ⬜ "Explore from table": start with one table, expand neighbours by FK hop
+- ✅ **Interactive ER diagram** of a schema or a selection of tables (auto layout, crow's-foot notation)
+- ✅ "Explore from table": start with one table, expand neighbours by FK hop
 - ⬜ Highlight join path between two tables
 - ⬜ Saved diagrams (named layouts, notes, colors, groups) per connection
-- ⬜ Virtual / logical relationships (when the DB has no real FKs) — stored in the knowledge base and
+- ✅ Virtual / logical relationships (when the DB has no real FKs) — stored in the knowledge base and
   used by FK navigation, diagrams, autocomplete joins and AI
-- ⬜ Export diagram to PNG, SVG, Mermaid, DBML, PlantUML
+- ✅ Export diagram to PNG, SVG, Mermaid, DBML, PlantUML
 - ⬜ Join autocomplete in SQL editor based on FKs + virtual relationships
 - 💡 dbdiagram-style DBML editing for designing new schemas, generate migration DDL
 
 ---
 
-## Milestone 2 — AI (v0.3)
+## Milestone 2 — AI (v0.3) 🚧 (core shipped early in v0.1)
 
 ### Providers (bring your own)
-- ⬜ Anthropic (Claude), OpenAI, OpenRouter (any model), Azure OpenAI, Google Gemini,
+- ✅ Anthropic (Claude), OpenAI, OpenRouter (any model), Azure OpenAI, Google Gemini,
   any OpenAI-compatible endpoint, **Ollama / LM Studio** (fully local)
-- ⬜ **Use your existing subscription**: delegate to a locally installed **Claude Code** or **Codex CLI**
+- ✅ **Use your existing subscription**: delegate to a locally installed **Claude Code** or **Codex CLI**
   (runs the agent headless with DB Mastermind's MCP tools attached)
-- ⬜ API keys encrypted with OS keychain; per-connection "AI allowed" switch; data sharing level
+- ✅ API keys encrypted with OS keychain; per-connection "AI allowed" switch; data sharing level
   (schema only / schema + sample rows / full query results)
 
 ### In-app assistant
-- ⬜ Chat panel with tool use: list tables, describe table, run read-only query, sample rows, read
+- ✅ Chat panel with tool use: list tables, describe table, run read-only query, sample rows, read
   knowledge base, search schema
-- ⬜ Inline "Ask AI" in the SQL editor (`Ctrl/Cmd+I`): natural language → SQL, explain, optimize,
+- 🚧 Inline "Ask AI" in the SQL editor (`Ctrl/Cmd+I`): natural language → SQL, explain, optimize,
   fix the error that just happened
 - ⬜ "Explain this table / column / relationship" from the explorer
 - ⬜ AI-suggested filters in the data browser ("orders from last month over 1000 CZK")
-- ⬜ Writes (UPDATE/DELETE/DDL) proposed by AI always require explicit user confirmation
+- ✅ Writes (UPDATE/DELETE/DDL) proposed by AI always require explicit user confirmation
 
 ### Knowledge base
-- ⬜ Per-connection folder of Markdown files (business glossary, table docs, relationships, gotchas)
-- ⬜ Built-in Markdown editor + file tree; works with any folder (Git repo, Obsidian vault, shared drive)
-- ⬜ **Generate knowledge base** with AI from schema + statistics + sample data, reviewed before saving
-- ⬜ Front-matter conventions (`tables:`, `columns:`, `relations:`) so docs link to schema objects;
+- ✅ Per-connection folder of Markdown files (business glossary, table docs, relationships, gotchas)
+- ✅ Built-in Markdown editor + file tree; works with any folder (Git repo, Obsidian vault, shared drive)
+- ✅ **Generate knowledge base** with AI from schema + statistics + sample data, reviewed before saving
+- ✅ Front-matter conventions (`tables:`, `columns:`, `relations:`) so docs link to schema objects;
   virtual relationships defined in Markdown
-- ⬜ Knowledge base used as context by in-app AI and exposed over MCP
+- ✅ Knowledge base used as context by in-app AI and exposed over MCP
 - ⬜ Staleness detection: warn when documented tables/columns no longer exist
 
 ### MCP server
-- ⬜ `npx dbmastermind-mcp` — standalone stdio MCP server using the same connections & knowledge base
-- ⬜ Built-in MCP server inside the desktop app (Streamable HTTP on localhost, token-protected)
-- ⬜ One-click "Add to Claude Code / Claude Desktop / Codex / Cursor / VS Code" config snippets
-- ⬜ Tools: `list_connections`, `list_tables`, `describe_table`, `search_schema`, `run_query` (read-only by
+- ✅ `npx dbmastermind-mcp` — standalone stdio MCP server using the same connections & knowledge base
+- ✅ Desktop app as MCP server (`--mcp` stdio mode: saved connections + keychain passwords)
+- ⬜ Streamable HTTP endpoint inside the running app (token-protected)
+- 🚧 One-click "Add to Claude Code / Claude Desktop / Codex / Cursor / VS Code" config snippets
+- ✅ Tools: `list_connections`, `list_tables`, `describe_table`, `search_schema`, `run_query` (read-only by
   default), `explain_query`, `get_relationships`, `read_knowledge`, `write_knowledge` (opt-in)
-- ⬜ Resources: schema snapshots and knowledge base files; prompts: "document this database",
+- ✅ Resources: schema snapshots and knowledge base files; prompts: "document this database",
   "write a report query"
 
 ---
