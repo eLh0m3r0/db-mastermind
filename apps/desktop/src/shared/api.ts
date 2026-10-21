@@ -134,6 +134,14 @@ export interface ConnectResult {
   serverInfo: ServerInfo
 }
 
+export interface KnowledgeFileInfo {
+  path: string
+  title: string
+  size: number
+  modifiedAt: string
+  tables: string[]
+}
+
 export interface AiChatMessage {
   role: 'user' | 'assistant'
   content: string
@@ -208,12 +216,20 @@ export interface MastermindApi {
   openExternal(url: string): Promise<void>
   showItemInFolder(path: string): Promise<void>
 
+  /** Knowledge base of a connection; creates a default folder in the data dir when asked. */
+  kbEnsureFolder(connectionId: string): Promise<string>
+  kbList(connectionId: string): Promise<KnowledgeFileInfo[]>
+  kbRead(connectionId: string, path: string): Promise<string>
+  kbWrite(connectionId: string, path: string, content: string): Promise<string>
+  kbDelete(connectionId: string, path: string): Promise<void>
+
   listAiModels(provider: AiProviderSettings): Promise<string[]>
   testAiProvider(provider: AiProviderSettings): Promise<string>
   /** Streams AiEvents on the 'ai:event' channel; resolves when the run has started. */
   aiChat(request: AiChatRequest): Promise<void>
   cancelAiChat(chatId: string): Promise<void>
-  respondAiApproval(id: string, approved: boolean): Promise<void>
+  /** `always` approves this and all later requests of the same kind in the chat. */
+  respondAiApproval(id: string, answer: boolean | 'always'): Promise<void>
 
   loadWorkspace(): Promise<WorkspaceState | null>
   saveWorkspace(state: WorkspaceState): Promise<void>
@@ -266,6 +282,11 @@ export const API_METHODS = [
   'readTextFile',
   'openExternal',
   'showItemInFolder',
+  'kbEnsureFolder',
+  'kbList',
+  'kbRead',
+  'kbWrite',
+  'kbDelete',
   'listAiModels',
   'testAiProvider',
   'aiChat',

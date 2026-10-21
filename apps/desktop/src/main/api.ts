@@ -1,10 +1,13 @@
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile, rm } from 'node:fs/promises'
+import { join } from 'node:path'
 import { app, BrowserWindow, dialog, shell } from 'electron'
 import {
   buildChangeStatements,
   DatabaseService,
   getDialect,
   inlineParams,
+  KnowledgeBase,
+  resolveInside,
   parseConnectionString,
   qualify,
   type ConnectionConfig,
@@ -28,6 +31,12 @@ function track<T>(runId: string | undefined, fn: (signal?: AbortSignal) => Promi
   const controller = new AbortController()
   running.set(runId, controller)
   return fn(controller.signal).finally(() => running.delete(runId))
+}
+
+function knowledge(connectionId: string): KnowledgeBase {
+  const path = connections.getConnection(connectionId).knowledgeBasePath
+  if (!path) throw new Error('This connection has no knowledge base folder')
+  return new KnowledgeBase(path)
 }
 
 async function ensureConnected(id: string) {
@@ -271,6 +280,30 @@ export const api: MastermindApi = {
     shell.showItemInFolder(path)
   },
 
+  async kbEnsureFolder(connectionId) {
+    const config = connections.getConnection(connectionId)
+    if (config.knowledgeBasePath) return config.knowledgeBasePath
+    const folder = join(app.getPath('userData'), 'knowledge', `${config.name.replace(/[^\p{L}\p{N}._-]+/gu, '_')}-${config.id.slice(0, 6)}`)
+    await mkdir(folder, { recursive: true })
+    connections.saveConnection({ ...config, knowledgeBasePath: folder })
+    return folder
+  },
+  async kbList(connectionId) {
+    return knowledge(connectionId).list()
+  },
+  async kbRead(connectionId, path) {
+    return (await knowledge(connectionId).read(path)).content
+  },
+  async kbWrite(connectionId, path, content) {
+    const saved = await knowledge(connectionId).write(path, content)
+    // Relations may have changed: refresh lazily.
+    if (db.isOpen(connectionId)) void db.schema(connectionId, true).catch(() => {})
+    return saved
+  },
+  async kbDelete(connectionId, path) {
+    const kb = knowledge(connectionId)
+    await rm(resolveInside(kb.root, path))
+  },
   async listAiModels(provider) {
     return listModels(provider)
   },
@@ -284,8 +317,8 @@ export const api: MastermindApi = {
   async cancelAiChat(chatId) {
     cancelChat(chatId)
   },
-  async respondAiApproval(id, approved) {
-    respondApproval(id, approved)
+  async respondAiApproval(id, answer) {
+    respondApproval(id, answer)
   },
 
   async loadWorkspace() {

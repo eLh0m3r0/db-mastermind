@@ -168,9 +168,10 @@ export function AiPanel() {
     update(connectionId, (c) => ({ ...c, running: false }))
   }
 
-  const answerApproval = (messageId: string, partId: string, approved: boolean) => {
+  const answerApproval = (messageId: string, partId: string, answer: boolean | 'always') => {
     if (!connectionId) return
-    void api.respondAiApproval(partId, approved)
+    const approved = answer !== false
+    void api.respondAiApproval(partId, answer)
     update(connectionId, (c) => ({
       ...c,
       messages: c.messages.map((m) =>
@@ -250,9 +251,9 @@ export function AiPanel() {
                   <button
                     type="button"
                     className="mt-2 flex items-center gap-1.5 text-[11.5px] text-accent hover:underline"
-                    onClick={() => setUi({ modal: { kind: 'connection', connectionId: connection.id } })}
+                    onClick={() => useWorkspace.getState().open({ kind: 'knowledge', connectionId: connection.id, title: 'Knowledge base' })}
                   >
-                    <BookOpen size={12} /> Add a knowledge base folder for better answers
+                    <BookOpen size={12} /> Set up a knowledge base for better answers
                   </button>
                 )}
               </div>
@@ -279,6 +280,9 @@ export function AiPanel() {
                           <div className="mt-2 flex gap-1.5">
                             <Button size="xs" variant="primary" icon={<Check size={11} />} onClick={() => answerApproval(m.id, p.id, true)}>
                               {p.kind === 'file' ? 'Save' : 'Run'}
+                            </Button>
+                            <Button size="xs" variant="ghost" onClick={() => answerApproval(m.id, p.id, 'always')} title="Approve this and every later request of this kind in this chat">
+                              {p.kind === 'file' ? 'Save all' : 'Run all in this chat'}
                             </Button>
                             <Button size="xs" onClick={() => answerApproval(m.id, p.id, false)}>
                               Decline

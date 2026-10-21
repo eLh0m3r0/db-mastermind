@@ -6,6 +6,7 @@ import { PostgresDriver } from './drivers/postgres.js'
 import { SqliteDriver } from './drivers/sqlite.js'
 import { buildCount, buildSelect, type FilterNode, type SortSpec } from './filters.js'
 import { buildChangeStatements, type RowChange } from './mutations.js'
+import { KnowledgeBase, relationToForeignKey } from './knowledge.js'
 import { findTable } from './schema-utils.js'
 import { isReadOnlyScript, splitStatements } from './sql-split.js'
 import type { ConnectionConfig, SchemaSnapshot, ServerInfo, StatementOutcome, TableInfo, TablePage, TableRef } from './types.js'
@@ -138,7 +139,7 @@ export class DatabaseService {
     const entry = this.get(id)
     if (!refresh && entry.schema) return entry.schema
     if (!refresh && entry.schemaPromise) return entry.schemaPromise
-    const promise = entry.driver.introspect()
+    const promise = entry.driver.introspect().then((snapshot) => withDocumentedRelations(snapshot, entry.config))
     entry.schemaPromise = promise
     try {
       entry.schema = await promise
@@ -237,4 +238,33 @@ export class DatabaseService {
   qualifiedName(id: string, ref: TableRef): string {
     return qualify(this.get(id).driver.dialect, ref)
   }
+}
+
+/**
+ * Adds relationships documented in the knowledge base (front matter `relations:`) as virtual foreign keys,
+ * so diagrams, FK navigation and the AI see joins the database itself doesn't declare.
+ */
+export async function withDocumentedRelations(snapshot: SchemaSnapshot, config: ConnectionConfig): Promise<SchemaSnapshot> {
+  if (!config.knowledgeBasePath) return snapshot
+  let relations
+  try {
+    relations = await new KnowledgeBase(config.knowledgeBasePath).relations()
+  } catch {
+    return snapshot
+  }
+  for (const relation of relations) {
+    const { table: fromName, fk } = relationToForeignKey(relation)
+    const parts = fromName.split('.')
+    const from = findTable(snapshot, parts.length > 1 ? { schema: parts.slice(0, -1).join('.'), name: parts.at(-1)! } : { name: fromName })
+    if (!from) continue
+    const target = findTable(snapshot, { schema: fk.refSchema, name: fk.refTable })
+    if (!target) continue
+    fk.refSchema = target.schema
+    fk.refTable = target.name
+    const duplicate = from.foreignKeys.some(
+      (existing) => existing.refTable === fk.refTable && existing.columns.join() === fk.columns.join(),
+    )
+    if (!duplicate && fk.columns.every((c) => from.columns.some((col) => col.name === c))) from.foreignKeys.push(fk)
+  }
+  return snapshot
 }

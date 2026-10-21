@@ -1,0 +1,279 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { markdown } from '@codemirror/lang-markdown'
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import { EditorState } from '@codemirror/state'
+import { EditorView, keymap, placeholder } from '@codemirror/view'
+import { BookOpen, Eye, FilePlus2, FileText, FolderOpen, Pencil, RefreshCw, Save, Search, Sparkles, Trash2 } from 'lucide-react'
+import type { KnowledgeFileInfo } from '@shared/api'
+import { Button, IconButton } from '@/components/ui/Button'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { Input } from '@/components/ui/Input'
+import { api, modKey } from '@/lib/api'
+import { cn, errorMessage, fuzzyScore } from '@/lib/utils'
+import { useConnections } from '@/store/connections'
+import { useSettings } from '@/store/settings'
+import { toast } from '@/store/ui'
+import { useWorkspace, type KnowledgeTab } from '@/store/workspace'
+import { Markdown } from '../ai/Markdown'
+import { askAiToDocument } from './generate'
+
+const TEMPLATE = (title: string) => `---
+tables: []
+relations: []
+---
+# ${title}
+
+What this area of the database is about.
+
+## Tables
+
+## How they join
+
+## Gotchas
+`
+
+function MarkdownEditor({ value, onChange, onSave, dark }: { value: string; onChange: (v: string) => void; onSave: () => void; dark: boolean }) {
+  const host = useRef<HTMLDivElement>(null)
+  const view = useRef<EditorView | null>(null)
+  const handlers = useRef({ onChange, onSave })
+  handlers.current = { onChange, onSave }
+
+  useEffect(() => {
+    view.current = new EditorView({
+      parent: host.current!,
+      state: EditorState.create({
+        doc: value,
+        extensions: [
+          history(),
+          markdown(),
+          EditorView.lineWrapping,
+          placeholder('Write notes in Markdown…'),
+          keymap.of([{ key: 'Mod-s', run: () => (handlers.current.onSave(), true), preventDefault: true }, ...defaultKeymap, ...historyKeymap]),
+          EditorView.updateListener.of((u) => u.docChanged && handlers.current.onChange(u.state.doc.toString())),
+          EditorView.theme(
+            {
+              '&': { height: '100%', backgroundColor: 'var(--bg)', color: 'var(--text)' },
+              '.cm-content': { fontFamily: 'var(--font-mono)', fontSize: '13px', padding: '16px 0', maxWidth: '860px', caretColor: 'var(--accent)' },
+              '.cm-line': { padding: '0 24px' },
+              '&.cm-focused': { outline: 'none' },
+            },
+            { dark },
+          ),
+        ],
+      }),
+    })
+    return () => view.current?.destroy()
+    // Recreated per file via `key`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  return <div ref={host} className="h-full overflow-auto" />
+}
+
+export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: boolean }) {
+  const connection = useConnections((s) => s.list.find((c) => c.id === tab.connectionId))
+  const loadConnections = useConnections((s) => s.load)
+  const loadSchema = useConnections((s) => s.loadSchema)
+  const updateTab = useWorkspace((s) => s.update)
+  const dark = useSettings((s) => s.dark)
+  const [files, setFiles] = useState<KnowledgeFileInfo[]>([])
+  const [search, setSearch] = useState('')
+  const [content, setContent] = useState<string | null>(null)
+  const [saved, setSaved] = useState<string | null>(null)
+  const [preview, setPreview] = useState(true)
+  const folder = connection?.knowledgeBasePath
+  const current = tab.file
+
+  const refresh = useCallback(async () => {
+    if (!folder) return
+    try {
+      setFiles(await api.kbList(tab.connectionId))
+    } catch (err) {
+      toast({ kind: 'error', message: 'Could not read the knowledge base', detail: errorMessage(err) })
+    }
+  }, [folder, tab.connectionId])
+
+  useEffect(() => {
+    if (active) void refresh()
+  }, [active, refresh])
+
+  useEffect(() => {
+    if (!current || !folder) {
+      setContent(null)
+      setSaved(null)
+      return
+    }
+    api.kbRead(tab.connectionId, current).then(
+      (text) => {
+        setContent(text)
+        setSaved(text)
+      },
+      () => {
+        setContent(null)
+        updateTab(tab.id, { file: undefined })
+      },
+    )
+  }, [current, folder, tab.connectionId, tab.id, updateTab])
+
+  const dirty = content !== null && content !== saved
+
+  const save = async () => {
+    if (!current || content === null) return
+    try {
+      await api.kbWrite(tab.connectionId, current, content)
+      setSaved(content)
+      void refresh()
+      void loadSchema(tab.connectionId, true)
+    } catch (err) {
+      toast({ kind: 'error', message: 'Could not save', detail: errorMessage(err) })
+    }
+  }
+
+  const open = (path: string) => {
+    if (dirty && !window.confirm('Discard unsaved changes?')) return
+    updateTab(tab.id, { file: path })
+  }
+
+  const create = async () => {
+    const name = window.prompt('File name (e.g. sales/orders.md)', 'notes.md')?.trim()
+    if (!name) return
+    const title = name.replace(/\.md$/i, '').split('/').pop()!.replace(/[-_]/g, ' ')
+    const path = await api.kbWrite(tab.connectionId, name, TEMPLATE(title.charAt(0).toUpperCase() + title.slice(1)))
+    await refresh()
+    updateTab(tab.id, { file: path })
+    setPreview(false)
+  }
+
+  const remove = async () => {
+    if (!current || !window.confirm(`Delete ${current}?`)) return
+    await api.kbDelete(tab.connectionId, current)
+    updateTab(tab.id, { file: undefined })
+    void refresh()
+  }
+
+  if (!connection) return null
+
+  if (!folder) {
+    return (
+      <EmptyState
+        icon={<BookOpen size={30} />}
+        title="Knowledge base"
+        actions={
+          <>
+            <Button
+              variant="primary"
+              onClick={async () => {
+                await api.kbEnsureFolder(tab.connectionId)
+                await loadConnections()
+              }}
+            >
+              Create knowledge base
+            </Button>
+            <Button
+              icon={<FolderOpen size={14} />}
+              onClick={async () => {
+                const dir = await api.pickDirectory('Choose a folder with Markdown notes')
+                if (!dir) return
+                await useConnections.getState().save({ ...connection, knowledgeBasePath: dir })
+              }}
+            >
+              Use existing folder…
+            </Button>
+          </>
+        }
+      >
+        Keep Markdown notes about <b>{connection.name}</b>: what tables mean, codes and statuses, relationships the database doesn’t declare, gotchas. The
+        AI assistant and MCP agents read them, and the AI can write the first version for you. Point it at a Git repository or shared folder to share
+        notes with your team.
+      </EmptyState>
+    )
+  }
+
+  const visible = files.filter((f) => !search.trim() || fuzzyScore(`${f.path} ${f.title}`, search) >= 0)
+
+  return (
+    <div className="flex h-full min-h-0">
+      <div className="flex w-[260px] shrink-0 flex-col border-r border-line bg-subtle">
+        <div className="flex h-10 shrink-0 items-center gap-1 border-b border-line pr-1.5 pl-3">
+          <BookOpen size={14} className="text-accent" />
+          <span className="text-[12.5px] font-semibold">Knowledge base</span>
+          <div className="flex-1" />
+          <IconButton label="New file" onClick={() => void create()}>
+            <FilePlus2 size={14} />
+          </IconButton>
+          <IconButton label="Refresh" onClick={() => void refresh()}>
+            <RefreshCw size={13} />
+          </IconButton>
+          <IconButton label="Show folder" onClick={() => void api.showItemInFolder(folder)}>
+            <FolderOpen size={13} />
+          </IconButton>
+        </div>
+        <div className="p-2">
+          <Input inputSize="sm" placeholder="Find note…" value={search} onChange={(e) => setSearch(e.target.value)} leading={<Search size={12} />} />
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto px-1 pb-2">
+          {visible.map((f) => (
+            <button
+              key={f.path}
+              type="button"
+              onClick={() => open(f.path)}
+              className={cn('flex w-full flex-col rounded-md px-2 py-1.5 text-left', current === f.path ? 'bg-active' : 'hover:bg-hover')}
+              title={f.path}
+            >
+              <span className="flex items-center gap-1.5 text-[12.5px]">
+                <FileText size={12} className="shrink-0 text-fg-faint" />
+                <span className="truncate">{f.title}</span>
+              </span>
+              <span className="truncate pl-[18px] text-[10.5px] text-fg-faint">
+                {f.path}
+                {f.tables.length ? ` · ${f.tables.length} tables` : ''}
+              </span>
+            </button>
+          ))}
+          {files.length === 0 && <div className="p-3 text-[12px] text-fg-faint">No notes yet.</div>}
+        </div>
+        <div className="border-t border-line p-2">
+          <Button className="w-full" icon={<Sparkles size={13} />} onClick={askAiToDocument}>
+            {files.length ? 'Ask AI to extend notes' : 'Generate with AI'}
+          </Button>
+        </div>
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col">
+        {current && content !== null ? (
+          <>
+            <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-3">
+              <span className="truncate font-mono text-[12px] text-fg-muted">{current}</span>
+              {dirty && <span className="h-1.5 w-1.5 rounded-full bg-warning" title="Unsaved changes" />}
+              <div className="flex-1" />
+              <Button size="sm" variant="ghost" icon={preview ? <Pencil size={13} /> : <Eye size={13} />} onClick={() => setPreview((v) => !v)}>
+                {preview ? 'Edit' : 'Preview'}
+              </Button>
+              <Button size="sm" variant={dirty ? 'primary' : 'ghost'} icon={<Save size={13} />} disabled={!dirty} onClick={() => void save()} title={`Save (${modKey}S)`}>
+                Save
+              </Button>
+              <IconButton label="Delete file" onClick={() => void remove()}>
+                <Trash2 size={13} />
+              </IconButton>
+            </div>
+            <div className="min-h-0 flex-1">
+              {preview ? (
+                <div className="h-full overflow-auto">
+                  <div className="mx-auto max-w-[820px] px-8 py-6">
+                    <Markdown text={content.replace(/^---[\s\S]*?\n---\n?/, '')} />
+                  </div>
+                </div>
+              ) : (
+                <MarkdownEditor key={current} value={content} onChange={setContent} onSave={() => void save()} dark={dark} />
+              )}
+            </div>
+          </>
+        ) : (
+          <EmptyState icon={<FileText size={26} />} title={files.length ? 'Choose a note' : 'Start your knowledge base'}>
+            {files.length
+              ? 'Pick a file on the left, or create a new one.'
+              : 'Create a note yourself, or let the AI study the schema and data and draft the documentation for you to review.'}
+          </EmptyState>
+        )}
+      </div>
+    </div>
+  )
+}

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
   BookMarked,
+  BookOpen,
   ChevronDown,
   Copy,
   Database,
@@ -137,6 +138,14 @@ export function Sidebar() {
                 <Icon size={12} /> {label}
               </button>
             ))}
+            <button
+              type="button"
+              title="Knowledge base"
+              onClick={() => useWorkspace.getState().open({ kind: 'knowledge', connectionId: connection.id, title: 'Knowledge base' })}
+              className="flex h-6 w-7 items-center justify-center rounded-md text-fg-muted hover:bg-hover hover:text-fg"
+            >
+              <BookOpen size={12} />
+            </button>
           </div>
           {panel === 'explorer' &&
             (runtime?.status === 'connected' ? (

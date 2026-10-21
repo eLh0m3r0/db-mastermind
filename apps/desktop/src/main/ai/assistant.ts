@@ -10,17 +10,20 @@ import { runCli } from './cli'
 import { createModel } from './models'
 
 const running = new Map<string, AbortController>()
-const approvals = new Map<string, (approved: boolean) => void>()
+const approvals = new Map<string, { chatId: string; kind: 'sql' | 'file'; resolve: (approved: boolean) => void }>()
+/** Kinds the user approved for the rest of a chat ("Approve all"). */
+const alwaysApproved = new Map<string, Set<'sql' | 'file'>>()
 
 function send(event: AiEvent) {
   for (const w of BrowserWindow.getAllWindows()) w.webContents.send('ai:event', event)
 }
 
 function askApproval(chatId: string, kind: 'sql' | 'file', detail: string, signal: AbortSignal): Promise<boolean> {
+  if (alwaysApproved.get(chatId)?.has(kind)) return Promise.resolve(true)
   const id = randomUUID()
   send({ chatId, type: 'approval', id, kind, detail })
   return new Promise((resolve) => {
-    approvals.set(id, resolve)
+    approvals.set(id, { chatId, kind, resolve })
     signal.addEventListener('abort', () => {
       approvals.delete(id)
       resolve(false)
@@ -28,9 +31,16 @@ function askApproval(chatId: string, kind: 'sql' | 'file', detail: string, signa
   })
 }
 
-export function respondApproval(id: string, approved: boolean) {
-  approvals.get(id)?.(approved)
+export function respondApproval(id: string, answer: boolean | 'always') {
+  const pending = approvals.get(id)
   approvals.delete(id)
+  if (!pending) return
+  if (answer === 'always') {
+    const set = alwaysApproved.get(pending.chatId) ?? new Set()
+    set.add(pending.kind)
+    alwaysApproved.set(pending.chatId, set)
+  }
+  pending.resolve(answer !== false)
 }
 
 export function cancelChat(chatId: string) {

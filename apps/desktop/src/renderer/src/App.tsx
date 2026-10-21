@@ -12,6 +12,7 @@ import { useWorkspace } from '@/store/workspace'
 import { AiPanel } from './features/ai/AiPanel'
 import { ConnectionForm } from './features/connections/ConnectionForm'
 import { DiagramView } from './features/diagram/DiagramView'
+import { KnowledgeView } from './features/knowledge/KnowledgeView'
 import { QueryView } from './features/query/QueryView'
 import { SettingsModal } from './features/settings/SettingsModal'
 import { CommandPalette } from './features/shell/CommandPalette'
@@ -133,6 +134,7 @@ export function App() {
                 {tab.kind === 'table' && <TableView tab={tab} active={tab.id === activeId} />}
                 {tab.kind === 'structure' && <StructureView tab={tab} />}
                 {tab.kind === 'diagram' && tab.id === activeId && <DiagramView tab={tab} />}
+                {tab.kind === 'knowledge' && <KnowledgeView tab={tab} active={tab.id === activeId} />}
               </div>
             ))}
             {!activeTab && <HomeScreen />}

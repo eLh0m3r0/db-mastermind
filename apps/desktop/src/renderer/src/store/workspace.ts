@@ -38,8 +38,13 @@ export interface DiagramTab extends BaseTab {
   positions?: Record<string, { x: number; y: number }>
 }
 
-export type Tab = QueryTab | TableTab | StructureTab | DiagramTab
-export type NewTab = Omit<QueryTab, 'id'> | Omit<TableTab, 'id'> | Omit<StructureTab, 'id'> | Omit<DiagramTab, 'id'>
+export interface KnowledgeTab extends BaseTab {
+  kind: 'knowledge'
+  file?: string
+}
+
+export type Tab = QueryTab | TableTab | StructureTab | DiagramTab | KnowledgeTab
+export type NewTab = Omit<QueryTab, 'id'> | Omit<TableTab, 'id'> | Omit<StructureTab, 'id'> | Omit<DiagramTab, 'id'> | Omit<KnowledgeTab, 'id'>
 
 interface WorkspaceState {
   tabs: Tab[]
@@ -68,6 +73,7 @@ function sameTarget(a: Tab, b: NewTab): boolean {
     return a.table.name === b.table.name && (a.table.schema ?? '') === (b.table.schema ?? '')
   }
   if (a.kind === 'diagram' && b.kind === 'diagram') return a.focus === b.focus && !a.tables && !b.tables
+  if (a.kind === 'knowledge' && b.kind === 'knowledge') return true
   return false
 }
 
