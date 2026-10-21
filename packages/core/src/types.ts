@@ -157,3 +157,18 @@ export interface ServerInfo {
   product: string
   version: string
 }
+
+export interface StatementOutcome {
+  sql: string
+  /** Offsets of the statement inside the submitted script. */
+  start: number
+  end: number
+  results?: QueryResult[]
+  error?: { message: string; code?: string; position?: number }
+  durationMs: number
+}
+
+export interface TablePage {
+  result: QueryResult
+  sql: string
+}

@@ -12,3 +12,5 @@ coverage/
 !.env.example
 test-results/
 playwright-report/
+e2e-shots/
+packages/mcp/dist/

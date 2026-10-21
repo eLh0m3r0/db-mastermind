@@ -1,0 +1,179 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #ffffff;
+  --bg-subtle: #f6f7f9;
+  --bg-muted: #eef0f3;
+  --bg-elevated: #ffffff;
+  --bg-hover: rgba(15, 23, 42, 0.05);
+  --bg-active: rgba(15, 23, 42, 0.09);
+  --border: #e3e6eb;
+  --border-strong: #cfd4db;
+  --text: #1b1f27;
+  --text-muted: #5b6372;
+  --text-faint: #8b93a1;
+  --accent: #6d4aff;
+  --accent-hover: #5b37f0;
+  --accent-soft: rgba(109, 74, 255, 0.1);
+  --accent-fg: #ffffff;
+  --danger: #dc3545;
+  --danger-soft: rgba(220, 53, 69, 0.1);
+  --warning: #c27c0e;
+  --warning-soft: rgba(234, 160, 25, 0.14);
+  --success: #198754;
+  --success-soft: rgba(25, 135, 84, 0.12);
+  --info: #0b72d9;
+  --grid-header: #f6f7f9;
+  --grid-row-alt: #fafbfc;
+  --grid-selected: rgba(109, 74, 255, 0.12);
+  --grid-edited: rgba(234, 160, 25, 0.18);
+  --grid-inserted: rgba(25, 135, 84, 0.12);
+  --grid-deleted: rgba(220, 53, 69, 0.12);
+  --null: #a0a7b4;
+  --shadow: 0 8px 28px rgba(15, 23, 42, 0.14), 0 1px 3px rgba(15, 23, 42, 0.08);
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', Inter, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #16181d;
+  --bg-subtle: #1c1f25;
+  --bg-muted: #23262e;
+  --bg-elevated: #22252c;
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --bg-active: rgba(255, 255, 255, 0.09);
+  --border: #2c3038;
+  --border-strong: #3a3f49;
+  --text: #e6e8ec;
+  --text-muted: #a1a8b5;
+  --text-faint: #6f7684;
+  --accent: #8b6dff;
+  --accent-hover: #9d84ff;
+  --accent-soft: rgba(139, 109, 255, 0.16);
+  --accent-fg: #ffffff;
+  --danger: #f0616f;
+  --danger-soft: rgba(240, 97, 111, 0.14);
+  --warning: #f0b445;
+  --warning-soft: rgba(240, 180, 69, 0.14);
+  --success: #4cc38a;
+  --success-soft: rgba(76, 195, 138, 0.14);
+  --info: #5aa9ff;
+  --grid-header: #1c1f25;
+  --grid-row-alt: #191b20;
+  --grid-selected: rgba(139, 109, 255, 0.2);
+  --grid-edited: rgba(240, 180, 69, 0.16);
+  --grid-inserted: rgba(76, 195, 138, 0.14);
+  --grid-deleted: rgba(240, 97, 111, 0.16);
+  --null: #626a78;
+  --shadow: 0 10px 32px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-subtle: var(--bg-subtle);
+  --color-muted: var(--bg-muted);
+  --color-elevated: var(--bg-elevated);
+  --color-hover: var(--bg-hover);
+  --color-active: var(--bg-active);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-fg: var(--text);
+  --color-fg-muted: var(--text-muted);
+  --color-fg-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-fg: var(--accent-fg);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-info: var(--info);
+  --color-null: var(--null);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --shadow-pop: var(--shadow);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+input,
+textarea,
+[contenteditable] {
+  user-select: text;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* Thin, unobtrusive scrollbars on every platform. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-faint);
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.drag-region {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* CodeMirror */
+.cm-editor {
+  height: 100%;
+  font-size: var(--editor-font-size, 13px);
+}
+.cm-editor .cm-scroller {
+  font-family: var(--font-mono);
+  line-height: 1.55;
+}
+.cm-editor.cm-focused {
+  outline: none;
+}
+.cm-tooltip-autocomplete {
+  border-radius: 6px;
+  overflow: hidden;
+}

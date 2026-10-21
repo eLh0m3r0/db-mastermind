@@ -1,0 +1,174 @@
+import { Server } from '@modelcontextprotocol/sdk/server/index.js'
+import {
+  CallToolRequestSchema,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
+  ListResourcesRequestSchema,
+  ListToolsRequestSchema,
+  ReadResourceRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js'
+import {
+  buildSystemPrompt,
+  DB_TOOLS,
+  describeError,
+  KnowledgeBase,
+  schemaOverview,
+  type ConnectionConfig,
+  type DatabaseService,
+  type ToolContext,
+} from '@dbmastermind/core'
+
+export interface McpServerOptions {
+  db: DatabaseService
+  connections: ConnectionConfig[]
+  /** Allow INSERT/UPDATE/DELETE/DDL from agents (read-only connections stay read-only). */
+  allowWrites?: boolean
+  /** Allow agents to create knowledge base files. */
+  allowKnowledgeWrites?: boolean
+  /** Hide table contents (query results, samples) from agents. */
+  schemaOnly?: boolean
+  version?: string
+}
+
+const INSTRUCTIONS = `DB Mastermind gives you safe access to the user's databases.
+Start with list_connections, then list_tables / search_schema / describe_table to learn the schema before writing SQL.
+The knowledge base (search_knowledge, read_knowledge) holds the team's notes on what tables mean and how they relate: check it for business questions.
+run_query is read-only unless the user enabled writes. Always limit exploratory queries.`
+
+export function createMcpServer(options: McpServerOptions): Server {
+  const { db, connections } = options
+  const server = new Server(
+    { name: 'dbmastermind', version: options.version ?? '0.1.0' },
+    { capabilities: { tools: {}, resources: {}, prompts: {} }, instructions: INSTRUCTIONS },
+  )
+  const single = connections.length === 1
+
+  const findConnection = (ref: unknown): ConnectionConfig => {
+    if ((ref === undefined || ref === '') && single) return connections[0]!
+    const key = String(ref ?? '').trim().toLowerCase()
+    const found = connections.find((c) => c.id.toLowerCase() === key || c.name.toLowerCase() === key)
+    if (!found) {
+      throw new Error(
+        `Unknown connection "${String(ref ?? '')}". Available: ${connections.map((c) => c.name).join(', ') || 'none'}`,
+      )
+    }
+    return found
+  }
+
+  const contextFor = async (config: ConnectionConfig): Promise<ToolContext> => {
+    if (!db.isOpen(config.id)) await db.connect(config)
+    return {
+      db,
+      connectionId: config.id,
+      knowledge: config.knowledgeBasePath ? new KnowledgeBase(config.knowledgeBasePath) : undefined,
+      allowData: !options.schemaOnly,
+      allowKnowledgeWrites: options.allowKnowledgeWrites,
+      confirmWrite: options.allowWrites ? async () => true : undefined,
+      maxRows: 100,
+    }
+  }
+
+  const connectionProperty = {
+    type: 'string',
+    description: single ? 'Optional, there is only one connection' : `Connection name: ${connections.map((c) => c.name).join(', ')}`,
+  }
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: [
+      {
+        name: 'list_connections',
+        description: 'List the databases available through DB Mastermind.',
+        inputSchema: { type: 'object' as const, properties: {} },
+        annotations: { readOnlyHint: true },
+      },
+      ...DB_TOOLS.filter((t) => t.name !== 'write_knowledge' || options.allowKnowledgeWrites).map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: {
+          ...t.inputSchema,
+          properties: { connection: connectionProperty, ...t.inputSchema.properties },
+          required: single ? t.inputSchema.required : ['connection', ...(t.inputSchema.required ?? [])],
+        },
+        annotations: { readOnlyHint: t.readOnly || (t.name === 'run_query' && !options.allowWrites) },
+      })),
+    ],
+  }))
+
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args = {} } = request.params
+    try {
+      if (name === 'list_connections') {
+        const lines = connections.map(
+          (c) =>
+            `${c.name} — ${c.driver}${c.driver === 'sqlite' ? ` ${c.filePath}` : ` ${c.host ?? ''}${c.database ? `/${c.database}` : ''}`}${c.readOnly ? ' (read-only)' : ''}${c.environment ? ` [${c.environment}]` : ''}${c.knowledgeBasePath ? ' (has knowledge base)' : ''}`,
+        )
+        return { content: [{ type: 'text', text: lines.join('\n') || 'No connections are shared with agents.' }] }
+      }
+      const tool = DB_TOOLS.find((t) => t.name === name)
+      if (!tool) throw new Error(`Unknown tool ${name}`)
+      const config = findConnection((args as Record<string, unknown>).connection)
+      const ctx = await contextFor(config)
+      const text = await tool.run(ctx, args as Record<string, unknown>)
+      return { content: [{ type: 'text', text }] }
+    } catch (err) {
+      return { content: [{ type: 'text', text: `ERROR: ${describeError(err).message}` }], isError: true }
+    }
+  })
+
+  server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+    resources: connections.map((c) => ({
+      uri: `dbmastermind://${encodeURIComponent(c.name)}/schema`,
+      name: `${c.name} schema`,
+      description: `Tables, columns and relationships of ${c.name}`,
+      mimeType: 'text/plain',
+    })),
+  }))
+
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    const m = /^dbmastermind:\/\/([^/]+)\/schema$/.exec(request.params.uri)
+    if (!m) throw new Error('Unknown resource')
+    const config = findConnection(decodeURIComponent(m[1]!))
+    await contextFor(config)
+    const snapshot = await db.schema(config.id)
+    return { contents: [{ uri: request.params.uri, mimeType: 'text/plain', text: schemaOverview(snapshot, 200_000) }] }
+  })
+
+  server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+    prompts: [
+      {
+        name: 'explore_database',
+        description: 'Get oriented in a database: schema overview, knowledge base and suggested next steps.',
+        arguments: [{ name: 'connection', description: 'Connection name', required: !single }],
+      },
+      {
+        name: 'document_database',
+        description: 'Write a knowledge base for a database (one Markdown file per area) from its schema and data.',
+        arguments: [{ name: 'connection', description: 'Connection name', required: !single }],
+      },
+    ],
+  }))
+
+  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+    const config = findConnection(request.params.arguments?.connection)
+    const ctx = await contextFor(config)
+    const system = await buildSystemPrompt(ctx)
+    if (request.params.name === 'document_database') {
+      return {
+        messages: [
+          {
+            role: 'user',
+            content: {
+              type: 'text',
+              text: `${system}\n\nTask: document the database "${config.name}" as a knowledge base. Use the tools to study the schema, relationships and samples of data. Then write Markdown files with write_knowledge (if available) or output them: README.md with an overview and a map of areas; one file per functional area describing each table's purpose, important columns, codes/enums, and how tables join. Put \`tables: [...]\` in front matter and list relationships the database does not declare as \`relations: ["a.col -> b.col"]\`.`,
+            },
+          },
+        ],
+      }
+    }
+    return {
+      messages: [{ role: 'user', content: { type: 'text', text: `${system}\n\nGive me a short orientation in this database: main areas, the most important tables and how they connect.` } }],
+    }
+  })
+
+  return server
+}

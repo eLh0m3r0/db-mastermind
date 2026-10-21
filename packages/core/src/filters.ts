@@ -217,7 +217,7 @@ function renderCondition(
       return `${col} ${c.operator === 'not_between' ? 'NOT ' : ''}BETWEEN ${params.add(value)} AND ${params.add(c.value2 ?? '')}`
     case 'in':
     case 'not_in': {
-      const values = (c.values ?? []).filter((v) => v !== '')
+      const values = (c.values ?? []).map((v) => v.trim()).filter((v) => v !== '')
       if (values.length === 0) return c.operator === 'in' ? '1 = 0' : null
       const list = values.map((v) => params.add(v)).join(', ')
       return c.operator === 'in' ? `${col} IN (${list})` : `(${col} NOT IN (${list}) OR ${col} IS NULL)`

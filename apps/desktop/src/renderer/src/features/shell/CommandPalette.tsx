@@ -1,0 +1,128 @@
+import { useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { Command } from 'cmdk'
+import { Eye, Moon, Network, Plug, Plus, RefreshCw, Settings, Sparkles, Sun, Table2, TerminalSquare, Unplug } from 'lucide-react'
+import { Kbd } from '@/components/ui/Input'
+import { modKey } from '@/lib/api'
+import { runCommand } from '@/lib/commands'
+import { fuzzyScore } from '@/lib/utils'
+import { useConnections } from '@/store/connections'
+import { useSettings } from '@/store/settings'
+import { useUi } from '@/store/ui'
+import { useWorkspace } from '@/store/workspace'
+import { DriverIcon } from '../connections/drivers'
+import { connectAndSelect, useCurrentConnectionId } from '../sidebar/Sidebar'
+
+export function CommandPalette() {
+  const mode = useUi((s) => s.palette)
+  const setUi = useUi((s) => s.set)
+  const connectionId = useCurrentConnectionId()
+  const schema = useConnections((s) => (connectionId ? s.runtime[connectionId]?.schema : undefined))
+  const connections = useConnections((s) => s.list)
+  const openTab = useWorkspace((s) => s.open)
+  const [search, setSearch] = useState('')
+  const close = () => {
+    setUi({ palette: undefined })
+    setSearch('')
+  }
+  const run = (fn: () => void) => {
+    close()
+    fn()
+  }
+
+  const tables = useMemo(() => {
+    if (!schema) return []
+    const q = search.trim()
+    const list = q
+      ? schema.tables
+          .map((t) => ({ t, score: fuzzyScore(t.name, q) }))
+          .filter((x) => x.score >= 0)
+          .sort((a, b) => b.score - a.score)
+          .map((x) => x.t)
+      : schema.tables
+    return list.slice(0, mode === 'tables' ? 200 : 30)
+  }, [schema, search, mode])
+
+  if (!mode) return null
+  const dark = useSettings.getState().dark
+
+  const commands: { id: string; label: string; icon: React.ReactNode; shortcut?: string; run: () => void; needsConnection?: boolean }[] = [
+    { id: 'new-query', label: 'New query tab', icon: <TerminalSquare size={14} />, shortcut: `${modKey}T`, run: () => runCommand('new-query'), needsConnection: true },
+    { id: 'new-connection', label: 'New connection…', icon: <Plus size={14} />, run: () => setUi({ modal: { kind: 'connection' } }) },
+    { id: 'diagram', label: 'Open ER diagram', icon: <Network size={14} />, run: () => connectionId && openTab({ kind: 'diagram', connectionId, title: 'ER diagram' }), needsConnection: true },
+    { id: 'refresh', label: 'Refresh schema', icon: <RefreshCw size={14} />, shortcut: 'F5', run: () => runCommand('refresh-schema'), needsConnection: true },
+    { id: 'ai', label: 'Toggle AI assistant', icon: <Sparkles size={14} />, shortcut: `${modKey}J`, run: () => runCommand('toggle-ai') },
+    { id: 'sidebar', label: 'Toggle sidebar', icon: <Eye size={14} />, shortcut: `${modKey}B`, run: () => runCommand('toggle-sidebar') },
+    { id: 'theme', label: dark ? 'Switch to light theme' : 'Switch to dark theme', icon: dark ? <Sun size={14} /> : <Moon size={14} />, run: () => void useSettings.getState().update({ theme: dark ? 'light' : 'dark' }) },
+    { id: 'settings', label: 'Settings…', icon: <Settings size={14} />, shortcut: `${modKey},`, run: () => setUi({ modal: { kind: 'settings' } }) },
+    { id: 'disconnect', label: 'Disconnect', icon: <Unplug size={14} />, run: () => runCommand('disconnect'), needsConnection: true },
+  ]
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/25 pt-[12vh] dark:bg-black/45" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+      <Command
+        label="Command palette"
+        shouldFilter={mode === 'commands'}
+        className="w-[600px] max-w-[92vw] overflow-hidden rounded-xl border border-line bg-elevated shadow-pop"
+        onKeyDown={(e) => e.key === 'Escape' && close()}
+      >
+        <Command.Input
+          autoFocus
+          value={search}
+          onValueChange={setSearch}
+          placeholder={mode === 'tables' ? 'Open table…' : 'Type a command or table name…'}
+          className="h-12 w-full border-b border-line bg-transparent px-4 text-[14px] outline-none placeholder:text-fg-faint"
+        />
+        <Command.List className="max-h-[420px] overflow-auto p-1.5 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-fg-faint [&_[cmdk-group-heading]]:uppercase">
+          <Command.Empty className="p-6 text-center text-[12.5px] text-fg-faint">No results</Command.Empty>
+          {tables.length > 0 && connectionId && (
+            <Command.Group heading="Tables">
+              {tables.map((t) => (
+                <Item
+                  key={`${t.schema}.${t.name}`}
+                  value={`table ${t.schema ?? ''}.${t.name}`}
+                  onSelect={() => run(() => openTab({ kind: 'table', connectionId, table: { schema: t.schema, name: t.name }, title: t.name }))}
+                  icon={t.type === 'table' ? <Table2 size={14} className="text-accent" /> : <Eye size={14} className="text-info" />}
+                  label={t.name}
+                  hint={t.schema && t.schema !== schema?.defaultSchema ? t.schema : undefined}
+                />
+              ))}
+            </Command.Group>
+          )}
+          {mode === 'commands' && (
+            <>
+              <Command.Group heading="Commands">
+                {commands
+                  .filter((c) => !c.needsConnection || connectionId)
+                  .map((c) => (
+                    <Item key={c.id} value={c.label} onSelect={() => run(c.run)} icon={c.icon} label={c.label} shortcut={c.shortcut} />
+                  ))}
+              </Command.Group>
+              <Command.Group heading="Connections">
+                {connections.map((c) => (
+                  <Item key={c.id} value={`connect ${c.name}`} onSelect={() => run(() => void connectAndSelect(c.id))} icon={<DriverIcon driver={c.driver} size={14} />} label={c.name} hint={<Plug size={12} />} />
+                ))}
+              </Command.Group>
+            </>
+          )}
+        </Command.List>
+      </Command>
+    </div>,
+    document.body,
+  )
+}
+
+function Item({ value, onSelect, icon, label, hint, shortcut }: { value: string; onSelect: () => void; icon: React.ReactNode; label: string; hint?: React.ReactNode; shortcut?: string }) {
+  return (
+    <Command.Item
+      value={value}
+      onSelect={onSelect}
+      className="flex h-8 cursor-default items-center gap-2.5 rounded-md px-2 text-[13px] data-[selected=true]:bg-accent data-[selected=true]:text-accent-fg [&[data-selected=true]_*]:text-accent-fg"
+    >
+      <span className="flex w-4 justify-center text-fg-muted">{icon}</span>
+      <span className="flex-1 truncate">{label}</span>
+      {hint && <span className="text-[11.5px] text-fg-faint">{hint}</span>}
+      {shortcut && <Kbd>{shortcut}</Kbd>}
+    </Command.Item>
+  )
+}

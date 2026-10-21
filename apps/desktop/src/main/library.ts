@@ -1,0 +1,90 @@
+import { randomUUID } from 'node:crypto'
+import type { HistoryEntry, SavedQuery, WorkspaceState } from '@shared/api'
+import { readJson, writeJson } from './storage'
+
+const HISTORY_FILE = 'history.json'
+const SAVED_FILE = 'saved-queries.json'
+const WORKSPACE_FILE = 'workspace.json'
+const MAX_HISTORY = 5000
+
+let history: HistoryEntry[] | undefined
+let historyTimer: NodeJS.Timeout | undefined
+
+function loadHistory(): HistoryEntry[] {
+  if (!history) history = readJson<HistoryEntry[]>(HISTORY_FILE, [])
+  return history
+}
+
+function scheduleHistoryWrite() {
+  // Queries can run in quick succession; batch writes.
+  clearTimeout(historyTimer)
+  historyTimer = setTimeout(() => writeJson(HISTORY_FILE, loadHistory()), 500)
+}
+
+export function flushHistory(): void {
+  if (historyTimer) {
+    clearTimeout(historyTimer)
+    writeJson(HISTORY_FILE, loadHistory())
+  }
+}
+
+export function addHistory(entry: Omit<HistoryEntry, 'id'>): void {
+  const list = loadHistory()
+  const last = list[0]
+  // Re-running the same statement just refreshes the entry.
+  if (last && last.connectionId === entry.connectionId && last.sql === entry.sql) list.shift()
+  list.unshift({ ...entry, id: randomUUID() })
+  if (list.length > MAX_HISTORY) list.length = MAX_HISTORY
+  scheduleHistoryWrite()
+}
+
+export function listHistory(connectionId?: string, search?: string, limit = 500): HistoryEntry[] {
+  const needle = search?.trim().toLowerCase()
+  const out: HistoryEntry[] = []
+  for (const h of loadHistory()) {
+    if (connectionId && h.connectionId !== connectionId) continue
+    if (needle && !h.sql.toLowerCase().includes(needle)) continue
+    out.push(h)
+    if (out.length >= limit) break
+  }
+  return out
+}
+
+export function clearHistory(connectionId?: string): void {
+  history = connectionId ? loadHistory().filter((h) => h.connectionId !== connectionId) : []
+  scheduleHistoryWrite()
+}
+
+export function listSavedQueries(): SavedQuery[] {
+  return readJson<SavedQuery[]>(SAVED_FILE, [])
+}
+
+export function saveQuery(query: Omit<SavedQuery, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): SavedQuery {
+  const all = listSavedQueries()
+  const now = new Date().toISOString()
+  const existing = query.id ? all.find((q) => q.id === query.id) : undefined
+  const saved: SavedQuery = {
+    ...existing,
+    ...query,
+    id: existing?.id ?? randomUUID(),
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  }
+  writeJson(SAVED_FILE, existing ? all.map((q) => (q.id === saved.id ? saved : q)) : [...all, saved])
+  return saved
+}
+
+export function deleteSavedQuery(id: string): void {
+  writeJson(
+    SAVED_FILE,
+    listSavedQueries().filter((q) => q.id !== id),
+  )
+}
+
+export function loadWorkspace(): WorkspaceState | null {
+  return readJson<WorkspaceState | null>(WORKSPACE_FILE, null)
+}
+
+export function saveWorkspace(state: WorkspaceState): void {
+  writeJson(WORKSPACE_FILE, state)
+}

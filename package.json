@@ -23,10 +23,18 @@
     "format": "prettier --write ."
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/node": "^26.6.5",
     "prettier": "^3.9.10",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   },
-  "type": "module"
+  "type": "module",
+  "optionalDependencies": {
+    "@rolldown/binding-darwin-arm64": "1.2.15",
+    "@rolldown/binding-darwin-x64": "1.2.15",
+    "@rolldown/binding-linux-x64-gnu": "1.2.15",
+    "@rolldown/binding-win32-arm64-msvc": "1.2.15",
+    "@rolldown/binding-win32-x64-msvc": "1.2.15"
+  }
 }

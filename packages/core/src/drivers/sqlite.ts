@@ -112,7 +112,7 @@ export class SqliteDriver implements DatabaseDriver {
         // Opening the database happens before 'online'; a ping proves it succeeded.
         this.post({ type: 'exec', sql: 'SELECT 1', params: [] }).then(() => {
           worker.off('error', onError)
-          worker.on('error', (err) => this.failAll(err))
+          worker.on('error', (err) => this.failAll(err as Error))
           resolve()
         }, reject)
       })

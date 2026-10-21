@@ -6,8 +6,9 @@ import { PostgresDriver } from './drivers/postgres.js'
 import { SqliteDriver } from './drivers/sqlite.js'
 import { buildCount, buildSelect, type FilterNode, type SortSpec } from './filters.js'
 import { buildChangeStatements, type RowChange } from './mutations.js'
+import { findTable } from './schema-utils.js'
 import { isReadOnlyScript, splitStatements } from './sql-split.js'
-import type { ConnectionConfig, QueryResult, SchemaSnapshot, ServerInfo, TableInfo, TableRef } from './types.js'
+import type { ConnectionConfig, SchemaSnapshot, ServerInfo, StatementOutcome, TableInfo, TablePage, TableRef } from './types.js'
 
 export function createDriver(config: ConnectionConfig): DatabaseDriver {
   switch (config.driver) {
@@ -23,15 +24,6 @@ export function createDriver(config: ConnectionConfig): DatabaseDriver {
   }
 }
 
-export interface StatementOutcome {
-  sql: string
-  /** Offsets of the statement inside the submitted script. */
-  start: number
-  end: number
-  results?: QueryResult[]
-  error?: { message: string; code?: string; position?: number }
-  durationMs: number
-}
 
 export interface RunScriptOptions {
   session?: string
@@ -42,10 +34,6 @@ export interface RunScriptOptions {
   params?: unknown[]
 }
 
-export interface TablePage {
-  result: QueryResult
-  sql: string
-}
 
 export interface FetchTableOptions {
   table: TableRef
@@ -249,16 +237,4 @@ export class DatabaseService {
   qualifiedName(id: string, ref: TableRef): string {
     return qualify(this.get(id).driver.dialect, ref)
   }
-}
-
-export function findTable(snapshot: SchemaSnapshot, ref: TableRef): TableInfo | undefined {
-  const name = ref.name
-  const exact = snapshot.tables.find((t) => t.name === name && (ref.schema === undefined || t.schema === ref.schema))
-  if (exact) return exact
-  const lower = name.toLowerCase()
-  const candidates = snapshot.tables.filter(
-    (t) => t.name.toLowerCase() === lower && (ref.schema === undefined || t.schema?.toLowerCase() === ref.schema.toLowerCase()),
-  )
-  if (candidates.length <= 1) return candidates[0]
-  return candidates.find((t) => t.schema === snapshot.defaultSchema) ?? candidates[0]
 }

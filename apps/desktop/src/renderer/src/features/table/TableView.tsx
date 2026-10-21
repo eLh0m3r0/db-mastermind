@@ -1,0 +1,782 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Copy,
+  Download,
+  Eye,
+  Filter,
+  KeyRound,
+  Network,
+  PanelRight,
+  Plus,
+  RefreshCw,
+  Rows3,
+  Trash2,
+  Undo2,
+  Upload,
+} from 'lucide-react'
+import {
+  cellToText,
+  countActiveConditions,
+  displayName,
+  findTable,
+  incomingReferences,
+  newFilterId,
+  referencedTable,
+  type CellValue,
+  type FilterGroup,
+  type QueryResult,
+  type RowChange,
+  type SortSpec,
+} from '@dbmastermind/core/browser'
+import type { ExportFormat } from '@shared/api'
+import { DataGrid, selectionBounds, selectionToTsv, type DataGridHandle, type GridColumnMeta, type GridSelection } from '@/components/grid/DataGrid'
+import { Button, IconButton } from '@/components/ui/Button'
+import { openMenu, type MenuItem } from '@/components/ui/ContextMenu'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { Badge, Select } from '@/components/ui/Input'
+import { Modal } from '@/components/ui/Modal'
+import { Spinner } from '@/components/ui/Spinner'
+import { api } from '@/lib/api'
+import { copyText, errorMessage, formatCount, formatDuration, plural, uid } from '@/lib/utils'
+import { useConnections } from '@/store/connections'
+import { useSettings } from '@/store/settings'
+import { toast } from '@/store/ui'
+import { useWorkspace, type TableTab } from '@/store/workspace'
+import { copyRowsAs, EXPORT_FORMATS } from '../results/copy'
+import { FilterBuilder, newCondition } from './FilterBuilder'
+import { RowDetails } from './RowDetails'
+
+type EditValue = string | null
+
+interface PendingChanges {
+  edits: Map<number, Record<string, EditValue>>
+  inserted: Record<string, EditValue>[]
+  deleted: Set<number>
+}
+
+const emptyPending = (): PendingChanges => ({ edits: new Map(), inserted: [], deleted: new Set() })
+
+function rootGroup(filter: TableTab['filter']): FilterGroup {
+  if (filter?.kind === 'group') return filter
+  return { kind: 'group', id: newFilterId(), combinator: 'and', children: filter ? [filter] : [] }
+}
+
+export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
+  const runtime = useConnections((s) => s.runtime[tab.connectionId])
+  const connection = useConnections((s) => s.list.find((c) => c.id === tab.connectionId))
+  const loadSchema = useConnections((s) => s.loadSchema)
+  const settings = useSettings((s) => s.settings)
+  const updateTab = useWorkspace((s) => s.update)
+  const openTab = useWorkspace((s) => s.open)
+  const schema = runtime?.schema
+  const table = schema ? findTable(schema, tab.table) : undefined
+
+  const pageSize = settings?.pageSize ?? 200
+  const [limit, setLimit] = useState(pageSize)
+  const [offset, setOffset] = useState(0)
+  const [result, setResult] = useState<QueryResult | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [total, setTotal] = useState<number | null>(null)
+  const [counting, setCounting] = useState(false)
+  const [showFilters, setShowFilters] = useState(countActiveConditions(tab.filter) > 0)
+  const [draft, setDraft] = useState<FilterGroup>(() => rootGroup(tab.filter))
+  const [pending, setPending] = useState<PendingChanges>(emptyPending)
+  const [preview, setPreview] = useState<string[] | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [selection, setSelection] = useState<GridSelection | null>(null)
+  const [showDetails, setShowDetails] = useState(false)
+  const [lastSql, setLastSql] = useState('')
+  const [duration, setDuration] = useState<number | null>(null)
+  const grid = useRef<DataGridHandle>(null)
+  const runId = useRef<string | null>(null)
+
+  const appliedFilter = tab.filter
+  const sort = tab.sort
+  const readOnly = !!connection?.readOnly
+  const primaryKey = table?.primaryKey ?? []
+  const editable = !!table && table.type === 'table' && primaryKey.length > 0 && !readOnly
+  const pendingCount = pending.edits.size + pending.inserted.length + pending.deleted.size
+
+  // Sync the draft when the filter is replaced from outside (FK navigation, AI).
+  const filterKey = JSON.stringify(tab.filter ?? null)
+  useEffect(() => {
+    setDraft(rootGroup(tab.filter))
+    if (countActiveConditions(tab.filter) > 0) setShowFilters(true)
+    setOffset(0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterKey])
+
+  useEffect(() => {
+    if (!schema && runtime?.status !== 'connecting') void loadSchema(tab.connectionId)
+  }, [schema, runtime?.status, loadSchema, tab.connectionId])
+
+  const load = useCallback(async () => {
+    if (runId.current) void api.cancelQuery(runId.current)
+    const id = uid('run')
+    runId.current = id
+    setLoading(true)
+    setError(null)
+    const started = performance.now()
+    try {
+      const page = await api.fetchTable({
+        connectionId: tab.connectionId,
+        table: tab.table,
+        filter: appliedFilter,
+        sort,
+        limit,
+        offset,
+        runId: id,
+      })
+      if (runId.current !== id) return
+      setResult(page.result)
+      setLastSql(page.sql)
+      setDuration(performance.now() - started)
+      setPending(emptyPending())
+    } catch (err) {
+      if (runId.current !== id) return
+      setError(errorMessage(err))
+    } finally {
+      if (runId.current === id) {
+        runId.current = null
+        setLoading(false)
+      }
+    }
+  }, [tab.connectionId, tab.table, appliedFilter, sort, limit, offset])
+
+  const count = useCallback(async () => {
+    setCounting(true)
+    try {
+      setTotal(await api.countTable({ connectionId: tab.connectionId, table: tab.table, filter: appliedFilter }))
+    } catch {
+      setTotal(null)
+    } finally {
+      setCounting(false)
+    }
+  }, [tab.connectionId, tab.table, appliedFilter])
+
+  // Load when the tab first becomes visible and whenever the query changes.
+  const loadedKey = useRef<string | null>(null)
+  const queryKey = JSON.stringify([appliedFilter, sort, limit, offset, tab.table])
+  useEffect(() => {
+    if (!active || loadedKey.current === queryKey) return
+    loadedKey.current = queryKey
+    void load()
+  }, [active, queryKey, load])
+
+  const countKey = JSON.stringify([appliedFilter, tab.table])
+  const countedKey = useRef<string | null>(null)
+  useEffect(() => {
+    if (!active || countedKey.current === countKey) return
+    countedKey.current = countKey
+    setTotal(null)
+    void count()
+  }, [active, countKey, count])
+
+  const confirmDiscard = () => pendingCount === 0 || window.confirm(`Discard ${plural(pendingCount, 'pending change')}?`)
+
+  const applyFilter = (group: FilterGroup = draft) => {
+    if (!confirmDiscard()) return
+    const active = countActiveConditions(group) > 0
+    updateTab(tab.id, { filter: active ? group : undefined })
+    setOffset(0)
+  }
+
+  const setSort = (next: SortSpec[]) => {
+    if (!confirmDiscard()) return
+    updateTab(tab.id, { sort: next.length ? next : undefined })
+  }
+
+  const refresh = () => {
+    if (!confirmDiscard()) return
+    loadedKey.current = null
+    countedKey.current = null
+    void load()
+    void count()
+  }
+
+  // Rows as displayed: originals with edits applied, then inserted rows.
+  const fields = result?.fields ?? []
+  const fieldIndex = useMemo(() => new Map(fields.map((f, i) => [f.name, i])), [fields])
+  const displayRows = useMemo(() => {
+    if (!result) return []
+    const rows = result.rows.map((row, r) => {
+      const edits = pending.edits.get(r)
+      if (!edits) return row
+      const copy = [...row]
+      for (const [col, value] of Object.entries(edits)) {
+        const i = fieldIndex.get(col)
+        if (i !== undefined) copy[i] = value
+      }
+      return copy
+    })
+    for (const ins of pending.inserted) rows.push(fields.map((f) => (f.name in ins ? ins[f.name]! : null)))
+    return rows
+  }, [result, pending, fields, fieldIndex])
+
+  const columnMeta: GridColumnMeta[] = useMemo(
+    () =>
+      fields.map((f) => {
+        const col = table?.columns.find((c) => c.name === f.name)
+        const fk = table?.foreignKeys.find((k) => k.columns.length === 1 && k.columns[0] === f.name)
+        return {
+          dataType: col?.dataType ?? f.dataType,
+          isPrimaryKey: col?.isPrimaryKey,
+          nullable: col?.nullable,
+          comment: col?.comment,
+          foreignKey: fk ? `${fk.refTable}.${fk.refColumns[0]}` : undefined,
+        }
+      }),
+    [fields, table],
+  )
+
+  const baseCount = result?.rows.length ?? 0
+
+  const onEdit = (row: number, col: number, value: string | null) => {
+    const name = fields[col]?.name
+    if (!name) return
+    setPending((p) => {
+      const next: PendingChanges = { edits: new Map(p.edits), inserted: [...p.inserted], deleted: new Set(p.deleted) }
+      if (row >= baseCount) {
+        next.inserted[row - baseCount] = { ...next.inserted[row - baseCount], [name]: value }
+        return next
+      }
+      const original = result!.rows[row]![col] ?? null
+      const originalText = original === null ? null : cellToText(original)
+      const edits = { ...next.edits.get(row) }
+      if (value === originalText) delete edits[name]
+      else edits[name] = value
+      if (Object.keys(edits).length) next.edits.set(row, edits)
+      else next.edits.delete(row)
+      return next
+    })
+  }
+
+  const isCellEdited = useCallback(
+    (row: number, col: number) => {
+      const name = fields[col]?.name
+      if (!name) return false
+      if (row >= baseCount) return name in (pending.inserted[row - baseCount] ?? {})
+      return !!pending.edits.get(row) && name in pending.edits.get(row)!
+    },
+    [fields, pending, baseCount],
+  )
+
+  const rowState = useCallback(
+    (row: number) => (row >= baseCount ? 'inserted' : pending.deleted.has(row) ? 'deleted' : undefined),
+    [baseCount, pending.deleted],
+  )
+
+  const addRow = (values: Record<string, EditValue> = {}) => {
+    setPending((p) => ({ ...p, inserted: [...p.inserted, values] }))
+    requestAnimationFrame(() => {
+      const row = baseCount + pending.inserted.length
+      grid.current?.selectCell({ row, col: 0 })
+      grid.current?.focus()
+    })
+  }
+
+  const selectedRows = (sel: GridSelection | null = selection): number[] => {
+    if (!sel) return []
+    const { r0, r1 } = selectionBounds(sel)
+    return Array.from({ length: r1 - r0 + 1 }, (_, i) => r0 + i)
+  }
+
+  const deleteRows = (rows: number[]) => {
+    setPending((p) => {
+      const next: PendingChanges = { edits: new Map(p.edits), inserted: [...p.inserted], deleted: new Set(p.deleted) }
+      const insertedToRemove = new Set<number>()
+      for (const r of rows) {
+        if (r >= baseCount) insertedToRemove.add(r - baseCount)
+        else if (next.deleted.has(r)) next.deleted.delete(r)
+        else next.deleted.add(r)
+      }
+      next.inserted = next.inserted.filter((_, i) => !insertedToRemove.has(i))
+      return next
+    })
+  }
+
+  const cloneRow = (row: number) => {
+    const values: Record<string, EditValue> = {}
+    fields.forEach((f, i) => {
+      const col = table?.columns.find((c) => c.name === f.name)
+      if (col?.isIdentity || col?.isGenerated) return
+      const v = displayRows[row]?.[i] ?? null
+      values[f.name] = v === null ? null : cellToText(v)
+    })
+    addRow(values)
+  }
+
+  const buildChanges = (): RowChange[] => {
+    if (!result) return []
+    const keyOf = (row: number) =>
+      Object.fromEntries(primaryKey.map((k) => [k, normalizeKey(result.rows[row]![fieldIndex.get(k)!] ?? null)]))
+    const changes: RowChange[] = []
+    for (const [row, values] of pending.edits) {
+      if (pending.deleted.has(row)) continue
+      changes.push({ type: 'update', key: keyOf(row), values })
+    }
+    for (const values of pending.inserted) changes.push({ type: 'insert', values })
+    for (const row of pending.deleted) changes.push({ type: 'delete', key: keyOf(row) })
+    return changes
+  }
+
+  const showPreview = async () => {
+    try {
+      setPreview(await api.previewChanges(tab.connectionId, tab.table, buildChanges()))
+    } catch (err) {
+      toast({ kind: 'error', message: 'Could not build SQL', detail: errorMessage(err) })
+    }
+  }
+
+  const applyChanges = async () => {
+    setSaving(true)
+    try {
+      const affected = await api.applyChanges(tab.connectionId, tab.table, buildChanges())
+      const n = affected.reduce((a, b) => a + b, 0)
+      toast({ kind: 'success', message: `Saved · ${plural(n, 'row')} affected` })
+      setPreview(null)
+      setPending(emptyPending())
+      loadedKey.current = null
+      countedKey.current = null
+      void load()
+      void count()
+    } catch (err) {
+      toast({ kind: 'error', message: 'Changes were rolled back', detail: errorMessage(err) })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const followForeignKey = (row: number, col: number) => {
+    if (!schema || !table) return
+    const name = fields[col]?.name
+    const fk = table.foreignKeys.find((k) => k.columns.includes(name ?? ''))
+    if (!fk) return
+    const target = referencedTable(schema, table, fk)
+    if (!target) return
+    const children = fk.columns.map((c, i) => {
+      const v = displayRows[row]?.[fieldIndex.get(c) ?? -1] ?? null
+      return v === null ? newCondition(fk.refColumns[i]!, 'is_null') : newCondition(fk.refColumns[i]!, 'eq', cellToText(v))
+    })
+    openTab({
+      kind: 'table',
+      connectionId: tab.connectionId,
+      table: { schema: target.schema, name: target.name },
+      title: target.name,
+      filter: { kind: 'group', id: newFilterId(), combinator: 'and', children },
+    })
+  }
+
+  const openReferencing = (row: number, refTableName: string, refSchema: string | undefined, fkColumns: string[], refColumns: string[]) => {
+    const children = refColumns.map((rc, i) => {
+      const v = displayRows[row]?.[fieldIndex.get(rc) ?? -1] ?? null
+      return v === null ? newCondition(fkColumns[i]!, 'is_null') : newCondition(fkColumns[i]!, 'eq', cellToText(v))
+    })
+    openTab(
+      {
+        kind: 'table',
+        connectionId: tab.connectionId,
+        table: { schema: refSchema, name: refTableName },
+        title: refTableName,
+        filter: { kind: 'group', id: newFilterId(), combinator: 'and', children },
+      },
+      { reuse: true },
+    )
+  }
+
+  const quickFilter = (col: number, row: number, mode: 'eq' | 'neq' | 'null' | 'notnull' | 'gt' | 'lt') => {
+    const name = fields[col]?.name
+    if (!name) return
+    const v = displayRows[row]?.[col] ?? null
+    const text = v === null ? '' : cellToText(v)
+    const cond =
+      mode === 'null' || (mode === 'eq' && v === null)
+        ? newCondition(name, 'is_null')
+        : mode === 'notnull' || (mode === 'neq' && v === null)
+          ? newCondition(name, 'is_not_null')
+          : newCondition(name, mode, text)
+    const group: FilterGroup = { ...draft, children: [...draft.children, cond] }
+    setDraft(group)
+    setShowFilters(true)
+    applyFilter(group)
+  }
+
+  const onContextMenu = (e: React.MouseEvent, pos: { row: number; col: number } | null, sel: GridSelection | null) => {
+    if (!pos) {
+      openMenu(e, [{ label: 'Add row', icon: <Plus size={13} />, disabled: !editable, onClick: () => addRow() }])
+      return
+    }
+    if (pos.row === -1) {
+      const name = fields[pos.col]?.name ?? ''
+      openMenu(e, [
+        { label: 'Sort ascending', onClick: () => setSort([{ column: name, direction: 'asc' }]) },
+        { label: 'Sort descending', onClick: () => setSort([{ column: name, direction: 'desc' }]) },
+        { label: 'Clear sort', disabled: !sort?.length, onClick: () => setSort([]) },
+        'separator',
+        { label: 'Filter by this column…', icon: <Filter size={13} />, onClick: () => {
+          setDraft((d) => ({ ...d, children: [...d.children, newCondition(name)] }))
+          setShowFilters(true)
+        } },
+        { label: 'Copy column name', icon: <Copy size={13} />, onClick: () => void copyText(name) },
+        { label: 'Copy column values', onClick: () => sel && void copyText(selectionToTsv(fields, displayRows, sel)) },
+      ])
+      return
+    }
+    const rows = selectedRows(sel)
+    const value = displayRows[pos.row]?.[pos.col] ?? null
+    const colName = fields[pos.col]?.name ?? ''
+    const fk = table?.foreignKeys.find((k) => k.columns.includes(colName))
+    const incoming = schema && table ? incomingReferences(schema, table) : []
+    const items: MenuItem[] = [
+      { label: 'Copy', shortcut: '⌘C', icon: <Copy size={13} />, onClick: () => sel && void copyText(selectionToTsv(fields, displayRows, sel, false, '')) },
+      { label: 'Copy with headers', onClick: () => sel && void copyText(selectionToTsv(fields, displayRows, sel, true, '')) },
+      {
+        label: 'Copy rows as',
+        submenu: (['json', 'csv', 'markdown', 'sql'] as const).map((format) => ({
+          label: format === 'sql' ? 'SQL INSERT' : format.toUpperCase(),
+          onClick: () =>
+            void copyText(
+              copyRowsAs(format, fields, rows.map((r) => displayRows[r]!), connection?.driver, displayName(schema, tab.table)),
+            ),
+        })),
+      },
+      'separator',
+      { label: `Filter: ${colName} = ${value === null ? 'NULL' : truncate(cellToText(value))}`, icon: <Filter size={13} />, onClick: () => quickFilter(pos.col, pos.row, 'eq') },
+      { label: `Filter: ${colName} ≠ ${value === null ? 'NULL' : truncate(cellToText(value))}`, onClick: () => quickFilter(pos.col, pos.row, 'neq') },
+      {
+        label: 'More filters',
+        submenu: [
+          { label: `${colName} > value`, onClick: () => quickFilter(pos.col, pos.row, 'gt') },
+          { label: `${colName} < value`, onClick: () => quickFilter(pos.col, pos.row, 'lt') },
+          { label: `${colName} is NULL`, onClick: () => quickFilter(pos.col, pos.row, 'null') },
+          { label: `${colName} is not NULL`, onClick: () => quickFilter(pos.col, pos.row, 'notnull') },
+        ],
+      },
+    ]
+    if (fk || incoming.length) items.push('separator')
+    if (fk) items.push({ label: `Open referenced ${fk.refTable}`, icon: <Network size={13} />, onClick: () => followForeignKey(pos.row, pos.col) })
+    if (incoming.length) {
+      items.push({
+        label: 'Referenced by',
+        icon: <Network size={13} />,
+        submenu: incoming.map((ref) => ({
+          label: `${ref.table.name} (${ref.foreignKey.columns.join(', ')})`,
+          onClick: () => openReferencing(pos.row, ref.table.name, ref.table.schema, ref.foreignKey.columns, ref.foreignKey.refColumns),
+        })),
+      })
+    }
+    if (editable) {
+      items.push(
+        'separator',
+        { label: 'Edit cell', shortcut: '↵', onClick: () => grid.current?.edit() },
+        { label: 'Set NULL', disabled: columnMeta[pos.col]?.nullable === false, onClick: () => rows.forEach((r) => onEdit(r, pos.col, null)) },
+        { label: 'Clone row', icon: <Rows3 size={13} />, onClick: () => cloneRow(pos.row) },
+        { label: rows.length > 1 ? `Delete ${rows.length} rows` : 'Delete row', icon: <Trash2 size={13} />, danger: true, onClick: () => deleteRows(rows) },
+      )
+    }
+    openMenu(e, items)
+  }
+
+  const exportMenu = (anchor: HTMLElement) => {
+    const run = async (format: ExportFormat, scope: 'page' | 'all') => {
+      try {
+        const path =
+          scope === 'all'
+            ? await api.exportTable({ format, connectionId: tab.connectionId, table: tab.table, filter: appliedFilter, sort })
+            : await api.exportResult({
+                format,
+                defaultName: tab.table.name,
+                result: { fields, rows: displayRows },
+                tableName: displayName(schema, tab.table),
+                connectionId: tab.connectionId,
+              })
+        if (path) toast({ kind: 'success', message: 'Export finished', detail: path, action: { label: 'Show in folder', run: () => void api.showItemInFolder(path) } })
+      } catch (err) {
+        toast({ kind: 'error', message: 'Export failed', detail: errorMessage(err) })
+      }
+    }
+    openMenu(anchor, [
+      { label: total !== null ? `All ${formatCount(total)} rows (with filter)` : 'All rows (with filter)', submenu: EXPORT_FORMATS.map((f) => ({ label: f.label, onClick: () => void run(f.id, 'all') })) },
+      { label: `Current page (${formatCount(displayRows.length)} rows)`, submenu: EXPORT_FORMATS.map((f) => ({ label: f.label, onClick: () => void run(f.id, 'page') })) },
+    ])
+  }
+
+  useEffect(() => {
+    if (!active) return
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey
+      if (mod && e.key.toLowerCase() === 's' && pendingCount > 0) {
+        e.preventDefault()
+        void showPreview()
+      } else if (mod && e.key.toLowerCase() === 'r') {
+        e.preventDefault()
+        refresh()
+      } else if (mod && e.key.toLowerCase() === 'f' && !e.shiftKey) {
+        e.preventDefault()
+        setShowFilters(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
+  const onGridKeyDown = (e: React.KeyboardEvent) => {
+    if (!editable) return
+    if ((e.key === 'Delete' || e.key === 'Backspace') && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      deleteRows(selectedRows())
+    }
+  }
+
+  const activeFilters = countActiveConditions(appliedFilter)
+  const pageEnd = offset + (result?.rows.length ?? 0)
+  const lastPage = total !== null ? Math.max(0, Math.ceil(total / limit) - 1) : null
+  const currentPage = Math.floor(offset / limit)
+  const goTo = (page: number) => {
+    if (!confirmDiscard()) return
+    setOffset(Math.max(0, page) * limit)
+  }
+
+  if (schema && !table) {
+    return (
+      <EmptyState icon={<Rows3 size={28} />} title={`Table ${tab.table.name} was not found`}>
+        It may have been renamed or dropped. Refresh the schema to update the sidebar.
+      </EmptyState>
+    )
+  }
+
+  const selectedRow = selection ? selection.focus.row : null
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Toolbar */}
+      <div className="flex h-10 shrink-0 items-center gap-1.5 border-b border-line px-2">
+        <Button
+          size="sm"
+          variant={showFilters ? 'subtle' : 'ghost'}
+          icon={<Filter size={14} />}
+          onClick={() => {
+            if (!showFilters && draft.children.length === 0 && table?.columns[0]) {
+              setDraft((d) => ({ ...d, children: [newCondition(table.columns[0]!.name)] }))
+            }
+            setShowFilters((v) => !v)
+          }}
+          title="Filters (⌘F)"
+        >
+          Filter
+          {activeFilters > 0 && <Badge tone="accent">{activeFilters}</Badge>}
+        </Button>
+        <IconButton label="Refresh (⌘R)" size="md" onClick={refresh}>
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+        </IconButton>
+        <div className="mx-1 h-5 w-px bg-line" />
+        {editable ? (
+          <>
+            <IconButton label="Add row" size="md" onClick={() => addRow()}>
+              <Plus size={15} />
+            </IconButton>
+            <IconButton label="Delete selected rows (⌘⌫)" size="md" disabled={!selection} onClick={() => deleteRows(selectedRows())}>
+              <Trash2 size={14} />
+            </IconButton>
+          </>
+        ) : (
+          <span className="flex items-center gap-1 px-1 text-[11.5px] text-fg-faint" title={readOnly ? 'Connection is read-only' : table?.type !== 'table' ? 'Views are read-only' : 'Editing needs a primary key'}>
+            <KeyRound size={12} />
+            {readOnly ? 'Read-only connection' : table?.type !== 'table' ? 'View (read-only)' : 'No primary key: read-only'}
+          </span>
+        )}
+        {pendingCount > 0 && (
+          <div className="ml-1 flex items-center gap-1 rounded-md bg-warning-soft py-0.5 pr-0.5 pl-2">
+            <span className="text-[12px] font-medium text-warning">{plural(pendingCount, 'change')}</span>
+            <Button size="xs" variant="ghost" icon={<Eye size={12} />} onClick={() => void showPreview()}>
+              Review
+            </Button>
+            <Button size="xs" variant="primary" loading={saving} onClick={() => void applyChanges()}>
+              Apply
+            </Button>
+            <IconButton label="Discard changes" onClick={() => setPending(emptyPending())}>
+              <Undo2 size={13} />
+            </IconButton>
+          </div>
+        )}
+        <div className="flex-1" />
+        <IconButton label="Export" size="md" onClick={(e) => exportMenu(e.currentTarget)}>
+          <Download size={14} />
+        </IconButton>
+        <IconButton label="Import (coming soon)" size="md" disabled>
+          <Upload size={14} />
+        </IconButton>
+        <IconButton
+          label="Show in diagram"
+          size="md"
+          onClick={() =>
+            openTab({ kind: 'diagram', connectionId: tab.connectionId, title: `Diagram: ${tab.table.name}`, focus: tab.table.name })
+          }
+        >
+          <Network size={14} />
+        </IconButton>
+        <IconButton label="Row details" size="md" active={showDetails} onClick={() => setShowDetails((v) => !v)}>
+          <PanelRight size={14} />
+        </IconButton>
+      </div>
+
+      {showFilters && table && (
+        <FilterBuilder
+          value={draft}
+          columns={table.columns}
+          supportsRegex={connection?.driver === 'postgres' || connection?.driver === 'mysql' || connection?.driver === 'mariadb'}
+          onChange={setDraft}
+          onApply={() => applyFilter()}
+          onClear={() => {
+            const empty: FilterGroup = { ...draft, children: [] }
+            setDraft(empty)
+            applyFilter(empty)
+          }}
+        />
+      )}
+
+      <div className="flex min-h-0 flex-1">
+        <div className="relative min-w-0 flex-1" onKeyDown={onGridKeyDown}>
+          {error ? (
+            <div className="m-3 rounded-md border border-danger/30 bg-danger-soft p-3 font-mono text-[12px] whitespace-pre-wrap text-danger select-text">
+              {error}
+            </div>
+          ) : !result && loading ? (
+            <div className="flex h-full items-center justify-center text-fg-faint">
+              <Spinner size={18} />
+            </div>
+          ) : (
+            <DataGrid
+              ref={grid}
+              fields={fields}
+              rows={displayRows}
+              columnMeta={columnMeta}
+              rowNumberOffset={offset}
+              sort={sort}
+              onSortChange={setSort}
+              onEdit={editable ? onEdit : undefined}
+              isCellEdited={isCellEdited}
+              rowState={rowState}
+              onContextMenu={onContextMenu}
+              onForeignKeyClick={(pos) => followForeignKey(pos.row, pos.col)}
+              onSelectionChange={setSelection}
+              onCellActivate={() => setShowDetails(true)}
+              nullDisplay={settings?.nullDisplay}
+              emptyMessage={activeFilters ? 'No rows match the filter' : 'Table is empty'}
+            />
+          )}
+          {loading && result && (
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 overflow-hidden">
+              <div className="h-full w-1/3 animate-[pulse_1s_ease-in-out_infinite] bg-accent" />
+            </div>
+          )}
+        </div>
+        {showDetails && (
+          <RowDetails
+            fields={fields}
+            row={selectedRow !== null ? (displayRows[selectedRow] ?? null) : null}
+            columns={table?.columns ?? []}
+            editable={editable && selectedRow !== null && !pending.deleted.has(selectedRow)}
+            onEdit={(col, value) => selectedRow !== null && onEdit(selectedRow, col, value)}
+            onClose={() => setShowDetails(false)}
+          />
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="flex h-8 shrink-0 items-center gap-2 border-t border-line bg-subtle px-2 text-[12px] text-fg-muted">
+        <span className="truncate" title={lastSql}>
+          {result ? (
+            <>
+              {total !== null ? (
+                <>
+                  <b className="font-medium text-fg">{formatCount(total)}</b> {total === 1 ? 'row' : 'rows'}
+                </>
+              ) : counting ? (
+                'Counting…'
+              ) : (
+                <button type="button" className="hover:text-fg" onClick={() => void count()}>
+                  Count rows
+                </button>
+              )}
+              {duration !== null && <span className="ml-2 text-fg-faint">{formatDuration(duration)}</span>}
+            </>
+          ) : null}
+        </span>
+        <div className="flex-1" />
+        <IconButton label="First page" disabled={currentPage === 0} onClick={() => goTo(0)}>
+          <ChevronsLeft size={14} />
+        </IconButton>
+        <IconButton label="Previous page" disabled={currentPage === 0} onClick={() => goTo(currentPage - 1)}>
+          <ChevronLeft size={14} />
+        </IconButton>
+        <span className="min-w-[110px] text-center tabular-nums">
+          {result && result.rows.length > 0 ? `${formatCount(offset + 1)}–${formatCount(pageEnd)}` : '0'}
+          {total !== null && ` of ${formatCount(total)}`}
+        </span>
+        <IconButton
+          label="Next page"
+          disabled={lastPage !== null ? currentPage >= lastPage : (result?.rows.length ?? 0) < limit}
+          onClick={() => goTo(currentPage + 1)}
+        >
+          <ChevronRight size={14} />
+        </IconButton>
+        <IconButton label="Last page" disabled={lastPage === null || currentPage >= lastPage} onClick={() => lastPage !== null && goTo(lastPage)}>
+          <ChevronsRight size={14} />
+        </IconButton>
+        <Select
+          inputSize="sm"
+          className="h-6 w-[88px] text-[12px]"
+          value={limit}
+          onChange={(e) => {
+            if (!confirmDiscard()) return
+            setLimit(Number(e.target.value))
+            setOffset(0)
+          }}
+        >
+          {[50, 100, 200, 500, 1000, 5000].map((n) => (
+            <option key={n} value={n}>
+              {n} / page
+            </option>
+          ))}
+        </Select>
+      </div>
+
+      <Modal
+        open={preview !== null}
+        onClose={() => setPreview(null)}
+        title="Review changes"
+        width={720}
+        footer={
+          <>
+            <span className="text-[12px] text-fg-muted">Runs in a single transaction. If any statement fails, nothing is saved.</span>
+            <div className="flex-1" />
+            <Button onClick={() => void copyText((preview ?? []).join(';\n') + ';')}>Copy SQL</Button>
+            <Button variant="primary" loading={saving} onClick={() => void applyChanges()} data-autofocus>
+              Apply {plural(preview?.length ?? 0, 'statement')}
+            </Button>
+          </>
+        }
+      >
+        <pre className="max-h-[50vh] overflow-auto rounded-md bg-subtle p-3 font-mono text-[12px] leading-relaxed whitespace-pre-wrap select-text">
+          {(preview ?? []).map((s) => `${s};`).join('\n')}
+        </pre>
+      </Modal>
+    </div>
+  )
+}
+
+function truncate(text: string, n = 24): string {
+  return text.length > n ? `${text.slice(0, n)}…` : text
+}
+
+/** Key values go back to the database as text (or the original number) so they match exactly. */
+function normalizeKey(v: CellValue): string | number | boolean | null {
+  if (v === null || typeof v === 'number' || typeof v === 'boolean') return v
+  return cellToText(v)
+}

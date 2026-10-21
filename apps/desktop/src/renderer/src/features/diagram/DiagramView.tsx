@@ -1,0 +1,525 @@
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Background,
+  BackgroundVariant,
+  Controls,
+  Handle,
+  MarkerType,
+  MiniMap,
+  Position,
+  ReactFlow,
+  ReactFlowProvider,
+  useNodesState,
+  useReactFlow,
+  type Edge,
+  type Node,
+  type NodeProps,
+} from '@xyflow/react'
+import '@xyflow/react/dist/style.css'
+import ELK from 'elkjs/lib/elk.bundled.js'
+import { toPng, toSvg } from 'html-to-image'
+import { Download, Eye, KeyRound, LayoutGrid, Link2, Network, Search, Table2 } from 'lucide-react'
+import { findTable, incomingReferences, type SchemaSnapshot, type TableInfo } from '@dbmastermind/core/browser'
+import { Button } from '@/components/ui/Button'
+import { openMenu } from '@/components/ui/ContextMenu'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { Checkbox, Input, Select } from '@/components/ui/Input'
+import { Spinner } from '@/components/ui/Spinner'
+import { cn, errorMessage, fuzzyScore } from '@/lib/utils'
+import { useConnections } from '@/store/connections'
+import { useSettings } from '@/store/settings'
+import { toast } from '@/store/ui'
+import { useWorkspace, type DiagramTab } from '@/store/workspace'
+
+const elk = new ELK()
+const HEADER = 32
+const ROW = 22
+const WIDTH = 240
+
+interface TableNodeData extends Record<string, unknown> {
+  table: TableInfo
+  keysOnly: boolean
+  highlighted: boolean
+  dimmed: boolean
+  focus: boolean
+  fkColumns: Set<string>
+  referencedColumns: Set<string>
+}
+
+function visibleColumns(t: TableInfo, keysOnly: boolean, fkColumns: Set<string>, referenced: Set<string>) {
+  return keysOnly ? t.columns.filter((c) => c.isPrimaryKey || fkColumns.has(c.name) || referenced.has(c.name)) : t.columns
+}
+
+const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData>>) {
+  const { table, keysOnly, fkColumns, referencedColumns } = data
+  const cols = visibleColumns(table, keysOnly, fkColumns, referencedColumns)
+  return (
+    <div
+      className={cn(
+        'overflow-hidden rounded-lg border bg-elevated shadow-sm transition-opacity',
+        data.focus ? 'border-accent ring-2 ring-accent-soft' : data.highlighted ? 'border-accent/70' : 'border-line-strong',
+        data.dimmed && 'opacity-35',
+      )}
+      style={{ width: WIDTH }}
+    >
+      <div
+        className={cn('flex items-center gap-1.5 px-2.5 text-[12px] font-semibold', table.type === 'table' ? 'bg-accent text-accent-fg' : 'bg-info text-white')}
+        style={{ height: HEADER }}
+        title={table.comment ?? undefined}
+      >
+        {table.type === 'table' ? <Table2 size={12} /> : <Eye size={12} />}
+        <span className="truncate">{table.name}</span>
+        {table.schema && <span className="ml-auto truncate text-[10px] font-normal opacity-75">{table.schema}</span>}
+      </div>
+      {cols.map((c) => (
+        <div key={c.name} className="relative flex items-center gap-1.5 border-t border-line px-2.5 text-[11px]" style={{ height: ROW }} title={c.comment ?? undefined}>
+          <Handle type="target" position={Position.Left} id={`t-${c.name}`} className="!h-1.5 !w-1.5 !min-w-0 !border-0 !bg-transparent" />
+          {c.isPrimaryKey ? (
+            <KeyRound size={10} className="shrink-0 text-warning" />
+          ) : fkColumns.has(c.name) ? (
+            <Link2 size={10} className="shrink-0 text-info" />
+          ) : (
+            <span className="w-[10px] shrink-0" />
+          )}
+          <span className={cn('truncate', c.isPrimaryKey && 'font-semibold')}>{c.name}</span>
+          <span className="ml-auto max-w-[45%] shrink-0 truncate font-mono text-[10px] text-fg-faint">{c.dataType}</span>
+          {!c.nullable && !c.isPrimaryKey && <span className="text-[9px] text-fg-faint">NN</span>}
+          <Handle type="source" position={Position.Right} id={`s-${c.name}`} className="!h-1.5 !w-1.5 !min-w-0 !border-0 !bg-transparent" />
+        </div>
+      ))}
+      {keysOnly && cols.length < table.columns.length && (
+        <div className="border-t border-line px-2.5 text-[10.5px] text-fg-faint" style={{ height: ROW, lineHeight: `${ROW}px` }}>
+          + {table.columns.length - cols.length} more columns
+        </div>
+      )}
+    </div>
+  )
+})
+
+const nodeTypes = { table: TableNode }
+
+/** Tables within `depth` foreign-key hops of `focus`. */
+function neighbourhood(snapshot: SchemaSnapshot, focus: TableInfo, depth: number): Set<string> {
+  const key = (t: TableInfo) => `${t.schema ?? ''}.${t.name}`
+  const seen = new Set([key(focus)])
+  let frontier = [focus]
+  for (let d = 0; d < depth; d++) {
+    const next: TableInfo[] = []
+    for (const t of frontier) {
+      const neighbours = [
+        ...t.foreignKeys.map((fk) => findTable(snapshot, { schema: fk.refSchema ?? t.schema, name: fk.refTable })),
+        ...incomingReferences(snapshot, t).map((r) => r.table),
+      ]
+      for (const n of neighbours) {
+        if (n && !seen.has(key(n))) {
+          seen.add(key(n))
+          next.push(n)
+        }
+      }
+    }
+    frontier = next
+  }
+  return seen
+}
+
+function nodeHeight(t: TableInfo, keysOnly: boolean, fk: Set<string>, ref: Set<string>): number {
+  const visible = visibleColumns(t, keysOnly, fk, ref).length
+  return HEADER + visible * ROW + (keysOnly && visible < t.columns.length ? ROW : 0) + 2
+}
+
+function DiagramInner({ tab }: { tab: DiagramTab }) {
+  const runtime = useConnections((s) => s.runtime[tab.connectionId])
+  const loadSchema = useConnections((s) => s.loadSchema)
+  const openTab = useWorkspace((s) => s.open)
+  const updateTab = useWorkspace((s) => s.update)
+  const dark = useSettings((s) => s.dark)
+  const schema = runtime?.schema
+  const flow = useReactFlow()
+  const wrapper = useRef<HTMLDivElement>(null)
+
+  const [schemaFilter, setSchemaFilter] = useState<string>('')
+  const [focusName, setFocusName] = useState<string | undefined>(tab.focus)
+  const [depth, setDepth] = useState(1)
+  const [keysOnly, setKeysOnly] = useState(false)
+  const [search, setSearch] = useState('')
+  const [hovered, setHovered] = useState<string | null>(null)
+  const [layouting, setLayouting] = useState(false)
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<TableNodeData>>([])
+
+  useEffect(() => {
+    if (!schema) void loadSchema(tab.connectionId)
+  }, [schema, loadSchema, tab.connectionId])
+
+  useEffect(() => {
+    if (!schema || schemaFilter) return
+    // Prefer the default schema, unless it's empty and another one has the tables.
+    const count = (s: string) => schema.tables.filter((t) => (t.schema ?? '') === s).length
+    const preferred = schema.defaultSchema && count(schema.defaultSchema) > 0 ? schema.defaultSchema : [...schema.schemas].sort((a, b) => count(b) - count(a))[0]
+    setSchemaFilter(preferred ?? '*')
+  }, [schema, schemaFilter])
+
+  const tables = useMemo(() => {
+    if (!schema) return []
+    if (focusName) {
+      const focus = findTable(schema, { name: focusName })
+      if (focus) {
+        const keys = neighbourhood(schema, focus, depth)
+        return schema.tables.filter((t) => keys.has(`${t.schema ?? ''}.${t.name}`))
+      }
+    }
+    const all = schemaFilter === '*' ? schema.tables : schema.tables.filter((t) => (t.schema ?? '') === schemaFilter || (!t.schema && !schemaFilter))
+    return all.slice(0, 400)
+  }, [schema, focusName, depth, schemaFilter])
+
+  const columnSets = useMemo(() => {
+    const fk = new Map<string, Set<string>>()
+    const ref = new Map<string, Set<string>>()
+    for (const t of tables) {
+      fk.set(t.name, new Set(t.foreignKeys.flatMap((f) => f.columns)))
+      for (const f of t.foreignKeys) {
+        const s = ref.get(f.refTable) ?? new Set<string>()
+        f.refColumns.forEach((c) => s.add(c))
+        ref.set(f.refTable, s)
+      }
+    }
+    return { fk, ref }
+  }, [tables])
+
+  const edges = useMemo<Edge[]>(() => {
+    const names = new Set(tables.map((t) => t.name))
+    const out: Edge[] = []
+    for (const t of tables) {
+      for (const fk of t.foreignKeys) {
+        if (!names.has(fk.refTable)) continue
+        const source = `${t.schema ?? ''}.${t.name}`
+        const target = tables.find((x) => x.name === fk.refTable && (x.schema ?? '') === (fk.refSchema ?? t.schema ?? ''))
+        if (!target) continue
+        const active = hovered === source || hovered === `${target.schema ?? ''}.${target.name}`
+        const optional = fk.columns.some((c) => t.columns.find((x) => x.name === c)?.nullable)
+        out.push({
+          id: `${source}:${fk.name}`,
+          source,
+          target: `${target.schema ?? ''}.${target.name}`,
+          sourceHandle: `s-${fk.columns[0]}`,
+          targetHandle: `t-${fk.refColumns[0]}`,
+          type: 'smoothstep',
+          animated: active,
+          markerStart: 'crow-many',
+          markerEnd: optional ? 'crow-zero-one' : 'crow-one',
+          style: {
+            stroke: active ? 'var(--accent)' : fk.virtual ? 'var(--warning)' : 'var(--text-faint)',
+            strokeWidth: active ? 2 : 1.3,
+            strokeDasharray: fk.virtual ? '5 4' : undefined,
+          },
+          label: active ? fk.columns.join(', ') : undefined,
+          labelStyle: { fontSize: 10, fill: 'var(--text-muted)' },
+          labelBgStyle: { fill: 'var(--bg-elevated)' },
+        })
+      }
+    }
+    return out
+  }, [tables, hovered])
+
+  const layout = useCallback(async () => {
+    if (!tables.length) {
+      setNodes([])
+      return
+    }
+    setLayouting(true)
+    try {
+      const graph = await elk.layout({
+        id: 'root',
+        layoutOptions: {
+          'elk.algorithm': 'layered',
+          'elk.direction': 'RIGHT',
+          'elk.layered.spacing.nodeNodeBetweenLayers': '90',
+          'elk.spacing.nodeNode': '36',
+          'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
+          'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
+          'elk.separateConnectedComponents': 'true',
+          'elk.spacing.componentComponent': '70',
+        },
+        children: tables.map((t) => ({
+          id: `${t.schema ?? ''}.${t.name}`,
+          width: WIDTH,
+          height: nodeHeight(t, keysOnly, columnSets.fk.get(t.name) ?? new Set(), columnSets.ref.get(t.name) ?? new Set()),
+        })),
+        edges: edges.map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] })),
+      })
+      const saved = tab.positions ?? {}
+      setNodes(
+        tables.map((t) => {
+          const id = `${t.schema ?? ''}.${t.name}`
+          const laid = graph.children?.find((c) => c.id === id)
+          return {
+            id,
+            type: 'table',
+            position: saved[id] ?? { x: laid?.x ?? 0, y: laid?.y ?? 0 },
+            data: {
+              table: t,
+              keysOnly,
+              highlighted: false,
+              dimmed: false,
+              focus: t.name === focusName,
+              fkColumns: columnSets.fk.get(t.name) ?? new Set(),
+              referencedColumns: columnSets.ref.get(t.name) ?? new Set(),
+            },
+          }
+        }),
+      )
+      requestAnimationFrame(() => flow.fitView({ padding: 0.15, duration: 300, maxZoom: 1 }))
+    } finally {
+      setLayouting(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tables, keysOnly, columnSets, focusName])
+
+  useEffect(() => {
+    void layout()
+  }, [layout])
+
+  // Hover highlighting without re-running layout.
+  useEffect(() => {
+    if (!hovered) {
+      setNodes((ns) => ns.map((n) => (n.data.highlighted || n.data.dimmed ? { ...n, data: { ...n.data, highlighted: false, dimmed: false } } : n)))
+      return
+    }
+    const related = new Set([hovered])
+    for (const e of edges) {
+      if (e.source === hovered) related.add(e.target)
+      if (e.target === hovered) related.add(e.source)
+    }
+    setNodes((ns) => ns.map((n) => ({ ...n, data: { ...n.data, highlighted: related.has(n.id) && n.id !== hovered, dimmed: !related.has(n.id) } })))
+  }, [hovered, edges, setNodes])
+
+  const resetLayout = () => {
+    updateTab(tab.id, { positions: undefined })
+    tab.positions = undefined
+    void layout()
+  }
+
+  const exportImage = async (format: 'png' | 'svg') => {
+    const el = wrapper.current?.querySelector<HTMLElement>('.react-flow__viewport')
+    if (!el) return
+    try {
+      flow.fitView({ padding: 0.05 })
+      await new Promise((r) => setTimeout(r, 350))
+      const options = { backgroundColor: dark ? '#16181d' : '#ffffff', pixelRatio: 2, filter: (node: HTMLElement) => !node.classList?.contains('react-flow__minimap') }
+      const url = format === 'png' ? await toPng(wrapper.current!.querySelector('.react-flow') as HTMLElement, options) : await toSvg(wrapper.current!.querySelector('.react-flow') as HTMLElement, options)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${tab.title.replace(/[^\w.-]+/g, '_')}.${format}`
+      a.click()
+    } catch (err) {
+      toast({ kind: 'error', message: 'Export failed', detail: errorMessage(err) })
+    }
+  }
+
+  const exportMermaid = () => {
+    const lines = ['erDiagram']
+    for (const t of tables) {
+      lines.push(`  ${t.name} {`)
+      for (const c of t.columns) lines.push(`    ${c.dataType.replace(/[^\w]/g, '_')} ${c.name}${c.isPrimaryKey ? ' PK' : t.foreignKeys.some((f) => f.columns.includes(c.name)) ? ' FK' : ''}`)
+      lines.push('  }')
+    }
+    for (const t of tables) for (const fk of t.foreignKeys) lines.push(`  ${fk.refTable} ||--o{ ${t.name} : "${fk.columns.join(', ')}"`)
+    void navigator.clipboard.writeText(lines.join('\n'))
+    toast({ kind: 'success', message: 'Mermaid diagram copied to clipboard' })
+  }
+
+  const exportDbml = () => {
+    const out: string[] = []
+    for (const t of tables) {
+      out.push(`Table ${t.schema && t.schema !== schema?.defaultSchema ? `${t.schema}.` : ''}${t.name} {`)
+      for (const c of t.columns) {
+        const attrs = [c.isPrimaryKey ? 'pk' : '', c.isIdentity ? 'increment' : '', c.nullable ? '' : 'not null', c.comment ? `note: '${c.comment.replaceAll("'", "\\'")}'` : ''].filter(Boolean)
+        out.push(`  ${c.name} ${c.dataType.replace(/\s+/g, '_')}${attrs.length ? ` [${attrs.join(', ')}]` : ''}`)
+      }
+      if (t.comment) out.push(`  Note: '${t.comment.replaceAll("'", "\\'")}'`)
+      out.push('}', '')
+    }
+    for (const t of tables) for (const fk of t.foreignKeys) fk.columns.forEach((c, i) => out.push(`Ref: ${t.name}.${c} > ${fk.refTable}.${fk.refColumns[i]}`))
+    void navigator.clipboard.writeText(out.join('\n'))
+    toast({ kind: 'success', message: 'DBML copied to clipboard', detail: 'Paste it into dbdiagram.io or a .dbml file.' })
+  }
+
+  const matches = useMemo(() => {
+    const q = search.trim()
+    if (!q || !schema) return []
+    return schema.tables
+      .map((t) => ({ t, s: fuzzyScore(t.name, q) }))
+      .filter((x) => x.s >= 0)
+      .sort((a, b) => b.s - a.s)
+      .slice(0, 8)
+      .map((x) => x.t)
+  }, [search, schema])
+
+  if (!schema) {
+    return (
+      <div className="flex h-full items-center justify-center text-fg-faint">
+        <Spinner size={18} />
+      </div>
+    )
+  }
+  if (schema.tables.length === 0) return <EmptyState icon={<Network size={26} />} title="No tables to show" />
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-2">
+        <div className="relative">
+          <Input
+            inputSize="sm"
+            className="w-56"
+            placeholder="Focus on table…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            leading={<Search size={12} />}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && matches[0]) {
+                setFocusName(matches[0].name)
+                setSearch('')
+              }
+            }}
+          />
+          {matches.length > 0 && (
+            <div className="absolute top-8 left-0 z-20 w-64 rounded-md border border-line bg-elevated p-1 shadow-pop">
+              {matches.map((t) => (
+                <button
+                  key={`${t.schema}.${t.name}`}
+                  type="button"
+                  className="flex h-7 w-full items-center gap-2 rounded px-2 text-left text-[12px] hover:bg-hover"
+                  onClick={() => {
+                    setFocusName(t.name)
+                    setSearch('')
+                  }}
+                >
+                  <Table2 size={12} className="text-accent" /> {t.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {focusName ? (
+          <>
+            <span className="flex items-center gap-1 rounded-md bg-accent-soft px-2 py-0.5 text-[12px] text-accent">
+              {focusName}
+              <button type="button" className="ml-1 hover:text-fg" onClick={() => setFocusName(undefined)} aria-label="Show whole schema">
+                ×
+              </button>
+            </span>
+            <Select inputSize="sm" className="h-7 w-28" value={depth} onChange={(e) => setDepth(Number(e.target.value))}>
+              {[1, 2, 3, 4].map((d) => (
+                <option key={d} value={d}>
+                  {d} {d === 1 ? 'hop' : 'hops'}
+                </option>
+              ))}
+            </Select>
+          </>
+        ) : (
+          schema.schemas.length > 1 && (
+            <Select inputSize="sm" className="h-7 w-40" value={schemaFilter} onChange={(e) => setSchemaFilter(e.target.value)}>
+              {schema.schemas.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+              <option value="*">All schemas</option>
+            </Select>
+          )
+        )}
+        <Checkbox checked={keysOnly} onChange={setKeysOnly} label="Keys only" />
+        <span className="text-[11.5px] text-fg-faint">
+          {tables.length} tables · {edges.length} relationships
+        </span>
+        <div className="flex-1" />
+        {layouting && <Spinner size={13} className="text-fg-faint" />}
+        <Button size="sm" variant="ghost" icon={<LayoutGrid size={13} />} onClick={resetLayout}>
+          Auto layout
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<Download size={13} />}
+          onClick={(e) =>
+            openMenu(e.currentTarget, [
+              { label: 'PNG image', onClick: () => void exportImage('png') },
+              { label: 'SVG image', onClick: () => void exportImage('svg') },
+              'separator',
+              { label: 'Copy as Mermaid', onClick: exportMermaid },
+              { label: 'Copy as DBML (dbdiagram.io)', onClick: exportDbml },
+            ])
+          }
+        >
+          Export
+        </Button>
+      </div>
+      <div ref={wrapper} className="min-h-0 flex-1">
+        <svg width="0" height="0" className="absolute">
+          <defs>
+            {/* At the path start with auto-start-reverse, +x points into the source node: prongs spread at the node edge (x=15). */}
+            <marker id="crow-many" viewBox="0 0 16 16" refX="15" refY="8" markerWidth="16" markerHeight="16" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+              <path d="M3 8 L15 1 M3 8 L15 8 M3 8 L15 15" fill="none" stroke="var(--text-muted)" strokeWidth="1.2" />
+            </marker>
+            <marker id="crow-one" viewBox="0 0 16 16" refX="15" refY="8" markerWidth="16" markerHeight="16" orient="auto" markerUnits="userSpaceOnUse">
+              <path d="M10 2 L10 14 M6 2 L6 14" fill="none" stroke="var(--text-muted)" strokeWidth="1.2" />
+            </marker>
+            <marker id="crow-zero-one" viewBox="0 0 20 16" refX="19" refY="8" markerWidth="20" markerHeight="16" orient="auto" markerUnits="userSpaceOnUse">
+              <circle cx="5" cy="8" r="3.2" fill="var(--bg)" stroke="var(--text-muted)" strokeWidth="1.2" />
+              <path d="M13 2 L13 14" fill="none" stroke="var(--text-muted)" strokeWidth="1.2" />
+            </marker>
+          </defs>
+        </svg>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodesChange={onNodesChange}
+          onNodeMouseEnter={(_, n) => setHovered(n.id)}
+          onNodeMouseLeave={() => setHovered(null)}
+          onNodeDragStop={(_, node) => {
+            const positions = { ...(tab.positions ?? {}), [node.id]: node.position }
+            updateTab(tab.id, { positions })
+          }}
+          onNodeDoubleClick={(_, n) => openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name })}
+          onNodeContextMenu={(e, n) =>
+            openMenu(e, [
+              { label: 'Open data', icon: <Table2 size={13} />, onClick: () => openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name }) },
+              { label: 'Open structure', onClick: () => openTab({ kind: 'structure', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: `${n.data.table.name} · structure` }) },
+              { label: 'Focus here', icon: <Network size={13} />, onClick: () => setFocusName(n.data.table.name) },
+            ])
+          }
+          colorMode={dark ? 'dark' : 'light'}
+          minZoom={0.05}
+          maxZoom={2}
+          proOptions={{ hideAttribution: true }}
+          fitView
+          fitViewOptions={{ maxZoom: 1 }}
+          onlyRenderVisibleElements={tables.length > 80}
+          defaultEdgeOptions={{ markerEnd: { type: MarkerType.Arrow } }}
+        >
+          <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--border-strong)" />
+          <Controls showInteractive={false} />
+          {tables.length > 12 && (
+            <MiniMap
+              pannable
+              zoomable
+              nodeColor={() => 'var(--accent-soft)'}
+              nodeStrokeColor={() => 'var(--accent)'}
+              bgColor="var(--bg-subtle)"
+              maskColor={dark ? 'rgba(0,0,0,0.45)' : 'rgba(15,23,42,0.06)'}
+              style={{ width: 180, height: 120, border: '1px solid var(--border)', borderRadius: 8 }}
+            />
+          )}
+        </ReactFlow>
+      </div>
+    </div>
+  )
+}
+
+export function DiagramView({ tab }: { tab: DiagramTab }) {
+  return (
+    <ReactFlowProvider>
+      <DiagramInner tab={tab} />
+    </ReactFlowProvider>
+  )
+}

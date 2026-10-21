@@ -1,3 +1,4 @@
+/// <reference path="../pg-cursor.d.ts" />
 import pg from 'pg'
 import Cursor from 'pg-cursor'
 import { postgresDialect } from '../dialect.js'
