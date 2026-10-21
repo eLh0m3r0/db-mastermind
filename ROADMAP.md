@@ -1,0 +1,247 @@
+# DB Mastermind — Roadmap
+
+> The most capable free & open-source database client, with AI that actually knows your data model.
+> Everything is free. There is no "Pro" tier, no feature gates, no telemetry.
+
+Legend: ✅ done · 🚧 in progress · ⬜ planned · 💡 idea / research
+
+This file is the single source of truth for what is being built. It is maintained by the
+project's (AI) maintainer and updated with every release.
+
+---
+
+## Guiding principles
+
+1. **No limits.** Unlimited connections, tabs, rows, saved queries, diagrams. Nothing paywalled — ever.
+2. **Keyboard-first, mouse-friendly.** Every action reachable from the command palette (`Ctrl/Cmd+K`).
+3. **Safe by default.** Explicit read-only connections, confirmation before destructive SQL on
+   production-tagged connections, AI is read-only unless the user opts in.
+4. **Runs anywhere, installs nowhere.** Windows portable `.zip` (no admin, no installer), per-user
+   installer, macOS `.dmg`, Linux AppImage/deb.
+5. **AI is a power tool, not a gimmick.** Schema-aware, knowledge-base-aware, works with your own API key,
+   local models, or your existing Claude Code / Codex subscription, and exposes the same capabilities
+   to external agents via MCP.
+6. **Local-first & private.** Credentials encrypted with the OS keychain. Nothing leaves the machine
+   unless the user sends it to an AI provider they configured.
+
+---
+
+## Milestone 0 — Foundation (v0.1) 🚧
+
+### Platform & distribution
+- ✅ Electron + TypeScript + React monorepo (`packages/core`, `packages/mcp`, `apps/desktop`)
+- ⬜ GitHub Actions CI: typecheck, lint, unit tests, integration tests against real PostgreSQL / MySQL /
+  MariaDB / SQL Server containers
+- ⬜ Release pipeline: tag → build for macOS (arm64 + x64), Windows (x64 + arm64), Linux (x64)
+- ⬜ Windows: portable `.zip` (settings stored next to the exe), per-user NSIS installer (no admin)
+- ⬜ Auto-update for installed builds (GitHub Releases), update notification for portable builds
+- ⬜ Settings & data stored in OS app-data dir, or `./data` next to the executable in portable mode
+
+### Connections
+- ⬜ Drivers: **PostgreSQL**, **SQL Server / Azure SQL**, **MySQL**, **MariaDB**, **SQLite**
+- ⬜ Connection form with URL paste (`postgres://…`, `mysql://…`, `sqlserver://…`, JDBC strings)
+- ⬜ SSL/TLS (disable / require / verify-ca / verify-full, custom CA/cert/key)
+- ⬜ SSH tunnel (password, private key, agent)
+- ⬜ Secrets encrypted with OS keychain (Electron `safeStorage`)
+- ⬜ Connection colors, groups/folders, environment tag (dev / test / prod) with prod safety rails
+- ⬜ Read-only connection mode (enforced at session level where the DB supports it)
+- ⬜ Test connection, reconnect, keep-alive
+- ⬜ Import connections from Beekeeper Studio, DBeaver, DataGrip, `.pgpass`
+
+### Schema explorer
+- ⬜ Tree: databases → schemas → tables / views / materialized views / functions / procedures / sequences
+- ⬜ Instant fuzzy filter over thousands of objects
+- ⬜ Column details (type, nullability, default, PK/FK/identity, comments) on hover
+- ⬜ Pin favourite tables, hide system schemas
+- ⬜ Context actions: open data, open structure, copy name, generate SELECT/INSERT/UPDATE/DELETE, count rows,
+  open in diagram, ask AI about table
+
+### Table data browser
+- ⬜ Virtualized data grid (millions of rows via paging, smooth scrolling, no row limits)
+- ⬜ Column resize, reorder, hide, pin; remembered per table
+- ⬜ Sort by multiple columns
+- ⬜ **Advanced filter builder** — nested AND/OR groups, 20+ operators (equals, contains, starts with,
+  regex, in list, between, is null, is empty, date ranges like "last 7 days"…), per-column quick filters,
+  raw SQL `WHERE` mode, filters saved per table, filter presets
+- ⬜ Quick filter from cell ("filter by this value", "exclude this value")
+- ⬜ Inline editing with pending-changes panel, review generated SQL, commit/discard
+- ⬜ Insert / clone / delete rows, set NULL / DEFAULT
+- ⬜ Foreign key navigation: click an FK value → open referenced row; "referenced by" panel
+- ⬜ Cell viewer/editor for JSON, long text, binary (hex), with formatting
+- ⬜ Copy as TSV / CSV / JSON / Markdown / SQL INSERT; paste rows from spreadsheet
+- ⬜ Exact or estimated row counts
+
+### SQL editor
+- ⬜ CodeMirror 6 editor with dialect-aware highlighting
+- ⬜ Schema-aware autocomplete (schemas, tables, columns, aliases, keywords, functions)
+- ⬜ Run statement under cursor / selection / whole script; multiple result sets
+- ⬜ Cancel running query; elapsed timer
+- ⬜ Format SQL; comment toggle; multi-cursor
+- ⬜ Query parameters (`:name`, `$1`, `?`) with prompt
+- ⬜ Query history (searchable, per connection), saved queries in folders
+- ⬜ Unlimited tabs, restored on restart (including unsaved text)
+
+### Results & export
+- ⬜ Result grid with the same capabilities as the data browser (filter/sort client-side)
+- ⬜ Export CSV, TSV, JSON, JSON Lines, Excel (.xlsx), SQL INSERT, Markdown — whole table or query result,
+  streamed (no memory limit)
+
+### General UX
+- ⬜ Command palette (`Ctrl/Cmd+K`), customizable keyboard shortcuts
+- ⬜ Light / dark / system theme
+- ⬜ English + Czech UI (i18n-ready)
+
+---
+
+## Milestone 1 — Relationships & diagrams (v0.2)
+
+- ⬜ **Interactive ER diagram** of a schema or a selection of tables (auto layout, crow's-foot notation)
+- ⬜ "Explore from table": start with one table, expand neighbours by FK hop
+- ⬜ Highlight join path between two tables
+- ⬜ Saved diagrams (named layouts, notes, colors, groups) per connection
+- ⬜ Virtual / logical relationships (when the DB has no real FKs) — stored in the knowledge base and
+  used by FK navigation, diagrams, autocomplete joins and AI
+- ⬜ Export diagram to PNG, SVG, Mermaid, DBML, PlantUML
+- ⬜ Join autocomplete in SQL editor based on FKs + virtual relationships
+- 💡 dbdiagram-style DBML editing for designing new schemas, generate migration DDL
+
+---
+
+## Milestone 2 — AI (v0.3)
+
+### Providers (bring your own)
+- ⬜ Anthropic (Claude), OpenAI, OpenRouter (any model), Azure OpenAI, Google Gemini,
+  any OpenAI-compatible endpoint, **Ollama / LM Studio** (fully local)
+- ⬜ **Use your existing subscription**: delegate to a locally installed **Claude Code** or **Codex CLI**
+  (runs the agent headless with DB Mastermind's MCP tools attached)
+- ⬜ API keys encrypted with OS keychain; per-connection "AI allowed" switch; data sharing level
+  (schema only / schema + sample rows / full query results)
+
+### In-app assistant
+- ⬜ Chat panel with tool use: list tables, describe table, run read-only query, sample rows, read
+  knowledge base, search schema
+- ⬜ Inline "Ask AI" in the SQL editor (`Ctrl/Cmd+I`): natural language → SQL, explain, optimize,
+  fix the error that just happened
+- ⬜ "Explain this table / column / relationship" from the explorer
+- ⬜ AI-suggested filters in the data browser ("orders from last month over 1000 CZK")
+- ⬜ Writes (UPDATE/DELETE/DDL) proposed by AI always require explicit user confirmation
+
+### Knowledge base
+- ⬜ Per-connection folder of Markdown files (business glossary, table docs, relationships, gotchas)
+- ⬜ Built-in Markdown editor + file tree; works with any folder (Git repo, Obsidian vault, shared drive)
+- ⬜ **Generate knowledge base** with AI from schema + statistics + sample data, reviewed before saving
+- ⬜ Front-matter conventions (`tables:`, `columns:`, `relations:`) so docs link to schema objects;
+  virtual relationships defined in Markdown
+- ⬜ Knowledge base used as context by in-app AI and exposed over MCP
+- ⬜ Staleness detection: warn when documented tables/columns no longer exist
+
+### MCP server
+- ⬜ `npx dbmastermind-mcp` — standalone stdio MCP server using the same connections & knowledge base
+- ⬜ Built-in MCP server inside the desktop app (Streamable HTTP on localhost, token-protected)
+- ⬜ One-click "Add to Claude Code / Claude Desktop / Codex / Cursor / VS Code" config snippets
+- ⬜ Tools: `list_connections`, `list_tables`, `describe_table`, `search_schema`, `run_query` (read-only by
+  default), `explain_query`, `get_relationships`, `read_knowledge`, `write_knowledge` (opt-in)
+- ⬜ Resources: schema snapshots and knowledge base files; prompts: "document this database",
+  "write a report query"
+
+---
+
+## Milestone 3 — Data Modeling Studio (v0.4)
+
+The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working **directly on live databases**.
+
+### Live schema designer (design on top of the real database)
+- ⬜ Open the ER diagram of a live connection in **design mode**. Every edit becomes a *pending change*;
+  nothing touches the database yet
+- ⬜ Edits: create/rename/drop table, add/rename/drop/retype column, nullability, defaults, PK, FK (drag from
+  column to column), unique constraints, indexes, comments
+- ⬜ **Change set panel**: ordered list of pending changes, undo/redo, per-change toggle
+- ⬜ **Migration script generator** per dialect (PostgreSQL, SQL Server, MySQL/MariaDB, SQLite table-rebuild
+  strategy), dependency-ordered (drop FKs → alter → recreate FKs), wrapped in a transaction where DDL is
+  transactional
+- ⬜ **Impact analysis** before running: data-loss warnings (narrowing types, dropping columns, NOT NULL on
+  columns with NULLs; counts are checked live), lock/rewrite warnings for large tables, dependent views
+- ⬜ Rollback script generated alongside the forward script
+- ⬜ Execute in the SQL editor (review first) or save as a migration file (plain SQL, Flyway `V__`,
+  Liquibase SQL, Prisma/Knex-friendly)
+- ⬜ Change sets can be saved, shared and re-applied to another environment (dev → test → prod)
+- ⬜ AI: "add soft delete to all customer tables", "normalize address into its own table". The AI proposes a
+  change set and the user reviews it in the designer
+
+### Offline models
+- ⬜ **Model documents** (`*.dbm.json` + DBML) stored in the knowledge base folder, so they're versioned in Git
+- ⬜ Visual designer: add tables, columns, types, PK/FK, indexes, notes and colored groups on an infinite canvas
+- ⬜ **DBML editor** with live diagram (two-way: edit text or canvas)
+- ⬜ Reverse engineer: create a model from a live connection (whole schema or selected tables)
+- ⬜ Forward engineer: generate DDL for PostgreSQL / SQL Server / MySQL / SQLite from the model
+- ⬜ **Model ↔ database diff** → migration script (ALTER statements), reviewed and executed in the SQL editor
+- ⬜ Model versions / snapshots with visual diff between them
+- ⬜ Import from DBML, SQL DDL, Prisma schema, Django/Rails migrations (via AI), dbdiagram.io export
+- ⬜ Export: SQL, DBML, Mermaid, PlantUML, PNG, SVG, PDF data dictionary
+- ⬜ AI: "design a schema for…", "normalize this table", "suggest indexes", "review my model"
+- ⬜ **Data dictionary**: generated HTML/Markdown documentation of a model or live database
+- 💡 Logical vs physical model, subject areas (multiple diagrams per model)
+
+---
+
+## Milestone 4 — Power tools (v0.5)
+
+- ⬜ Table structure editor (columns, indexes, constraints, FKs) with DDL preview
+- ⬜ Create table wizard; drop/rename/truncate with safety confirmations
+- ⬜ CSV / Excel / JSON import with column mapping and type detection
+- ⬜ Visual EXPLAIN / query plan viewer (PostgreSQL, SQL Server, MySQL)
+- ⬜ Charts from query results (bar, line, pie, scatter), pinned to dashboards
+- ⬜ Schema compare (two connections / two schemas) → migration script
+- ⬜ Data compare between tables / environments
+- ⬜ Backup / restore helpers (pg_dump, mysqldump wrappers when available)
+- ⬜ Server activity: running queries, locks, kill session
+- ⬜ Users & roles browser
+- ⬜ Snippets with variables
+- ⬜ Split editor panes, side-by-side results
+
+---
+
+## Milestone 5 — More databases (v0.6)
+
+- ⬜ Oracle (thin mode, no Instant Client), ClickHouse, DuckDB, CockroachDB, Redshift, TimescaleDB,
+  Snowflake, BigQuery, Cassandra
+- 💡 MongoDB, Redis (document/key-value browsers)
+- ⬜ SQL Server Windows (integrated) authentication
+
+---
+
+## Milestone 6 — Teams & enterprise (v0.7, see docs/STRATEGY.md)
+
+- ⬜ Managed configuration file (pre-defined connections, AI endpoints, policies) for IT departments
+- ⬜ Shared team workspace via Git or a shared folder: connections without secrets, knowledge base, diagrams,
+  saved queries
+- ⬜ Audit log of executed statements (local, exportable)
+- ⬜ MSI package for Intune / SCCM
+
+---
+
+## Milestone 7 — v1.0
+
+- ⬜ Polished onboarding & docs site (GitHub Pages)
+- ⬜ Accessibility pass, high-contrast theme
+- ⬜ Plugin API for drivers and AI tools
+- ⬜ Mac App Store and Microsoft Store editions
+- ⬜ Code signing (macOS notarization, Windows signing) once sponsored
+- ⬜ winget / Homebrew cask / Scoop packages
+
+---
+
+## Comparison target
+
+What Beekeeper Studio's free edition limits or lacks, and what DB Mastermind ships for free:
+
+| Capability | DB Mastermind |
+|---|---|
+| Unlimited tabs, connections, saved queries | ✅ always |
+| SQL Server, Oracle, and other "Ultimate" drivers | ✅ free |
+| Advanced nested filters | ✅ |
+| ER diagrams & relationship exploration | ✅ |
+| AI with your own key / local model / subscription | ✅ |
+| MCP server for external agents | ✅ |
+| Knowledge base of your data model | ✅ |
+| Portable Windows build without install | ✅ |
