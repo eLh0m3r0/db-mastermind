@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Copy, Download, TerminalSquare, XCircle } from 'lucide-react'
+import { AlertTriangle, BarChart3, CheckCircle2, Copy, Download, TerminalSquare, XCircle } from 'lucide-react'
 import { cellToText, type CellValue, type QueryResult, type SortSpec, type StatementOutcome } from '@dbmastermind/core/browser'
+import { defaultChartConfig, ResultChart, type ChartConfig } from '@/components/chart/ResultChart'
 import { DataGrid, selectionToTsv, type GridSelection } from '@/components/grid/DataGrid'
 import { IconButton } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
@@ -52,6 +53,7 @@ export function ResultsPanel({
   const [active, setActive] = useState<string>('auto')
   const [sorts, setSorts] = useState<Record<string, SortSpec[]>>({})
   const [selection, setSelection] = useState<GridSelection | null>(null)
+  const [charts, setCharts] = useState<Record<string, ChartConfig | null>>({})
 
   const tabs = useMemo<ResultTab[]>(() => {
     const out: ResultTab[] = []
@@ -173,6 +175,20 @@ export function ResultsPanel({
               </span>
             )}
             <span className="pr-2 text-[11.5px] text-fg-faint">{formatDuration(current.result.durationMs)}</span>
+            {(() => {
+              const chartable = defaultChartConfig(current.result.fields, sortedRows)
+              if (!chartable) return null
+              const showing = !!charts[current.key]
+              return (
+                <IconButton
+                  label={showing ? 'Show table' : 'Show chart'}
+                  active={showing}
+                  onClick={() => setCharts((c) => ({ ...c, [current.key]: showing ? null : (c[`${current.key}:last`] ?? chartable) }))}
+                >
+                  <BarChart3 size={13} />
+                </IconButton>
+              )
+            })()}
             <IconButton label="Copy all as TSV" onClick={() => void copyText(selectionToTsv(current.result.fields, sortedRows, { anchor: { row: 0, col: 0 }, focus: { row: sortedRows.length - 1, col: current.result.fields.length - 1 } }, true))}>
               <Copy size={13} />
             </IconButton>
@@ -219,6 +235,13 @@ export function ResultsPanel({
               </div>
             ))}
           </div>
+        ) : charts[current.key] ? (
+          <ResultChart
+            fields={current.result.fields}
+            rows={sortedRows}
+            config={charts[current.key]!}
+            onConfigChange={(config) => setCharts((c) => ({ ...c, [current.key]: config, [`${current.key}:last`]: config }))}
+          />
         ) : (
           <DataGrid
             key={current.key}

@@ -32,6 +32,9 @@ PostgreSQL · SQL Server · MySQL · MariaDB · SQLite — Windows · macOS · L
 
 ![SQL editor](docs/screenshots/query.png)
 
+- **Charts from any result**: bar, line or scatter in one click, with a colorblind-safe palette
+- **Import CSV / Excel** into a table with column mapping (Windows-1250 exports from Czech Excel included)
+
 **Understand and redesign the model**
 - **Interactive ER diagrams** with automatic layout, crow's-foot notation, focus on a table and its neighbours,
   export to PNG / SVG / Mermaid / DBML
