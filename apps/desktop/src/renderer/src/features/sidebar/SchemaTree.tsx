@@ -184,6 +184,11 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
     if (hiddenCount) out.push({ kind: 'hidden', key: 'hidden', count: hiddenCount, depth: 0 })
     return out
   }, [schema, filter, expanded, collapsedSchemas, connection.pinnedTables, connection.hiddenSchemas])
+  // The placeholder counts what the filter can find: hidden schemas are left out.
+  const visibleTables = useMemo(() => {
+    const hidden = new Set(connection.hiddenSchemas ?? [])
+    return schema ? schema.tables.filter((t) => !hidden.has(t.schema ?? '')).length : 0
+  }, [schema, connection.hiddenSchemas])
 
   const virtualizer = useVirtualizer({
     count: nodes.length,
@@ -290,7 +295,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
         <Input
           inputSize="sm"
           className="flex-1"
-          placeholder={tr('Filter {n} tables…', { n: formatCount(schema.tables.length) })}
+          placeholder={tr('Filter {n} tables…', { n: formatCount(visibleTables) })}
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           onKeyDown={(e) => {

@@ -372,14 +372,18 @@ export const api: MastermindApi = {
         signal,
       }),
     )
-    for (const o of outcomes) {
+    // One History entry per run: a long script would otherwise flood it with one entry per statement.
+    const ran = outcomes.filter((o) => o.sql.trim())
+    if (ran.length) {
+      const failed = ran.findIndex((o) => o.error)
       library.addHistory({
         connectionId: request.connectionId,
-        sql: o.sql,
+        sql: ran.length === 1 ? ran[0]!.sql : request.sql,
         executedAt: new Date().toISOString(),
-        durationMs: o.durationMs,
-        rowCount: o.results?.reduce((n, r) => n + r.rowCount, 0),
-        error: o.error?.message,
+        durationMs: ran.reduce((n, o) => n + o.durationMs, 0),
+        rowCount: ran.reduce((n, o) => n + (o.results?.reduce((m, r) => m + r.rowCount, 0) ?? 0), 0),
+        error: failed < 0 ? undefined : ran.length === 1 ? ran[0]!.error!.message : `Statement ${failed + 1}: ${ran[failed]!.error!.message}`,
+        statements: ran.length > 1 ? ran.length : undefined,
       })
     }
     return outcomes

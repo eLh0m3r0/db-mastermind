@@ -186,6 +186,8 @@ export interface HistoryEntry {
   error?: string
   /** Where the statement came from; missing = the SQL editor. */
   source?: 'editor' | 'grid' | 'import' | 'ai' | 'mcp'
+  /** A script run as a whole: how many statements `sql` holds (one entry per run, not per statement). */
+  statements?: number
 }
 
 /** A named subset of tables with its own layout ("Sales", "Billing"…). */

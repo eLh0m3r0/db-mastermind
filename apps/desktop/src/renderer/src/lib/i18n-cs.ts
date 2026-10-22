@@ -3,6 +3,9 @@
  * Plural forms: `{n} rows` is the 1/5+ form, `{n} rows|few` the Czech 2–4 form.
  */
 export const cs: Record<string, string> = {
+  '{n} statement': '{n} příkaz',
+  '{n} statements': '{n} příkazů',
+  '{n} statements|few': '{n} příkazy',
   'Run a statement that can delete data?': 'Spustit příkaz, který může smazat data?',
   'Run statements that can delete data?': 'Spustit příkazy, které mohou smazat data?',
   'Restore from backup?': 'Obnovit ze zálohy?',

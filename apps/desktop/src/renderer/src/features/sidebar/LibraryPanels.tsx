@@ -61,6 +61,7 @@ export function HistoryPanel({ connectionId }: { connectionId: string }) {
               {h.error && <XCircle size={10} className="text-danger" />}
               {h.source && h.source !== 'editor' && <span className="rounded bg-muted px-1 text-[10px] font-medium text-fg-muted uppercase">{t(SOURCE_LABELS[h.source])}</span>}
               {relativeTime(h.executedAt)}
+              {h.statements && <span>· {tp(h.statements, { one: '{n} statement', many: '{n} statements' })}</span>}
               {h.durationMs > 0 && <span>· {formatDuration(h.durationMs)}</span>}
               {h.rowCount !== undefined && h.rowCount !== null && <span>· {tp(h.rowCount, { one: '{n} row', many: '{n} rows' })}</span>}
             </span>
