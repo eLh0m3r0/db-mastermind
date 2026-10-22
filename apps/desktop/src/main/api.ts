@@ -44,6 +44,7 @@ import { cancelChat, respondApproval, startChat } from './ai/assistant'
 import { completeText, extractJson } from './ai/complete'
 import { listModels, testProvider } from './ai/models'
 import { exportConnections, importConnections } from './importers'
+import { managed } from './managed'
 import { addToMcpClient, mcpClientStatuses, type McpLaunch } from './mcp-clients'
 import { applyMcpHttp, mcpHttpStatus } from './mcp-http'
 import { buildMenu } from './menu'
@@ -142,6 +143,7 @@ export const api: MastermindApi = {
       dataDir: app.getPath('userData'),
       // Linux: Chromium's SUID sandbox check runs before any app code; headless MCP mode doesn't need it.
       mcpCommand: mcpLaunch(),
+      managed: managed()?.info,
     }
   },
   async getSettings() {

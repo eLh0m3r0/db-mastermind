@@ -1,4 +1,5 @@
 import { app } from 'electron'
+import { managedConfig } from './managed'
 
 const RELEASES_API = 'https://api.github.com/repos/eLh0m3r0/db-mastermind/releases/latest'
 
@@ -16,7 +17,7 @@ function newer(a: string, b: string): boolean {
  * Instead the app checks GitHub Releases and offers a download link.
  */
 export async function checkForUpdates(notify: (info: { version: string; url: string }) => void): Promise<void> {
-  if (!app.isPackaged || process.env.DBM_NO_UPDATE_CHECK) return
+  if (!app.isPackaged || process.env.DBM_NO_UPDATE_CHECK || managedConfig()?.policies?.disableUpdateCheck) return
   try {
     const res = await fetch(RELEASES_API, { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(10_000) })
     if (!res.ok) return

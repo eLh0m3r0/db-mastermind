@@ -220,7 +220,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 
 ## Milestone 6 — Teams & enterprise (v0.7, see docs/STRATEGY.md)
 
-- ⬜ Managed configuration file (pre-defined connections, AI endpoints, policies) for IT departments
+- ✅ Managed configuration file (pre-defined connections, AI endpoints, policies) for IT departments — docs/managed-config.md
 - ✅ Share connections with colleagues: export without passwords/keys, import from the file
 - ⬜ Shared team workspace via Git or a shared folder: connections, knowledge base, diagrams, saved queries
   kept in sync automatically

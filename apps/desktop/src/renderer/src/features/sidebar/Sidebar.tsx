@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   Trash2,
   Unplug,
+  Building2,
 } from 'lucide-react'
 import { isFileDriver } from '@dbmastermind/core/browser'
 import type { StoredConnection } from '@shared/api'
@@ -75,9 +76,10 @@ export function connectionMenu(c: StoredConnection): Parameters<typeof openMenu>
     { label: t('Share with colleagues (without password)…'), icon: <Share2 size={13} />, onClick: () => void shareConnections([c.id]) },
     'separator',
     {
-      label: t('Delete'),
+      label: c.managed ? t('Delete (managed by your organization)') : t('Delete'),
       icon: <Trash2 size={13} />,
       danger: true,
+      disabled: !!c.managed,
       onClick: () => {
         if (window.confirm(t('Delete connection “{name}”? Saved queries are kept.', { name: c.name }))) {
           useWorkspace.getState().closeForConnection(c.id)
@@ -283,7 +285,12 @@ function ConnectionList() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 truncate text-[12.5px] font-medium">
                     {c.color && <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: c.color }} />}
-                    {c.name}
+                    <span className="truncate">{c.name}</span>
+                    {c.managed && (
+                      <span title={t('Managed by your organization')}>
+                        <Building2 size={11} className="shrink-0 text-fg-faint" />
+                      </span>
+                    )}
                   </div>
                   <div className="truncate text-[11px] text-fg-faint">{isFileDriver(c.driver) ? c.filePath || t('in-memory') : `${c.host ?? ''}${c.database ? `/${c.database}` : ''}`}</div>
                 </div>

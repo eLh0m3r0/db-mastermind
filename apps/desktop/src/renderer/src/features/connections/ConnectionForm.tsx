@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, ClipboardPaste, FolderOpen, XCircle } from 'lucide-react'
+import { Building2, CheckCircle2, ClipboardPaste, FolderOpen, XCircle } from 'lucide-react'
 import { isFileDriver, type ConnectionConfig, type DriverId, type Environment, type SslMode } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { Checkbox, Field, Input, Segmented, Select, Textarea } from '@/components/ui/Input'
@@ -144,6 +144,12 @@ export function ConnectionForm() {
         </>
       }
     >
+      {existing?.managed && (
+        <div className="flex items-center gap-2 border-b border-line bg-accent-soft px-4 py-2 text-[12px]">
+          <Building2 size={13} className="shrink-0 text-accent" />
+          {t('Managed by your organization: server settings come from the managed configuration and changes to them are reset. Fill in your own user name and password.')}
+        </div>
+      )}
       <div className="flex min-h-[440px]">
         {/* Driver picker */}
         <div className="flex w-[170px] shrink-0 flex-col gap-0.5 border-r border-line bg-subtle p-2">

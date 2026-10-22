@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { FolderOpen } from 'lucide-react'
-import type { AppSettings } from '@shared/api'
+import type { AppSettings, ManagedInfo } from '@shared/api'
 import { Button } from '@/components/ui/Button'
 import { Checkbox, Field, Input, Segmented, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -118,6 +118,23 @@ export function SettingsModal() {
               <Row label={t('Mode')}>
                 <span className="text-[13px]">{info.portable ? t('Portable (data stored next to the app)') : t('Installed')}</span>
               </Row>
+              {info.managed && (
+                <Row label={t('Managed configuration')}>
+                  <div className="flex flex-col gap-1 text-[12.5px]">
+                    <div className="flex items-center gap-2">
+                      <code className="truncate rounded bg-subtle px-1.5 py-0.5 text-[12px] select-text">{info.managed.path}</code>
+                      <Button size="xs" icon={<FolderOpen size={12} />} onClick={() => void api.showItemInFolder(info.managed!.path)}>
+                        {t('Show')}
+                      </Button>
+                    </div>
+                    {info.managed.error ? (
+                      <span className="text-danger">{t('The file could not be read, so AI and MCP are off: {error}', { error: info.managed.error })}</span>
+                    ) : (
+                      <span className="text-fg-muted">{managedSummary(info.managed, t).join(' · ')}</span>
+                    )}
+                  </div>
+                </Row>
+              )}
               <Row label={t('Data folder')}>
                 <div className="flex items-center gap-2">
                   <code className="truncate rounded bg-subtle px-1.5 py-0.5 text-[12px] select-text">{info.dataDir}</code>
@@ -145,6 +162,19 @@ export function SettingsModal() {
       </div>
     </Modal>
   )
+}
+
+/** Human summary of the organization's policies for Settings → About. */
+function managedSummary(m: ManagedInfo, t: ReturnType<typeof useT>): string[] {
+  const p = m.policies
+  const out = [t('{n} predefined connections', { n: m.connections })]
+  if (p.allowAi === false) out.push(t('AI off'))
+  else if (p.allowedAiProviders) out.push(t('AI providers: {list}', { list: p.allowedAiProviders.join(', ') }))
+  if (p.maxAiDataSharing) out.push(t('AI sees at most: {level}', { level: p.maxAiDataSharing }))
+  if (p.allowMcp === false) out.push(t('MCP off'))
+  else if (p.allowMcpWrites === false) out.push(t('MCP read-only'))
+  if (p.disableUpdateCheck) out.push(t('no update check'))
+  return out
 }
 
 export function Row({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {

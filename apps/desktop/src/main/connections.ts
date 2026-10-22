@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import type { ConnectionConfig } from '@dbmastermind/core'
 import type { ExplorerPrefs, StoredConnection } from '@shared/api'
+import { managedConfig } from './managed'
+import { mergeManagedConnections } from './managed-config'
 import { decryptSecret, encryptSecret, readJson, writeJson } from './storage'
 
 const FILE = 'connections.json'
@@ -24,7 +26,8 @@ let cache: StoredConnection[] = []
 
 /** Reads and decrypts saved connections. Must run after app 'ready', before anything uses them. */
 export async function loadConnections(): Promise<void> {
-  cache = await Promise.all(readJson<StoredConnection[]>(FILE, []).map((c) => transformSecrets(c, decryptSecret)))
+  const stored = await Promise.all(readJson<StoredConnection[]>(FILE, []).map((c) => transformSecrets(c, decryptSecret)))
+  cache = mergeManagedConnections(stored, managedConfig())
 }
 
 export function listConnections(): StoredConnection[] {
@@ -66,9 +69,10 @@ export function saveConnection(config: ConnectionConfig): StoredConnection {
     pinnedTables: (config as StoredConnection).pinnedTables ?? existing?.pinnedTables,
     hiddenSchemas: (config as StoredConnection).hiddenSchemas ?? existing?.hiddenSchemas,
   }
-  cache = existing ? all.map((c) => (c.id === id ? saved : c)) : [...all, saved]
+  // Managed fields always win over what was edited in the form.
+  cache = mergeManagedConnections(existing ? all.map((c) => (c.id === id ? saved : c)) : [...all, saved], managedConfig())
   persist()
-  return saved
+  return cache.find((c) => c.id === id)!
 }
 
 export function touchConnection(id: string): void {
@@ -91,13 +95,14 @@ export function setExplorerPrefs(id: string, prefs: ExplorerPrefs): void {
 }
 
 export function deleteConnection(id: string): void {
+  if (getConnection(id).managed) throw new Error('This connection is managed by your organization and can\'t be deleted')
   cache = listConnections().filter((c) => c.id !== id)
   persist()
 }
 
 export function duplicateConnection(id: string): StoredConnection {
   const source = getConnection(id)
-  return saveConnection({ ...source, id: '', name: `${source.name} (copy)` })
+  return saveConnection({ ...source, id: '', name: `${source.name} (copy)`, managed: undefined } as StoredConnection)
 }
 
 export function defaultName(c: Partial<ConnectionConfig>): string {

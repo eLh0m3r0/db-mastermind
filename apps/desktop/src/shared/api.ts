@@ -26,6 +26,32 @@ export interface AppInfo {
   dataDir: string
   /** How an agent launches this app as a stdio MCP server. */
   mcpCommand: { command: string; args: string[] }
+  /** Set when an organization's managed configuration file is in effect. */
+  managed?: ManagedInfo
+}
+
+/** What an IT department (or whoever prepared the app folder) enforces through `dbmastermind-managed.json`. */
+export interface ManagedPolicies {
+  /** false: the AI assistant, inline AI and AI filters are off on every connection. */
+  allowAi?: boolean
+  /** Only these AI providers can be used. */
+  allowedAiProviders?: AiProviderId[]
+  /** Upper limit for what AI may see. */
+  maxAiDataSharing?: AiDataSharing
+  /** false: agents can't use DB Mastermind as an MCP server (stdio or HTTP). */
+  allowMcp?: boolean
+  /** false: agents can only read through MCP. */
+  allowMcpWrites?: boolean
+  /** No check for new versions on GitHub. */
+  disableUpdateCheck?: boolean
+}
+
+export interface ManagedInfo {
+  path: string
+  policies: ManagedPolicies
+  connections: number
+  /** The file couldn't be read; AI and MCP are off until it's fixed. */
+  error?: string
 }
 
 export type McpClientId = 'claude-code' | 'claude-desktop' | 'codex' | 'cursor' | 'vscode'
@@ -100,6 +126,8 @@ export interface StoredConnection extends ConnectionConfig {
   pinnedTables?: string[]
   /** Schemas hidden from the explorer. */
   hiddenSchemas?: string[]
+  /** Comes from the organization's managed configuration: server settings are fixed, it can't be deleted. */
+  managed?: boolean
 }
 
 export type ExplorerPrefs = Pick<StoredConnection, 'pinnedTables' | 'hiddenSchemas'>

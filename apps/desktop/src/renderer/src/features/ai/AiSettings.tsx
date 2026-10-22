@@ -13,7 +13,9 @@ export function AiSettingsSection() {
   const settings = useSettings((s) => s.settings)!
   const update = useSettings((s) => s.update)
   const ai = settings.ai
-  const [selected, setSelected] = useState<AiProviderId>(ai.activeProvider ?? 'anthropic')
+  const policies = useSettings((s) => s.info?.managed?.policies)
+  const providers = PROVIDERS.filter((p) => !policies?.allowedAiProviders || policies.allowedAiProviders.includes(p.id))
+  const [selected, setSelected] = useState<AiProviderId>(ai.activeProvider ?? providers[0]?.id ?? 'anthropic')
   const [models, setModels] = useState<string[]>([])
   const [status, setStatus] = useState<{ state: 'idle' | 'busy' | 'ok' | 'error'; message?: string }>({ state: 'idle' })
   const meta = providerMeta(selected)!
@@ -49,8 +51,14 @@ export function AiSettingsSection() {
 
   return (
     <div className="flex flex-col gap-4">
+      {policies?.allowAi === false && (
+        <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[12.5px]">{t('Your organization turned AI off (managed configuration).')}</div>
+      )}
+      {policies?.allowedAiProviders && policies.allowAi !== false && (
+        <div className="rounded-md border border-line bg-subtle px-3 py-2 text-[12.5px] text-fg-muted">{t('Your organization allows only these AI providers.')}</div>
+      )}
       <div className="grid grid-cols-3 gap-1.5">
-        {PROVIDERS.map((p) => {
+        {providers.map((p) => {
           const configured = ai.providers.find((x) => x.id === p.id)
           return (
             <button

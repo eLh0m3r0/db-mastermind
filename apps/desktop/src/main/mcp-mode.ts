@@ -4,6 +4,7 @@ import { app } from 'electron'
 import { listConnections, loadConnections } from './connections'
 import type { McpChildConfig } from './mcp-server'
 import { MCP_HISTORY_FILE } from './library'
+import { managed } from './managed'
 import { dataPath } from './storage'
 import { getSettings, loadSettings } from './settings'
 
@@ -30,6 +31,11 @@ export async function runMcpMode(): Promise<void> {
   app.dock?.hide()
   await app.whenReady()
   await Promise.all([loadConnections(), loadSettings()])
+  if (managed()?.config.policies?.allowMcp === false) {
+    process.stderr.write(`DB Mastermind: the MCP server is turned off by your organization (${managed()!.info.path})\n`)
+    app.exit(1)
+    return
+  }
   const only = argValue('--connection')
   const settings = getSettings()
   const config: McpChildConfig = {

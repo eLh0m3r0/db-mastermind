@@ -102,6 +102,12 @@ scoop install https://github.com/eLh0m3r0/db-mastermind/releases/latest/download
 
 New to the app? Click **Try the demo database** on the start screen.
 
+## For teams and IT
+
+Drop a `dbmastermind-managed.json` next to the portable app (or in `%ProgramData%\DB Mastermind\`) to give everyone
+the same connections (without passwords), the company's AI endpoint and rules such as "AI off", "only Azure OpenAI"
+or "MCP read-only". See [docs/managed-config.md](docs/managed-config.md).
+
 ## Use it from Claude Code, Codex, Cursor… (MCP)
 
 DB Mastermind can run as an MCP server, so coding agents can explore your databases safely: read-only by default,

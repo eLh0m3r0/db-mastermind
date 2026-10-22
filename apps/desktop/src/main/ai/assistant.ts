@@ -7,6 +7,7 @@ import type { AiChatRequest, AiEvent } from '@shared/api'
 import { db } from '../api'
 import { getConnection } from '../connections'
 import { getSettings } from '../settings'
+import { activeProvider } from './complete'
 import { runCli } from './cli'
 import { createModel } from './models'
 
@@ -67,8 +68,7 @@ export function startChat(request: AiChatRequest): void {
 async function runChat(request: AiChatRequest): Promise<void> {
   const { chatId, connectionId } = request
   const settings = getSettings().ai
-  const provider = settings.providers.find((p) => p.id === settings.activeProvider)
-  if (!provider) throw new Error('Choose an AI provider in Settings → AI assistant')
+  const provider = activeProvider()
   const config = getConnection(connectionId)
   if (config.aiEnabled === false) throw new Error('AI is turned off for this connection (connection settings → Advanced)')
   if (!db.isOpen(connectionId)) await db.connect(config)

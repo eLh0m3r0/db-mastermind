@@ -52,6 +52,9 @@ export function McpSettingsSection() {
 
   return (
     <div className="flex flex-col gap-4">
+      {info?.managed?.policies.allowMcp === false && (
+        <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[12.5px]">{t('Your organization turned the MCP server off (managed configuration).')}</div>
+      )}
       <p className="text-[12.5px] leading-relaxed text-fg-muted">
         {info?.portable
           ? t('The MCP server lets AI agents (Claude Code, Codex, Cursor, Claude Desktop…) explore your databases through DB Mastermind: list tables, read the schema and knowledge base, and run read-only queries. It uses the connections saved in this app (portable data folder), and only those with AI enabled.')

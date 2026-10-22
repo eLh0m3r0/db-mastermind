@@ -1,6 +1,8 @@
 import { randomBytes } from 'node:crypto'
 import { app } from 'electron'
 import type { AiProviderSettings, AppSettings } from '@shared/api'
+import { managedConfig } from './managed'
+import { enforceManagedSettings } from './managed-config'
 import { decryptSecret, encryptSecret, readJson, writeJson } from './storage'
 
 const FILE = 'settings.json'
@@ -32,12 +34,12 @@ function mapKeys(providers: AiProviderSettings[], fn: (v: string | undefined) =>
 export async function loadSettings(): Promise<void> {
   const defaults = defaultSettings()
   const stored = readJson<Partial<AppSettings>>(FILE, {})
-  cached = {
+  cached = enforceManagedSettings({
     ...defaults,
     ...stored,
     ai: { ...defaults.ai, ...stored.ai, providers: await mapKeys(stored.ai?.providers ?? [], decryptSecret) },
     mcp: { ...defaults.mcp, ...stored.mcp },
-  }
+  }, managedConfig())
   // The first run stores the generated token and the detected language.
   if (!stored.mcp?.token || !stored.language) persist(cached)
 }
@@ -63,7 +65,7 @@ export function updateSettings(patch: Partial<AppSettings>): AppSettings {
     ai: patch.ai ? { ...current.ai, ...patch.ai } : current.ai,
     mcp: patch.mcp ? { ...current.mcp, ...patch.mcp } : current.mcp,
   }
-  cached = next
-  persist(next)
-  return next
+  cached = enforceManagedSettings(next, managedConfig())
+  persist(cached)
+  return cached
 }
