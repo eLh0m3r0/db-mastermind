@@ -143,6 +143,7 @@ jobs:
           --config.appx.identityName=Test.DBMastermind --config.appx.publisher="CN=00000000-0000-0000-0000-000000000000"
           --config.appx.publisherDisplayName="Test" --config.appx.applicationId=DBMastermind --config.appx.displayName="DB Mastermind"
           && ls -la release/*.appx
+          || { cat release/__appx-x64/AppxManifest.xml; exit 1; }
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Upload screenshots
