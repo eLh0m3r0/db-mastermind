@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpen, Database, Download, Keyboard, Plus, Sparkles } from 'lucide-react'
+import { ArrowRight, BookOpen, Coffee, Database, Download, Keyboard, Plus, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Kbd } from '@/components/ui/Input'
 import { api, modKey } from '@/lib/api'
@@ -6,6 +6,12 @@ import { useConnections } from '@/store/connections'
 import { useUi } from '@/store/ui'
 import { DriverIcon } from '../connections/drivers'
 import { connectAndSelect, importFrom, StatusDot } from '../sidebar/Sidebar'
+
+async function openDemo() {
+  const id = await api.createSampleDatabase()
+  await useConnections.getState().load()
+  await connectAndSelect(id)
+}
 
 export function HomeScreen() {
   const list = useConnections((s) => s.list)
@@ -27,6 +33,9 @@ export function HomeScreen() {
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-[13px] font-semibold text-fg-muted">{recent.length ? 'Recent connections' : 'Get started'}</h2>
             <div className="flex gap-2">
+              <Button size="sm" variant="ghost" icon={<Coffee size={13} />} onClick={() => void openDemo()}>
+                Try the demo database
+              </Button>
               <Button size="sm" variant="ghost" icon={<Download size={13} />} onClick={() => void importFrom('beekeeper')}>
                 Import from Beekeeper
               </Button>

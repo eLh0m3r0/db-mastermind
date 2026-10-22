@@ -9,6 +9,7 @@ files:
   - resources/**
   - package.json
 asar: true
+afterPack: build/after-pack.cjs
 publish:
   provider: github
   owner: eLh0m3r0
@@ -21,6 +22,8 @@ mac:
       arch: [arm64, x64]
     - target: zip
       arch: [arm64, x64]
+  # No Developer ID yet: build/after-pack.cjs applies an ad-hoc signature instead, so Apple Silicon
+  # doesn't report the downloaded app as damaged.
   identity: null
 win:
   target:

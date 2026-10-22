@@ -189,6 +189,8 @@ export interface MastermindApi {
   isConnected(id: string): Promise<boolean>
   parseConnectionString(text: string): Promise<Partial<ConnectionConfig>>
   importConnections(source: 'beekeeper' | 'dbeaver' | 'file'): Promise<number>
+  /** Creates (or reuses) the demo SQLite database with its knowledge base; returns the connection id. */
+  createSampleDatabase(): Promise<string>
 
   getSchema(connectionId: string, refresh?: boolean): Promise<SchemaSnapshot>
   listDatabases(connectionId: string): Promise<string[]>
@@ -261,6 +263,7 @@ export const API_METHODS = [
   'isConnected',
   'parseConnectionString',
   'importConnections',
+  'createSampleDatabase',
   'getSchema',
   'listDatabases',
   'runQuery',

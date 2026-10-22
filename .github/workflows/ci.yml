@@ -90,6 +90,9 @@ jobs:
       - name: Smoke test (Linux needs a virtual display for Electron)
         if: runner.os == 'Linux'
         run: xvfb-run -a node e2e/smoke.mjs "${{ matrix.exe }}"
+      - name: Verify macOS signature
+        if: runner.os == 'macOS'
+        run: codesign --verify --deep --strict "apps/desktop/release/mac-arm64/DB Mastermind.app"
       - name: Smoke test
         if: runner.os != 'Linux'
         run: node e2e/smoke.mjs "${{ matrix.exe }}"

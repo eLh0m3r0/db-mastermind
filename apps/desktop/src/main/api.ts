@@ -1,4 +1,6 @@
-import { mkdir, readFile, rm } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, shell } from 'electron'
 import {
@@ -8,6 +10,8 @@ import {
   inlineParams,
   KnowledgeBase,
   resolveInside,
+  SAMPLE_KNOWLEDGE,
+  sampleDatabaseSql,
   parseConnectionString,
   qualify,
   type ConnectionConfig,
@@ -122,6 +126,35 @@ export const api: MastermindApi = {
   },
   async importConnections(source) {
     return importConnections(source)
+  },
+
+  async createSampleDatabase() {
+    const dir = join(app.getPath('userData'), 'sample')
+    const file = join(dir, 'coffee-shop.db')
+    const kbDir = join(dir, 'coffee-shop-knowledge')
+    const existing = connections.listConnections().find((c) => c.driver === 'sqlite' && c.filePath === file)
+    if (existing && existsSync(file)) return existing.id
+    await mkdir(kbDir, { recursive: true })
+    await rm(file, { force: true })
+    const sample = new DatabaseSync(file)
+    try {
+      sample.exec('BEGIN')
+      for (const sql of sampleDatabaseSql()) sample.exec(sql)
+      sample.exec('COMMIT')
+    } finally {
+      sample.close()
+    }
+    for (const [name, content] of Object.entries(SAMPLE_KNOWLEDGE)) await writeFile(join(kbDir, name), content, 'utf8')
+    const saved = connections.saveConnection({
+      id: existing?.id ?? '',
+      name: 'Demo coffee shop',
+      driver: 'sqlite',
+      filePath: file,
+      knowledgeBasePath: kbDir,
+      color: '#0f9f6e',
+      group: 'Examples',
+    })
+    return saved.id
   },
 
   async getSchema(connectionId, refresh) {

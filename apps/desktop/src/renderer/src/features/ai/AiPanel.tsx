@@ -349,7 +349,7 @@ function ToolCall({ part }: { part: Extract<Part, { type: 'tool' }> }) {
       <button type="button" className="flex w-full items-center gap-1.5 px-2 py-1 text-left text-fg-muted hover:text-fg" onClick={() => setOpen((v) => !v)}>
         <ChevronRight size={11} className={cn('shrink-0 transition-transform', open && 'rotate-90')} />
         {part.output === undefined ? <Spinner size={11} /> : <Wrench size={11} className={part.error ? 'text-danger' : 'text-accent'} />}
-        <span className="font-medium">{part.name.replaceAll('_', ' ')}</span>
+        <span className="shrink-0 font-medium whitespace-nowrap">{part.name.replaceAll('_', ' ')}</span>
         <span className="truncate font-mono text-fg-faint">{summary}</span>
       </button>
       {open && (
