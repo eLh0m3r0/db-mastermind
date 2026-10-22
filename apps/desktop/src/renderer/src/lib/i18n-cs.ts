@@ -922,4 +922,5 @@ export const cs: Record<string, string> = {
   'Unpin columns': 'Zrušit ukotvení sloupců',
   'Undo': 'Zpět',
   'Redo': 'Znovu',
+  '{n} left out': '{n} vynecháno',
 }

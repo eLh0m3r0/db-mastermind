@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, ChevronDown, Copy, Info, Save, ShieldAlert, TerminalSquare, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronDown, Copy, Info, Minus, Pencil, Plus, Save, ShieldAlert, TerminalSquare, XCircle } from 'lucide-react'
 import { generateMigration, getDialect, impactChecks, migrationScript, type DriverId, type SchemaChange, type TableInfo } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
@@ -11,13 +11,14 @@ import { api } from '@/lib/api'
 import { cn, copyText, errorMessage, formatCount, uid } from '@/lib/utils'
 import { toast } from '@/store/ui'
 import { tp, useT } from '@/lib/i18n'
+import { describeChange } from '@/lib/schemaChanges'
 
 type CheckResult = { label: string; count?: number; error?: string }
 
 export function MigrationModal({
   open,
   onClose,
-  changes,
+  changes: allChanges,
   driver,
   tables,
   connectionId,
@@ -33,6 +34,10 @@ export function MigrationModal({
   onOpenInEditor: (sql: string, targetId?: string) => void
 }) {
   const dialect = getDialect(driver)
+  // Changes can be left out of this migration (they stay in the design).
+  const [excluded, setExcluded] = useState<Set<number>>(new Set())
+  useEffect(() => setExcluded(new Set()), [allChanges])
+  const changes = useMemo(() => allChanges.filter((_, i) => !excluded.has(i)), [allChanges, excluded])
   const migration = useMemo(() => generateMigration(changes, dialect, tables), [changes, dialect, tables])
   const script = useMemo(() => migrationScript(migration, dialect), [migration, dialect])
   const rollback = useMemo(() => migration.rollback.map((s) => `${s};`).join('\n'), [migration])
@@ -92,7 +97,7 @@ export function MigrationModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={`${t('Migration')} · ${tp(changes.length, { one: '{n} change', many: '{n} changes' })}`}
+      title={`${t('Migration')} · ${tp(changes.length, { one: '{n} change', many: '{n} changes' })}${excluded.size ? ` (${t('{n} left out', { n: excluded.size })})` : ''}`}
       width={860}
       footer={
         <>
@@ -141,6 +146,34 @@ export function MigrationModal({
       }
     >
       <div className="flex flex-col gap-3">
+        {allChanges.length > 1 && (
+          <div className="max-h-[22vh] overflow-auto rounded-md border border-line py-1">
+            {allChanges.map((c, i) => {
+              const d = describeChange(c, t)
+              const Icon = d.icon === 'add' ? Plus : d.icon === 'drop' ? Minus : Pencil
+              return (
+                <label key={i} className={cn('flex cursor-pointer items-center gap-2 px-2.5 py-0.5 text-[12px] hover:bg-hover', excluded.has(i) && 'opacity-50')}>
+                  <input
+                    type="checkbox"
+                    className="accent-[var(--accent)]"
+                    checked={!excluded.has(i)}
+                    onChange={(e) =>
+                      setExcluded((prev) => {
+                        const next = new Set(prev)
+                        if (e.target.checked) next.delete(i)
+                        else next.add(i)
+                        return next
+                      })
+                    }
+                  />
+                  <Icon size={12} className={cn('shrink-0', d.icon === 'add' ? 'text-success' : d.icon === 'drop' ? 'text-danger' : 'text-warning')} />
+                  <span className="shrink-0 font-medium">{c.table.name}</span>
+                  <span className="truncate font-mono text-[11.5px] text-fg-muted">{d.text}</span>
+                </label>
+              )
+            })}
+          </div>
+        )}
         {migration.warnings.length > 0 && (
           <div className="flex flex-col gap-1 rounded-md border border-line p-2.5">
             {migration.warnings.map((w, i) => (
