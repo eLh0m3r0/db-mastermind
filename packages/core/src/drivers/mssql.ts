@@ -1,3 +1,5 @@
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import sql from 'mssql'
 import { mssqlDialect } from '../dialect.js'
 import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions } from '../driver.js'
@@ -7,6 +9,28 @@ import type { ConnectionConfig, QueryOptions, QueryResult, SchemaSnapshot, Serve
 import { normalizeValue } from '../values.js'
 
 type RawRow = Record<string, unknown>
+type SqlModule = typeof sql
+
+let odbcDriver: Promise<string> | undefined
+
+/** Newest installed Microsoft ODBC driver for SQL Server (Windows registry), used for integrated auth. */
+export function detectOdbcDriver(): Promise<string> {
+  odbcDriver ??= (async () => {
+    try {
+      const { stdout } = await promisify(execFile)('reg', ['query', 'HKLM\\SOFTWARE\\ODBC\\ODBCINST.INI\\ODBC Drivers'], { timeout: 5000 })
+      const installed = [...stdout.matchAll(/^\s+(.+?)\s+REG_SZ\s+Installed/gim)].map((m) => m[1]!.trim())
+      const preferred = ['ODBC Driver 18 for SQL Server', 'ODBC Driver 17 for SQL Server', 'ODBC Driver 13 for SQL Server', 'SQL Server Native Client 11.0', 'SQL Server']
+      const found = preferred.find((d) => installed.includes(d)) ?? installed.find((d) => /sql server/i.test(d))
+      if (found) return found
+    } catch {
+      // Not Windows or no registry access: fall through.
+    }
+    throw new Error('Windows authentication needs the Microsoft ODBC Driver for SQL Server (17 or 18). Install it from Microsoft and reconnect.')
+  })()
+  return odbcDriver
+}
+
+const odbcEscape = (v: string) => (/[;{}]/.test(v) ? `{${v.replaceAll('}', '}}')}}` : v)
 
 /** Renders a SQL Server column type the way SSMS shows it, e.g. nvarchar(50), decimal(10,2). */
 export function formatMssqlType(type: string, maxLength: number, precision: number, scale: number): string {
@@ -24,6 +48,8 @@ export class MssqlDriver implements DatabaseDriver {
   private tunnel?: SshTunnel
   private sessions = new Map<string, sql.ConnectionPool>()
   private poolConfig?: sql.config
+  /** tedious (default) or msnodesqlv8 (Windows integrated authentication); same API. */
+  private sql: SqlModule = sql
 
   constructor(readonly config: ConnectionConfig) {}
 
@@ -39,6 +65,37 @@ export class MssqlDriver implements DatabaseDriver {
     }
     const sslMode = this.config.ssl?.mode ?? 'prefer'
     const domain = opts.domain ? String(opts.domain) : undefined
+    if (opts.authentication === 'windows') {
+      // Integrated security (the logged-in Windows account) is only available through ODBC.
+      if (process.platform !== 'win32') throw new Error('Windows authentication is only available on Windows')
+      const mod = (await import('mssql/msnodesqlv8')) as unknown as { default?: SqlModule } & SqlModule
+      this.sql = mod.default ?? mod
+      const driver = opts.odbcDriver ? String(opts.odbcDriver) : await detectOdbcDriver()
+      const serverPart = instanceName ? `${server}\\${instanceName}` : `${server},${port ?? 1433}`
+      const trust = opts.trustServerCertificate !== undefined ? Boolean(opts.trustServerCertificate) : sslMode !== 'verify-ca' && sslMode !== 'verify-full'
+      const parts = [
+        `Driver={${driver}}`,
+        `Server=${odbcEscape(serverPart)}`,
+        this.config.database ? `Database=${odbcEscape(this.config.database)}` : '',
+        'Trusted_Connection=yes',
+        `Encrypt=${sslMode === 'disable' ? 'no' : 'yes'}`,
+        `TrustServerCertificate=${trust ? 'yes' : 'no'}`,
+        'APP=DB Mastermind',
+        this.config.readOnly ? 'ApplicationIntent=ReadOnly' : '',
+      ].filter(Boolean)
+      this.poolConfig = {
+        server,
+        connectionString: parts.join(';'),
+        connectionTimeout: 15_000,
+        requestTimeout: Number(opts.requestTimeout ?? 0),
+        pool: { max: 6, min: 0, idleTimeoutMillis: 60_000 },
+        options: {},
+      } as sql.config
+      this.pool = new this.sql.ConnectionPool(this.poolConfig)
+      this.pool.on('error', () => {})
+      await this.pool.connect()
+      return
+    }
     this.poolConfig = {
       server,
       port,
@@ -67,7 +124,7 @@ export class MssqlDriver implements DatabaseDriver {
         enableArithAbort: true,
       },
     }
-    this.pool = new sql.ConnectionPool(this.poolConfig)
+    this.pool = new this.sql.ConnectionPool(this.poolConfig)
     this.pool.on('error', () => {})
     await this.pool.connect()
   }
@@ -91,7 +148,7 @@ export class MssqlDriver implements DatabaseDriver {
     if (!session) return this.activePool
     let pool = this.sessions.get(session)
     if (!pool) {
-      pool = new sql.ConnectionPool({ ...this.poolConfig!, pool: { max: 1, min: 0, idleTimeoutMillis: 3_600_000 } })
+      pool = new this.sql.ConnectionPool({ ...this.poolConfig!, pool: { max: 1, min: 0, idleTimeoutMillis: 3_600_000 } })
       pool.on('error', () => {})
       await pool.connect()
       this.sessions.set(session, pool)
@@ -182,12 +239,12 @@ export class MssqlDriver implements DatabaseDriver {
   }
 
   async transaction(statements: BuiltQuery[]): Promise<number[]> {
-    const tx = new sql.Transaction(this.activePool)
+    const tx = new this.sql.Transaction(this.activePool)
     await tx.begin()
     try {
       const affected: number[] = []
       for (const s of statements) {
-        const request = new sql.Request(tx)
+        const request = new this.sql.Request(tx)
         s.params.forEach((value, i) => request.input(`p${i + 1}`, value))
         const r = await request.query(s.sql)
         affected.push(r.rowsAffected.reduce((a, b) => a + b, 0))

@@ -69,5 +69,8 @@
     "tailwindcss": "^4.3.3",
     "vite": "^8.3.5",
     "zustand": "^5.0.15"
+  },
+  "optionalDependencies": {
+    "msnodesqlv8": "^5.6.0"
   }
 }

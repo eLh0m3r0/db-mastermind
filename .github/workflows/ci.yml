@@ -96,3 +96,24 @@ jobs:
       - name: Smoke test
         if: runner.os != 'Linux'
         run: node e2e/smoke.mjs "${{ matrix.exe }}"
+
+  # SQL Server Windows (integrated) authentication through msnodesqlv8 + ODBC, against LocalDB.
+  windows-auth:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install SQL Server LocalDB
+        uses: potatoqualitee/mssqlsuite@v1.7
+        with:
+          install: localdb
+      - run: npm install --no-audit --no-fund
+      - name: List ODBC drivers
+        shell: pwsh
+        run: Get-OdbcDriver | Where-Object Name -like '*SQL Server*' | Select-Object Name
+      - run: npx vitest run --project integration packages/core/test/winauth.integration.test.ts
+        env:
+          DBM_WINAUTH: '1'
