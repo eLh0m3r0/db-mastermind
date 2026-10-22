@@ -28,7 +28,8 @@ PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB — W
   reference this one
 - SQL editor with schema-aware autocomplete (after `JOIN` it suggests related tables with the whole `ON` clause),
   query parameters, execution plans, multiple result sets, cancel, format, history and saved queries
-- Export a page or the whole (filtered) table to CSV, Excel, JSON, SQL or Markdown, streamed with no row limit
+- Export a page, the whole (filtered) table or every row of a query to CSV, Excel, JSON, SQL or Markdown, streamed
+  with no row limit
 - Command palette (`Ctrl/⌘ K`), quick table open (`Ctrl/⌘ P`), light & dark themes, English and Czech UI
 - **Enterprise-ready connections**: SSH tunnels, SSL, read-only and production safety rails, **SQL Server Windows
   authentication** (no password, your domain account), **Oracle without Instant Client**
@@ -36,7 +37,8 @@ PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB — W
 ![SQL editor](docs/screenshots/query.png)
 
 - **Charts from any result**: bar, line or scatter in one click, and **dashboards** of pinned results that refresh themselves
-- **Paste from Excel** into a table, hide/reorder columns, audit log of every statement (with CSV export)
+- **Paste from Excel** into a table, hide/reorder/pin columns, audit log of every statement (with CSV export)
+- **Value editor** (`Shift+Enter` on a cell): JSON format/minify/validation, long text, binary as hex with image preview
 - **Import CSV / Excel** into a table with column mapping (Windows-1250 exports from Czech Excel included)
 - **Query a file with SQL**: drop a CSV, Parquet, JSON or Excel file on the window and query it right away
   (built-in DuckDB, nothing to install; `;`-separated files with decimal commas just work)
@@ -49,7 +51,7 @@ PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB — W
 
 **Understand and redesign the model**
 - **Interactive ER diagrams** with automatic layout, crow's-foot notation, focus on a table and its neighbours,
-  export to PNG / SVG / Mermaid / DBML
+  export to PNG / SVG / Mermaid / PlantUML / DBML
 - **Join path**: pick two tables and see how they connect, then open it as a ready `SELECT … JOIN`
 - **Saved diagrams**: named subject areas ("Sales", "Billing") with their own tables and layout
 - **Data compare** between two tables or environments, with the sync script
@@ -103,7 +105,8 @@ New to the app? Click **Try the demo database** on the start screen.
 ## Use it from Claude Code, Codex, Cursor… (MCP)
 
 DB Mastermind can run as an MCP server, so coding agents can explore your databases safely: read-only by default,
-and only connections where you allow AI. Open **Settings → MCP server** for ready-made commands. Claude Code, for example:
+and only connections where you allow AI. Open **Settings → MCP server** and click **Add to Claude Code / Claude Desktop /
+Codex / Cursor / VS Code**: the app writes their config for you (keeping a `.bak` copy). Or add it by hand, e.g. Claude Code:
 
 ```bash
 claude mcp add dbmastermind -- "/Applications/DB Mastermind.app/Contents/MacOS/DB Mastermind" --mcp
