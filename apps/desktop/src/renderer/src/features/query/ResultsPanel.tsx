@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, BarChart3, CheckCircle2, Copy, Download, TerminalSquare, XCircle } from 'lucide-react'
+import { Button } from '@/components/ui/Button'
+import { AlertTriangle, BarChart3, CheckCircle2, Copy, Download, Sparkles, TerminalSquare, XCircle } from 'lucide-react'
 import { cellToText, type CellValue, type QueryResult, type SortSpec, type StatementOutcome } from '@dbmastermind/core/browser'
 import { defaultChartConfig, ResultChart, type ChartConfig } from '@/components/chart/ResultChart'
 import { openCellViewer } from '@/components/grid/CellViewer'
@@ -43,6 +44,7 @@ export function ResultsPanel({
   driver,
   connectionId,
   onShowStatement,
+  onFixWithAi,
 }: {
   outcomes: StatementOutcome[] | null
   running: boolean
@@ -50,6 +52,8 @@ export function ResultsPanel({
   driver: DriverId
   connectionId: string
   onShowStatement: (outcome: StatementOutcome) => void
+  /** Lets AI rewrite the failed statement. */
+  onFixWithAi?: (outcome: StatementOutcome) => void
 }) {
   const settings = useSettings((s) => s.settings)
   const [active, setActive] = useState<string>('auto')
@@ -224,6 +228,13 @@ export function ResultsPanel({
                   <div className="mt-1.5 pl-5 whitespace-pre-wrap text-danger">
                     {o.error.message}
                     {o.error.code && <span className="ml-2 text-fg-faint">[{o.error.code}]</span>}
+                    {onFixWithAi && (
+                      <div className="mt-1.5">
+                        <Button size="xs" icon={<Sparkles size={12} />} onClick={() => onFixWithAi(o)}>
+                          {tr('Fix with AI')}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="mt-1 pl-5 text-fg-muted">

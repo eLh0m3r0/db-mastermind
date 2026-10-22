@@ -153,14 +153,15 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
   // Inline AI (Cmd/Ctrl+I): describe the SQL, it lands in the editor (replacing the selection, if any).
   const [inline, setInline] = useState<{ prompt: string; busy: boolean } | null>(null)
   const openInline = useCallback(() => setInline((v) => v ?? { prompt: '', busy: false }), [])
-  const submitInline = useCallback(async () => {
+  const submitInline = useCallback(async (promptOverride?: string) => {
     const view = editor.current?.view()
-    if (!inline?.prompt.trim() || !view) return
+    const prompt = (promptOverride ?? inline?.prompt ?? '').trim()
+    if (!prompt || !view) return
     const sel = view.state.selection.main
     const selection = sel.empty ? undefined : view.state.sliceDoc(sel.from, sel.to)
-    setInline({ ...inline, busy: true })
+    setInline({ prompt, busy: true })
     try {
-      const sql = await api.aiWriteSql(tab.connectionId, inline.prompt.trim(), view.state.doc.toString(), selection)
+      const sql = await api.aiWriteSql(tab.connectionId, prompt, view.state.doc.toString(), selection)
       if (!sql) throw new Error(t('The model returned no SQL'))
       const doc = view.state.doc
       let from = sel.from
@@ -326,6 +327,13 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
           startedAt={startedAt}
           driver={driver}
           connectionId={tab.connectionId}
+          onFixWithAi={(o) => {
+            const view = editor.current?.view()
+            if (!view || !o.error) return
+            const from = lastFragmentOffset.current + o.start
+            view.dispatch({ selection: { anchor: from, head: Math.min(view.state.doc.length, from + o.sql.length) }, scrollIntoView: true })
+            void submitInline(t('Fix this statement. It failed with: {error}', { error: o.error.message }))
+          }}
           onShowStatement={(o) => {
             const view = editor.current?.view()
             if (!view) return

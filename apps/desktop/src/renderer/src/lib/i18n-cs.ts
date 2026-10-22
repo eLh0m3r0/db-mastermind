@@ -744,4 +744,6 @@ export const cs: Record<string, string> = {
   'Describe the query, e.g. top 10 customers by revenue this year': 'Popište dotaz, např. 10 nejlepších zákazníků podle tržeb za letošek',
   'Write SQL': 'Napsat SQL',
   'Chat instead': 'Raději chat',
+  'Fix with AI': 'Opravit pomocí AI',
+  'Fix this statement. It failed with: {error}': 'Oprav tento příkaz. Selhal s chybou: {error}',
 }
