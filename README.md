@@ -39,19 +39,26 @@ PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB — W
 - **Import CSV / Excel** into a table with column mapping (Windows-1250 exports from Czech Excel included)
 - **Query a file with SQL**: drop a CSV, Parquet, JSON or Excel file on the window and query it right away
   (built-in DuckDB, nothing to install; `;`-separated files with decimal commas just work)
-- **Server activity**: running queries and sessions, cancel a query or end a session
+
+![Query a CSV file with SQL](docs/screenshots/query-file.png)
+
+- **Server activity**: running queries, lock waits (who blocks whom), cancel a query or end a session
+- **Snippets** (`sel`, `dup`, `orph`, `tx`… or your own) and sharing connections with colleagues (no passwords)
 - Pin favourite tables, hide schemas you don't use
 
 **Understand and redesign the model**
 - **Interactive ER diagrams** with automatic layout, crow's-foot notation, focus on a table and its neighbours,
   export to PNG / SVG / Mermaid / DBML
 - **Join path**: pick two tables and see how they connect, then open it as a ready `SELECT … JOIN`
+- **Saved diagrams**: named subject areas ("Sales", "Billing") with their own tables and layout
+- **Data compare** between two tables or environments, with the sync script
 - **Schema compare** between two connections or schemas (dev → prod) with the migration for the target
 - **Data dictionary**: one self-contained HTML page (or Markdown) documenting every table, with your notes
 - **Schema designer on the live database**: edit tables, columns, keys and indexes right on the diagram. DB
   Mastermind generates the migration for your database (including SQLite table rebuilds and dependent views),
   checks the existing data first (NULLs, duplicates, orphans) and writes a rollback script
 
+![Join path between two tables](docs/screenshots/join-path.png)
 ![Schema designer](docs/screenshots/designer.png)
 ![Generated migration with impact checks](docs/screenshots/migration.png)
 
@@ -60,6 +67,8 @@ PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB — W
 - …or use your existing **Claude Code** or **Codex** subscription, with nothing extra to pay
 - The assistant explores the schema, runs read-only queries, and asks before any write
 - **Explain with AI** on any table, and **filters in plain language** ("paid orders over 1000 this month")
+- **Ctrl/⌘ I in the editor**: describe a query (or how to change the selection) and the SQL appears in place;
+  **Fix with AI** on a failed statement
 - **Knowledge base**: a folder of Markdown notes per database (business meaning, codes, joins, gotchas).
   The AI reads it, and can write the first version for you. Relationships documented there
   (`relations: ["orders.customer_code -> customers.code"]`) show up in diagrams and FK navigation

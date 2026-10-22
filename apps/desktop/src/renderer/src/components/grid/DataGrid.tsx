@@ -149,7 +149,7 @@ const Cell = memo(function Cell({
   } else if (isBinaryValue(value)) {
     content = <span className="text-fg-muted">{`0x${value.$binary.slice(0, 40)}${value.length > 20 ? '…' : ''}`}</span>
   } else {
-    const text = typeof value === 'object' ? JSON.stringify(value) : String(value)
+    const text = cellToText(value)
     // Multi-line text collapses into one line in the grid.
     content = text.length > 400 ? `${text.slice(0, 400).replace(/\s+/g, ' ')}…` : text.replace(/[\r\n]+/g, ' ↵ ')
   }
