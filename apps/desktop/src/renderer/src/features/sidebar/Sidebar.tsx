@@ -208,12 +208,14 @@ export function Sidebar() {
                 key={id}
                 type="button"
                 onClick={() => setPanel(id)}
+                title={t(label)}
                 className={cn(
-                  'flex h-6 flex-1 items-center justify-center gap-1 rounded-md text-[11.5px] font-medium',
+                  'flex h-6 min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-1 text-[11.5px] font-medium',
                   panel === id ? 'bg-active text-fg' : 'text-fg-muted hover:bg-hover hover:text-fg',
                 )}
               >
-                <Icon size={12} /> {t(label)}
+                <Icon size={12} className="shrink-0" />
+                <span className="truncate">{t(label)}</span>
               </button>
             ))}
             <button

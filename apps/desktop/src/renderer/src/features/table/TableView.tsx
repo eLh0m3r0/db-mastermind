@@ -916,7 +916,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
         </IconButton>
         <Select
           inputSize="sm"
-          className="h-6 w-[112px] text-[12px]"
+          className="h-6 w-auto min-w-[112px] text-[12px]"
           value={limit}
           onChange={(e) => {
             if (!confirmDiscard()) return

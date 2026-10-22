@@ -134,11 +134,13 @@ export function Segmented<T extends string>({
           key={o.value}
           type="button"
           title={o.title}
+          aria-pressed={value === o.value}
           onClick={() => onChange(o.value)}
           className={cn(
             'rounded-[5px] px-2 font-medium transition-colors',
             size === 'xs' ? 'h-5 text-[11px]' : 'h-6 text-[12px]',
-            value === o.value ? 'bg-elevated text-fg shadow-sm' : 'text-fg-muted hover:text-fg',
+            // The ring keeps the choice visible in dark themes, where elevated and muted surfaces are close.
+            value === o.value ? 'bg-elevated text-fg shadow-sm ring-1 ring-line-strong' : 'text-fg-muted hover:text-fg',
           )}
         >
           {o.label}
