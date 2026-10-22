@@ -226,10 +226,10 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
   // Insert text requested from elsewhere (history, AI, sidebar).
   useEffect(() => {
     const onInsert = (e: Event) => {
-      const detail = (e as CustomEvent<{ tabId: string; text: string; replace?: boolean }>).detail
+      const detail = (e as CustomEvent<{ tabId: string; text: string; replace?: boolean; block?: boolean }>).detail
       if (detail.tabId !== tab.id) return
       if (detail.replace) editor.current?.setValue(detail.text)
-      else editor.current?.insert(detail.text)
+      else editor.current?.insert(detail.text, { block: detail.block })
     }
     window.addEventListener('editor:insert', onInsert)
     return () => window.removeEventListener('editor:insert', onInsert)

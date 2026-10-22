@@ -202,6 +202,12 @@ textarea,
   outline-offset: -1px;
 }
 
+/* A container that draws the focus itself (the assistant's input box): no second ring on the field inside. */
+[data-focus-frame] textarea:focus-visible,
+[data-focus-frame] input:focus-visible {
+  outline: none;
+}
+
 /* Thin, unobtrusive scrollbars on every platform. */
 ::-webkit-scrollbar {
   width: 10px;

@@ -46,7 +46,8 @@ export interface SqlEditorHandle {
   /** Selected text, or the statement under the cursor with its offset. */
   getRunTarget(): { sql: string; offset: number } | null
   focus(): void
-  insert(text: string): void
+  /** At the cursor; `block` puts a whole statement on its own lines, a blank line away from existing text. */
+  insert(text: string, options?: { block?: boolean }): void
   markError(from: number, to?: number): void
   view(): EditorView | null
 }
@@ -296,10 +297,21 @@ export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunA
       return stmt ? { sql: stmt.text, offset: stmt.start } : null
     },
     focus: () => viewRef.current?.focus(),
-    insert: (text) => {
+    insert: (text, options) => {
       const view = viewRef.current
       if (!view) return
-      view.dispatch(view.state.replaceSelection(text))
+      if (!options?.block) {
+        view.dispatch(view.state.replaceSelection(text))
+      } else {
+        const { state } = view
+        const sel = state.selection.main
+        const before = state.sliceDoc(0, sel.from)
+        const after = state.sliceDoc(sel.to)
+        const lead = !before.trim() ? '' : before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n'
+        const trail = !after.trim() ? '' : after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n'
+        const insert = lead + text.trim() + trail
+        view.dispatch({ changes: { from: sel.from, to: sel.to, insert }, selection: { anchor: sel.from + lead.length + text.trim().length }, scrollIntoView: true })
+      }
       view.focus()
     },
     markError: (from, to) => {

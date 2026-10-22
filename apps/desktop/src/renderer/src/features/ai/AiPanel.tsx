@@ -189,7 +189,7 @@ export function AiPanel() {
     const ws = useWorkspace.getState()
     const tab = ws.tabs.find((t) => t.id === ws.activeTabId)
     if (tab?.kind === 'query' && tab.connectionId === connectionId) {
-      window.dispatchEvent(new CustomEvent('editor:insert', { detail: { tabId: tab.id, text: sql } }))
+      window.dispatchEvent(new CustomEvent('editor:insert', { detail: { tabId: tab.id, text: sql, block: true } }))
     } else ws.newQuery(connectionId, sql)
   }
 
@@ -340,7 +340,7 @@ export function AiPanel() {
             )}
           </div>
           <div className="border-t border-line p-2">
-            <div className="flex items-end gap-1.5 rounded-lg border border-line bg-bg p-1.5 focus-within:border-accent">
+            <div data-focus-frame className="flex items-end gap-1.5 rounded-lg border border-line bg-bg p-1.5 focus-within:border-accent focus-within:ring-1 focus-within:ring-accent">
               <textarea
                 ref={inputRef}
                 value={input}
