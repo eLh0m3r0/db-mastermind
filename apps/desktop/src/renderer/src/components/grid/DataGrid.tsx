@@ -55,6 +55,8 @@ export interface DataGridProps {
   rowState?: (row: number) => RowState
   onContextMenu?: (event: React.MouseEvent, pos: CellPos | null, selection: GridSelection | null) => void
   onCellActivate?: (pos: CellPos) => void
+  /** The first N columns stay visible while scrolling sideways. */
+  pinnedColumns?: number
   /** Shift+Enter: open the cell in the value viewer/editor. */
   onCellOpen?: (pos: CellPos) => void
   onForeignKeyClick?: (pos: CellPos) => void
@@ -200,6 +202,7 @@ export function DataGrid({
   onContextMenu,
   onCellActivate,
   onCellOpen,
+  pinnedColumns = 0,
   onForeignKeyClick,
   onSelectionChange,
   nullDisplay = 'NULL',
@@ -255,6 +258,9 @@ export function DataGrid({
     return out
   }, [widths, rowHeaderWidth])
   const totalWidth = offsets[offsets.length - 1] ?? rowHeaderWidth
+  const pinned = Math.min(pinnedColumns, fields.length)
+  /** Width of the sticky left block: row numbers plus pinned columns. */
+  const stickyWidth = offsets[pinned] ?? rowHeaderWidth
 
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
@@ -286,12 +292,13 @@ export function DataGrid({
       const top = HEADER_HEIGHT + pos.row * ROW_HEIGHT
       if (top - HEADER_HEIGHT < el.scrollTop) el.scrollTop = top - HEADER_HEIGHT
       else if (top + ROW_HEIGHT > el.scrollTop + el.clientHeight) el.scrollTop = top + ROW_HEIGHT - el.clientHeight
+      if (pos.col < pinned) return
       const left = offsets[pos.col] ?? 0
       const right = offsets[pos.col + 1] ?? left
-      if (left - rowHeaderWidth < el.scrollLeft) el.scrollLeft = left - rowHeaderWidth
+      if (left - stickyWidth < el.scrollLeft) el.scrollLeft = left - stickyWidth
       else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth
     },
-    [offsets, rowHeaderWidth],
+    [offsets, pinned, stickyWidth],
   )
 
   const startEdit = useCallback(
@@ -405,7 +412,9 @@ export function DataGrid({
     const el = scrollRef.current
     if (!el) return null
     const rect = el.getBoundingClientRect()
-    const x = e.clientX - rect.left + el.scrollLeft
+    const screenX = e.clientX - rect.left
+    // Pinned columns don't scroll sideways.
+    const x = screenX < stickyWidth ? screenX : screenX + el.scrollLeft
     const y = e.clientY - rect.top + el.scrollTop - HEADER_HEIGHT
     if (y < 0) return null
     const row = Math.floor(y / ROW_HEIGHT)
@@ -525,12 +534,90 @@ export function DataGrid({
   const virtualCols = colVirtualizer.getVirtualItems()
   const totalHeight = HEADER_HEIGHT + rows.length * ROW_HEIGHT
 
+  const headerCell = (index: number) => {
+    const field = fields[index]!
+    const meta = columnMeta?.[index]
+    const s = sort?.find((x) => x.column === field.name)
+    const sortIndex = sort && sort.length > 1 && s ? sort.indexOf(s) + 1 : 0
+    const colSelected = sel && index >= sel.c0 && index <= sel.c1
+    return (
+      <div
+        key={index}
+        className={cn(
+          'group absolute top-0 flex h-full items-center gap-1 border-r border-line pr-1 pl-2 text-[12px] font-semibold',
+          onSortChange && 'cursor-pointer hover:bg-hover',
+          colSelected && 'bg-accent-soft',
+        )}
+        style={{ left: offsets[index], width: widths[index] }}
+        title={[field.name, meta?.dataType ?? field.dataType, meta?.comment].filter(Boolean).join('\n')}
+        onMouseDown={(e) => {
+          e.stopPropagation()
+          if (e.button !== 0) return
+          if (!onSortChange) {
+            // Select the whole column.
+            if (rows.length) setSelection({ anchor: { row: 0, col: index }, focus: { row: rows.length - 1, col: index } })
+            scrollRef.current?.focus()
+          }
+        }}
+        onClick={(e) => toggleSort(e, field.name)}
+        onContextMenu={(e) => {
+          e.stopPropagation()
+          if (rows.length) setSelection({ anchor: { row: 0, col: index }, focus: { row: rows.length - 1, col: index } })
+          onContextMenu?.(e, { row: -1, col: index }, null)
+          e.preventDefault()
+        }}
+      >
+        {meta?.isPrimaryKey && <KeyRound size={11} className="shrink-0 text-warning" />}
+        {meta?.foreignKey && !meta.isPrimaryKey && <Link2 size={11} className="shrink-0 text-info" />}
+        <span className="min-w-0 truncate">{field.name}</span>
+        {(meta?.dataType ?? field.dataType) && (
+          <span className="min-w-0 shrink truncate text-[10.5px] font-normal text-fg-faint">{meta?.dataType ?? field.dataType}</span>
+        )}
+        <span className="ml-auto flex shrink-0 items-center text-accent">
+          {s && (s.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
+          {sortIndex > 0 && <span className="text-[10px]">{sortIndex}</span>}
+        </span>
+        <div
+          className="absolute top-0 right-[-4px] z-10 h-full w-[8px] cursor-col-resize"
+          onPointerDown={(e) => onResizeDown(e, index)}
+          onPointerMove={onResizeMove}
+          onPointerUp={onResizeUp}
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => {
+            e.stopPropagation()
+            autoFit(index)
+          }}
+        />
+      </div>
+    )
+  }
+
+  const bodyCell = (row: CellValue[], r: number, c: number) => {
+    const selected = !!sel && r >= sel.r0 && r <= sel.r1 && c >= sel.c0 && c <= sel.c1
+    const focused = !!selection && selection.focus.row === r && selection.focus.col === c
+    return (
+      <Cell
+        key={c}
+        value={row[c] ?? null}
+        left={offsets[c] ?? 0}
+        width={widths[c] ?? 100}
+        numeric={numeric[c] ?? false}
+        selected={selected && !(sel!.r0 === sel!.r1 && sel!.c0 === sel!.c1)}
+        focused={focused}
+        edited={isCellEdited?.(r, c) ?? false}
+        fk={!!columnMeta?.[c]?.foreignKey}
+        nullDisplay={nullDisplay}
+        onFkClick={onForeignKeyClick ? () => onForeignKeyClick({ row: r, col: c }) : undefined}
+      />
+    )
+  }
+
   const editor = editing && (
     <CellEditor
       key={`${editing.pos.row}:${editing.pos.col}`}
       initial={editing.value}
       top={HEADER_HEIGHT + editing.pos.row * ROW_HEIGHT}
-      left={offsets[editing.pos.col] ?? 0}
+      left={(offsets[editing.pos.col] ?? 0) + (editing.pos.col < pinned ? (scrollRef.current?.scrollLeft ?? 0) : 0)}
       width={widths[editing.pos.col] ?? 120}
       nullable={columnMeta?.[editing.pos.col]?.nullable !== false}
       onCommit={commitEdit}
@@ -558,8 +645,9 @@ export function DataGrid({
           className="sticky top-0 z-20 border-b border-line-strong bg-[var(--grid-header)]"
           style={{ height: HEADER_HEIGHT, width: totalWidth }}
         >
+          <div className="sticky left-0 z-10 h-full bg-[var(--grid-header)]" style={{ width: stickyWidth }}>
           <div
-            className="sticky left-0 z-10 flex h-full items-center justify-center border-r border-line bg-[var(--grid-header)] text-[11px] text-fg-faint"
+            className="absolute top-0 left-0 flex h-full items-center justify-center border-r border-line bg-[var(--grid-header)] text-[11px] text-fg-faint"
             style={{ width: rowHeaderWidth }}
             onMouseDown={(e) => {
               e.stopPropagation()
@@ -570,63 +658,9 @@ export function DataGrid({
           >
             #
           </div>
-          {virtualCols.map((vc) => {
-            const field = fields[vc.index]!
-            const meta = columnMeta?.[vc.index]
-            const s = sort?.find((x) => x.column === field.name)
-            const sortIndex = sort && sort.length > 1 && s ? sort.indexOf(s) + 1 : 0
-            const colSelected = sel && vc.index >= sel.c0 && vc.index <= sel.c1
-            return (
-              <div
-                key={vc.key}
-                className={cn(
-                  'group absolute top-0 flex h-full items-center gap-1 border-r border-line pr-1 pl-2 text-[12px] font-semibold',
-                  onSortChange && 'cursor-pointer hover:bg-hover',
-                  colSelected && 'bg-accent-soft',
-                )}
-                style={{ left: offsets[vc.index], width: widths[vc.index] }}
-                title={[field.name, meta?.dataType ?? field.dataType, meta?.comment].filter(Boolean).join('\n')}
-                onMouseDown={(e) => {
-                  e.stopPropagation()
-                  if (e.button !== 0) return
-                  if (!onSortChange) {
-                    // Select the whole column.
-                    if (rows.length) setSelection({ anchor: { row: 0, col: vc.index }, focus: { row: rows.length - 1, col: vc.index } })
-                    scrollRef.current?.focus()
-                  }
-                }}
-                onClick={(e) => toggleSort(e, field.name)}
-                onContextMenu={(e) => {
-                  e.stopPropagation()
-                  if (rows.length) setSelection({ anchor: { row: 0, col: vc.index }, focus: { row: rows.length - 1, col: vc.index } })
-                  onContextMenu?.(e, { row: -1, col: vc.index }, null)
-                  e.preventDefault()
-                }}
-              >
-                {meta?.isPrimaryKey && <KeyRound size={11} className="shrink-0 text-warning" />}
-                {meta?.foreignKey && !meta.isPrimaryKey && <Link2 size={11} className="shrink-0 text-info" />}
-                <span className="min-w-0 truncate">{field.name}</span>
-                {(meta?.dataType ?? field.dataType) && (
-                  <span className="min-w-0 shrink truncate text-[10.5px] font-normal text-fg-faint">{meta?.dataType ?? field.dataType}</span>
-                )}
-                <span className="ml-auto flex shrink-0 items-center text-accent">
-                  {s && (s.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
-                  {sortIndex > 0 && <span className="text-[10px]">{sortIndex}</span>}
-                </span>
-                <div
-                  className="absolute top-0 right-[-4px] z-10 h-full w-[8px] cursor-col-resize"
-                  onPointerDown={(e) => onResizeDown(e, vc.index)}
-                  onPointerMove={onResizeMove}
-                  onPointerUp={onResizeUp}
-                  onClick={(e) => e.stopPropagation()}
-                  onDoubleClick={(e) => {
-                    e.stopPropagation()
-                    autoFit(vc.index)
-                  }}
-                />
-              </div>
-            )
-          })}
+          {Array.from({ length: pinned }, (_, i) => headerCell(i))}
+          </div>
+          {virtualCols.filter((vc) => vc.index >= pinned).map((vc) => headerCell(vc.index))}
         </div>
 
         {/* Rows */}
@@ -647,33 +681,26 @@ export function DataGrid({
             >
               <div
                 className={cn(
-                  'sticky left-0 z-10 flex h-full items-center justify-end border-r border-b border-line bg-[var(--grid-header)] pr-2 text-[11px] text-fg-faint tabular-nums',
-                  rowSelected && 'bg-accent-soft text-accent',
+                  'sticky left-0 z-10 h-full',
+                  pinned > 0 && 'bg-bg shadow-[2px_0_0_var(--color-line)]',
+                  pinned > 0 && vr.index % 2 === 1 && 'bg-[var(--grid-row-alt)]',
+                  pinned > 0 && state === 'inserted' && 'bg-[var(--grid-inserted)]',
+                  pinned > 0 && state === 'deleted' && 'bg-[var(--grid-deleted)]',
                 )}
-                style={{ width: rowHeaderWidth }}
+                style={{ width: stickyWidth }}
               >
-                {state === 'inserted' ? '+' : rowNumberOffset + vr.index + 1}
+                <div
+                  className={cn(
+                    'absolute top-0 left-0 flex h-full items-center justify-end border-r border-b border-line bg-[var(--grid-header)] pr-2 text-[11px] text-fg-faint tabular-nums',
+                    rowSelected && 'bg-accent-soft text-accent',
+                  )}
+                  style={{ width: rowHeaderWidth }}
+                >
+                  {state === 'inserted' ? '+' : rowNumberOffset + vr.index + 1}
+                </div>
+                {Array.from({ length: pinned }, (_, c) => bodyCell(row, vr.index, c))}
               </div>
-              {virtualCols.map((vc) => {
-                const c = vc.index
-                const selected = !!sel && vr.index >= sel.r0 && vr.index <= sel.r1 && c >= sel.c0 && c <= sel.c1
-                const focused = !!selection && selection.focus.row === vr.index && selection.focus.col === c
-                return (
-                  <Cell
-                    key={vc.key}
-                    value={row[c] ?? null}
-                    left={offsets[c] ?? 0}
-                    width={widths[c] ?? 100}
-                    numeric={numeric[c] ?? false}
-                    selected={selected && !(sel!.r0 === sel!.r1 && sel!.c0 === sel!.c1)}
-                    focused={focused}
-                    edited={isCellEdited?.(vr.index, c) ?? false}
-                    fk={!!columnMeta?.[c]?.foreignKey}
-                    nullDisplay={nullDisplay}
-                    onFkClick={onForeignKeyClick ? () => onForeignKeyClick({ row: vr.index, col: c }) : undefined}
-                  />
-                )
-              })}
+              {virtualCols.filter((vc) => vc.index >= pinned).map((vc) => bodyCell(row, vr.index, vc.index))}
             </div>
           )
         })}

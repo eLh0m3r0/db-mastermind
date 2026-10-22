@@ -918,4 +918,6 @@ export const cs: Record<string, string> = {
   'Edit value…': 'Upravit hodnotu…',
   'PlantUML diagram copied to clipboard': 'Diagram PlantUML zkopírován do schránky',
   'Copy as PlantUML': 'Kopírovat jako PlantUML',
+  'Pin columns up to here': 'Ukotvit sloupce až sem',
+  'Unpin columns': 'Zrušit ukotvení sloupců',
 }

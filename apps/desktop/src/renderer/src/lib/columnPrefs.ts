@@ -3,6 +3,8 @@ export interface ColumnPrefs {
   order?: string[]
   hidden?: string[]
   widths?: Record<string, number>
+  /** Columns up to and including this one (in display order) stay visible while scrolling sideways. */
+  pinned?: string
 }
 
 const key = (id: string) => `columns:${id}`
@@ -17,7 +19,7 @@ export function loadColumnPrefs(id: string): ColumnPrefs {
 
 export function saveColumnPrefs(id: string, prefs: ColumnPrefs): void {
   try {
-    if (!prefs.order?.length && !prefs.hidden?.length && !Object.keys(prefs.widths ?? {}).length) localStorage.removeItem(key(id))
+    if (!prefs.order?.length && !prefs.hidden?.length && !Object.keys(prefs.widths ?? {}).length && !prefs.pinned) localStorage.removeItem(key(id))
     else localStorage.setItem(key(id), JSON.stringify(prefs))
   } catch {
     // Storage unavailable: the layout just isn't remembered.
@@ -33,4 +35,10 @@ export function columnView(fields: { name: string }[], prefs: ColumnPrefs): numb
     .filter((f) => !hidden.has(f.name))
     .sort((a, b) => (rank.get(a.name) ?? 1e6 + a.i) - (rank.get(b.name) ?? 1e6 + b.i))
     .map((f) => f.i)
+}
+
+/** How many leading columns of the view are pinned. */
+export function pinnedCount(view: number[], fields: { name: string }[], prefs: ColumnPrefs): number {
+  if (!prefs.pinned) return 0
+  return view.findIndex((i) => fields[i]?.name === prefs.pinned) + 1
 }

@@ -20,6 +20,8 @@ import {
   Trash2,
   Undo2,
   Upload,
+  Pin,
+  PinOff,
 } from 'lucide-react'
 import {
   cellToText,
@@ -45,7 +47,7 @@ import { Badge, Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Spinner } from '@/components/ui/Spinner'
 import { api } from '@/lib/api'
-import { columnView, loadColumnPrefs, saveColumnPrefs, type ColumnPrefs } from '@/lib/columnPrefs'
+import { columnView, loadColumnPrefs, pinnedCount, saveColumnPrefs, type ColumnPrefs } from '@/lib/columnPrefs'
 import { copyText, errorMessage, formatCount, formatDuration, uid } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
@@ -549,6 +551,8 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
         { label: t('Copy column name'), icon: <Copy size={13} />, onClick: () => void copyText(name) },
         'separator',
         { label: t('Hide column'), icon: <EyeOff size={13} />, disabled: view.length <= 1, onClick: () => updateColumnPrefs({ hidden: [...(columnPrefs.hidden ?? []), name] }) },
+        { label: t('Pin columns up to here'), icon: <Pin size={13} />, disabled: columnPrefs.pinned === name, onClick: () => updateColumnPrefs({ pinned: name }) },
+        ...(columnPrefs.pinned ? [{ label: t('Unpin columns'), icon: <PinOff size={13} />, onClick: () => updateColumnPrefs({ pinned: undefined }) }] : []),
         { label: t('Move left'), disabled: view[0] === pos.col, onClick: () => moveColumn(name, -1) },
         { label: t('Move right'), disabled: view.at(-1) === pos.col, onClick: () => moveColumn(name, 1) },
         { label: t('Copy column values'), onClick: () => sel && void copyText(selectionToTsv(viewFields, viewRows, sel)) },
@@ -828,6 +832,7 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
               fields={viewFields}
               rows={viewRows}
               columnMeta={viewMeta}
+              pinnedColumns={pinnedCount(view, fields, columnPrefs)}
               columnWidths={columnPrefs.widths}
               onColumnWidthsChange={(widths) => updateColumnPrefs({ widths: { ...columnPrefs.widths, ...widths } })}
               rowNumberOffset={offset}

@@ -60,7 +60,7 @@ project's (AI) maintainer and updated with every release.
 
 ### Table data browser
 - ✅ Virtualized data grid (millions of rows via paging, smooth scrolling, no row limits)
-- ✅ Column resize (double-click to auto-fit), reorder, hide; remembered per table (pinning ⬜)
+- ✅ Column resize (double-click to auto-fit), reorder, hide, pin (freeze) leading columns; remembered per table
 - ✅ Sort by multiple columns
 - ✅ **Advanced filter builder** — nested AND/OR groups, 20+ operators (equals, contains, starts with,
   regex, in list, between, is null, is empty, date ranges like "last 7 days"…), per-column quick filters,
