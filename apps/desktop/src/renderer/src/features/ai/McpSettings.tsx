@@ -4,12 +4,14 @@ import { Checkbox } from '@/components/ui/Input'
 import { copyText } from '@/lib/utils'
 import { useSettings } from '@/store/settings'
 import { toast } from '@/store/ui'
+import { useT } from '@/lib/i18n'
 
 export function McpSettingsSection() {
   const settings = useSettings((s) => s.settings)!
   const update = useSettings((s) => s.update)
   const info = useSettings((s) => s.info)
   const mcp = settings.mcp
+  const t = useT()
   const command = info?.mcpCommand.command ?? 'dbmastermind'
   const args = info?.mcpCommand.args ?? ['--mcp']
   const quoted = [command, ...args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ')
@@ -21,15 +23,15 @@ export function McpSettingsSection() {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-[12.5px] leading-relaxed text-fg-muted">
-        The MCP server lets AI agents (Claude Code, Codex, Cursor, Claude Desktop…) explore your databases through DB Mastermind: list tables, read
-        the schema and knowledge base, and run <b>read-only</b> queries. It uses the connections saved in this app
-        {info?.portable ? ' (portable data folder)' : ''}, and only those with AI enabled.
+        {info?.portable
+          ? t('The MCP server lets AI agents (Claude Code, Codex, Cursor, Claude Desktop…) explore your databases through DB Mastermind: list tables, read the schema and knowledge base, and run read-only queries. It uses the connections saved in this app (portable data folder), and only those with AI enabled.')
+          : t('The MCP server lets AI agents (Claude Code, Codex, Cursor, Claude Desktop…) explore your databases through DB Mastermind: list tables, read the schema and knowledge base, and run read-only queries. It uses the connections saved in this app, and only those with AI enabled.')}
       </p>
       <Checkbox
         checked={mcp.allowWrites}
         onChange={(allowWrites) => void update({ mcp: { ...mcp, allowWrites } })}
-        label="Allow agents to run write statements"
-        hint="Off by default. Read-only connections stay read-only either way."
+        label={t('Allow agents to run write statements')}
+        hint={t('Off by default. Read-only connections stay read-only either way.')}
       />
       {snippets.map(([label, code]) => (
         <div key={label} className="flex flex-col gap-1">
@@ -41,18 +43,18 @@ export function McpSettingsSection() {
               icon={<Copy size={11} />}
               onClick={() => {
                 void copyText(code)
-                toast({ kind: 'success', message: 'Copied' })
+                toast({ kind: 'success', message: t('Copied') })
               }}
             >
-              Copy
+              {t('Copy')}
             </Button>
           </div>
           <pre className="overflow-auto rounded-md bg-subtle p-2.5 font-mono text-[11.5px] whitespace-pre select-text">{code}</pre>
         </div>
       ))}
       <p className="text-[11.5px] text-fg-faint">
-        The agent starts DB Mastermind in the background without a window, so it can use the passwords stored in your keychain. If you move the
-        app, update the path. Headless servers can use the standalone <code>npx dbmastermind-mcp --url …</code> instead.
+        {t('The agent starts DB Mastermind in the background without a window, so it can use the passwords stored in your keychain. If you move the app, update the path. Headless servers can use the standalone')}{' '}
+        <code>npx dbmastermind-mcp --url …</code> {t('instead.')}
       </p>
     </div>
   )

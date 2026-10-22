@@ -13,6 +13,7 @@ import {
 import { Button, IconButton } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { cn } from '@/lib/utils'
+import { useT } from '@/lib/i18n'
 
 export function newCondition(column: string, operator: FilterOperator = 'eq', value = ''): FilterCondition {
   return { kind: 'condition', id: newFilterId(), column, operator, value }
@@ -38,17 +39,18 @@ interface Props {
 
 export function FilterBuilder({ value, columns, supportsRegex, onChange, onApply, onClear }: Props) {
   const ctx = { columns, supportsRegex, onApply, root: value, onChange }
+  const t = useT()
   return (
     <div className="flex flex-col gap-1.5 border-b border-line bg-subtle px-3 py-2">
       <GroupView group={value} depth={0} ctx={ctx} />
       <div className="flex items-center gap-2 pt-0.5">
         <Button size="xs" variant="primary" onClick={onApply}>
-          Apply
+          {t('Apply')}
         </Button>
         <Button size="xs" variant="ghost" onClick={onClear}>
-          Clear all
+          {t('Clear all')}
         </Button>
-        <span className="ml-auto text-[11px] text-fg-faint">Enter applies · shift-click a column header to sort by several columns</span>
+        <span className="ml-auto text-[11px] text-fg-faint">{t('Enter applies · shift-click a column header to sort by several columns')}</span>
       </div>
     </div>
   )
@@ -65,23 +67,24 @@ interface Ctx {
 function GroupView({ group, depth, ctx }: { group: FilterGroup; depth: number; ctx: Ctx }) {
   const set = (fn: (node: FilterNode) => FilterNode | null, id = group.id) => ctx.onChange(updateNode(ctx.root, id, fn))
   const firstColumn = ctx.columns[0]?.name ?? ''
+  const t = useT()
   const add = (node: FilterNode) => set((g) => ({ ...(g as FilterGroup), children: [...(g as FilterGroup).children, node] }))
 
   return (
     <div className={cn('flex flex-col gap-1.5', depth > 0 && 'rounded-md border border-dashed border-line-strong bg-bg/50 p-2')}>
       {group.children.length === 0 && depth === 0 && (
-        <div className="text-[12px] text-fg-faint">No conditions. Add one below.</div>
+        <div className="text-[12px] text-fg-faint">{t('No conditions. Add one below.')}</div>
       )}
       {group.children.map((child, i) => (
         <div key={child.id} className="flex items-start gap-1.5">
           <div className="flex h-7 w-[52px] shrink-0 items-center justify-end">
             {i === 0 ? (
-              <span className="pr-1 text-[11.5px] text-fg-faint">{depth === 0 ? 'where' : ''}</span>
+              <span className="pr-1 text-[11.5px] text-fg-faint">{depth === 0 ? t('where') : ''}</span>
             ) : i === 1 ? (
               <button
                 type="button"
                 className="h-6 rounded px-1.5 text-[11px] font-semibold text-accent uppercase hover:bg-accent-soft"
-                title="Switch between AND / OR"
+                title={t('Switch between AND / OR')}
                 onClick={() => set((g) => ({ ...(g as FilterGroup), combinator: (g as FilterGroup).combinator === 'and' ? 'or' : 'and' }))}
               >
                 {group.combinator}
@@ -96,7 +99,7 @@ function GroupView({ group, depth, ctx }: { group: FilterGroup; depth: number; c
                 <div className="min-w-0 flex-1">
                   <GroupView group={child} depth={depth + 1} ctx={ctx} />
                 </div>
-                <IconButton label="Remove group" onClick={() => set(() => null, child.id)}>
+                <IconButton label={t('Remove group')} onClick={() => set(() => null, child.id)}>
                   <X size={13} />
                 </IconButton>
               </div>
@@ -106,12 +109,12 @@ function GroupView({ group, depth, ctx }: { group: FilterGroup; depth: number; c
                 <Input
                   inputSize="sm"
                   className="flex-1 font-mono text-[12px]"
-                  placeholder="raw SQL condition, e.g. total > discount * 2"
+                  placeholder={t('raw SQL condition, e.g. total > discount * 2')}
                   value={child.sql}
                   onChange={(e) => set((n) => ({ ...n, sql: e.target.value }) as FilterNode, child.id)}
                   onKeyDown={(e) => e.key === 'Enter' && ctx.onApply()}
                 />
-                <IconButton label="Remove condition" onClick={() => set(() => null, child.id)}>
+                <IconButton label={t('Remove condition')} onClick={() => set(() => null, child.id)}>
                   <Trash2 size={13} />
                 </IconButton>
               </div>
@@ -128,7 +131,7 @@ function GroupView({ group, depth, ctx }: { group: FilterGroup; depth: number; c
       ))}
       <div className="flex gap-1 pl-[58px]">
         <Button size="xs" variant="ghost" icon={<Plus size={12} />} onClick={() => add(newCondition(firstColumn))}>
-          Condition
+          {t('Condition')}
         </Button>
         <Button
           size="xs"
@@ -136,10 +139,10 @@ function GroupView({ group, depth, ctx }: { group: FilterGroup; depth: number; c
           icon={<FolderPlus size={12} />}
           onClick={() => add({ kind: 'group', id: newFilterId(), combinator: group.combinator === 'and' ? 'or' : 'and', children: [newCondition(firstColumn)] })}
         >
-          Group
+          {t('Group')}
         </Button>
         <Button size="xs" variant="ghost" icon={<Braces size={12} />} onClick={() => add({ kind: 'raw', id: newFilterId(), sql: '' })}>
-          Raw SQL
+          {t('Raw SQL')}
         </Button>
       </div>
     </div>
@@ -147,10 +150,11 @@ function GroupView({ group, depth, ctx }: { group: FilterGroup; depth: number; c
 }
 
 function EnabledToggle({ node, onToggle }: { node: FilterNode; onToggle: (enabled: boolean) => void }) {
+  const t = useT()
   return (
     <input
       type="checkbox"
-      title="Enable / disable this condition"
+      title={t('Enable / disable this condition')}
       className="h-3.5 w-3.5 shrink-0 accent-[var(--accent)]"
       checked={node.enabled !== false}
       onChange={(e) => onToggle(e.target.checked)}
@@ -177,6 +181,7 @@ function ConditionRow({
   )
   const meta = OPERATORS.find((o) => o.id === condition.operator)
   const inputType = family === 'date' && /^date$/i.test(column?.dataType ?? '') ? 'date' : 'text'
+  const t = useT()
   const onKey = (e: React.KeyboardEvent) => e.key === 'Enter' && ctx.onApply()
 
   return (
@@ -207,7 +212,7 @@ function ConditionRow({
       >
         {operators.map((o) => (
           <option key={o.id} value={o.id}>
-            {o.label}
+            {t(o.label)}
           </option>
         ))}
       </Select>
@@ -216,7 +221,7 @@ function ConditionRow({
           inputSize="sm"
           className="min-w-[120px] flex-1 font-mono text-[12px]"
           type={condition.operator === 'last_n_days' ? 'number' : inputType}
-          placeholder={condition.operator === 'last_n_days' ? 'days' : 'value'}
+          placeholder={condition.operator === 'last_n_days' ? t('days') : t('value')}
           value={condition.value ?? ''}
           onChange={(e) => onChange({ ...condition, value: e.target.value })}
           onKeyDown={onKey}
@@ -228,17 +233,17 @@ function ConditionRow({
             inputSize="sm"
             className="min-w-[90px] flex-1 font-mono text-[12px]"
             type={inputType}
-            placeholder="from"
+            placeholder={t('from')}
             value={condition.value ?? ''}
             onChange={(e) => onChange({ ...condition, value: e.target.value })}
             onKeyDown={onKey}
           />
-          <span className="text-[11.5px] text-fg-faint">and</span>
+          <span className="text-[11.5px] text-fg-faint">{t('and')}</span>
           <Input
             inputSize="sm"
             className="min-w-[90px] flex-1 font-mono text-[12px]"
             type={inputType}
-            placeholder="to"
+            placeholder={t('to')}
             value={condition.value2 ?? ''}
             onChange={(e) => onChange({ ...condition, value2: e.target.value })}
             onKeyDown={onKey}
@@ -249,7 +254,7 @@ function ConditionRow({
         <Input
           inputSize="sm"
           className="min-w-[120px] flex-1 font-mono text-[12px]"
-          placeholder="comma or newline separated values"
+          placeholder={t('comma or newline separated values')}
           value={(condition.values ?? []).join(',')}
           onChange={(e) =>
             onChange({
@@ -261,7 +266,7 @@ function ConditionRow({
         />
       )}
       {meta?.arity === 0 && <div className="flex-1" />}
-      <IconButton label="Remove condition" onClick={onRemove}>
+      <IconButton label={t('Remove condition')} onClick={onRemove}>
         <Trash2 size={13} />
       </IconButton>
     </div>

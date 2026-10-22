@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { IconButton } from './Button'
+import { t } from '@/lib/i18n'
 
 export function Modal({
   open,
@@ -63,7 +64,7 @@ export function Modal({
         {title && (
           <div className="flex h-11 shrink-0 items-center justify-between border-b border-line pr-2 pl-4">
             <h2 className="text-[14px] font-semibold">{title}</h2>
-            <IconButton label="Close" onClick={onClose}>
+            <IconButton label={t('Close')} onClick={onClose}>
               <X size={15} />
             </IconButton>
           </div>

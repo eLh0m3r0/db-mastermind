@@ -25,6 +25,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import { copyText, cn, formatCount, fuzzyScore } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useWorkspace } from '@/store/workspace'
+import { useT } from '@/lib/i18n'
 
 type Node =
   | { kind: 'schema'; key: string; name: string; count: number; depth: 0 }
@@ -70,6 +71,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [collapsedSchemas, setCollapsedSchemas] = useState<Set<string>>(() => new Set())
   const scrollRef = useRef<HTMLDivElement>(null)
+  const tr = useT()
 
   const toggle = (key: string) =>
     setExpanded((prev) => {
@@ -145,13 +147,13 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
   const tableMenu = (e: React.MouseEvent, t: TableInfo) => {
     const d = getDialect(connection.driver)
     openMenu(e, [
-      { label: 'Open data', icon: <Table2 size={13} />, onClick: () => openTable(t) },
-      { label: 'Open structure', icon: <Layers size={13} />, onClick: () => openTab({ kind: 'structure', connectionId: connection.id, table: { schema: t.schema, name: t.name }, title: `${t.name} · structure` }) },
-      { label: 'Show in diagram', icon: <Network size={13} />, onClick: () => openTab({ kind: 'diagram', connectionId: connection.id, title: `Diagram: ${t.name}`, focus: t.name }) },
+      { label: tr('Open data'), icon: <Table2 size={13} />, onClick: () => openTable(t) },
+      { label: tr('Open structure'), icon: <Layers size={13} />, onClick: () => openTab({ kind: 'structure', connectionId: connection.id, table: { schema: t.schema, name: t.name }, title: tr('{name} · structure', { name: t.name }) }) },
+      { label: tr('Show in diagram'), icon: <Network size={13} />, onClick: () => openTab({ kind: 'diagram', connectionId: connection.id, title: tr('Diagram: {name}', { name: t.name }), focus: t.name }) },
       'separator',
-      { label: 'New query: SELECT', icon: <TerminalSquare size={13} />, onClick: () => newQuery(connection.id, generateSql('select', t, connection), t.name) },
+      { label: tr('New query: SELECT'), icon: <TerminalSquare size={13} />, onClick: () => newQuery(connection.id, generateSql('select', t, connection), t.name) },
       {
-        label: 'Generate SQL',
+        label: tr('Generate SQL'),
         icon: <FileCode2 size={13} />,
         submenu: (['select', 'insert', 'update', 'delete', 'count'] as const).map((k) => ({
           label: k.toUpperCase(),
@@ -159,9 +161,9 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
         })),
       },
       'separator',
-      { label: 'Copy name', icon: <Copy size={13} />, onClick: () => void copyText(t.name) },
-      { label: 'Copy qualified name', onClick: () => void copyText(qualify(d, { schema: t.schema, name: t.name })) },
-      { label: 'Copy column list', onClick: () => void copyText(t.columns.map((c) => d.quoteIdent(c.name)).join(', ')) },
+      { label: tr('Copy name'), icon: <Copy size={13} />, onClick: () => void copyText(t.name) },
+      { label: tr('Copy qualified name'), onClick: () => void copyText(qualify(d, { schema: t.schema, name: t.name })) },
+      { label: tr('Copy column list'), onClick: () => void copyText(t.columns.map((c) => d.quoteIdent(c.name)).join(', ')) },
     ])
   }
 
@@ -172,13 +174,13 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
           <>
             <span className="text-danger">{runtime.schemaError}</span>
             <button type="button" className="text-accent hover:underline" onClick={() => void loadSchema(connection.id, true)}>
-              Retry
+              {tr('Retry')}
             </button>
           </>
         ) : (
           <>
             <Spinner size={16} />
-            Loading schema…
+            {tr('Loading schema…')}
           </>
         )}
       </div>
@@ -191,7 +193,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
         <Input
           inputSize="sm"
           className="flex-1"
-          placeholder={`Filter ${formatCount(schema.tables.length)} tables…`}
+          placeholder={tr('Filter {n} tables…', { n: formatCount(schema.tables.length) })}
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           onKeyDown={(e) => {
@@ -204,7 +206,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
           leading={<Search size={12} />}
           data-sidebar-filter
         />
-        <IconButton label="Refresh schema (F5)" onClick={() => void loadSchema(connection.id, true)}>
+        <IconButton label={`${tr('Refresh schema')} (F5)`} onClick={() => void loadSchema(connection.id, true)}>
           <RefreshCw size={13} className={runtime?.schemaLoading ? 'animate-spin' : ''} />
         </IconButton>
       </div>
@@ -243,7 +245,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
               return (
                 <div key={node.key} className={cn(rowClass, 'text-[11px] font-semibold tracking-wide text-fg-faint uppercase')} style={style} onClick={() => toggle(`${node.groupKey}:collapsed`)}>
                   <ChevronRight size={11} className={cn('shrink-0 transition-transform', !collapsed && 'rotate-90')} />
-                  <span>{node.label}</span>
+                  <span>{tr(node.label)}</span>
                   <span className="ml-auto font-normal">{node.count}</span>
                 </div>
               )
@@ -256,7 +258,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
                   key={node.key}
                   className={rowClass}
                   style={style}
-                  title={[t.schema ? `${t.schema}.${t.name}` : t.name, t.comment, t.rowEstimate != null && t.rowEstimate >= 0 ? `≈ ${formatCount(t.rowEstimate)} rows` : null].filter(Boolean).join('\n')}
+                  title={[t.schema ? `${t.schema}.${t.name}` : t.name, t.comment, t.rowEstimate != null && t.rowEstimate >= 0 ? tr('≈ {n} rows', { n: formatCount(t.rowEstimate) }) : null].filter(Boolean).join('\n')}
                   onClick={() => openTable(t)}
                   onContextMenu={(e) => tableMenu(e, t)}
                   draggable
@@ -269,7 +271,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
                       e.stopPropagation()
                       toggle(node.key)
                     }}
-                    aria-label={open ? 'Collapse' : 'Expand'}
+                    aria-label={open ? tr('Collapse') : tr('Expand')}
                   >
                     <ChevronRight size={12} className={cn('transition-transform', open && 'rotate-90')} />
                   </button>
@@ -289,13 +291,13 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
                   key={node.key}
                   className={cn(rowClass, 'text-fg-muted')}
                   style={style}
-                  title={[`${c.name} ${c.dataType}${c.nullable ? '' : ' NOT NULL'}`, c.defaultValue ? `default ${c.defaultValue}` : null, fk ? `→ ${fk.refTable}.${fk.refColumns.join(', ')}` : null, c.comment].filter(Boolean).join('\n')}
+                  title={[`${c.name} ${c.dataType}${c.nullable ? '' : ' NOT NULL'}`, c.defaultValue ? `${tr('default')} ${c.defaultValue}` : null, fk ? `→ ${fk.refTable}.${fk.refColumns.join(', ')}` : null, c.comment].filter(Boolean).join('\n')}
                   onDoubleClick={() => void copyText(c.name)}
                   onContextMenu={(e) =>
                     openMenu(e, [
-                      { label: 'Copy name', icon: <Copy size={13} />, onClick: () => void copyText(c.name) },
+                      { label: tr('Copy name'), icon: <Copy size={13} />, onClick: () => void copyText(c.name) },
                       ...(fk
-                        ? [{ label: `Open ${fk.refTable}`, icon: <Link2 size={13} />, onClick: () => openTab({ kind: 'table', connectionId: connection.id, table: { schema: fk.refSchema, name: fk.refTable }, title: fk.refTable }) }]
+                        ? [{ label: tr('Open {table}', { table: fk.refTable }), icon: <Link2 size={13} />, onClick: () => openTab({ kind: 'table', connectionId: connection.id, table: { schema: fk.refSchema, name: fk.refTable }, title: fk.refTable }) }]
                         : []),
                     ])
                   }
@@ -320,7 +322,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
             )
           })}
         </div>
-        {nodes.length === 0 && <div className="p-4 text-center text-[12px] text-fg-faint">{filter ? 'No matches' : 'No tables'}</div>}
+        {nodes.length === 0 && <div className="p-4 text-center text-[12px] text-fg-faint">{filter ? tr('No matches') : tr('No tables')}</div>}
       </div>
     </div>
   )

@@ -6,12 +6,13 @@ import { Input } from '@/components/ui/Input'
 import { api } from '@/lib/api'
 import { copyText, cn, formatDuration, fuzzyScore } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
+import { t, tp, useT } from '@/lib/i18n'
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
-  if (diff < 60_000) return 'just now'
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min ago`
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} h ago`
+  if (diff < 60_000) return t('just now')
+  if (diff < 3_600_000) return t('{n} min ago', { n: Math.floor(diff / 60_000) })
+  if (diff < 86_400_000) return t('{n} h ago', { n: Math.floor(diff / 3_600_000) })
   return new Date(iso).toLocaleDateString()
 }
 
@@ -24,16 +25,17 @@ export function openSql(connectionId: string, sql: string, title?: string) {
 export function HistoryPanel({ connectionId }: { connectionId: string }) {
   const [entries, setEntries] = useState<HistoryEntry[]>([])
   const [search, setSearch] = useState('')
+  const t = useT()
   const load = useCallback(() => void api.listHistory(connectionId, search, 300).then(setEntries), [connectionId, search])
   useEffect(() => {
     load()
-    const t = setInterval(load, 3000)
-    return () => clearInterval(t)
+    const timer = setInterval(load, 3000)
+    return () => clearInterval(timer)
   }, [load])
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="px-2 pb-1.5">
-        <Input inputSize="sm" placeholder="Search history…" value={search} onChange={(e) => setSearch(e.target.value)} leading={<Search size={12} />} />
+        <Input inputSize="sm" placeholder={t('Search history…')} value={search} onChange={(e) => setSearch(e.target.value)} leading={<Search size={12} />} />
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-1 pb-2">
         {entries.map((h) => (
@@ -44,8 +46,8 @@ export function HistoryPanel({ connectionId }: { connectionId: string }) {
             onClick={() => openSql(connectionId, h.sql)}
             onContextMenu={(e) =>
               openMenu(e, [
-                { label: 'Open in new tab', icon: <FileText size={13} />, onClick: () => openSql(connectionId, h.sql) },
-                { label: 'Copy SQL', icon: <Copy size={13} />, onClick: () => void copyText(h.sql) },
+                { label: t('Open in new tab'), icon: <FileText size={13} />, onClick: () => openSql(connectionId, h.sql) },
+                { label: t('Copy SQL'), icon: <Copy size={13} />, onClick: () => void copyText(h.sql) },
               ])
             }
             title={h.sql}
@@ -55,21 +57,21 @@ export function HistoryPanel({ connectionId }: { connectionId: string }) {
               {h.error && <XCircle size={10} className="text-danger" />}
               {relativeTime(h.executedAt)}
               {h.durationMs > 0 && <span>· {formatDuration(h.durationMs)}</span>}
-              {h.rowCount !== undefined && h.rowCount !== null && <span>· {h.rowCount} rows</span>}
+              {h.rowCount !== undefined && h.rowCount !== null && <span>· {tp(h.rowCount, { one: '{n} row', many: '{n} rows' })}</span>}
             </span>
           </button>
         ))}
-        {entries.length === 0 && <div className="p-4 text-center text-[12px] text-fg-faint">{search ? 'No matches' : 'Queries you run appear here.'}</div>}
+        {entries.length === 0 && <div className="p-4 text-center text-[12px] text-fg-faint">{search ? t('No matches') : t('Queries you run appear here.')}</div>}
       </div>
       {entries.length > 0 && (
         <button
           type="button"
           className="m-2 mt-0 h-7 rounded-md text-[12px] text-fg-muted hover:bg-hover hover:text-fg"
           onClick={() => {
-            if (window.confirm('Clear query history for this connection?')) void api.clearHistory(connectionId).then(load)
+            if (window.confirm(t('Clear query history for this connection?'))) void api.clearHistory(connectionId).then(load)
           }}
         >
-          Clear history
+          {t('Clear history')}
         </button>
       )}
     </div>
@@ -80,11 +82,12 @@ export function SavedQueriesPanel({ connectionId }: { connectionId: string }) {
   const [queries, setQueries] = useState<SavedQuery[]>([])
   const [search, setSearch] = useState('')
   const openTab = useWorkspace((s) => s.open)
+  const t = useT()
   const load = useCallback(() => void api.listSavedQueries().then(setQueries), [])
   useEffect(() => {
     load()
-    const t = setInterval(load, 4000)
-    return () => clearInterval(t)
+    const timer = setInterval(load, 4000)
+    return () => clearInterval(timer)
   }, [load])
   const grouped = useMemo(() => {
     const q = search.trim()
@@ -103,7 +106,7 @@ export function SavedQueriesPanel({ connectionId }: { connectionId: string }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="px-2 pb-1.5">
-        <Input inputSize="sm" placeholder="Search saved queries…" value={search} onChange={(e) => setSearch(e.target.value)} leading={<Search size={12} />} />
+        <Input inputSize="sm" placeholder={t('Search saved queries…')} value={search} onChange={(e) => setSearch(e.target.value)} leading={<Search size={12} />} />
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-1 pb-2">
         {grouped.map(([folder, items]) => (
@@ -118,15 +121,15 @@ export function SavedQueriesPanel({ connectionId }: { connectionId: string }) {
                 title={q.sql}
                 onContextMenu={(e) =>
                   openMenu(e, [
-                    { label: 'Open', icon: <FileText size={13} />, onClick: () => open(q) },
-                    { label: 'Copy SQL', icon: <Copy size={13} />, onClick: () => void copyText(q.sql) },
+                    { label: t('Open'), icon: <FileText size={13} />, onClick: () => open(q) },
+                    { label: t('Copy SQL'), icon: <Copy size={13} />, onClick: () => void copyText(q.sql) },
                     'separator',
                     {
-                      label: 'Delete',
+                      label: t('Delete'),
                       icon: <Trash2 size={13} />,
                       danger: true,
                       onClick: () => {
-                        if (window.confirm(`Delete saved query “${q.name}”?`)) void api.deleteSavedQuery(q.id).then(load)
+                        if (window.confirm(t('Delete saved query “{name}”?', { name: q.name }))) void api.deleteSavedQuery(q.id).then(load)
                       },
                     },
                   ])
@@ -139,7 +142,7 @@ export function SavedQueriesPanel({ connectionId }: { connectionId: string }) {
           </div>
         ))}
         {grouped.length === 0 && (
-          <div className="p-4 text-center text-[12px] text-fg-faint">{search ? 'No matches' : 'Save a query with ⌘S to keep it here.'}</div>
+          <div className="p-4 text-center text-[12px] text-fg-faint">{search ? t('No matches') : t('Save a query with ⌘S to keep it here.')}</div>
         )}
       </div>
     </div>

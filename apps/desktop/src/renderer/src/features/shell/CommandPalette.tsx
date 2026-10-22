@@ -12,6 +12,7 @@ import { useUi } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
 import { DriverIcon } from '../connections/drivers'
 import { connectAndSelect, useCurrentConnectionId } from '../sidebar/Sidebar'
+import { useT } from '@/lib/i18n'
 
 export function CommandPalette() {
   const mode = useUi((s) => s.palette)
@@ -21,6 +22,7 @@ export function CommandPalette() {
   const connections = useConnections((s) => s.list)
   const openTab = useWorkspace((s) => s.open)
   const [search, setSearch] = useState('')
+  const t = useT()
   const close = () => {
     setUi({ palette: undefined })
     setSearch('')
@@ -47,22 +49,22 @@ export function CommandPalette() {
   const dark = useSettings.getState().dark
 
   const commands: { id: string; label: string; icon: React.ReactNode; shortcut?: string; run: () => void; needsConnection?: boolean }[] = [
-    { id: 'new-query', label: 'New query tab', icon: <TerminalSquare size={14} />, shortcut: `${modKey}T`, run: () => runCommand('new-query'), needsConnection: true },
-    { id: 'new-connection', label: 'New connection…', icon: <Plus size={14} />, run: () => setUi({ modal: { kind: 'connection' } }) },
-    { id: 'diagram', label: 'Open ER diagram', icon: <Network size={14} />, run: () => connectionId && openTab({ kind: 'diagram', connectionId, title: 'ER diagram' }), needsConnection: true },
-    { id: 'knowledge', label: 'Open knowledge base', icon: <BookOpen size={14} />, run: () => connectionId && openTab({ kind: 'knowledge', connectionId, title: 'Knowledge base' }), needsConnection: true },
-    { id: 'refresh', label: 'Refresh schema', icon: <RefreshCw size={14} />, shortcut: 'F5', run: () => runCommand('refresh-schema'), needsConnection: true },
-    { id: 'ai', label: 'Toggle AI assistant', icon: <Sparkles size={14} />, shortcut: `${modKey}J`, run: () => runCommand('toggle-ai') },
-    { id: 'sidebar', label: 'Toggle sidebar', icon: <Eye size={14} />, shortcut: `${modKey}B`, run: () => runCommand('toggle-sidebar') },
-    { id: 'theme', label: dark ? 'Switch to light theme' : 'Switch to dark theme', icon: dark ? <Sun size={14} /> : <Moon size={14} />, run: () => void useSettings.getState().update({ theme: dark ? 'light' : 'dark' }) },
-    { id: 'settings', label: 'Settings…', icon: <Settings size={14} />, shortcut: `${modKey},`, run: () => setUi({ modal: { kind: 'settings' } }) },
-    { id: 'disconnect', label: 'Disconnect', icon: <Unplug size={14} />, run: () => runCommand('disconnect'), needsConnection: true },
+    { id: 'new-query', label: t('New query tab'), icon: <TerminalSquare size={14} />, shortcut: `${modKey}T`, run: () => runCommand('new-query'), needsConnection: true },
+    { id: 'new-connection', label: t('New connection…'), icon: <Plus size={14} />, run: () => setUi({ modal: { kind: 'connection' } }) },
+    { id: 'diagram', label: t('Open ER diagram'), icon: <Network size={14} />, run: () => connectionId && openTab({ kind: 'diagram', connectionId, title: t('ER diagram') }), needsConnection: true },
+    { id: 'knowledge', label: t('Open knowledge base'), icon: <BookOpen size={14} />, run: () => connectionId && openTab({ kind: 'knowledge', connectionId, title: t('Knowledge base') }), needsConnection: true },
+    { id: 'refresh', label: t('Refresh schema'), icon: <RefreshCw size={14} />, shortcut: 'F5', run: () => runCommand('refresh-schema'), needsConnection: true },
+    { id: 'ai', label: t('Toggle AI assistant'), icon: <Sparkles size={14} />, shortcut: `${modKey}J`, run: () => runCommand('toggle-ai') },
+    { id: 'sidebar', label: t('Toggle sidebar'), icon: <Eye size={14} />, shortcut: `${modKey}B`, run: () => runCommand('toggle-sidebar') },
+    { id: 'theme', label: dark ? t('Switch to light theme') : t('Switch to dark theme'), icon: dark ? <Sun size={14} /> : <Moon size={14} />, run: () => void useSettings.getState().update({ theme: dark ? 'light' : 'dark' }) },
+    { id: 'settings', label: t('Settings…'), icon: <Settings size={14} />, shortcut: `${modKey},`, run: () => setUi({ modal: { kind: 'settings' } }) },
+    { id: 'disconnect', label: t('Disconnect'), icon: <Unplug size={14} />, run: () => runCommand('disconnect'), needsConnection: true },
   ]
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/25 pt-[12vh] dark:bg-black/45" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <Command
-        label="Command palette"
+        label={t('Command palette')}
         shouldFilter={mode === 'commands'}
         className="w-[600px] max-w-[92vw] overflow-hidden rounded-xl border border-line bg-elevated shadow-pop"
         onKeyDown={(e) => e.key === 'Escape' && close()}
@@ -71,13 +73,13 @@ export function CommandPalette() {
           autoFocus
           value={search}
           onValueChange={setSearch}
-          placeholder={mode === 'tables' ? 'Open table…' : 'Type a command or table name…'}
+          placeholder={mode === 'tables' ? t('Open table…') : t('Type a command or table name…')}
           className="h-12 w-full border-b border-line bg-transparent px-4 text-[14px] outline-none placeholder:text-fg-faint"
         />
         <Command.List className="max-h-[420px] overflow-auto p-1.5 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-fg-faint [&_[cmdk-group-heading]]:uppercase">
-          <Command.Empty className="p-6 text-center text-[12.5px] text-fg-faint">No results</Command.Empty>
+          <Command.Empty className="p-6 text-center text-[12.5px] text-fg-faint">{t('No results')}</Command.Empty>
           {tables.length > 0 && connectionId && (
-            <Command.Group heading="Tables">
+            <Command.Group heading={t('Tables')}>
               {tables.map((t) => (
                 <Item
                   key={`${t.schema}.${t.name}`}
@@ -92,14 +94,14 @@ export function CommandPalette() {
           )}
           {mode === 'commands' && (
             <>
-              <Command.Group heading="Commands">
+              <Command.Group heading={t('Commands')}>
                 {commands
                   .filter((c) => !c.needsConnection || connectionId)
                   .map((c) => (
                     <Item key={c.id} value={c.label} onSelect={() => run(c.run)} icon={c.icon} label={c.label} shortcut={c.shortcut} />
                   ))}
               </Command.Group>
-              <Command.Group heading="Connections">
+              <Command.Group heading={t('Connections')}>
                 {connections.map((c) => (
                   <Item key={c.id} value={`connect ${c.name}`} onSelect={() => run(() => void connectAndSelect(c.id))} icon={<DriverIcon driver={c.driver} size={14} />} label={c.name} hint={<Plug size={12} />} />
                 ))}

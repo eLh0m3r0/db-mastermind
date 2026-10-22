@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { cellToText, columnFamily, type CellValue, type ResultField } from '@dbmastermind/core/browser'
 import { Segmented, Select } from '@/components/ui/Input'
 import { cn, formatCount } from '@/lib/utils'
+import { useT } from '@/lib/i18n'
 
 export type ChartKind = 'bar' | 'line' | 'scatter'
 
@@ -121,6 +122,7 @@ export function ResultChart({
     return first > last ? [...rows].reverse() : rows
   }, [rows, fields, config.x])
   const data = ordered.slice(0, maxPoints)
+  const t = useT()
   const truncated = rows.length > data.length
   const series = config.ys.slice(0, MAX_SERIES)
   // Room above the plot for the legend when there are several series.
@@ -182,9 +184,9 @@ export function ResultChart({
           value={config.kind}
           onChange={(kind) => onConfigChange({ ...config, kind })}
           options={[
-            { value: 'bar', label: 'Bar' },
-            { value: 'line', label: 'Line' },
-            { value: 'scatter', label: 'Scatter' },
+            { value: 'bar', label: t('Bar') },
+            { value: 'line', label: t('Line') },
+            { value: 'scatter', label: t('Scatter') },
           ]}
         />
         <span className="text-fg-faint">X</span>
@@ -215,18 +217,18 @@ export function ResultChart({
         {(() => {
           const peaks = series.map((col) => Math.max(...data.map((r) => Math.abs(numeric(r[col] ?? null) ?? 0)), 0) || 1)
           return peaks.length > 1 && Math.max(...peaks) / Math.min(...peaks) > 10 ? (
-            <span className="text-warning" title="Series with very different magnitudes share one axis; chart them separately to compare shapes.">
-              Scales differ a lot: chart these separately
+            <span className="text-warning" title={t('Series with very different magnitudes share one axis; chart them separately to compare shapes.')}>
+              {t('Scales differ a lot: chart these separately')}
             </span>
           ) : null
         })()}
-        {truncated && <span className="ml-auto text-fg-faint">First {formatCount(data.length)} rows charted</span>}
+        {truncated && <span className="ml-auto text-fg-faint">{t('First {n} rows charted', { n: formatCount(data.length) })}</span>}
       </div>
       <div ref={ref} className="relative min-h-0 flex-1" onMouseLeave={() => setHover(null)}>
         {series.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-[12px] text-fg-faint">Pick at least one numeric column for Y.</div>
+          <div className="flex h-full items-center justify-center text-[12px] text-fg-faint">{t('Pick at least one numeric column for Y.')}</div>
         ) : (
-          <svg width={width} height={height} onMouseMove={onMove} className="block select-none" role="img" aria-label="Chart of query results">
+          <svg width={width} height={height} onMouseMove={onMove} className="block select-none" role="img" aria-label={t('Chart of query results')}>
             {yTicks.map((t) => (
               <g key={t}>
                 <line x1={PAD.left} x2={PAD.left + plotW} y1={yScale(t)} y2={yScale(t)} stroke="var(--border)" strokeWidth={1} />

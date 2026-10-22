@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { DesignTable, FilterNode, SortSpec, TableRef } from '@dbmastermind/core/browser'
 import { api } from '@/lib/api'
 import { debounce, uid } from '@/lib/utils'
+import { t } from '@/lib/i18n'
 
 interface BaseTab {
   id: string
@@ -167,7 +168,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     },
     newQuery(connectionId, sql = '', title) {
       const count = get().tabs.filter((t) => t.kind === 'query').length
-      return get().open({ kind: 'query', connectionId, title: title ?? `Query ${count + 1}`, sql }, { reuse: false })
+      return get().open({ kind: 'query', connectionId, title: title ?? t('Query {n}', { n: count + 1 }), sql }, { reuse: false })
     },
   }
 })

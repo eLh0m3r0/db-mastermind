@@ -41,7 +41,7 @@ import { Badge, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Spinner } from '@/components/ui/Spinner'
 import { api } from '@/lib/api'
-import { copyText, errorMessage, formatCount, formatDuration, plural, uid } from '@/lib/utils'
+import { copyText, errorMessage, formatCount, formatDuration, uid } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { toast } from '@/store/ui'
@@ -50,6 +50,7 @@ import { copyRowsAs, EXPORT_FORMATS } from '../results/copy'
 import { FilterBuilder, newCondition } from './FilterBuilder'
 import { ImportModal } from './ImportModal'
 import { RowDetails } from './RowDetails'
+import { tp, useT } from '@/lib/i18n'
 
 type EditValue = string | null
 
@@ -96,6 +97,7 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
   const [duration, setDuration] = useState<number | null>(null)
   const grid = useRef<DataGridHandle>(null)
   const runId = useRef<string | null>(null)
+  const t = useT()
 
   const appliedFilter = tab.filter
   const sort = tab.sort
@@ -179,7 +181,7 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
     void count()
   }, [active, countKey, count])
 
-  const confirmDiscard = () => pendingCount === 0 || window.confirm(`Discard ${plural(pendingCount, 'pending change')}?`)
+  const confirmDiscard = () => pendingCount === 0 || window.confirm(tp(pendingCount, { one: 'Discard {n} pending change?', many: 'Discard {n} pending changes?' }))
 
   const applyFilter = (group: FilterGroup = draft) => {
     if (!confirmDiscard()) return
@@ -331,7 +333,7 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
     try {
       setPreview(await api.previewChanges(tab.connectionId, tab.table, buildChanges()))
     } catch (err) {
-      toast({ kind: 'error', message: 'Could not build SQL', detail: errorMessage(err) })
+      toast({ kind: 'error', message: t('Could not build SQL'), detail: errorMessage(err) })
     }
   }
 
@@ -340,7 +342,7 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
     try {
       const affected = await api.applyChanges(tab.connectionId, tab.table, buildChanges())
       const n = affected.reduce((a, b) => a + b, 0)
-      toast({ kind: 'success', message: `Saved · ${plural(n, 'row')} affected` })
+      toast({ kind: 'success', message: tp(n, { one: 'Saved · {n} row affected', many: 'Saved · {n} rows affected' }) })
       setPreview(null)
       setPending(emptyPending())
       loadedKey.current = null
@@ -348,7 +350,7 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
       void load()
       void count()
     } catch (err) {
-      toast({ kind: 'error', message: 'Changes were rolled back', detail: errorMessage(err) })
+      toast({ kind: 'error', message: t('Changes were rolled back'), detail: errorMessage(err) })
     } finally {
       setSaving(false)
     }
@@ -410,22 +412,22 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
 
   const onContextMenu = (e: React.MouseEvent, pos: { row: number; col: number } | null, sel: GridSelection | null) => {
     if (!pos) {
-      openMenu(e, [{ label: 'Add row', icon: <Plus size={13} />, disabled: !editable, onClick: () => addRow() }])
+      openMenu(e, [{ label: t('Add row'), icon: <Plus size={13} />, disabled: !editable, onClick: () => addRow() }])
       return
     }
     if (pos.row === -1) {
       const name = fields[pos.col]?.name ?? ''
       openMenu(e, [
-        { label: 'Sort ascending', onClick: () => setSort([{ column: name, direction: 'asc' }]) },
-        { label: 'Sort descending', onClick: () => setSort([{ column: name, direction: 'desc' }]) },
-        { label: 'Clear sort', disabled: !sort?.length, onClick: () => setSort([]) },
+        { label: t('Sort ascending'), onClick: () => setSort([{ column: name, direction: 'asc' }]) },
+        { label: t('Sort descending'), onClick: () => setSort([{ column: name, direction: 'desc' }]) },
+        { label: t('Clear sort'), disabled: !sort?.length, onClick: () => setSort([]) },
         'separator',
-        { label: 'Filter by this column…', icon: <Filter size={13} />, onClick: () => {
+        { label: t('Filter by this column…'), icon: <Filter size={13} />, onClick: () => {
           setDraft((d) => ({ ...d, children: [...d.children, newCondition(name)] }))
           setShowFilters(true)
         } },
-        { label: 'Copy column name', icon: <Copy size={13} />, onClick: () => void copyText(name) },
-        { label: 'Copy column values', onClick: () => sel && void copyText(selectionToTsv(fields, displayRows, sel)) },
+        { label: t('Copy column name'), icon: <Copy size={13} />, onClick: () => void copyText(name) },
+        { label: t('Copy column values'), onClick: () => sel && void copyText(selectionToTsv(fields, displayRows, sel)) },
       ])
       return
     }
@@ -435,10 +437,10 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
     const fk = table?.foreignKeys.find((k) => k.columns.includes(colName))
     const incoming = schema && table ? incomingReferences(schema, table) : []
     const items: MenuItem[] = [
-      { label: 'Copy', shortcut: '⌘C', icon: <Copy size={13} />, onClick: () => sel && void copyText(selectionToTsv(fields, displayRows, sel, false, '')) },
-      { label: 'Copy with headers', onClick: () => sel && void copyText(selectionToTsv(fields, displayRows, sel, true, '')) },
+      { label: t('Copy'), shortcut: '⌘C', icon: <Copy size={13} />, onClick: () => sel && void copyText(selectionToTsv(fields, displayRows, sel, false, '')) },
+      { label: t('Copy with headers'), onClick: () => sel && void copyText(selectionToTsv(fields, displayRows, sel, true, '')) },
       {
-        label: 'Copy rows as',
+        label: t('Copy rows as'),
         submenu: (['json', 'csv', 'markdown', 'sql'] as const).map((format) => ({
           label: format === 'sql' ? 'SQL INSERT' : format.toUpperCase(),
           onClick: () =>
@@ -448,23 +450,23 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
         })),
       },
       'separator',
-      { label: `Filter: ${colName} = ${value === null ? 'NULL' : truncate(cellToText(value))}`, icon: <Filter size={13} />, onClick: () => quickFilter(pos.col, pos.row, 'eq') },
-      { label: `Filter: ${colName} ≠ ${value === null ? 'NULL' : truncate(cellToText(value))}`, onClick: () => quickFilter(pos.col, pos.row, 'neq') },
+      { label: `${t('Filter')}: ${colName} = ${value === null ? 'NULL' : truncate(cellToText(value))}`, icon: <Filter size={13} />, onClick: () => quickFilter(pos.col, pos.row, 'eq') },
+      { label: `${t('Filter')}: ${colName} ≠ ${value === null ? 'NULL' : truncate(cellToText(value))}`, onClick: () => quickFilter(pos.col, pos.row, 'neq') },
       {
-        label: 'More filters',
+        label: t('More filters'),
         submenu: [
-          { label: `${colName} > value`, onClick: () => quickFilter(pos.col, pos.row, 'gt') },
-          { label: `${colName} < value`, onClick: () => quickFilter(pos.col, pos.row, 'lt') },
-          { label: `${colName} is NULL`, onClick: () => quickFilter(pos.col, pos.row, 'null') },
-          { label: `${colName} is not NULL`, onClick: () => quickFilter(pos.col, pos.row, 'notnull') },
+          { label: `${colName} > ${t('value')}`, onClick: () => quickFilter(pos.col, pos.row, 'gt') },
+          { label: `${colName} < ${t('value')}`, onClick: () => quickFilter(pos.col, pos.row, 'lt') },
+          { label: t('{column} is NULL', { column: colName }), onClick: () => quickFilter(pos.col, pos.row, 'null') },
+          { label: t('{column} is not NULL', { column: colName }), onClick: () => quickFilter(pos.col, pos.row, 'notnull') },
         ],
       },
     ]
     if (fk || incoming.length) items.push('separator')
-    if (fk) items.push({ label: `Open referenced ${fk.refTable}`, icon: <Network size={13} />, onClick: () => followForeignKey(pos.row, pos.col) })
+    if (fk) items.push({ label: t('Open referenced {table}', { table: fk.refTable }), icon: <Network size={13} />, onClick: () => followForeignKey(pos.row, pos.col) })
     if (incoming.length) {
       items.push({
-        label: 'Referenced by',
+        label: t('Referenced by'),
         icon: <Network size={13} />,
         submenu: incoming.map((ref) => ({
           label: `${ref.table.name} (${ref.foreignKey.columns.join(', ')})`,
@@ -475,10 +477,10 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
     if (editable) {
       items.push(
         'separator',
-        { label: 'Edit cell', shortcut: '↵', onClick: () => grid.current?.edit() },
-        { label: 'Set NULL', disabled: columnMeta[pos.col]?.nullable === false, onClick: () => rows.forEach((r) => onEdit(r, pos.col, null)) },
-        { label: 'Clone row', icon: <Rows3 size={13} />, onClick: () => cloneRow(pos.row) },
-        { label: rows.length > 1 ? `Delete ${rows.length} rows` : 'Delete row', icon: <Trash2 size={13} />, danger: true, onClick: () => deleteRows(rows) },
+        { label: t('Edit cell'), shortcut: '↵', onClick: () => grid.current?.edit() },
+        { label: t('Set NULL'), disabled: columnMeta[pos.col]?.nullable === false, onClick: () => rows.forEach((r) => onEdit(r, pos.col, null)) },
+        { label: t('Clone row'), icon: <Rows3 size={13} />, onClick: () => cloneRow(pos.row) },
+        { label: rows.length > 1 ? tp(rows.length, { one: 'Delete {n} row', many: 'Delete {n} rows' }) : t('Delete row'), icon: <Trash2 size={13} />, danger: true, onClick: () => deleteRows(rows) },
       )
     }
     openMenu(e, items)
@@ -497,14 +499,14 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
                 tableName: displayName(schema, tab.table),
                 connectionId: tab.connectionId,
               })
-        if (path) toast({ kind: 'success', message: 'Export finished', detail: path, action: { label: 'Show in folder', run: () => void api.showItemInFolder(path) } })
+        if (path) toast({ kind: 'success', message: t('Export finished'), detail: path, action: { label: t('Show in folder'), run: () => void api.showItemInFolder(path) } })
       } catch (err) {
-        toast({ kind: 'error', message: 'Export failed', detail: errorMessage(err) })
+        toast({ kind: 'error', message: t('Export failed'), detail: errorMessage(err) })
       }
     }
     openMenu(anchor, [
-      { label: total !== null ? `All ${formatCount(total)} rows (with filter)` : 'All rows (with filter)', submenu: EXPORT_FORMATS.map((f) => ({ label: f.label, onClick: () => void run(f.id, 'all') })) },
-      { label: `Current page (${formatCount(displayRows.length)} rows)`, submenu: EXPORT_FORMATS.map((f) => ({ label: f.label, onClick: () => void run(f.id, 'page') })) },
+      { label: total !== null ? t('All {n} rows (with filter)', { n: formatCount(total) }) : t('All rows (with filter)'), submenu: EXPORT_FORMATS.map((f) => ({ label: f.label, onClick: () => void run(f.id, 'all') })) },
+      { label: t('Current page ({n} rows)', { n: formatCount(displayRows.length) }), submenu: EXPORT_FORMATS.map((f) => ({ label: f.label, onClick: () => void run(f.id, 'page') })) },
     ])
   }
 
@@ -546,8 +548,8 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
 
   if (schema && !table) {
     return (
-      <EmptyState icon={<Rows3 size={28} />} title={`Table ${tab.table.name} was not found`}>
-        It may have been renamed or dropped. Refresh the schema to update the sidebar.
+      <EmptyState icon={<Rows3 size={28} />} title={t('Table {name} was not found', { name: tab.table.name })}>
+        {t('It may have been renamed or dropped. Refresh the schema to update the sidebar.')}
       </EmptyState>
     )
   }
@@ -568,50 +570,50 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
             }
             setShowFilters((v) => !v)
           }}
-          title="Filters (⌘F)"
+          title={`${t('Filters')} (⌘F)`}
         >
-          Filter
+          {t('Filter')}
           {activeFilters > 0 && <Badge tone="accent">{activeFilters}</Badge>}
         </Button>
-        <IconButton label="Refresh (⌘R)" size="md" onClick={refresh}>
+        <IconButton label={`${t('Refresh')} (⌘R)`} size="md" onClick={refresh}>
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
         </IconButton>
         <div className="mx-1 h-5 w-px bg-line" />
         {editable ? (
           <>
-            <IconButton label="Add row" size="md" onClick={() => addRow()}>
+            <IconButton label={t('Add row')} size="md" onClick={() => addRow()}>
               <Plus size={15} />
             </IconButton>
-            <IconButton label="Delete selected rows (⌘⌫)" size="md" disabled={!selection} onClick={() => deleteRows(selectedRows())}>
+            <IconButton label={`${t('Delete selected rows')} (⌘⌫)`} size="md" disabled={!selection} onClick={() => deleteRows(selectedRows())}>
               <Trash2 size={14} />
             </IconButton>
           </>
         ) : (
-          <span className="flex items-center gap-1 px-1 text-[11.5px] text-fg-faint" title={readOnly ? 'Connection is read-only' : table?.type !== 'table' ? 'Views are read-only' : 'Editing needs a primary key'}>
+          <span className="flex items-center gap-1 px-1 text-[11.5px] text-fg-faint" title={readOnly ? t('Connection is read-only') : table?.type !== 'table' ? t('Views are read-only') : t('Editing needs a primary key')}>
             <KeyRound size={12} />
-            {readOnly ? 'Read-only connection' : table?.type !== 'table' ? 'View (read-only)' : 'No primary key: read-only'}
+            {readOnly ? t('Read-only connection') : table?.type !== 'table' ? t('View (read-only)') : t('No primary key: read-only')}
           </span>
         )}
         {pendingCount > 0 && (
           <div className="ml-1 flex items-center gap-1 rounded-md bg-warning-soft py-0.5 pr-0.5 pl-2">
-            <span className="text-[12px] font-medium text-warning">{plural(pendingCount, 'change')}</span>
+            <span className="text-[12px] font-medium text-warning">{tp(pendingCount, { one: '{n} change', many: '{n} changes' })}</span>
             <Button size="xs" variant="ghost" icon={<Eye size={12} />} onClick={() => void showPreview()}>
-              Review
+              {t('Review')}
             </Button>
             <Button size="xs" variant="primary" loading={saving} onClick={() => void applyChanges()}>
-              Apply
+              {t('Apply')}
             </Button>
-            <IconButton label="Discard changes" onClick={() => setPending(emptyPending())}>
+            <IconButton label={t('Discard changes')} onClick={() => setPending(emptyPending())}>
               <Undo2 size={13} />
             </IconButton>
           </div>
         )}
         <div className="flex-1" />
-        <IconButton label="Export" size="md" onClick={(e) => exportMenu(e.currentTarget)}>
+        <IconButton label={t('Export')} size="md" onClick={(e) => exportMenu(e.currentTarget)}>
           <Download size={14} />
         </IconButton>
         <IconButton
-          label={readOnly ? 'Import (read-only connection)' : 'Import CSV / Excel'}
+          label={readOnly ? t('Import (read-only connection)') : t('Import CSV / Excel')}
           size="md"
           disabled={readOnly || table?.type !== 'table'}
           onClick={() => setImportOpen(true)}
@@ -619,15 +621,15 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
           <Upload size={14} />
         </IconButton>
         <IconButton
-          label="Show in diagram"
+          label={t('Show in diagram')}
           size="md"
           onClick={() =>
-            openTab({ kind: 'diagram', connectionId: tab.connectionId, title: `Diagram: ${tab.table.name}`, focus: tab.table.name })
+            openTab({ kind: 'diagram', connectionId: tab.connectionId, title: t('Diagram: {name}', { name: tab.table.name }), focus: tab.table.name })
           }
         >
           <Network size={14} />
         </IconButton>
-        <IconButton label="Row details" size="md" active={showDetails} onClick={() => setShowDetails((v) => !v)}>
+        <IconButton label={t('Row details')} size="md" active={showDetails} onClick={() => setShowDetails((v) => !v)}>
           <PanelRight size={14} />
         </IconButton>
       </div>
@@ -674,7 +676,7 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
               onSelectionChange={setSelection}
               onCellActivate={() => setShowDetails(true)}
               nullDisplay={settings?.nullDisplay}
-              emptyMessage={activeFilters ? 'No rows match the filter' : 'Table is empty'}
+              emptyMessage={activeFilters ? t('No rows match the filter') : t('Table is empty')}
             />
           )}
           {loading && result && (
@@ -702,13 +704,13 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
             <>
               {total !== null ? (
                 <>
-                  <b className="font-medium text-fg">{formatCount(total)}</b> {total === 1 ? 'row' : 'rows'}
+                  <b className="font-medium text-fg">{formatCount(total)}</b> {tp(total, { one: 'row', many: 'rows' })}
                 </>
               ) : counting ? (
-                'Counting…'
+                t('Counting…')
               ) : (
                 <button type="button" className="hover:text-fg" onClick={() => void count()}>
-                  Count rows
+                  {t('Count rows')}
                 </button>
               )}
               {duration !== null && <span className="ml-2 text-fg-faint">{formatDuration(duration)}</span>}
@@ -716,24 +718,24 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
           ) : null}
         </span>
         <div className="flex-1" />
-        <IconButton label="First page" disabled={currentPage === 0} onClick={() => goTo(0)}>
+        <IconButton label={t('First page')} disabled={currentPage === 0} onClick={() => goTo(0)}>
           <ChevronsLeft size={14} />
         </IconButton>
-        <IconButton label="Previous page" disabled={currentPage === 0} onClick={() => goTo(currentPage - 1)}>
+        <IconButton label={t('Previous page')} disabled={currentPage === 0} onClick={() => goTo(currentPage - 1)}>
           <ChevronLeft size={14} />
         </IconButton>
         <span className="min-w-[110px] text-center tabular-nums">
           {result && result.rows.length > 0 ? `${formatCount(offset + 1)}–${formatCount(pageEnd)}` : '0'}
-          {total !== null && ` of ${formatCount(total)}`}
+          {total !== null && ` ${t('of')} ${formatCount(total)}`}
         </span>
         <IconButton
-          label="Next page"
+          label={t('Next page')}
           disabled={lastPage !== null ? currentPage >= lastPage : (result?.rows.length ?? 0) < limit}
           onClick={() => goTo(currentPage + 1)}
         >
           <ChevronRight size={14} />
         </IconButton>
-        <IconButton label="Last page" disabled={lastPage === null || currentPage >= lastPage} onClick={() => lastPage !== null && goTo(lastPage)}>
+        <IconButton label={t('Last page')} disabled={lastPage === null || currentPage >= lastPage} onClick={() => lastPage !== null && goTo(lastPage)}>
           <ChevronsRight size={14} />
         </IconButton>
         <Select
@@ -748,7 +750,7 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
         >
           {[50, 100, 200, 500, 1000, 5000].map((n) => (
             <option key={n} value={n}>
-              {n} / page
+              {t('{n} / page', { n })}
             </option>
           ))}
         </Select>
@@ -773,15 +775,15 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
       <Modal
         open={preview !== null}
         onClose={() => setPreview(null)}
-        title="Review changes"
+        title={t('Review changes')}
         width={720}
         footer={
           <>
-            <span className="text-[12px] text-fg-muted">Runs in a single transaction. If any statement fails, nothing is saved.</span>
+            <span className="text-[12px] text-fg-muted">{t('Runs in a single transaction. If any statement fails, nothing is saved.')}</span>
             <div className="flex-1" />
-            <Button onClick={() => void copyText((preview ?? []).join(';\n') + ';')}>Copy SQL</Button>
+            <Button onClick={() => void copyText((preview ?? []).join(';\n') + ';')}>{t('Copy SQL')}</Button>
             <Button variant="primary" loading={saving} onClick={() => void applyChanges()} data-autofocus>
-              Apply {plural(preview?.length ?? 0, 'statement')}
+              {tp(preview?.length ?? 0, { one: 'Apply {n} statement', many: 'Apply {n} statements' })}
             </Button>
           </>
         }

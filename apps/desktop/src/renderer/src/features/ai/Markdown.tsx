@@ -2,6 +2,7 @@ import { Fragment, type ReactNode } from 'react'
 import { Check, Copy, CornerDownLeft, Play } from 'lucide-react'
 import { useState } from 'react'
 import { copyText } from '@/lib/utils'
+import { useT } from '@/lib/i18n'
 
 export interface CodeActions {
   onInsert?: (code: string) => void
@@ -37,23 +38,25 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
 
 function CodeBlock({ code, lang, actions }: { code: string; lang: string; actions: CodeActions }) {
   const [copied, setCopied] = useState(false)
+  const t = useT()
   const isSql = /^(sql|pgsql|postgres|postgresql|tsql|mysql|sqlite)?$/i.test(lang) && /\b(select|insert|update|delete|with|create|alter)\b/i.test(code)
   return (
     <div className="my-2 overflow-hidden rounded-md border border-line bg-subtle">
       <div className="flex h-7 items-center gap-1 border-b border-line px-2 text-[11px] text-fg-faint">
-        <span className="flex-1">{lang || 'code'}</span>
+        <span className="flex-1">{lang || t('code')}</span>
         {isSql && actions.onInsert && (
           <button type="button" className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-hover hover:text-fg" onClick={() => actions.onInsert!(code)}>
-            <CornerDownLeft size={11} /> Insert
+            <CornerDownLeft size={11} /> {t('Insert')}
           </button>
         )}
         {isSql && actions.onRun && (
           <button type="button" className="flex items-center gap-1 rounded px-1.5 py-0.5 text-accent hover:bg-accent-soft" onClick={() => actions.onRun!(code)}>
-            <Play size={11} /> Run
+            <Play size={11} /> {t('Run')}
           </button>
         )}
         <button
           type="button"
+          title={t('Copy')}
           className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-hover hover:text-fg"
           onClick={() => {
             void copyText(code)

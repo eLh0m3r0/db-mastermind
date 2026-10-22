@@ -3,6 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { ArrowDown, ArrowUp, ArrowUpRight, KeyRound, Link2 } from 'lucide-react'
 import { cellToText, isBinaryValue, type CellValue, type ResultField, type SortSpec } from '@dbmastermind/core/browser'
 import { cn } from '@/lib/utils'
+import { t } from '@/lib/i18n'
 
 export const ROW_HEIGHT = 26
 const HEADER_HEIGHT = 30
@@ -169,7 +170,7 @@ const Cell = memo(function Cell({
         <button
           type="button"
           tabIndex={-1}
-          title="Open referenced row"
+          title={t('Open referenced row')}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation()
@@ -201,7 +202,7 @@ export function DataGrid({
   nullDisplay = 'NULL',
   columnWidths,
   onColumnWidthsChange,
-  emptyMessage = 'No rows',
+  emptyMessage,
   className,
   ref,
 }: DataGridProps) {
@@ -671,7 +672,7 @@ export function DataGrid({
         {editor}
       </div>
       {rows.length === 0 && (
-        <div className="pointer-events-none absolute inset-x-0 top-[30px] flex justify-center p-8 text-[12.5px] text-fg-faint">{emptyMessage}</div>
+        <div className="pointer-events-none absolute inset-x-0 top-[30px] flex justify-center p-8 text-[12.5px] text-fg-faint">{emptyMessage ?? t('No rows')}</div>
       )}
     </div>
   )

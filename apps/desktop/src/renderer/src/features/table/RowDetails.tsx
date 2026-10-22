@@ -4,6 +4,7 @@ import { cellToText, type CellValue, type ColumnInfo, type ResultField } from '@
 import { IconButton } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { copyText, cn } from '@/lib/utils'
+import { useT } from '@/lib/i18n'
 
 function pretty(value: CellValue): string {
   if (value === null) return ''
@@ -35,24 +36,25 @@ export function RowDetails({
   onClose: () => void
 }) {
   const [search, setSearch] = useState('')
+  const t = useT()
   const needle = search.trim().toLowerCase()
   return (
     <div className="flex w-[340px] shrink-0 flex-col border-l border-line bg-subtle">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-line pr-1.5 pl-3">
-        <span className="text-[12px] font-semibold">Row details</span>
+        <span className="text-[12px] font-semibold">{t('Row details')}</span>
         <div className="flex-1" />
-        <IconButton label="Copy row as JSON" disabled={!row} onClick={() => row && void copyText(JSON.stringify(Object.fromEntries(fields.map((f, i) => [f.name, row[i] ?? null])), null, 2))}>
+        <IconButton label={t('Copy row as JSON')} disabled={!row} onClick={() => row && void copyText(JSON.stringify(Object.fromEntries(fields.map((f, i) => [f.name, row[i] ?? null])), null, 2))}>
           <Copy size={13} />
         </IconButton>
-        <IconButton label="Close" onClick={onClose}>
+        <IconButton label={t('Close')} onClick={onClose}>
           <X size={14} />
         </IconButton>
       </div>
       <div className="border-b border-line p-2">
-        <Input inputSize="sm" placeholder="Find field…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <Input inputSize="sm" placeholder={t('Find field…')} value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
       {!row ? (
-        <div className="p-4 text-[12px] text-fg-faint">Select a row to see its values.</div>
+        <div className="p-4 text-[12px] text-fg-faint">{t('Select a row to see its values.')}</div>
       ) : (
         <div className="min-h-0 flex-1 overflow-auto p-2">
           {fields.map((f, i) => {
@@ -70,7 +72,7 @@ export function RowDetails({
                   <div className="flex-1" />
                   {editable && col?.nullable && value !== null && (
                     <button type="button" className="text-[10.5px] text-fg-faint hover:text-accent" onClick={() => onEdit(i, null)}>
-                      set NULL
+                      {t('set NULL')}
                     </button>
                   )}
                 </div>

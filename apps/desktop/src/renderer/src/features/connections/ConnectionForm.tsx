@@ -9,6 +9,7 @@ import { cn, errorMessage } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { toast, useUi } from '@/store/ui'
 import { DriverIcon, DRIVERS } from './drivers'
+import { useT } from '@/lib/i18n'
 
 export const CONNECTION_COLORS = ['#6d4aff', '#0b72d9', '#0f9f6e', '#d97706', '#dc2626', '#db2777', '#64748b']
 
@@ -33,6 +34,7 @@ export function ConnectionForm() {
   const [test, setTest] = useState<{ state: 'idle' | 'running' | 'ok' | 'error'; message?: string }>({ state: 'idle' })
   const [busy, setBusy] = useState(false)
   const [urlText, setUrlText] = useState('')
+  const t = useT()
 
   useEffect(() => {
     if (!open) return
@@ -62,9 +64,9 @@ export function ConnectionForm() {
       const parsed = await api.parseConnectionString(text)
       setConfig((c) => ({ ...c, ...parsed, name: c.name }))
       setUrlText('')
-      toast({ kind: 'success', message: 'Connection details filled in from the URL' })
+      toast({ kind: 'success', message: t('Connection details filled in from the URL') })
     } catch (err) {
-      toast({ kind: 'error', message: 'Could not parse connection string', detail: errorMessage(err) })
+      toast({ kind: 'error', message: t('Could not parse connection string'), detail: errorMessage(err) })
     }
   }
 
@@ -86,10 +88,10 @@ export function ConnectionForm() {
       if (andConnect) {
         const ok = await connect(saved.id)
         if (ok) useUi.getState().set({ selectedConnectionId: saved.id })
-        else toast({ kind: 'error', message: `Could not connect to ${saved.name}`, detail: useConnections.getState().runtime[saved.id]?.error })
+        else toast({ kind: 'error', message: t('Could not connect to {name}', { name: saved.name }), detail: useConnections.getState().runtime[saved.id]?.error })
       }
     } catch (err) {
-      toast({ kind: 'error', message: 'Could not save connection', detail: errorMessage(err) })
+      toast({ kind: 'error', message: t('Could not save connection'), detail: errorMessage(err) })
     } finally {
       setBusy(false)
     }
@@ -105,19 +107,19 @@ export function ConnectionForm() {
   }
 
   const pickPem = (title: string, onPick: (pem: string) => void) =>
-    pickFile(title, async (path) => onPick(await api.readTextFile(path)), [{ name: 'Certificates & keys', extensions: ['pem', 'crt', 'cer', 'key', 'ca'] }])
+    pickFile(title, async (path) => onPick(await api.readTextFile(path)), [{ name: t('Certificates & keys'), extensions: ['pem', 'crt', 'cer', 'key', 'ca'] }])
 
   return (
     <Modal
       open={open}
       onClose={close}
-      title={existing ? `Edit ${existing.name}` : 'New connection'}
+      title={existing ? t('Edit {name}', { name: existing.name }) : t('New connection')}
       width={680}
       bodyClassName="p-0"
       footer={
         <>
           <Button onClick={() => void runTest()} loading={test.state === 'running'}>
-            Test connection
+            {t('Test connection')}
           </Button>
           {test.state === 'ok' && (
             <span className="flex min-w-0 items-center gap-1 truncate text-[12px] text-success">
@@ -131,10 +133,10 @@ export function ConnectionForm() {
           )}
           <div className="flex-1" />
           <Button onClick={() => void submit(false)} disabled={busy}>
-            Save
+            {t('Save')}
           </Button>
           <Button variant="primary" onClick={() => void submit(true)} loading={busy}>
-            Save & connect
+            {t('Save & connect')}
           </Button>
         </>
       }
@@ -171,7 +173,7 @@ export function ConnectionForm() {
                     section === s ? 'border-accent text-fg' : 'border-transparent text-fg-muted hover:text-fg',
                   )}
                 >
-                  {{ general: 'General', ssl: 'SSL / TLS', ssh: 'SSH tunnel', advanced: 'Advanced' }[s]}
+                  {{ general: t('General'), ssl: 'SSL / TLS', ssh: t('SSH tunnel'), advanced: t('Advanced') }[s]}
                   {s === 'ssh' && ssh.enabled && <span className="ml-1 text-accent">●</span>}
                   {s === 'ssl' && ssl.mode !== 'disable' && <span className="ml-1 text-accent">●</span>}
                 </button>
@@ -192,7 +194,7 @@ export function ConnectionForm() {
                   <div className="flex gap-2">
                     <Input
                       className="flex-1 font-mono text-[12px]"
-                      placeholder="Paste a URL: postgres://user:pass@host:5432/db, JDBC or ADO.NET string"
+                      placeholder={t('Paste a URL: postgres://user:pass@host:5432/db, JDBC or ADO.NET string')}
                       value={urlText}
                       onChange={(e) => setUrlText(e.target.value)}
                       onPaste={(e) => {
@@ -212,33 +214,33 @@ export function ConnectionForm() {
                     />
                   </div>
                 )}
-                <Field label="Name">
-                  <Input value={config.name} placeholder={isSqlite ? 'my-app.db' : 'Production CRM'} onChange={(e) => set({ name: e.target.value })} />
+                <Field label={t('Name')}>
+                  <Input value={config.name} placeholder={isSqlite ? 'my-app.db' : t('Production CRM')} onChange={(e) => set({ name: e.target.value })} />
                 </Field>
                 {isSqlite ? (
-                  <Field label="Database file">
+                  <Field label={t('Database file')}>
                     <div className="flex gap-2">
                       <Input className="flex-1 font-mono text-[12px]" value={config.filePath ?? ''} onChange={(e) => set({ filePath: e.target.value })} placeholder="/path/to/database.db" />
                       <Button
                         icon={<FolderOpen size={14} />}
                         onClick={() =>
-                          void pickFile('Choose SQLite database', (p) => set({ filePath: p, name: config.name || p.split(/[\\/]/).pop() || '' }), [
+                          void pickFile(t('Choose SQLite database'), (p) => set({ filePath: p, name: config.name || p.split(/[\\/]/).pop() || '' }), [
                             { name: 'SQLite', extensions: ['db', 'sqlite', 'sqlite3', 'db3', 's3db'] },
-                            { name: 'All files', extensions: ['*'] },
+                            { name: t('All files'), extensions: ['*'] },
                           ])
                         }
                       >
-                        Browse
+                        {t('Browse')}
                       </Button>
                     </div>
                   </Field>
                 ) : (
                   <>
                     <div className="flex gap-2">
-                      <Field label="Host" className="flex-1">
+                      <Field label={t('Host')} className="flex-1">
                         <Input value={config.host ?? ''} onChange={(e) => set({ host: e.target.value })} placeholder="localhost" />
                       </Field>
-                      <Field label="Port" className="w-24">
+                      <Field label={t('Port')} className="w-24">
                         <Input
                           value={config.port ?? ''}
                           inputMode="numeric"
@@ -248,22 +250,22 @@ export function ConnectionForm() {
                       </Field>
                     </div>
                     <div className="flex gap-2">
-                      <Field label="User" className="flex-1">
+                      <Field label={t('User')} className="flex-1">
                         <Input value={config.user ?? ''} onChange={(e) => set({ user: e.target.value })} autoComplete="off" />
                       </Field>
-                      <Field label="Password" className="flex-1">
+                      <Field label={t('Password')} className="flex-1">
                         <Input type="password" value={config.password ?? ''} onChange={(e) => set({ password: e.target.value })} autoComplete="new-password" />
                       </Field>
                     </div>
-                    <Field label="Database" hint={config.driver === 'postgres' ? 'Defaults to "postgres"' : undefined}>
+                    <Field label={t('Database')} hint={config.driver === 'postgres' ? t('Defaults to "postgres"') : undefined}>
                       <Input value={config.database ?? ''} onChange={(e) => set({ database: e.target.value })} />
                     </Field>
                     {config.driver === 'mssql' && (
                       <div className="flex gap-2">
-                        <Field label="Instance name (optional)" className="flex-1">
+                        <Field label={t('Instance name (optional)')} className="flex-1">
                           <Input value={String(config.options?.instanceName ?? '')} onChange={(e) => setOption('instanceName', e.target.value || undefined)} placeholder="SQLEXPRESS" />
                         </Field>
-                        <Field label="Windows domain (NTLM, optional)" className="flex-1">
+                        <Field label={t('Windows domain (NTLM, optional)')} className="flex-1">
                           <Input value={String(config.options?.domain ?? '')} onChange={(e) => setOption('domain', e.target.value || undefined)} placeholder="CORP" />
                         </Field>
                       </div>
@@ -271,20 +273,20 @@ export function ConnectionForm() {
                   </>
                 )}
                 <div className="mt-1 flex items-end gap-4">
-                  <Field label="Environment">
+                  <Field label={t('Environment')}>
                     <Segmented<Environment | 'none'>
                       value={config.environment ?? 'none'}
                       onChange={(v) => set({ environment: v === 'none' ? undefined : v })}
                       options={[
                         { value: 'none', label: '—' },
-                        { value: 'development', label: 'Dev' },
-                        { value: 'test', label: 'Test' },
-                        { value: 'staging', label: 'Staging' },
-                        { value: 'production', label: 'Prod' },
+                        { value: 'development', label: t('Dev') },
+                        { value: 'test', label: t('Test') },
+                        { value: 'staging', label: t('Staging') },
+                        { value: 'production', label: t('Prod') },
                       ]}
                     />
                   </Field>
-                  <Field label="Color">
+                  <Field label={t('Color')}>
                     <div className="flex h-7 items-center gap-1.5">
                       {CONNECTION_COLORS.map((color) => (
                         <button
@@ -303,12 +305,12 @@ export function ConnectionForm() {
                   <Checkbox
                     checked={!!config.readOnly}
                     onChange={(readOnly) => set({ readOnly })}
-                    label="Read-only"
-                    hint="Only SELECT-like statements are allowed. Enforced by the database where supported."
+                    label={t('Read-only')}
+                    hint={t('Only SELECT-like statements are allowed. Enforced by the database where supported.')}
                   />
                   {config.environment === 'production' && !config.readOnly && (
                     <div className="rounded-md bg-warning-soft px-2.5 py-1.5 text-[12px] text-warning">
-                      Production connections always ask before running DELETE / UPDATE without WHERE, DROP or TRUNCATE.
+                      {t('Production connections always ask before running DELETE / UPDATE without WHERE, DROP or TRUNCATE.')}
                     </div>
                   )}
                 </div>
@@ -317,17 +319,17 @@ export function ConnectionForm() {
 
             {section === 'ssl' && !isSqlite && (
               <>
-                <Field label="SSL mode">
+                <Field label={t('SSL mode')}>
                   <Select value={ssl.mode} onChange={(e) => set({ ssl: { ...ssl, mode: e.target.value as SslMode } })}>
-                    <option value="disable">Disable</option>
-                    <option value="prefer">Prefer (encrypt, don't verify)</option>
-                    <option value="require">Require (encrypt, don't verify)</option>
-                    <option value="verify-ca">Verify CA</option>
-                    <option value="verify-full">Verify full (CA + hostname)</option>
+                    <option value="disable">{t('Disable')}</option>
+                    <option value="prefer">{t("Prefer (encrypt, don't verify)")}</option>
+                    <option value="require">{t("Require (encrypt, don't verify)")}</option>
+                    <option value="verify-ca">{t('Verify CA')}</option>
+                    <option value="verify-full">{t('Verify full (CA + hostname)')}</option>
                   </Select>
                 </Field>
                 {(['ca', 'cert', 'key'] as const).map((key) => (
-                  <Field key={key} label={{ ca: 'CA certificate', cert: 'Client certificate', key: 'Client key' }[key]}>
+                  <Field key={key} label={{ ca: t('CA certificate'), cert: t('Client certificate'), key: t('Client key') }[key]}>
                     <div className="flex gap-2">
                       <Textarea
                         className="h-16 flex-1 font-mono text-[11px]"
@@ -335,8 +337,8 @@ export function ConnectionForm() {
                         value={ssl[key] ?? ''}
                         onChange={(e) => set({ ssl: { ...ssl, [key]: e.target.value || undefined } })}
                       />
-                      <Button icon={<FolderOpen size={14} />} onClick={() => void pickPem('Choose file', (pem) => set({ ssl: { ...ssl, [key]: pem } }))}>
-                        Load
+                      <Button icon={<FolderOpen size={14} />} onClick={() => void pickPem(t('Choose file'), (pem) => set({ ssl: { ...ssl, [key]: pem } }))}>
+                        {t('Load')}
                       </Button>
                     </div>
                   </Field>
@@ -345,8 +347,8 @@ export function ConnectionForm() {
                   <Checkbox
                     checked={config.options?.trustServerCertificate !== false && ssl.mode !== 'verify-ca' && ssl.mode !== 'verify-full'}
                     onChange={(v) => setOption('trustServerCertificate', v)}
-                    label="Trust server certificate"
-                    hint="Needed for most on-premise SQL Servers with self-signed certificates."
+                    label={t('Trust server certificate')}
+                    hint={t('Needed for most on-premise SQL Servers with self-signed certificates.')}
                   />
                 )}
               </>
@@ -354,38 +356,38 @@ export function ConnectionForm() {
 
             {section === 'ssh' && !isSqlite && (
               <>
-                <Checkbox checked={ssh.enabled} onChange={(enabled) => set({ ssh: { ...ssh, enabled } })} label="Connect through an SSH tunnel" />
+                <Checkbox checked={ssh.enabled} onChange={(enabled) => set({ ssh: { ...ssh, enabled } })} label={t('Connect through an SSH tunnel')} />
                 <fieldset disabled={!ssh.enabled} className={cn('flex flex-col gap-3', !ssh.enabled && 'opacity-50')}>
                   <div className="flex gap-2">
-                    <Field label="SSH host" className="flex-1">
+                    <Field label={t('SSH host')} className="flex-1">
                       <Input value={ssh.host} onChange={(e) => set({ ssh: { ...ssh, host: e.target.value } })} placeholder="bastion.example.com" />
                     </Field>
-                    <Field label="Port" className="w-24">
+                    <Field label={t('Port')} className="w-24">
                       <Input value={ssh.port ?? 22} onChange={(e) => set({ ssh: { ...ssh, port: Number(e.target.value.replace(/\D/g, '')) || 22 } })} />
                     </Field>
                   </div>
-                  <Field label="SSH user">
+                  <Field label={t('SSH user')}>
                     <Input value={ssh.user} onChange={(e) => set({ ssh: { ...ssh, user: e.target.value } })} />
                   </Field>
-                  <Field label="Authentication">
+                  <Field label={t('Authentication')}>
                     <Segmented
                       value={ssh.authMethod}
                       onChange={(authMethod) => set({ ssh: { ...ssh, authMethod } })}
                       options={[
-                        { value: 'privateKey', label: 'Private key' },
-                        { value: 'password', label: 'Password' },
-                        { value: 'agent', label: 'SSH agent' },
+                        { value: 'privateKey', label: t('Private key') },
+                        { value: 'password', label: t('Password') },
+                        { value: 'agent', label: t('SSH agent') },
                       ]}
                     />
                   </Field>
                   {ssh.authMethod === 'password' && (
-                    <Field label="SSH password">
+                    <Field label={t('SSH password')}>
                       <Input type="password" value={ssh.password ?? ''} onChange={(e) => set({ ssh: { ...ssh, password: e.target.value } })} />
                     </Field>
                   )}
                   {ssh.authMethod === 'privateKey' && (
                     <>
-                      <Field label="Private key">
+                      <Field label={t('Private key')}>
                         <div className="flex gap-2">
                           <Textarea
                             className="h-20 flex-1 font-mono text-[11px]"
@@ -393,12 +395,12 @@ export function ConnectionForm() {
                             value={ssh.privateKey ?? ''}
                             onChange={(e) => set({ ssh: { ...ssh, privateKey: e.target.value } })}
                           />
-                          <Button icon={<FolderOpen size={14} />} onClick={() => void pickFile('Choose private key', async (p) => set({ ssh: { ...ssh, privateKey: await api.readTextFile(p) } }))}>
-                            Load
+                          <Button icon={<FolderOpen size={14} />} onClick={() => void pickFile(t('Choose private key'), async (p) => set({ ssh: { ...ssh, privateKey: await api.readTextFile(p) } }))}>
+                            {t('Load')}
                           </Button>
                         </div>
                       </Field>
-                      <Field label="Passphrase (optional)">
+                      <Field label={t('Passphrase (optional)')}>
                         <Input type="password" value={ssh.passphrase ?? ''} onChange={(e) => set({ ssh: { ...ssh, passphrase: e.target.value } })} />
                       </Field>
                     </>
@@ -410,29 +412,29 @@ export function ConnectionForm() {
             {section === 'advanced' && !isSqlite && (
               <>
                 {config.driver === 'mssql' && (
-                  <Field label="Query timeout (seconds, 0 = none)">
+                  <Field label={t('Query timeout (seconds, 0 = none)')}>
                     <Input
                       value={Number(config.options?.requestTimeout ?? 0) / 1000}
                       onChange={(e) => setOption('requestTimeout', String(Number(e.target.value.replace(/\D/g, '') || 0) * 1000))}
                     />
                   </Field>
                 )}
-                <Field label="Knowledge base folder" hint="Markdown notes about this database, used by the AI assistant. Optional.">
+                <Field label={t('Knowledge base folder')} hint={t('Markdown notes about this database, used by the AI assistant. Optional.')}>
                   <div className="flex gap-2">
                     <Input className="flex-1 font-mono text-[12px]" value={config.knowledgeBasePath ?? ''} onChange={(e) => set({ knowledgeBasePath: e.target.value || undefined })} />
-                    <Button icon={<FolderOpen size={14} />} onClick={() => void api.pickDirectory('Knowledge base folder').then((p) => p && set({ knowledgeBasePath: p }))}>
-                      Browse
+                    <Button icon={<FolderOpen size={14} />} onClick={() => void api.pickDirectory(t('Knowledge base folder')).then((p) => p && set({ knowledgeBasePath: p }))}>
+                      {t('Browse')}
                     </Button>
                   </div>
                 </Field>
                 <Checkbox
                   checked={config.aiEnabled !== false}
                   onChange={(aiEnabled) => set({ aiEnabled })}
-                  label="Allow AI features for this connection"
-                  hint="When off, the assistant and MCP server can't see this connection."
+                  label={t('Allow AI features for this connection')}
+                  hint={t("When off, the assistant and MCP server can't see this connection.")}
                 />
-                <Field label="Group">
-                  <Input value={config.group ?? ''} onChange={(e) => set({ group: e.target.value || undefined })} placeholder="e.g. Customer A" />
+                <Field label={t('Group')}>
+                  <Input value={config.group ?? ''} onChange={(e) => set({ group: e.target.value || undefined })} placeholder={t('e.g. Customer A')} />
                 </Field>
               </>
             )}

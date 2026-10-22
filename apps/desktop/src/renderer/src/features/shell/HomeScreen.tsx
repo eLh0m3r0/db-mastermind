@@ -6,6 +6,7 @@ import { useConnections } from '@/store/connections'
 import { useUi } from '@/store/ui'
 import { DriverIcon } from '../connections/drivers'
 import { connectAndSelect, importFrom, StatusDot } from '../sidebar/Sidebar'
+import { useT } from '@/lib/i18n'
 
 async function openDemo() {
   const id = await api.createSampleDatabase()
@@ -16,6 +17,7 @@ async function openDemo() {
 export function HomeScreen() {
   const list = useConnections((s) => s.list)
   const setUi = useUi((s) => s.set)
+  const t = useT()
   const recent = [...list].sort((a, b) => (b.lastUsedAt ?? '').localeCompare(a.lastUsedAt ?? '')).slice(0, 8)
 
   return (
@@ -25,22 +27,22 @@ export function HomeScreen() {
           <Logo size={52} />
           <div>
             <h1 className="text-[24px] font-semibold tracking-tight">DB Mastermind</h1>
-            <p className="text-[13px] text-fg-muted">Browse, query, diagram and understand your databases. Free & open source, no limits.</p>
+            <p className="text-[13px] text-fg-muted">{t('Browse, query, diagram and understand your databases. Free & open source, no limits.')}</p>
           </div>
         </div>
 
         <section>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-[13px] font-semibold text-fg-muted">{recent.length ? 'Recent connections' : 'Get started'}</h2>
+            <h2 className="text-[13px] font-semibold text-fg-muted">{recent.length ? t('Recent connections') : t('Get started')}</h2>
             <div className="flex gap-2">
               <Button size="sm" variant="ghost" icon={<Coffee size={13} />} onClick={() => void openDemo()}>
-                Try the demo database
+                {t('Try the demo database')}
               </Button>
               <Button size="sm" variant="ghost" icon={<Download size={13} />} onClick={() => void importFrom('beekeeper')}>
-                Import from Beekeeper
+                {t('Import from Beekeeper')}
               </Button>
               <Button size="sm" variant="primary" icon={<Plus size={14} />} onClick={() => setUi({ modal: { kind: 'connection' } })}>
-                New connection
+                {t('New connection')}
               </Button>
             </div>
           </div>
@@ -74,28 +76,28 @@ export function HomeScreen() {
               className="flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-line-strong p-10 text-fg-muted hover:border-accent hover:text-fg"
             >
               <Database size={28} />
-              <span className="text-[14px] font-medium">Add your first connection</span>
+              <span className="text-[14px] font-medium">{t('Add your first connection')}</span>
               <span className="text-[12px] text-fg-faint">PostgreSQL · SQL Server · MySQL · MariaDB · SQLite</span>
             </button>
           )}
         </section>
 
         <section className="grid grid-cols-3 gap-3">
-          <Feature icon={<Keyboard size={16} />} title="Keyboard first">
+          <Feature icon={<Keyboard size={16} />} title={t('Keyboard first')}>
             <div className="flex flex-col gap-1.5">
-              <Shortcut keys={[modKey, 'K']} label="Command palette" />
-              <Shortcut keys={[modKey, 'P']} label="Open table" />
-              <Shortcut keys={[modKey, '↵']} label="Run statement" />
-              <Shortcut keys={[modKey, 'T']} label="New query" />
+              <Shortcut keys={[modKey, 'K']} label={t('Command palette')} />
+              <Shortcut keys={[modKey, 'P']} label={t('Open table')} />
+              <Shortcut keys={[modKey, '↵']} label={t('Run statement')} />
+              <Shortcut keys={[modKey, 'T']} label={t('New query')} />
             </div>
           </Feature>
-          <Feature icon={<Sparkles size={16} />} title="AI that knows your schema">
-            Connect Claude, OpenAI, OpenRouter or a local model, or use your Claude Code / Codex subscription. Press <Kbd>{modKey}</Kbd> <Kbd>J</Kbd>.
+          <Feature icon={<Sparkles size={16} />} title={t('AI that knows your schema')}>
+            {t('Connect Claude, OpenAI, OpenRouter or a local model, or use your Claude Code / Codex subscription.')} {t('Press')} <Kbd>{modKey}</Kbd> <Kbd>J</Kbd>.
           </Feature>
-          <Feature icon={<BookOpen size={16} />} title="Open source">
-            MIT licensed, no feature limits.{' '}
+          <Feature icon={<BookOpen size={16} />} title={t('Open source')}>
+            {t('MIT licensed, no feature limits.')}{' '}
             <button type="button" className="text-accent hover:underline" onClick={() => void api.openExternal('https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md')}>
-              See the roadmap
+              {t('See the roadmap')}
             </button>
           </Feature>
         </section>

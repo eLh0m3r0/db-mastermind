@@ -15,6 +15,7 @@ import { useWorkspace, type QueryTab } from '@/store/workspace'
 import { onCommand } from '@/lib/commands'
 import { ResultsPanel } from './ResultsPanel'
 import { SqlEditor, type SqlEditorHandle } from './SqlEditor'
+import { useT } from '@/lib/i18n'
 
 const FORMATTER_LANGUAGE: Record<DriverId, SqlLanguage> = {
   postgres: 'postgresql',
@@ -40,6 +41,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
   const runId = useRef<string | null>(null)
   const lastFragmentOffset = useRef(0)
   const driver = connection?.driver ?? 'postgres'
+  const t = useT()
 
   useEffect(() => {
     if (active && !schema) void loadSchema(tab.connectionId)
@@ -60,7 +62,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       if (dangerous.length && (settings?.confirmDangerousStatements !== false || isProd)) {
         const list = dangerous.map((d) => `• ${d.text.replace(/\s+/g, ' ').slice(0, 120)}`).join('\n')
         const ok = window.confirm(
-          `${isProd ? '⚠️ PRODUCTION connection\n\n' : ''}This will run ${dangerous.length === 1 ? 'a statement' : 'statements'} that can delete data:\n\n${list}\n\nContinue?`,
+          `${isProd ? `⚠️ ${t('PRODUCTION connection')}\n\n` : ''}${dangerous.length === 1 ? t('This will run a statement that can delete data:') : t('This will run statements that can delete data:')}\n\n${list}\n\n${t('Continue?')}`,
         )
         if (!ok) return
       }
@@ -102,7 +104,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
     try {
       editor.current?.setValue(formatSql(text, { language: FORMATTER_LANGUAGE[driver], keywordCase: 'upper', tabWidth: 2 }))
     } catch (err) {
-      toast({ kind: 'error', message: 'Could not format SQL', detail: errorMessage(err) })
+      toast({ kind: 'error', message: t('Could not format SQL'), detail: errorMessage(err) })
     }
   }, [driver])
 
@@ -111,9 +113,9 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       const sql = editor.current?.getValue() ?? ''
       await api.saveQuery({ id: tab.savedQueryId, name: tab.title, sql, connectionId: tab.connectionId })
       updateTab(tab.id, { savedSql: sql })
-      toast({ kind: 'success', message: `Saved “${tab.title}”` })
+      toast({ kind: 'success', message: t('Saved “{name}”', { name: tab.title }) })
     } else setSaveOpen(true)
-  }, [tab, updateTab])
+  }, [tab, updateTab, t])
 
   const askAi = useCallback(() => {
     useUi.getState().set({ aiPanelVisible: true })
@@ -153,28 +155,28 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       <div className="flex h-10 shrink-0 items-center gap-1.5 border-b border-line px-2">
         {running ? (
           <Button size="sm" variant="danger" icon={<Square size={12} fill="currentColor" />} onClick={cancel}>
-            Cancel
+            {t('Cancel')}
           </Button>
         ) : (
-          <Button size="sm" variant="primary" icon={<Play size={13} fill="currentColor" />} onClick={() => void run('current')} title={`Run statement or selection (${modKey}↵)`}>
-            Run
+          <Button size="sm" variant="primary" icon={<Play size={13} fill="currentColor" />} onClick={() => void run('current')} title={`${t('Run statement or selection')} (${modKey}↵)`}>
+            {t('Run')}
           </Button>
         )}
-        <Button size="sm" variant="ghost" icon={<PlayCircle size={14} />} disabled={running} onClick={() => void run('all')} title={`Run whole script (⇧${modKey}↵)`}>
-          Run all
+        <Button size="sm" variant="ghost" icon={<PlayCircle size={14} />} disabled={running} onClick={() => void run('all')} title={`${t('Run whole script')} (⇧${modKey}↵)`}>
+          {t('Run all')}
         </Button>
         <div className="mx-1 h-5 w-px bg-line" />
-        <Button size="sm" variant="ghost" icon={<Wand2 size={14} />} onClick={format} title={`Format SQL (⇧${modKey}F)`}>
-          Format
+        <Button size="sm" variant="ghost" icon={<Wand2 size={14} />} onClick={format} title={`${t('Format SQL')} (⇧${modKey}F)`}>
+          {t('Format')}
         </Button>
-        <Button size="sm" variant="ghost" icon={<BookmarkPlus size={14} />} onClick={() => void save()} title={`Save query (${modKey}S)`}>
-          Save
+        <Button size="sm" variant="ghost" icon={<BookmarkPlus size={14} />} onClick={() => void save()} title={`${t('Save query')} (${modKey}S)`}>
+          {t('Save')}
         </Button>
-        <Button size="sm" variant="ghost" icon={<Sparkles size={14} />} onClick={askAi} title={`Ask AI (${modKey}I)`}>
-          Ask AI
+        <Button size="sm" variant="ghost" icon={<Sparkles size={14} />} onClick={askAi} title={`${t('Ask AI')} (${modKey}I)`}>
+          {t('Ask AI')}
         </Button>
         <div className="flex-1" />
-        {connection?.readOnly && <span className="text-[11.5px] text-fg-faint">read-only</span>}
+        {connection?.readOnly && <span className="text-[11.5px] text-fg-faint">{t('read-only')}</span>}
       </div>
       <div style={{ height: editorHeight }} className="min-h-[80px] shrink-0">
         <SqlEditor
@@ -210,14 +212,14 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       </div>
       <SaveQueryModal
         open={saveOpen}
-        initialName={tab.title.startsWith('Query ') ? '' : tab.title}
+        initialName={/^(Query|Dotaz) \d+$/.test(tab.title) ? '' : tab.title}
         onClose={() => setSaveOpen(false)}
         onSave={async (name, folder) => {
           const sql = editor.current?.getValue() ?? ''
           const saved = await api.saveQuery({ name, folder: folder || undefined, sql, connectionId: tab.connectionId })
           updateTab(tab.id, { savedQueryId: saved.id, title: name, savedSql: sql })
           setSaveOpen(false)
-          toast({ kind: 'success', message: `Saved “${name}”` })
+          toast({ kind: 'success', message: t('Saved “{name}”', { name }) })
         }}
       />
     </div>
@@ -237,6 +239,7 @@ function SaveQueryModal({
 }) {
   const [name, setName] = useState(initialName)
   const [folder, setFolder] = useState('')
+  const t = useT()
   useEffect(() => {
     if (open) setName(initialName)
   }, [open, initialName])
@@ -244,14 +247,14 @@ function SaveQueryModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Save query"
+      title={t('Save query')}
       width={420}
       footer={
         <>
           <div className="flex-1" />
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{t('Cancel')}</Button>
           <Button variant="primary" disabled={!name.trim()} onClick={() => void onSave(name.trim(), folder.trim())}>
-            Save
+            {t('Save')}
           </Button>
         </>
       }
@@ -264,12 +267,12 @@ function SaveQueryModal({
         }}
       >
         <label className="flex flex-col gap-1">
-          <span className="text-[12px] font-medium text-fg-muted">Name</span>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Monthly revenue by customer" />
+          <span className="text-[12px] font-medium text-fg-muted">{t('Name')}</span>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('Monthly revenue by customer')} />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[12px] font-medium text-fg-muted">Folder (optional)</span>
-          <Input value={folder} onChange={(e) => setFolder(e.target.value)} placeholder="Reports" />
+          <span className="text-[12px] font-medium text-fg-muted">{t('Folder (optional)')}</span>
+          <Input value={folder} onChange={(e) => setFolder(e.target.value)} placeholder={t('Reports')} />
         </label>
         <button type="submit" hidden />
       </form>

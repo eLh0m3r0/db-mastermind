@@ -16,6 +16,7 @@ import { toast } from '@/store/ui'
 import { useWorkspace, type KnowledgeTab } from '@/store/workspace'
 import { Markdown } from '../ai/Markdown'
 import { askAiToDocument } from './generate'
+import { t, tp, useT } from '@/lib/i18n'
 
 const TEMPLATE = (title: string) => `---
 tables: []
@@ -47,7 +48,7 @@ function MarkdownEditor({ value, onChange, onSave, dark }: { value: string; onCh
           history(),
           markdown(),
           EditorView.lineWrapping,
-          placeholder('Write notes in Markdown…'),
+          placeholder(t('Write notes in Markdown…')),
           keymap.of([{ key: 'Mod-s', run: () => (handlers.current.onSave(), true), preventDefault: true }, ...defaultKeymap, ...historyKeymap]),
           EditorView.updateListener.of((u) => u.docChanged && handlers.current.onChange(u.state.doc.toString())),
           EditorView.theme(
@@ -80,6 +81,7 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
   const [content, setContent] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
   const [preview, setPreview] = useState(true)
+  const t = useT()
   const folder = connection?.knowledgeBasePath
   const current = tab.file
 
@@ -88,7 +90,7 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
     try {
       setFiles(await api.kbList(tab.connectionId))
     } catch (err) {
-      toast({ kind: 'error', message: 'Could not read the knowledge base', detail: errorMessage(err) })
+      toast({ kind: 'error', message: t('Could not read the knowledge base'), detail: errorMessage(err) })
     }
   }, [folder, tab.connectionId])
 
@@ -124,17 +126,17 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
       void refresh()
       void loadSchema(tab.connectionId, true)
     } catch (err) {
-      toast({ kind: 'error', message: 'Could not save', detail: errorMessage(err) })
+      toast({ kind: 'error', message: t('Could not save'), detail: errorMessage(err) })
     }
   }
 
   const open = (path: string) => {
-    if (dirty && !window.confirm('Discard unsaved changes?')) return
+    if (dirty && !window.confirm(t('Discard unsaved changes?'))) return
     updateTab(tab.id, { file: path })
   }
 
   const create = async () => {
-    const name = window.prompt('File name (e.g. sales/orders.md)', 'notes.md')?.trim()
+    const name = window.prompt(t('File name (e.g. sales/orders.md)'), 'notes.md')?.trim()
     if (!name) return
     const title = name.replace(/\.md$/i, '').split('/').pop()!.replace(/[-_]/g, ' ')
     const path = await api.kbWrite(tab.connectionId, name, TEMPLATE(title.charAt(0).toUpperCase() + title.slice(1)))
@@ -144,7 +146,7 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
   }
 
   const remove = async () => {
-    if (!current || !window.confirm(`Delete ${current}?`)) return
+    if (!current || !window.confirm(t('Delete {name}?', { name: current }))) return
     await api.kbDelete(tab.connectionId, current)
     updateTab(tab.id, { file: undefined })
     void refresh()
@@ -156,7 +158,7 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
     return (
       <EmptyState
         icon={<BookOpen size={30} />}
-        title="Knowledge base"
+        title={t('Knowledge base')}
         actions={
           <>
             <Button
@@ -166,24 +168,23 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
                 await loadConnections()
               }}
             >
-              Create knowledge base
+              {t('Create knowledge base')}
             </Button>
             <Button
               icon={<FolderOpen size={14} />}
               onClick={async () => {
-                const dir = await api.pickDirectory('Choose a folder with Markdown notes')
+                const dir = await api.pickDirectory(t('Choose a folder with Markdown notes'))
                 if (!dir) return
                 await useConnections.getState().save({ ...connection, knowledgeBasePath: dir })
               }}
             >
-              Use existing folder…
+              {t('Use existing folder…')}
             </Button>
           </>
         }
       >
-        Keep Markdown notes about <b>{connection.name}</b>: what tables mean, codes and statuses, relationships the database doesn’t declare, gotchas. The
-        AI assistant and MCP agents read them, and the AI can write the first version for you. Point it at a Git repository or shared folder to share
-        notes with your team.
+        {t('Keep Markdown notes about')} <b>{connection.name}</b>
+        {t(': what tables mean, codes and statuses, relationships the database doesn’t declare, gotchas. The AI assistant and MCP agents read them, and the AI can write the first version for you. Point it at a Git repository or shared folder to share notes with your team.')}
       </EmptyState>
     )
   }
@@ -195,20 +196,20 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
       <div className="flex w-[260px] shrink-0 flex-col border-r border-line bg-subtle">
         <div className="flex h-10 shrink-0 items-center gap-1 border-b border-line pr-1.5 pl-3">
           <BookOpen size={14} className="text-accent" />
-          <span className="text-[12.5px] font-semibold">Knowledge base</span>
+          <span className="text-[12.5px] font-semibold">{t('Knowledge base')}</span>
           <div className="flex-1" />
-          <IconButton label="New file" onClick={() => void create()}>
+          <IconButton label={t('New file')} onClick={() => void create()}>
             <FilePlus2 size={14} />
           </IconButton>
-          <IconButton label="Refresh" onClick={() => void refresh()}>
+          <IconButton label={t('Refresh')} onClick={() => void refresh()}>
             <RefreshCw size={13} />
           </IconButton>
-          <IconButton label="Show folder" onClick={() => void api.showItemInFolder(folder)}>
+          <IconButton label={t('Show folder')} onClick={() => void api.showItemInFolder(folder)}>
             <FolderOpen size={13} />
           </IconButton>
         </div>
         <div className="p-2">
-          <Input inputSize="sm" placeholder="Find note…" value={search} onChange={(e) => setSearch(e.target.value)} leading={<Search size={12} />} />
+          <Input inputSize="sm" placeholder={t('Find note…')} value={search} onChange={(e) => setSearch(e.target.value)} leading={<Search size={12} />} />
         </div>
         <div className="min-h-0 flex-1 overflow-auto px-1 pb-2">
           {visible.map((f) => (
@@ -225,15 +226,15 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
               </span>
               <span className="truncate pl-[18px] text-[10.5px] text-fg-faint">
                 {f.path}
-                {f.tables.length ? ` · ${f.tables.length} tables` : ''}
+                {f.tables.length ? ` · ${tp(f.tables.length, { one: '{n} table', many: '{n} tables' })}` : ''}
               </span>
             </button>
           ))}
-          {files.length === 0 && <div className="p-3 text-[12px] text-fg-faint">No notes yet.</div>}
+          {files.length === 0 && <div className="p-3 text-[12px] text-fg-faint">{t('No notes yet.')}</div>}
         </div>
         <div className="border-t border-line p-2">
           <Button className="w-full" icon={<Sparkles size={13} />} onClick={askAiToDocument}>
-            {files.length ? 'Ask AI to extend notes' : 'Generate with AI'}
+            {files.length ? t('Ask AI to extend notes') : t('Generate with AI')}
           </Button>
         </div>
       </div>
@@ -242,15 +243,15 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
           <>
             <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-3">
               <span className="truncate font-mono text-[12px] text-fg-muted">{current}</span>
-              {dirty && <span className="h-1.5 w-1.5 rounded-full bg-warning" title="Unsaved changes" />}
+              {dirty && <span className="h-1.5 w-1.5 rounded-full bg-warning" title={t('Unsaved changes')} />}
               <div className="flex-1" />
               <Button size="sm" variant="ghost" icon={preview ? <Pencil size={13} /> : <Eye size={13} />} onClick={() => setPreview((v) => !v)}>
-                {preview ? 'Edit' : 'Preview'}
+                {preview ? t('Edit') : t('Preview')}
               </Button>
-              <Button size="sm" variant={dirty ? 'primary' : 'ghost'} icon={<Save size={13} />} disabled={!dirty} onClick={() => void save()} title={`Save (${modKey}S)`}>
-                Save
+              <Button size="sm" variant={dirty ? 'primary' : 'ghost'} icon={<Save size={13} />} disabled={!dirty} onClick={() => void save()} title={`${t('Save')} (${modKey}S)`}>
+                {t('Save')}
               </Button>
-              <IconButton label="Delete file" onClick={() => void remove()}>
+              <IconButton label={t('Delete file')} onClick={() => void remove()}>
                 <Trash2 size={13} />
               </IconButton>
             </div>
@@ -267,10 +268,10 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
             </div>
           </>
         ) : (
-          <EmptyState icon={<FileText size={26} />} title={files.length ? 'Choose a note' : 'Start your knowledge base'}>
+          <EmptyState icon={<FileText size={26} />} title={files.length ? t('Choose a note') : t('Start your knowledge base')}>
             {files.length
-              ? 'Pick a file on the left, or create a new one.'
-              : 'Create a note yourself, or let the AI study the schema and data and draft the documentation for you to review.'}
+              ? t('Pick a file on the left, or create a new one.')
+              : t('Create a note yourself, or let the AI study the schema and data and draft the documentation for you to review.')}
           </EmptyState>
         )}
       </div>

@@ -10,6 +10,7 @@ import { useSettings } from '@/store/settings'
 import { useUi } from '@/store/ui'
 import { AiSettingsSection } from '../ai/AiSettings'
 import { McpSettingsSection } from '../ai/McpSettings'
+import { useT } from '@/lib/i18n'
 
 const SECTIONS = [
   ['general', 'General'],
@@ -29,12 +30,13 @@ export function SettingsModal() {
   const settings = useSettings((s) => s.settings)
   const info = useSettings((s) => s.info)
   const update = useSettings((s) => s.update)
+  const t = useT()
   if (!settings) return null
   const set = (patch: Partial<AppSettings>) => void update(patch)
   const current = open && modal.section ? (modal.section as Section) : section
 
   return (
-    <Modal open={open} onClose={() => setUi({ modal: undefined })} title="Settings" width={760} bodyClassName="p-0">
+    <Modal open={open} onClose={() => setUi({ modal: undefined })} title={t('Settings')} width={760} bodyClassName="p-0">
       <div className="flex min-h-[460px]">
         <nav className="flex w-[180px] shrink-0 flex-col gap-0.5 border-r border-line bg-subtle p-2">
           {SECTIONS.map(([id, label]) => (
@@ -47,46 +49,46 @@ export function SettingsModal() {
               }}
               className={cn('h-8 rounded-md px-2.5 text-left text-[13px]', current === id ? 'bg-elevated font-medium shadow-sm' : 'text-fg-muted hover:bg-hover hover:text-fg')}
             >
-              {label}
+              {t(label)}
             </button>
           ))}
         </nav>
         <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-auto p-5">
           {current === 'general' && (
             <>
-              <Row label="Theme">
+              <Row label={t('Theme')}>
                 <Segmented
                   value={settings.theme}
                   onChange={(theme) => set({ theme })}
                   options={[
-                    { value: 'system', label: 'System' },
-                    { value: 'light', label: 'Light' },
-                    { value: 'dark', label: 'Dark' },
+                    { value: 'system', label: t('System') },
+                    { value: 'light', label: t('Light') },
+                    { value: 'dark', label: t('Dark') },
                   ]}
                 />
               </Row>
-              <Row label="Language" hint="Czech translation is in progress.">
+              <Row label={t('Language')}>
                 <Select className="w-48" value={settings.language} onChange={(e) => set({ language: e.target.value as 'en' | 'cs' })}>
                   <option value="en">English</option>
                   <option value="cs">Čeština</option>
                 </Select>
               </Row>
-              <Row label="Safety">
+              <Row label={t('Safety')}>
                 <Checkbox
                   checked={settings.confirmDangerousStatements}
                   onChange={(v) => set({ confirmDangerousStatements: v })}
-                  label="Confirm DELETE/UPDATE without WHERE, DROP and TRUNCATE"
-                  hint="Always on for connections marked as production."
+                  label={t('Confirm DELETE/UPDATE without WHERE, DROP and TRUNCATE')}
+                  hint={t('Always on for connections marked as production.')}
                 />
               </Row>
             </>
           )}
           {current === 'editor' && (
             <>
-              <Row label="Editor font size">
+              <Row label={t('Editor font size')}>
                 <Input className="w-24" type="number" min={10} max={24} value={settings.editorFontSize} onChange={(e) => set({ editorFontSize: Number(e.target.value) || 13 })} />
               </Row>
-              <Row label="Rows per page" hint="Default page size in the table browser.">
+              <Row label={t('Rows per page')} hint={t('Default page size in the table browser.')}>
                 <Select className="w-32" value={settings.pageSize} onChange={(e) => set({ pageSize: Number(e.target.value) })}>
                   {[50, 100, 200, 500, 1000, 5000].map((n) => (
                     <option key={n} value={n}>
@@ -95,10 +97,10 @@ export function SettingsModal() {
                   ))}
                 </Select>
               </Row>
-              <Row label="Max result rows" hint="Query results stop after this many rows (export streams everything).">
+              <Row label={t('Max result rows')} hint={t('Query results stop after this many rows (export streams everything).')}>
                 <Input className="w-32" type="number" min={100} step={1000} value={settings.maxResultRows} onChange={(e) => set({ maxResultRows: Math.max(100, Number(e.target.value) || 10000) })} />
               </Row>
-              <Row label="NULL display">
+              <Row label={t('NULL display')}>
                 <Input className="w-32" value={settings.nullDisplay} onChange={(e) => set({ nullDisplay: e.target.value })} />
               </Row>
             </>
@@ -107,30 +109,30 @@ export function SettingsModal() {
           {current === 'mcp' && <McpSettingsSection />}
           {current === 'about' && info && (
             <>
-              <Row label="Version">
+              <Row label={t('Version')}>
                 <span className="text-[13px]">{info.version}</span>
               </Row>
-              <Row label="Mode">
-                <span className="text-[13px]">{info.portable ? 'Portable (data stored next to the app)' : 'Installed'}</span>
+              <Row label={t('Mode')}>
+                <span className="text-[13px]">{info.portable ? t('Portable (data stored next to the app)') : t('Installed')}</span>
               </Row>
-              <Row label="Data folder">
+              <Row label={t('Data folder')}>
                 <div className="flex items-center gap-2">
                   <code className="truncate rounded bg-subtle px-1.5 py-0.5 text-[12px] select-text">{info.dataDir}</code>
                   <Button size="xs" icon={<FolderOpen size={12} />} onClick={() => void api.showItemInFolder(info.dataDir)}>
-                    Show
+                    {t('Show')}
                   </Button>
                 </div>
               </Row>
-              <Row label="Links">
+              <Row label={t('Links')}>
                 <div className="flex gap-2">
                   <Button size="xs" onClick={() => void api.openExternal('https://github.com/eLh0m3r0/db-mastermind')}>
                     GitHub
                   </Button>
                   <Button size="xs" onClick={() => void api.openExternal('https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md')}>
-                    Roadmap
+                    {t('Roadmap')}
                   </Button>
                   <Button size="xs" onClick={() => void api.openExternal('https://github.com/eLh0m3r0/db-mastermind/issues/new')}>
-                    Report issue
+                    {t('Report issue')}
                   </Button>
                 </div>
               </Row>

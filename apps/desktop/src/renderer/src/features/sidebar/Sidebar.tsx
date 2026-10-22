@@ -29,6 +29,7 @@ import { useActiveTab, useWorkspace } from '@/store/workspace'
 import { DriverIcon, driverLabel } from '../connections/drivers'
 import { HistoryPanel, SavedQueriesPanel } from './LibraryPanels'
 import { SchemaTree } from './SchemaTree'
+import { t, tp, useT } from '@/lib/i18n'
 
 export function useCurrentConnectionId(): string | undefined {
   const tab = useActiveTab()
@@ -47,7 +48,7 @@ export async function connectAndSelect(id: string): Promise<boolean> {
     else ws.newQuery(id)
   } else {
     const c = useConnections.getState().get(id)
-    toast({ kind: 'error', message: `Could not connect to ${c?.name ?? 'database'}`, detail: useConnections.getState().runtime[id]?.error })
+    toast({ kind: 'error', message: c ? t('Could not connect to {name}', { name: c.name }) : t('Could not connect to the database'), detail: useConnections.getState().runtime[id]?.error })
   }
   return ok
 }
@@ -57,17 +58,17 @@ export function connectionMenu(c: StoredConnection): Parameters<typeof openMenu>
   const connected = runtime[c.id]?.status === 'connected'
   return [
     connected
-      ? { label: 'Disconnect', icon: <Unplug size={13} />, onClick: () => void disconnect(c.id) }
-      : { label: 'Connect', icon: <Plug size={13} />, onClick: () => void connectAndSelect(c.id) },
-    { label: 'Edit…', icon: <Pencil size={13} />, onClick: () => useUi.getState().set({ modal: { kind: 'connection', connectionId: c.id } }) },
-    { label: 'Duplicate', icon: <Copy size={13} />, onClick: () => void duplicate(c.id) },
+      ? { label: t('Disconnect'), icon: <Unplug size={13} />, onClick: () => void disconnect(c.id) }
+      : { label: t('Connect'), icon: <Plug size={13} />, onClick: () => void connectAndSelect(c.id) },
+    { label: t('Edit…'), icon: <Pencil size={13} />, onClick: () => useUi.getState().set({ modal: { kind: 'connection', connectionId: c.id } }) },
+    { label: t('Duplicate'), icon: <Copy size={13} />, onClick: () => void duplicate(c.id) },
     'separator',
     {
-      label: 'Delete',
+      label: t('Delete'),
       icon: <Trash2 size={13} />,
       danger: true,
       onClick: () => {
-        if (window.confirm(`Delete connection “${c.name}”? Saved queries are kept.`)) {
+        if (window.confirm(t('Delete connection “{name}”? Saved queries are kept.', { name: c.name }))) {
           useWorkspace.getState().closeForConnection(c.id)
           void remove(c.id)
         }
@@ -97,6 +98,7 @@ export function Sidebar() {
   const connection = useConnections((s) => s.list.find((c) => c.id === connectionId))
   const runtime = useConnections((s) => (connectionId ? s.runtime[connectionId] : undefined))
   const [panel, setPanel] = useState<Panel>('explorer')
+  const t = useT()
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-subtle">
@@ -104,13 +106,13 @@ export function Sidebar() {
         {!isMac && <span className="text-[12px] font-semibold tracking-tight text-fg-muted">DB Mastermind</span>}
         <div className="flex-1" />
         <div className="no-drag flex items-center">
-          <IconButton label="All connections" onClick={() => {
+          <IconButton label={t('All connections')} onClick={() => {
               useUi.getState().set({ selectedConnectionId: undefined })
               useWorkspace.getState().activate('')
             }}>
             <Home size={14} />
           </IconButton>
-          <IconButton label="New connection" onClick={() => useUi.getState().set({ modal: { kind: 'connection' } })}>
+          <IconButton label={t('New connection')} onClick={() => useUi.getState().set({ modal: { kind: 'connection' } })}>
             <Plus size={15} />
           </IconButton>
         </div>
@@ -135,13 +137,13 @@ export function Sidebar() {
                   panel === id ? 'bg-active text-fg' : 'text-fg-muted hover:bg-hover hover:text-fg',
                 )}
               >
-                <Icon size={12} /> {label}
+                <Icon size={12} /> {t(label)}
               </button>
             ))}
             <button
               type="button"
-              title="Knowledge base"
-              onClick={() => useWorkspace.getState().open({ kind: 'knowledge', connectionId: connection.id, title: 'Knowledge base' })}
+              title={t('Knowledge base')}
+              onClick={() => useWorkspace.getState().open({ kind: 'knowledge', connectionId: connection.id, title: t('Knowledge base') })}
               className="flex h-6 w-7 items-center justify-center rounded-md text-fg-muted hover:bg-hover hover:text-fg"
             >
               <BookOpen size={12} />
@@ -165,6 +167,7 @@ export function Sidebar() {
 
 function NotConnected({ connection }: { connection: StoredConnection }) {
   const runtime = useConnections((s) => s.runtime[connection.id])
+  const t = useT()
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 text-center">
       {runtime?.status === 'error' && <div className="text-[12px] break-words text-danger select-text">{runtime.error}</div>}
@@ -174,7 +177,7 @@ function NotConnected({ connection }: { connection: StoredConnection }) {
         onClick={() => void connectAndSelect(connection.id)}
         disabled={runtime?.status === 'connecting'}
       >
-        {runtime?.status === 'connecting' ? <Spinner size={13} /> : <Power size={13} />} Connect
+        {runtime?.status === 'connecting' ? <Spinner size={13} /> : <Power size={13} />} {t('Connect')}
       </button>
     </div>
   )
@@ -224,6 +227,7 @@ function ConnectionHeader({ connection }: { connection: StoredConnection }) {
 function ConnectionList() {
   const list = useConnections((s) => s.list)
   const [filter, setFilter] = useState('')
+  const t = useT()
   const groups = useMemo(() => {
     const q = filter.trim()
     const filtered = list
@@ -240,7 +244,7 @@ function ConnectionList() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="px-2 pb-1.5">
-        <Input inputSize="sm" placeholder="Search connections…" value={filter} onChange={(e) => setFilter(e.target.value)} leading={<Search size={12} />} />
+        <Input inputSize="sm" placeholder={t('Search connections…')} value={filter} onChange={(e) => setFilter(e.target.value)} leading={<Search size={12} />} />
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-1 pb-2">
         {groups.map(([group, items]) => (
@@ -270,7 +274,7 @@ function ConnectionList() {
         {list.length === 0 && (
           <div className="flex flex-col items-center gap-2 p-6 text-center text-[12px] text-fg-faint">
             <Database size={22} />
-            No connections yet.
+            {t('No connections yet.')}
           </div>
         )}
       </div>
@@ -280,16 +284,16 @@ function ConnectionList() {
           className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md bg-accent text-[12.5px] font-medium text-accent-fg hover:bg-accent-hover"
           onClick={() => useUi.getState().set({ modal: { kind: 'connection' } })}
         >
-          <Plus size={14} /> New connection
+          <Plus size={14} /> {t('New connection')}
         </button>
         <IconButton
-          label="Import connections"
+          label={t('Import connections')}
           size="md"
           onClick={(e) =>
             openMenu(e.currentTarget, [
-              { label: 'From Beekeeper Studio', onClick: () => void importFrom('beekeeper') },
-              { label: 'From DBeaver', onClick: () => void importFrom('dbeaver') },
-              { label: 'From JSON file…', onClick: () => void importFrom('file') },
+              { label: t('From Beekeeper Studio'), onClick: () => void importFrom('beekeeper') },
+              { label: t('From DBeaver'), onClick: () => void importFrom('dbeaver') },
+              { label: t('From JSON file…'), onClick: () => void importFrom('file') },
             ])
           }
         >
@@ -306,10 +310,10 @@ export async function importFrom(source: 'beekeeper' | 'dbeaver' | 'file') {
     await useConnections.getState().load()
     toast({
       kind: n ? 'success' : 'info',
-      message: n ? `Imported ${n} connection${n === 1 ? '' : 's'}` : 'Nothing new to import',
-      detail: source === 'beekeeper' && n ? 'Beekeeper stores passwords encrypted, so enter them when you first connect.' : undefined,
+      message: n ? tp(n, { one: 'Imported {n} connection', many: 'Imported {n} connections' }) : t('Nothing new to import'),
+      detail: source === 'beekeeper' && n ? t('Beekeeper stores passwords encrypted, so enter them when you first connect.') : undefined,
     })
   } catch (err) {
-    toast({ kind: 'error', message: 'Import failed', detail: errorMessage(err) })
+    toast({ kind: 'error', message: t('Import failed'), detail: errorMessage(err) })
   }
 }

@@ -3,6 +3,7 @@ import { COMMON_TYPES, designId, type DesignTable, type DriverId, type TableInfo
 import { Button, IconButton } from '@/components/ui/Button'
 import { Checkbox, Input, Select } from '@/components/ui/Input'
 import { cn } from '@/lib/utils'
+import { useT } from '@/lib/i18n'
 
 const FK_ACTIONS = ['NO ACTION', 'CASCADE', 'SET NULL', 'RESTRICT', 'SET DEFAULT']
 
@@ -22,6 +23,7 @@ export function TableEditor({
   onRevert?: () => void
   onClose: () => void
 }) {
+  const tr = useT()
   const set = (patch: Partial<DesignTable>) => onChange({ ...table, ...patch })
   const setColumn = (id: string, patch: Partial<DesignTable['columns'][number]>) => {
     const old = table.columns.find((c) => c.id === id)!
@@ -44,15 +46,15 @@ export function TableEditor({
   return (
     <div className="flex w-[420px] shrink-0 flex-col border-l border-line bg-subtle">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line pr-1.5 pl-3">
-        <span className="text-[12.5px] font-semibold">{table.originalName ? 'Edit table' : 'New table'}</span>
-        {table.dropped && <span className="rounded bg-danger px-1.5 text-[10px] font-bold text-white">WILL BE DROPPED</span>}
+        <span className="text-[12.5px] font-semibold">{table.originalName ? tr('Edit table') : tr('New table')}</span>
+        {table.dropped && <span className="rounded bg-danger px-1.5 text-[10px] font-bold text-white">{tr('WILL BE DROPPED')}</span>}
         <div className="flex-1" />
         {onRevert && (
-          <IconButton label="Revert changes to this table" onClick={onRevert}>
+          <IconButton label={tr('Revert changes to this table')} onClick={onRevert}>
             <RotateCcw size={13} />
           </IconButton>
         )}
-        <IconButton label="Close" onClick={onClose}>
+        <IconButton label={tr('Close')} onClick={onClose}>
           <X size={14} />
         </IconButton>
       </div>
@@ -64,29 +66,29 @@ export function TableEditor({
       <div className={cn('min-h-0 flex-1 overflow-auto p-3', table.dropped && 'pointer-events-none opacity-50')}>
         <div className="mb-3 flex gap-2">
           <label className="flex flex-1 flex-col gap-1">
-            <span className="text-[11.5px] font-medium text-fg-muted">Name</span>
+            <span className="text-[11.5px] font-medium text-fg-muted">{tr('Name')}</span>
             <Input inputSize="sm" value={table.name} onChange={(e) => set({ name: e.target.value })} />
           </label>
           {table.schema && (
             <label className="flex w-28 flex-col gap-1">
-              <span className="text-[11.5px] font-medium text-fg-muted">Schema</span>
+              <span className="text-[11.5px] font-medium text-fg-muted">{tr('Schema')}</span>
               <Input inputSize="sm" value={table.schema} disabled />
             </label>
           )}
         </div>
         <label className="mb-4 flex flex-col gap-1">
-          <span className="text-[11.5px] font-medium text-fg-muted">Comment</span>
-          <Input inputSize="sm" value={table.comment ?? ''} onChange={(e) => set({ comment: e.target.value || null })} placeholder="What is stored here" />
+          <span className="text-[11.5px] font-medium text-fg-muted">{tr('Comment')}</span>
+          <Input inputSize="sm" value={table.comment ?? ''} onChange={(e) => set({ comment: e.target.value || null })} placeholder={tr('What is stored here')} />
         </label>
 
-        <Section title="Columns" onAdd={() => set({ columns: [...table.columns, { id: designId('c'), name: `column_${table.columns.length + 1}`, dataType: textType, nullable: true }] })}>
+        <Section title={tr('Columns')} onAdd={() => set({ columns: [...table.columns, { id: designId('c'), name: `column_${table.columns.length + 1}`, dataType: textType, nullable: true }] })}>
           <div className="flex flex-col gap-1">
             {table.columns.map((c) => (
               <div key={c.id} className="rounded-md border border-line bg-bg p-1.5">
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    title={table.primaryKey.includes(c.name) ? 'Remove from primary key' : 'Add to primary key'}
+                    title={table.primaryKey.includes(c.name) ? tr('Remove from primary key') : tr('Add to primary key')}
                     onClick={() => togglePk(c.name, !table.primaryKey.includes(c.name))}
                     className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded', table.primaryKey.includes(c.name) ? 'text-warning' : 'text-fg-faint hover:text-fg')}
                   >
@@ -95,7 +97,7 @@ export function TableEditor({
                   <Input inputSize="sm" className="h-6 flex-1 font-mono text-[12px]" value={c.name} onChange={(e) => setColumn(c.id, { name: e.target.value })} />
                   <Input inputSize="sm" className="h-6 w-[130px] font-mono text-[12px]" list="dbm-types" value={c.dataType} onChange={(e) => setColumn(c.id, { dataType: e.target.value })} />
                   <IconButton
-                    label="Delete column"
+                    label={tr('Delete column')}
                     onClick={() =>
                       set({
                         columns: table.columns.filter((x) => x.id !== c.id),
@@ -111,24 +113,24 @@ export function TableEditor({
                 <div className="mt-1 flex items-center gap-3 pl-7">
                   <Checkbox checked={!c.nullable} onChange={(v) => setColumn(c.id, { nullable: !v })} label={<span className="text-[11.5px]">NOT NULL</span>} />
                   {!c.originalName && (driver !== 'sqlite' || table.primaryKey.includes(c.name)) && (
-                    <Checkbox checked={!!c.identity} onChange={(v) => setColumn(c.id, { identity: v })} label={<span className="text-[11.5px]">auto-increment</span>} />
+                    <Checkbox checked={!!c.identity} onChange={(v) => setColumn(c.id, { identity: v })} label={<span className="text-[11.5px]">{tr('auto-increment')}</span>} />
                   )}
                   <Input
                     inputSize="sm"
                     className="h-6 flex-1 font-mono text-[11px]"
-                    placeholder="default"
+                    placeholder={tr('default')}
                     value={c.defaultValue ?? ''}
                     onChange={(e) => setColumn(c.id, { defaultValue: e.target.value || null })}
                   />
                 </div>
-                {c.originalName && c.originalName !== c.name && <div className="mt-1 pl-7 text-[10.5px] text-fg-faint">renamed from {c.originalName}</div>}
+                {c.originalName && c.originalName !== c.name && <div className="mt-1 pl-7 text-[10.5px] text-fg-faint">{tr('renamed from {name}', { name: c.originalName })}</div>}
               </div>
             ))}
           </div>
         </Section>
 
         <Section
-          title="Foreign keys"
+          title={tr('Foreign keys')}
           onAdd={() => {
             const target = allTables.find((t) => t.name !== table.name) ?? allTables[0]
             set({
@@ -139,7 +141,7 @@ export function TableEditor({
             })
           }}
         >
-          {table.foreignKeys.length === 0 && <div className="text-[11.5px] text-fg-faint">Drag from a column to another table's column in the diagram, or add one here.</div>}
+          {table.foreignKeys.length === 0 && <div className="text-[11.5px] text-fg-faint">{tr("Drag from a column to another table's column in the diagram, or add one here.")}</div>}
           {table.foreignKeys.map((fk) => {
             const target = refTable(fk.refTable)
             const update = (patch: Partial<typeof fk>) => set({ foreignKeys: table.foreignKeys.map((f) => (f.id === fk.id ? { ...f, ...patch } : f)) })
@@ -170,12 +172,12 @@ export function TableEditor({
                       <option key={c.name}>{c.name}</option>
                     ))}
                   </Select>
-                  <IconButton label="Delete foreign key" onClick={() => set({ foreignKeys: table.foreignKeys.filter((f) => f.id !== fk.id) })}>
+                  <IconButton label={tr('Delete foreign key')} onClick={() => set({ foreignKeys: table.foreignKeys.filter((f) => f.id !== fk.id) })}>
                     <Trash2 size={12} />
                   </IconButton>
                 </div>
                 <div className="flex items-center gap-1.5 pl-1 text-[11px] text-fg-muted">
-                  on delete
+                  {tr('on delete')}
                   <Select inputSize="sm" className="h-5 w-28 text-[11px]" value={fk.onDelete ?? 'NO ACTION'} onChange={(e) => update({ onDelete: e.target.value })}>
                     {FK_ACTIONS.map((a) => (
                       <option key={a}>{a}</option>
@@ -188,7 +190,7 @@ export function TableEditor({
           })}
         </Section>
 
-        <Section title="Indexes" onAdd={() => set({ indexes: [...table.indexes, { id: designId('i'), columns: [table.columns[0]?.name ?? ''], unique: false }] })}>
+        <Section title={tr('Indexes')} onAdd={() => set({ indexes: [...table.indexes, { id: designId('i'), columns: [table.columns[0]?.name ?? ''], unique: false }] })}>
           {table.indexes.map((ix) => {
             const update = (patch: Partial<typeof ix>) => set({ indexes: table.indexes.map((i) => (i.id === ix.id ? { ...i, ...patch } : i)) })
             return (
@@ -198,10 +200,10 @@ export function TableEditor({
                   className="h-6 flex-1 font-mono text-[12px]"
                   value={ix.columns.join(', ')}
                   onChange={(e) => update({ columns: e.target.value.split(',').map((x) => x.trim()) })}
-                  title="Columns, comma separated"
+                  title={tr('Columns, comma separated')}
                 />
-                <Checkbox checked={ix.unique} onChange={(unique) => update({ unique })} label={<span className="text-[11.5px]">unique</span>} />
-                <IconButton label="Delete index" onClick={() => set({ indexes: table.indexes.filter((i) => i.id !== ix.id) })}>
+                <Checkbox checked={ix.unique} onChange={(unique) => update({ unique })} label={<span className="text-[11.5px]">{tr('unique')}</span>} />
+                <IconButton label={tr('Delete index')} onClick={() => set({ indexes: table.indexes.filter((i) => i.id !== ix.id) })}>
                   <Trash2 size={12} />
                 </IconButton>
               </div>
@@ -212,11 +214,11 @@ export function TableEditor({
       <div className="border-t border-line p-2">
         {table.dropped ? (
           <Button className="w-full" onClick={() => set({ dropped: false })}>
-            Keep this table
+            {tr('Keep this table')}
           </Button>
         ) : (
           <Button className="w-full" variant="ghost" icon={<Trash2 size={13} />} onClick={() => set({ dropped: true })}>
-            {table.originalName ? 'Drop table' : 'Remove new table'}
+            {table.originalName ? tr('Drop table') : tr('Remove new table')}
           </Button>
         )}
       </div>
@@ -225,12 +227,13 @@ export function TableEditor({
 }
 
 function Section({ title, onAdd, children }: { title: string; onAdd: () => void; children: React.ReactNode }) {
+  const tr = useT()
   return (
     <div className="mb-4">
       <div className="mb-1.5 flex items-center justify-between">
         <span className="text-[11px] font-semibold tracking-wide text-fg-faint uppercase">{title}</span>
         <Button size="xs" variant="ghost" icon={<Plus size={11} />} onClick={onAdd}>
-          Add
+          {tr('Add')}
         </Button>
       </div>
       {children}

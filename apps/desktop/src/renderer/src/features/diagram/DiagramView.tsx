@@ -43,6 +43,7 @@ import { toast } from '@/store/ui'
 import { useWorkspace, type DiagramTab } from '@/store/workspace'
 import { MigrationModal } from './MigrationModal'
 import { TableEditor } from './TableEditor'
+import { t, tp, useT } from '@/lib/i18n'
 
 const elk = new ELK()
 const HEADER = 32
@@ -91,7 +92,7 @@ const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData
         {table.type === 'table' ? <Table2 size={12} /> : <Eye size={12} />}
         <span className="truncate">{table.name}</span>
         {data.status !== 'live' ? (
-          <span className="ml-auto rounded bg-white/25 px-1 text-[9.5px] font-bold uppercase">{data.status}</span>
+          <span className="ml-auto rounded bg-white/25 px-1 text-[9.5px] font-bold uppercase">{t(data.status)}</span>
         ) : (
           table.schema && <span className="ml-auto truncate text-[10px] font-normal opacity-75">{table.schema}</span>
         )}
@@ -153,6 +154,7 @@ function nodeHeight(t: TableInfo, keysOnly: boolean, fk: Set<string>, ref: Set<s
 }
 
 function DiagramInner({ tab }: { tab: DiagramTab }) {
+  const tr = useT()
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const loadSchema = useConnections((s) => s.loadSchema)
   const openTab = useWorkspace((s) => s.open)
@@ -411,7 +413,7 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
       a.download = `${tab.title.replace(/[^\w.-]+/g, '_')}.${format}`
       a.click()
     } catch (err) {
-      toast({ kind: 'error', message: 'Export failed', detail: errorMessage(err) })
+      toast({ kind: 'error', message: tr('Export failed'), detail: errorMessage(err) })
     }
   }
 
@@ -424,7 +426,7 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
     }
     for (const t of tables) for (const fk of t.foreignKeys) lines.push(`  ${fk.refTable} ||--o{ ${t.name} : "${fk.columns.join(', ')}"`)
     void navigator.clipboard.writeText(lines.join('\n'))
-    toast({ kind: 'success', message: 'Mermaid diagram copied to clipboard' })
+    toast({ kind: 'success', message: tr('Mermaid diagram copied to clipboard') })
   }
 
   const exportDbml = () => {
@@ -440,7 +442,7 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
     }
     for (const t of tables) for (const fk of t.foreignKeys) fk.columns.forEach((c, i) => out.push(`Ref: ${t.name}.${c} > ${fk.refTable}.${fk.refColumns[i]}`))
     void navigator.clipboard.writeText(out.join('\n'))
-    toast({ kind: 'success', message: 'DBML copied to clipboard', detail: 'Paste it into dbdiagram.io or a .dbml file.' })
+    toast({ kind: 'success', message: tr('DBML copied to clipboard'), detail: tr('Paste it into dbdiagram.io or a .dbml file.') })
   }
 
   /** Draft for a node, creating one from the live table on first edit. */
@@ -480,7 +482,7 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
       ...from,
       foreignKeys: [...from.foreignKeys, { id: designId('f'), columns: [column], refSchema: to.schema, refTable: to.name, refColumns: [refColumn] }],
     })
-    toast({ kind: 'info', message: `Foreign key ${from.name}.${column} → ${to.name}.${refColumn} added to the design` })
+    toast({ kind: 'info', message: tr('Foreign key {from} → {to} added to the design', { from: `${from.name}.${column}`, to: `${to.name}.${refColumn}` }) })
   }
   const selectedDraft = selected ? draftFor(selected) : undefined
 
@@ -502,7 +504,7 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
       </div>
     )
   }
-  if (schema.tables.length === 0) return <EmptyState icon={<Network size={26} />} title="No tables to show" />
+  if (schema.tables.length === 0) return <EmptyState icon={<Network size={26} />} title={tr('No tables to show')} />
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -511,7 +513,7 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
           <Input
             inputSize="sm"
             className="w-56"
-            placeholder="Focus on table…"
+            placeholder={tr('Focus on table…')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             leading={<Search size={12} />}
@@ -544,14 +546,14 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
           <>
             <span className="flex items-center gap-1 rounded-md bg-accent-soft px-2 py-0.5 text-[12px] text-accent">
               {focusName}
-              <button type="button" className="ml-1 hover:text-fg" onClick={() => setFocusName(undefined)} aria-label="Show whole schema">
+              <button type="button" className="ml-1 hover:text-fg" onClick={() => setFocusName(undefined)} aria-label={tr('Show whole schema')}>
                 ×
               </button>
             </span>
             <Select inputSize="sm" className="h-7 w-28" value={depth} onChange={(e) => setDepth(Number(e.target.value))}>
               {[1, 2, 3, 4].map((d) => (
                 <option key={d} value={d}>
-                  {d} {d === 1 ? 'hop' : 'hops'}
+                  {tp(d, { one: '{n} hop', many: '{n} hops' })}
                 </option>
               ))}
             </Select>
@@ -564,14 +566,14 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
                   {s}
                 </option>
               ))}
-              <option value="*">All schemas</option>
+              <option value="*">{tr('All schemas')}</option>
             </Select>
           )
         )}
-        <Checkbox checked={keysOnly} onChange={setKeysOnly} label="Keys only" />
+        <Checkbox checked={keysOnly} onChange={setKeysOnly} label={tr('Keys only')} />
         {!design && (
           <span className="shrink-0 text-[11.5px] text-fg-faint">
-            {tables.length} tables · {edges.length} relationships
+            {tp(tables.length, { one: '{n} table', many: '{n} tables' })} · {tp(edges.length, { one: '{n} relationship', many: '{n} relationships' })}
           </span>
         )}
         <div className="flex-1" />
@@ -579,7 +581,7 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
         {design && (
           <>
             <Button size="sm" variant="ghost" icon={<Plus size={13} />} onClick={addTable}>
-              New table
+              {tr('New table')}
             </Button>
             {Object.keys(drafts).length > 0 && (
               <Button
@@ -587,17 +589,17 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
                 variant="ghost"
                 icon={<Undo2 size={13} />}
                 onClick={() => {
-                  if (window.confirm('Discard all design changes?')) {
+                  if (window.confirm(tr('Discard all design changes?'))) {
                     setDrafts({})
                     setSelected(null)
                   }
                 }}
               >
-                Discard
+                {tr('Discard')}
               </Button>
             )}
             <Button size="sm" variant={changes.length ? 'primary' : 'secondary'} icon={<FileCode2 size={13} />} disabled={!changes.length} onClick={() => setReviewOpen(true)}>
-              Review migration{changes.length ? ` (${changes.length})` : ''}
+              {tr('Review migration')}{changes.length ? ` (${changes.length})` : ''}
             </Button>
           </>
         )}
@@ -609,12 +611,12 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
             setDesign((v) => !v)
             setSelected(null)
           }}
-          title="Design changes to the schema on the diagram and generate a migration script"
+          title={tr('Design changes to the schema on the diagram and generate a migration script')}
         >
-          {design ? 'Designing' : 'Design'}
+          {design ? tr('Designing') : tr('Design')}
         </Button>
         <Button size="sm" variant="ghost" icon={<LayoutGrid size={13} />} onClick={resetLayout}>
-          Auto layout
+          {tr('Auto layout')}
         </Button>
         <Button
           size="sm"
@@ -622,22 +624,22 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
           icon={<Download size={13} />}
           onClick={(e) =>
             openMenu(e.currentTarget, [
-              { label: 'PNG image', onClick: () => void exportImage('png') },
-              { label: 'SVG image', onClick: () => void exportImage('svg') },
+              { label: tr('PNG image'), onClick: () => void exportImage('png') },
+              { label: tr('SVG image'), onClick: () => void exportImage('svg') },
               'separator',
-              { label: 'Copy as Mermaid', onClick: exportMermaid },
-              { label: 'Copy as DBML (dbdiagram.io)', onClick: exportDbml },
+              { label: tr('Copy as Mermaid'), onClick: exportMermaid },
+              { label: tr('Copy as DBML (dbdiagram.io)'), onClick: exportDbml },
             ])
           }
         >
-          Export
+          {tr('Export')}
         </Button>
       </div>
       {staleDesign && (
         <div className="flex h-9 shrink-0 items-center gap-2 border-b border-line bg-warning-soft px-3 text-[12px] text-warning">
-          The database schema changed since this design was started (maybe the migration already ran).
+          {tr('The database schema changed since this design was started (maybe the migration already ran).')}
           <Button size="xs" onClick={() => setDrafts({})}>
-            Discard design
+            {tr('Discard design')}
           </Button>
         </div>
       )}
@@ -645,8 +647,7 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
         <div className="flex h-8 shrink-0 items-center gap-2 border-b border-line bg-accent-soft px-3 text-[12px]">
           <PencilRuler size={13} className="text-accent" />
           <span>
-            <b>Design mode.</b> Click a table to edit it, drag from a column dot to another table to add a foreign key. Nothing changes in the
-            database until you run the generated migration.
+            <b>{tr('Design mode.')}</b> {tr('Click a table to edit it, drag from a column dot to another table to add a foreign key. Nothing changes in the database until you run the generated migration.')}
           </span>
         </div>
       )}
@@ -689,9 +690,9 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
           onNodeDoubleClick={(_, n) => openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name })}
           onNodeContextMenu={(e, n) =>
             openMenu(e, [
-              { label: 'Open data', icon: <Table2 size={13} />, onClick: () => openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name }) },
-              { label: 'Open structure', onClick: () => openTab({ kind: 'structure', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: `${n.data.table.name} · structure` }) },
-              { label: 'Focus here', icon: <Network size={13} />, onClick: () => setFocusName(n.data.table.name) },
+              { label: tr('Open data'), icon: <Table2 size={13} />, onClick: () => openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name }) },
+              { label: tr('Open structure'), onClick: () => openTab({ kind: 'structure', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: tr('{name} · structure', { name: n.data.table.name }) }) },
+              { label: tr('Focus here'), icon: <Network size={13} />, onClick: () => setFocusName(n.data.table.name) },
             ])
           }
           colorMode={dark ? 'dark' : 'light'}
@@ -748,7 +749,7 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
           connectionId={tab.connectionId}
           onOpenInEditor={(sql) => {
             setReviewOpen(false)
-            newQuery(tab.connectionId, sql, 'Migration')
+            newQuery(tab.connectionId, sql, tr('Migration'))
           }}
         />
       )}

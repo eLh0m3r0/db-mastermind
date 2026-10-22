@@ -8,6 +8,7 @@ import { useConnections } from '@/store/connections'
 import { useUi } from '@/store/ui'
 import { useWorkspace, type Tab } from '@/store/workspace'
 import { useCurrentConnectionId } from '../sidebar/Sidebar'
+import { useT } from '@/lib/i18n'
 
 const ICONS = { query: TerminalSquare, table: Table2, structure: Layers, diagram: Network, knowledge: BookOpen }
 
@@ -22,29 +23,30 @@ export function TabBar() {
   const setUi = useUi((s) => s.set)
   const dragId = useRef<string | null>(null)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const t = useT()
   const multipleConnections = new Set(tabs.map((t) => t.connectionId)).size > 1
 
   const menu = (e: React.MouseEvent, tab: Tab) =>
     openMenu(e, [
-      { label: 'Close', shortcut: `${modKey}W`, onClick: () => close(tab.id) },
-      { label: 'Close others', onClick: () => closeOthers(tab.id) },
+      { label: t('Close'), shortcut: `${modKey}W`, onClick: () => close(tab.id) },
+      { label: t('Close others'), onClick: () => closeOthers(tab.id) },
       'separator',
       {
-        label: 'Rename…',
+        label: t('Rename…'),
         onClick: () => {
-          const title = window.prompt('Tab name', tab.title)
+          const title = window.prompt(t('Tab name'), tab.title)
           if (title?.trim()) update(tab.id, { title: title.trim() })
         },
       },
       ...(tab.kind === 'query'
-        ? [{ label: 'Duplicate', onClick: () => newQuery(tab.connectionId, tab.sql, `${tab.title} (copy)`) }]
+        ? [{ label: t('Duplicate'), onClick: () => newQuery(tab.connectionId, tab.sql, t('{title} (copy)', { title: tab.title })) }]
         : []),
     ])
 
   return (
     <div className={cn('drag-region flex h-[38px] shrink-0 items-end border-b border-line bg-subtle', !sidebarVisible && isMac && 'pl-[78px]')}>
       {!sidebarVisible && (
-        <IconButton label={`Show sidebar (${modKey}B)`} className="no-drag mb-1.5 ml-1.5" onClick={() => setUi({ sidebarVisible: true })}>
+        <IconButton label={`${t('Show sidebar')} (${modKey}B)`} className="no-drag mb-1.5 ml-1.5" onClick={() => setUi({ sidebarVisible: true })}>
           <PanelLeft size={14} />
         </IconButton>
       )}
@@ -94,7 +96,7 @@ export function TabBar() {
               {dirty && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-fg-muted group-hover:hidden" />}
               <button
                 type="button"
-                aria-label="Close tab"
+                aria-label={t('Close tab')}
                 className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-faint hover:bg-active hover:text-fg', !active && 'opacity-0 group-hover:opacity-100', dirty && 'hidden group-hover:flex')}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => close(tab.id)}
@@ -105,13 +107,13 @@ export function TabBar() {
           )
         })}
         {currentConnection && (
-          <IconButton label={`New query (${modKey}T)`} className="mb-1 ml-1" onClick={() => newQuery(currentConnection)}>
+          <IconButton label={`${t('New query')} (${modKey}T)`} className="mb-1 ml-1" onClick={() => newQuery(currentConnection)}>
             <Plus size={15} />
           </IconButton>
         )}
       </div>
       <div className="no-drag mb-1.5 flex items-center gap-0.5 px-1.5">
-        <IconButton label={`AI assistant (${modKey}J)`} active={aiVisible} onClick={() => setUi({ aiPanelVisible: !aiVisible })}>
+        <IconButton label={`${t('AI assistant')} (${modKey}J)`} active={aiVisible} onClick={() => setUi({ aiPanelVisible: !aiVisible })}>
           <Sparkles size={14} />
         </IconButton>
       </div>

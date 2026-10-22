@@ -14,6 +14,7 @@ import { useActiveTab, useWorkspace } from '@/store/workspace'
 import { useCurrentConnectionId } from '../sidebar/Sidebar'
 import { Markdown } from './Markdown'
 import { providerMeta } from './providers'
+import { useT } from '@/lib/i18n'
 
 type Part =
   | { type: 'text'; text: string }
@@ -128,6 +129,7 @@ export function AiPanel() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const provider = settings?.ai.providers.find((p) => p.id === settings.ai.activeProvider)
   const meta = providerMeta(provider?.id)
+  const t = useT()
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
@@ -191,7 +193,7 @@ export function AiPanel() {
 
   const runSql = (sql: string) => {
     if (!connectionId) return
-    useWorkspace.getState().newQuery(connectionId, sql, 'AI query')
+    useWorkspace.getState().newQuery(connectionId, sql, t('AI query'))
     // Let the new editor mount, then run it.
     setTimeout(() => runCommand('run-all'), 150)
   }
@@ -200,7 +202,7 @@ export function AiPanel() {
     <div className="flex h-full min-h-0 flex-col border-l border-line bg-subtle">
       <div className="flex h-[38px] shrink-0 items-center gap-1.5 border-b border-line px-2.5">
         <Sparkles size={14} className="text-accent" />
-        <span className="text-[12.5px] font-semibold">AI assistant</span>
+        <span className="text-[12.5px] font-semibold">{t('AI assistant')}</span>
         {meta && (
           <span className="truncate text-[11px] text-fg-faint" title={provider?.model}>
             · {meta.label.replace(/ \(.*\)$/, '')}
@@ -208,13 +210,13 @@ export function AiPanel() {
           </span>
         )}
         <div className="flex-1" />
-        <IconButton label="New chat" disabled={!connectionId} onClick={() => connectionId && reset(connectionId)}>
+        <IconButton label={t('New chat')} disabled={!connectionId} onClick={() => connectionId && reset(connectionId)}>
           <Plus size={14} />
         </IconButton>
-        <IconButton label="AI settings" onClick={() => setUi({ modal: { kind: 'settings', section: 'ai' } })}>
+        <IconButton label={t('AI settings')} onClick={() => setUi({ modal: { kind: 'settings', section: 'ai' } })}>
           <Settings2 size={13} />
         </IconButton>
-        <IconButton label="Close" onClick={() => setUi({ aiPanelVisible: false })}>
+        <IconButton label={t('Close')} onClick={() => setUi({ aiPanelVisible: false })}>
           <X size={14} />
         </IconButton>
       </div>
@@ -222,38 +224,39 @@ export function AiPanel() {
       {!provider ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
           <Sparkles size={26} className="text-accent" />
-          <div className="text-[13px] font-medium">Connect an AI model</div>
+          <div className="text-[13px] font-medium">{t('Connect an AI model')}</div>
           <p className="text-[12px] leading-relaxed text-fg-muted">
-            Use your own API key (Claude, OpenAI, OpenRouter, Gemini, Azure), a local model with Ollama, or your existing Claude Code / Codex
-            subscription.
+            {t('Use your own API key (Claude, OpenAI, OpenRouter, Gemini, Azure), a local model with Ollama, or your existing Claude Code / Codex subscription.')}
           </p>
           <Button variant="primary" onClick={() => setUi({ modal: { kind: 'settings', section: 'ai' } })}>
-            Set up AI
+            {t('Set up AI')}
           </Button>
         </div>
       ) : !connection ? (
-        <div className="flex flex-1 items-center justify-center p-6 text-center text-[12px] text-fg-faint">Connect to a database to chat about it.</div>
+        <div className="flex flex-1 items-center justify-center p-6 text-center text-[12px] text-fg-faint">{t('Connect to a database to chat about it.')}</div>
       ) : (
         <>
           <div ref={listRef} className="min-h-0 flex-1 overflow-auto px-3 py-3">
             {(!chat || chat.messages.length === 0) && (
               <div className="flex flex-col gap-2 pt-4">
                 <div className="mb-1 text-[12.5px] text-fg-muted">
-                  Ask anything about <b className="text-fg">{connection.name}</b>. The assistant reads the schema
-                  {connection.knowledgeBasePath ? ' and your knowledge base' : ''} and can run read-only queries.
+                  {t('Ask anything about')} <b className="text-fg">{connection.name}</b>.{' '}
+                  {connection.knowledgeBasePath
+                    ? t('The assistant reads the schema and your knowledge base and can run read-only queries.')
+                    : t('The assistant reads the schema and can run read-only queries.')}
                 </div>
                 {SUGGESTIONS.map((s) => (
-                  <button key={s} type="button" onClick={() => send(s)} className="rounded-md border border-line bg-bg px-2.5 py-2 text-left text-[12px] hover:border-accent/60 hover:bg-hover" disabled={status !== 'connected'}>
-                    {s}
+                  <button key={s} type="button" onClick={() => send(t(s))} className="rounded-md border border-line bg-bg px-2.5 py-2 text-left text-[12px] hover:border-accent/60 hover:bg-hover" disabled={status !== 'connected'}>
+                    {t(s)}
                   </button>
                 ))}
                 {!connection.knowledgeBasePath && (
                   <button
                     type="button"
                     className="mt-2 flex items-center gap-1.5 text-[11.5px] text-accent hover:underline"
-                    onClick={() => useWorkspace.getState().open({ kind: 'knowledge', connectionId: connection.id, title: 'Knowledge base' })}
+                    onClick={() => useWorkspace.getState().open({ kind: 'knowledge', connectionId: connection.id, title: t('Knowledge base') })}
                   >
-                    <BookOpen size={12} /> Set up a knowledge base for better answers
+                    <BookOpen size={12} /> {t('Set up a knowledge base for better answers')}
                   </button>
                 )}
               </div>
@@ -273,23 +276,23 @@ export function AiPanel() {
                     ) : (
                       <div key={p.id} className="my-2 rounded-md border border-warning/40 bg-warning-soft p-2.5">
                         <div className="mb-1.5 text-[11.5px] font-semibold text-warning">
-                          {p.kind === 'file' ? 'Save this knowledge base file?' : 'Run this statement?'}
+                          {p.kind === 'file' ? t('Save this knowledge base file?') : t('Run this statement?')}
                         </div>
                         <pre className="max-h-48 overflow-auto rounded bg-bg p-2 font-mono text-[11px] whitespace-pre-wrap select-text">{p.detail}</pre>
                         {p.answer === undefined ? (
                           <div className="mt-2 flex gap-1.5">
                             <Button size="xs" variant="primary" icon={<Check size={11} />} onClick={() => answerApproval(m.id, p.id, true)}>
-                              {p.kind === 'file' ? 'Save' : 'Run'}
+                              {p.kind === 'file' ? t('Save') : t('Run')}
                             </Button>
-                            <Button size="xs" variant="ghost" onClick={() => answerApproval(m.id, p.id, 'always')} title="Approve this and every later request of this kind in this chat">
-                              {p.kind === 'file' ? 'Save all' : 'Run all in this chat'}
+                            <Button size="xs" variant="ghost" onClick={() => answerApproval(m.id, p.id, 'always')} title={t('Approve this and every later request of this kind in this chat')}>
+                              {p.kind === 'file' ? t('Save all') : t('Run all in this chat')}
                             </Button>
                             <Button size="xs" onClick={() => answerApproval(m.id, p.id, false)}>
-                              Decline
+                              {t('Decline')}
                             </Button>
                           </div>
                         ) : (
-                          <div className="mt-1.5 text-[11px] text-fg-muted">{p.answer ? 'Approved' : 'Declined'}</div>
+                          <div className="mt-1.5 text-[11px] text-fg-muted">{p.answer ? t('Approved') : t('Declined')}</div>
                         )}
                       </div>
                     ),
@@ -300,7 +303,7 @@ export function AiPanel() {
             )}
             {chat?.running && (
               <div className="flex items-center gap-2 text-[12px] text-fg-faint">
-                <Spinner size={12} /> Thinking…
+                <Spinner size={12} /> {t('Thinking…')}
               </div>
             )}
           </div>
@@ -317,21 +320,21 @@ export function AiPanel() {
                   }
                 }}
                 rows={Math.min(8, Math.max(2, input.split('\n').length))}
-                placeholder={`Ask about ${connection.name}…`}
+                placeholder={t('Ask about {name}…', { name: connection.name })}
                 className="max-h-48 min-h-[36px] flex-1 resize-none bg-transparent px-1.5 py-1 text-[12.5px] outline-none placeholder:text-fg-faint"
               />
               {chat?.running ? (
-                <IconButton label="Stop" size="md" onClick={stop} className="bg-muted">
+                <IconButton label={t('Stop')} size="md" onClick={stop} className="bg-muted">
                   <Square size={12} fill="currentColor" />
                 </IconButton>
               ) : (
-                <IconButton label="Send (Enter)" size="md" disabled={!input.trim() || status !== 'connected'} onClick={() => send(input)} className="bg-accent text-accent-fg hover:bg-accent-hover hover:text-accent-fg">
+                <IconButton label={t('Send (Enter)')} size="md" disabled={!input.trim() || status !== 'connected'} onClick={() => send(input)} className="bg-accent text-accent-fg hover:bg-accent-hover hover:text-accent-fg">
                   <ArrowUp size={14} />
                 </IconButton>
               )}
             </div>
             <div className="mt-1 px-1 text-[10.5px] text-fg-faint">
-              Enter to send · Shift+Enter for a new line · {modKey}J toggles this panel
+              {t('Enter to send · Shift+Enter for a new line · {shortcut} toggles this panel', { shortcut: `${modKey}J` })}
             </div>
           </div>
         </>

@@ -1,10 +1,12 @@
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react'
 import { useUi } from '@/store/ui'
 import { cn } from '@/lib/utils'
+import { useT } from '@/lib/i18n'
 
 export function Toasts() {
   const toasts = useUi((s) => s.toasts)
   const dismiss = useUi((s) => s.dismissToast)
+  const tr = useT()
   return (
     <div className="pointer-events-none fixed right-4 bottom-10 z-[70] flex w-[360px] flex-col gap-2">
       {toasts.map((t) => {
@@ -41,7 +43,7 @@ export function Toasts() {
                 </button>
               )}
             </div>
-            <button type="button" className="h-5 shrink-0 text-fg-faint hover:text-fg" onClick={() => dismiss(t.id)} aria-label="Dismiss">
+            <button type="button" className="h-5 shrink-0 text-fg-faint hover:text-fg" onClick={() => dismiss(t.id)} aria-label={tr('Dismiss')}>
               <X size={14} />
             </button>
           </div>

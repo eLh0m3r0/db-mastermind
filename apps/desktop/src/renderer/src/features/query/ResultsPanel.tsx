@@ -8,11 +8,12 @@ import { openMenu } from '@/components/ui/ContextMenu'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Spinner } from '@/components/ui/Spinner'
 import { api } from '@/lib/api'
-import { cn, copyText, errorMessage, formatCount, formatDuration, plural } from '@/lib/utils'
+import { cn, copyText, errorMessage, formatCount, formatDuration } from '@/lib/utils'
 import { useSettings } from '@/store/settings'
 import { toast } from '@/store/ui'
 import { copyRowsAs, EXPORT_FORMATS } from '../results/copy'
 import type { DriverId } from '@dbmastermind/core/browser'
+import { tp, useT } from '@/lib/i18n'
 
 interface ResultTab {
   key: string
@@ -54,6 +55,8 @@ export function ResultsPanel({
   const [sorts, setSorts] = useState<Record<string, SortSpec[]>>({})
   const [selection, setSelection] = useState<GridSelection | null>(null)
   const [charts, setCharts] = useState<Record<string, ChartConfig | null>>({})
+  const tr = useT()
+  const language = useSettings((s) => s.settings?.language)
 
   const tabs = useMemo<ResultTab[]>(() => {
     const out: ResultTab[] = []
@@ -62,11 +65,12 @@ export function ResultsPanel({
       o.results?.forEach((r, ri) => {
         if (r.fields.length === 0) return
         n++
-        out.push({ key: `${si}:${ri}`, label: `Result ${n}`, result: r, statement: o })
+        out.push({ key: `${si}:${ri}`, label: tr('Result {n}', { n }), result: r, statement: o })
       })
     })
     return out
-  }, [outcomes])
+    // Labels are translated, so recompute when the language changes.
+  }, [outcomes, language, tr])
 
   const hasError = outcomes?.some((o) => o.error)
   const activeKey =
@@ -102,9 +106,9 @@ export function ResultsPanel({
 
   if (!outcomes) {
     return (
-      <EmptyState icon={<TerminalSquare size={26} />} title="Run a query to see results">
+      <EmptyState icon={<TerminalSquare size={26} />} title={tr('Run a query to see results')}>
         <span>
-          <b>⌘↵</b> runs the statement under the cursor or the selection · <b>⇧⌘↵</b> runs the whole script
+          <b>⌘↵</b> {tr('runs the statement under the cursor or the selection')} · <b>⇧⌘↵</b> {tr('runs the whole script')}
         </span>
       </EmptyState>
     )
@@ -124,9 +128,9 @@ export function ResultsPanel({
               result: { fields: current.result.fields, rows: sortedRows },
               connectionId,
             })
-            if (path) toast({ kind: 'success', message: 'Export finished', detail: path, action: { label: 'Show in folder', run: () => void api.showItemInFolder(path) } })
+            if (path) toast({ kind: 'success', message: tr('Export finished'), detail: path, action: { label: tr('Show in folder'), run: () => void api.showItemInFolder(path) } })
           } catch (err) {
-            toast({ kind: 'error', message: 'Export failed', detail: errorMessage(err) })
+            toast({ kind: 'error', message: tr('Export failed'), detail: errorMessage(err) })
           }
         },
       })),
@@ -159,7 +163,7 @@ export function ResultsPanel({
           )}
         >
           {hasError && <XCircle size={12} className="text-danger" />}
-          Messages
+          {tr('Messages')}
         </button>
         <div className="flex-1" />
         {running && (
@@ -170,8 +174,8 @@ export function ResultsPanel({
         {current && (
           <>
             {current.result.truncated && (
-              <span className="flex items-center gap-1 pr-2 text-[11.5px] text-warning" title="Raise the limit in Settings → Max result rows">
-                <AlertTriangle size={12} /> First {formatCount(current.result.rowCount)} rows
+              <span className="flex items-center gap-1 pr-2 text-[11.5px] text-warning" title={tr('Raise the limit in Settings → Max result rows')}>
+                <AlertTriangle size={12} /> {tr('First {n} rows', { n: formatCount(current.result.rowCount) })}
               </span>
             )}
             <span className="pr-2 text-[11.5px] text-fg-faint">{formatDuration(current.result.durationMs)}</span>
@@ -181,7 +185,7 @@ export function ResultsPanel({
               const showing = !!charts[current.key]
               return (
                 <IconButton
-                  label={showing ? 'Show table' : 'Show chart'}
+                  label={showing ? tr('Show table') : tr('Show chart')}
                   active={showing}
                   onClick={() => setCharts((c) => ({ ...c, [current.key]: showing ? null : (c[`${current.key}:last`] ?? chartable) }))}
                 >
@@ -189,10 +193,10 @@ export function ResultsPanel({
                 </IconButton>
               )
             })()}
-            <IconButton label="Copy all as TSV" onClick={() => void copyText(selectionToTsv(current.result.fields, sortedRows, { anchor: { row: 0, col: 0 }, focus: { row: sortedRows.length - 1, col: current.result.fields.length - 1 } }, true))}>
+            <IconButton label={tr('Copy all as TSV')} onClick={() => void copyText(selectionToTsv(current.result.fields, sortedRows, { anchor: { row: 0, col: 0 }, focus: { row: sortedRows.length - 1, col: current.result.fields.length - 1 } }, true))}>
               <Copy size={13} />
             </IconButton>
-            <IconButton label="Export" onClick={(e) => exportCurrent(e.currentTarget)}>
+            <IconButton label={tr('Export')} onClick={(e) => exportCurrent(e.currentTarget)}>
               <Download size={13} />
             </IconButton>
           </>
@@ -201,7 +205,7 @@ export function ResultsPanel({
       <div className="min-h-0 flex-1">
         {activeKey === 'messages' || !current ? (
           <div className="h-full overflow-auto p-2 font-mono text-[12px] select-text">
-            {outcomes.length === 0 && <div className="p-2 text-fg-faint">Nothing to run.</div>}
+            {outcomes.length === 0 && <div className="p-2 text-fg-faint">{tr('Nothing to run.')}</div>}
             {outcomes.map((o, i) => (
               <div
                 key={i}
@@ -209,7 +213,7 @@ export function ResultsPanel({
               >
                 <div className="flex items-center gap-2">
                   {o.error ? <XCircle size={13} className="shrink-0 text-danger" /> : <CheckCircle2 size={13} className="shrink-0 text-success" />}
-                  <button type="button" className="min-w-0 flex-1 truncate text-left text-fg-muted hover:text-fg" onClick={() => onShowStatement(o)} title="Show in editor">
+                  <button type="button" className="min-w-0 flex-1 truncate text-left text-fg-muted hover:text-fg" onClick={() => onShowStatement(o)} title={tr('Show in editor')}>
                     {o.sql.replace(/\s+/g, ' ').slice(0, 160)}
                   </button>
                   <span className="shrink-0 text-fg-faint">{formatDuration(o.durationMs)}</span>
@@ -225,8 +229,8 @@ export function ResultsPanel({
                     {o.results?.map((r, ri) => (
                       <div key={ri}>
                         {r.fields.length > 0
-                          ? `${plural(r.rowCount, 'row')} returned${r.truncated ? ' (truncated)' : ''}`
-                          : `${plural(r.affectedRows ?? r.rowCount, 'row')} affected${r.command ? ` · ${r.command}` : ''}`}
+                          ? `${tp(r.rowCount, { one: '{n} row returned', many: '{n} rows returned' })}${r.truncated ? ` (${tr('truncated')})` : ''}`
+                          : `${tp(r.affectedRows ?? r.rowCount, { one: '{n} row affected', many: '{n} rows affected' })}${r.command ? ` · ${r.command}` : ''}`}
                       </div>
                     ))}
                     {!o.results?.length && 'OK'}
@@ -253,10 +257,10 @@ export function ResultsPanel({
             onSelectionChange={setSelection}
             onContextMenu={(e, _pos, sel) =>
               openMenu(e, [
-                { label: 'Copy', icon: <Copy size={13} />, onClick: () => sel && void copyText(selectionToTsv(current.result.fields, sortedRows, sel)) },
-                { label: 'Copy with headers', onClick: () => sel && void copyText(selectionToTsv(current.result.fields, sortedRows, sel, true)) },
+                { label: tr('Copy'), icon: <Copy size={13} />, onClick: () => sel && void copyText(selectionToTsv(current.result.fields, sortedRows, sel)) },
+                { label: tr('Copy with headers'), onClick: () => sel && void copyText(selectionToTsv(current.result.fields, sortedRows, sel, true)) },
                 {
-                  label: 'Copy rows as',
+                  label: tr('Copy rows as'),
                   submenu: (['json', 'csv', 'markdown', 'sql'] as const).map((format) => ({
                     label: format === 'sql' ? 'SQL INSERT' : format.toUpperCase(),
                     onClick: () => {

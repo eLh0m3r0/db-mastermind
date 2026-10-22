@@ -21,6 +21,7 @@ import {
 } from '@codemirror/view'
 import { tags as t } from '@lezer/highlight'
 import { statementAtOffset, type DriverId, type SchemaSnapshot } from '@dbmastermind/core/browser'
+import { t as tr } from '@/lib/i18n'
 
 const DIALECTS: Record<DriverId, SQLDialect> = {
   postgres: PostgreSQL,
@@ -209,7 +210,7 @@ export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunA
           rectangularSelection(),
           highlightActiveLine(),
           highlightSelectionMatches(),
-          placeholderExt('Write SQL…   ⌘↵ runs the statement under the cursor, ⇧⌘↵ runs everything'),
+          placeholderExt(tr('Write SQL…   ⌘↵ runs the statement under the cursor, ⇧⌘↵ runs everything')),
           statementHighlight(() => driverRef.current),
           errorField,
           keymap.of([

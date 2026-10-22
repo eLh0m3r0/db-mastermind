@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/Button'
 import { Checkbox, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { api } from '@/lib/api'
-import { cn, errorMessage, formatCount } from '@/lib/utils'
+import { cn, errorMessage } from '@/lib/utils'
 import { toast } from '@/store/ui'
+import { tp, useT } from '@/lib/i18n'
 
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '')
 
@@ -41,6 +42,7 @@ export function ImportModal({
   const [emptyAsNull, setEmptyAsNull] = useState(true)
   const [replace, setReplace] = useState(false)
   const [busy, setBusy] = useState(false)
+  const t = useT()
 
   useEffect(() => {
     if (!open) {
@@ -65,16 +67,16 @@ export function ImportModal({
         }),
       )
     } catch (err) {
-      toast({ kind: 'error', message: 'Could not read the file', detail: errorMessage(err) })
+      toast({ kind: 'error', message: t('Could not read the file'), detail: errorMessage(err) })
     }
   }
 
   const choose = async () => {
     const file = await api.pickFile({
-      title: 'Import data',
+      title: t('Import data'),
       filters: [
-        { name: 'Data files', extensions: ['csv', 'tsv', 'txt', 'xlsx'] },
-        { name: 'All files', extensions: ['*'] },
+        { name: t('Data files'), extensions: ['csv', 'tsv', 'txt', 'xlsx'] },
+        { name: t('All files'), extensions: ['*'] },
       ],
     })
     if (!file) return
@@ -91,15 +93,15 @@ export function ImportModal({
 
   const run = async () => {
     if (!path) return
-    if (replace && !window.confirm(`Delete all existing rows of ${table.name} before importing?`)) return
+    if (replace && !window.confirm(t('Delete all existing rows of {table} before importing?', { table: table.name }))) return
     setBusy(true)
     try {
       const n = await api.importFile({ connectionId, table, path, delimiter, hasHeader, mapping, emptyAsNull, replace })
-      toast({ kind: 'success', message: `Imported ${formatCount(n)} rows into ${table.name}` })
+      toast({ kind: 'success', message: tp(n, { one: 'Imported {n} row into {table}', many: 'Imported {n} rows into {table}' }, { table: table.name }) })
       onImported()
       onClose()
     } catch (err) {
-      toast({ kind: 'error', message: 'Import failed: nothing was changed', detail: errorMessage(err) })
+      toast({ kind: 'error', message: t('Import failed: nothing was changed'), detail: errorMessage(err) })
     } finally {
       setBusy(false)
     }
@@ -109,18 +111,18 @@ export function ImportModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={`Import into ${table.name}`}
+      title={t('Import into {table}', { table: table.name })}
       width={900}
       footer={
         preview ? (
           <>
             <span className="text-[12px] text-fg-muted">
-              {formatCount(total)} rows · {mapped} of {width} columns mapped · one transaction
+              {tp(total, { one: '{n} row', many: '{n} rows' })} · {t('{mapped} of {width} columns mapped', { mapped, width })} · {t('one transaction')}
             </span>
             <div className="flex-1" />
-            <Button onClick={onClose}>Cancel</Button>
+            <Button onClick={onClose}>{t('Cancel')}</Button>
             <Button variant="primary" loading={busy} disabled={!mapped || duplicates.length > 0} onClick={() => void run()}>
-              Import {formatCount(total)} rows
+              {tp(total, { one: 'Import {n} row', many: 'Import {n} rows' })}
             </Button>
           </>
         ) : undefined
@@ -133,8 +135,8 @@ export function ImportModal({
           className="flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-line-strong p-10 text-fg-muted hover:border-accent hover:text-fg"
         >
           <FileUp size={26} />
-          <span className="text-[14px] font-medium">Choose a CSV, TSV or Excel file</span>
-          <span className="text-[12px] text-fg-faint">UTF-8 or Windows-1250 · delimiter detected automatically · first sheet of .xlsx</span>
+          <span className="text-[14px] font-medium">{t('Choose a CSV, TSV or Excel file')}</span>
+          <span className="text-[12px] text-fg-faint">{t('UTF-8 or Windows-1250 · delimiter detected automatically · first sheet of .xlsx')}</span>
         </button>
       ) : (
         <div className="flex flex-col gap-3">
@@ -154,20 +156,20 @@ export function ImportModal({
               >
                 {DELIMITERS.map((d) => (
                   <option key={d.label} value={d.value}>
-                    {d.label}
+                    {t(d.label)}
                   </option>
                 ))}
               </Select>
             )}
             {preview.encoding && preview.encoding !== 'utf-8' && <span className="text-[11.5px] text-fg-faint">{preview.encoding}</span>}
-            <Checkbox checked={hasHeader} onChange={setHasHeader} label="First row is a header" />
-            <Checkbox checked={emptyAsNull} onChange={setEmptyAsNull} label="Empty values as NULL" />
-            <Checkbox checked={replace} onChange={setReplace} label="Replace existing rows" />
+            <Checkbox checked={hasHeader} onChange={setHasHeader} label={t('First row is a header')} />
+            <Checkbox checked={emptyAsNull} onChange={setEmptyAsNull} label={t('Empty values as NULL')} />
+            <Checkbox checked={replace} onChange={setReplace} label={t('Replace existing rows')} />
           </div>
           {(missingRequired.length > 0 || duplicates.length > 0) && (
             <div className="rounded-md bg-warning-soft px-3 py-2 text-[12px] text-warning">
-              {duplicates.length > 0 && <div>Each table column can be mapped once: {[...new Set(duplicates)].join(', ')}.</div>}
-              {missingRequired.length > 0 && <div>Required columns without a mapping: {missingRequired.map((c) => c.name).join(', ')}. The import will fail unless they have values.</div>}
+              {duplicates.length > 0 && <div>{t('Each table column can be mapped once: {columns}.', { columns: [...new Set(duplicates)].join(', ') })}</div>}
+              {missingRequired.length > 0 && <div>{t('Required columns without a mapping: {columns}. The import will fail unless they have values.', { columns: missingRequired.map((c) => c.name).join(', ') })}</div>}
             </div>
           )}
           <div className="max-h-[50vh] overflow-auto rounded-md border border-line">
@@ -176,14 +178,14 @@ export function ImportModal({
                 <tr>
                   {Array.from({ length: width }, (_, i) => (
                     <th key={i} className="min-w-[140px] border-r border-b border-line p-1.5 text-left align-top">
-                      <div className="mb-1 truncate font-medium">{hasHeader ? (preview.rows[0]?.[i] ?? '') : `Column ${i + 1}`}</div>
+                      <div className="mb-1 truncate font-medium">{hasHeader ? (preview.rows[0]?.[i] ?? '') : t('Column {n}', { n: i + 1 })}</div>
                       <Select
                         inputSize="sm"
                         className={cn('h-6 text-[11.5px]', !mapping[i] && 'text-fg-faint')}
                         value={mapping[i] ?? ''}
                         onChange={(e) => setMapping((m) => Object.assign([...m], { [i]: e.target.value || null }))}
                       >
-                        <option value="">— skip —</option>
+                        <option value="">{t('— skip —')}</option>
                         {columns.map((c) => (
                           <option key={c.name} value={c.name}>
                             {c.name} ({c.dataType})

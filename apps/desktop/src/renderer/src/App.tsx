@@ -4,6 +4,7 @@ import { Splitter } from '@/components/ui/Splitter'
 import { Toasts } from '@/components/ui/Toasts'
 import { bridge } from '@/lib/api'
 import { onCommand } from '@/lib/commands'
+import { t } from '@/lib/i18n'
 import { installKeymap } from '@/lib/keymap'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
@@ -96,8 +97,8 @@ export function App() {
     const off = bridge.on('update:available', (info) =>
       toast({
         kind: 'info',
-        message: `DB Mastermind ${info.version} is available`,
-        action: { label: 'Download', run: () => void window.mastermind.api.openExternal(info.url) },
+        message: t('DB Mastermind {version} is available', { version: info.version }),
+        action: { label: t('Download'), run: () => void window.mastermind.api.openExternal(info.url) },
       }),
     )
     const uninstall = installKeymap()
