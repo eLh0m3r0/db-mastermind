@@ -60,12 +60,23 @@ jobs:
             tar -xzf "duckdb-node-bindings-$T-$V.tgz" -C "$DEST" --strip-components 1
           done
           ls node_modules/@duckdb
+      # macOS: signed with the project's own certificate (secrets MAC_SIGN_P12 / MAC_SIGN_PASSWORD) so the signature's
+      # identity is the same in every release and the keychain keeps trusting updates (build/after-pack.cjs).
+      - name: rcodesign (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/rcodesign.tar.gz" https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.29.0/apple-codesign-0.29.0-macos-universal.tar.gz
+          echo "d98372d5524226ccf9dc0eda03d4e4f5826182dabb2fc3f2bd303ed9113a748d  $RUNNER_TEMP/rcodesign.tar.gz" | shasum -a 256 -c -
+          tar xzf "$RUNNER_TEMP/rcodesign.tar.gz" -C "$RUNNER_TEMP"
+          echo "RCODESIGN=$RUNNER_TEMP/apple-codesign-0.29.0-macos-universal/rcodesign" >> "$GITHUB_ENV"
       - name: Build
         working-directory: apps/desktop
         run: npx electron-vite build && npx electron-builder ${{ matrix.args }} --publish never
         env:
-          # Builds are unsigned for now (see docs/STRATEGY.md).
+          # No Apple Developer ID yet (see docs/STRATEGY.md): electron-builder doesn't sign; after-pack does.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          MAC_SIGN_P12: ${{ secrets.MAC_SIGN_P12 }}
+          MAC_SIGN_PASSWORD: ${{ secrets.MAC_SIGN_PASSWORD }}
       # electron-builder's own publishing looks the release up in the release list, which can lag right after the
       # create-release job; it then tries to create it again and fails with 422. Upload to the release by tag instead.
       - name: Upload to the release
