@@ -72,7 +72,8 @@ export interface FetchTableOptions {
 export function describeError(err: unknown): { message: string; code?: string; position?: number } {
   if (err instanceof Error) {
     const e = err as Error & { code?: string | number; position?: string; number?: number; originalError?: Error; errors?: unknown[] }
-    const code = e.code ?? (e.number !== undefined ? String(e.number) : undefined)
+    // Stopping a query is the user's choice, not a failure: the UI shows it without error styling.
+    const code = e.name === 'QueryCancelledError' ? 'CANCELLED' : (e.code ?? (e.number !== undefined ? String(e.number) : undefined))
     // Node reports a refused "localhost" (tried on ::1 and 127.0.0.1) as an AggregateError with an empty message.
     const inner = Array.isArray(e.errors) ? [...new Set(e.errors.map((x) => (x instanceof Error ? x.message : String(x))).filter(Boolean))].join('; ') : ''
     return {

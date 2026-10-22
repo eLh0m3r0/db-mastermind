@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/Button'
-import { AlertTriangle, BarChart3, CheckCircle2, Copy, Download, LayoutDashboard, Pin, Sparkles, TerminalSquare, X, XCircle } from 'lucide-react'
+import { AlertTriangle, BarChart3, CheckCircle2, Copy, Download, LayoutDashboard, Pin, Sparkles, TerminalSquare, X, XCircle, CircleStop } from 'lucide-react'
 import { cellToText, type CellValue, type QueryResult, type SortSpec, type StatementOutcome } from '@dbmastermind/core/browser'
 import { defaultChartConfig, ResultChart, type ChartConfig } from '@/components/chart/ResultChart'
 import { openCellViewer } from '@/components/grid/CellViewer'
@@ -45,6 +45,10 @@ function tileTitle(result: QueryResult, chart: ChartConfig | null): string {
   return result.fields.slice(0, 3).map((f) => f.name).join(', ')
 }
 
+
+/** Stopped by the user: shown plainly, not as a failure (no red, no Fix with AI). */
+const cancelled = (o: StatementOutcome) => o.error?.code === 'CANCELLED'
+
 export function ResultsPanel({
   outcomes,
   running,
@@ -53,6 +57,7 @@ export function ResultsPanel({
   connectionId,
   onShowStatement,
   onFixWithAi,
+  onLoadAll,
 }: {
   outcomes: StatementOutcome[] | null
   running: boolean
@@ -62,6 +67,8 @@ export function ResultsPanel({
   onShowStatement: (outcome: StatementOutcome) => void
   /** Lets AI rewrite the failed statement. */
   onFixWithAi?: (outcome: StatementOutcome) => void
+  /** Runs the statement again without the row limit. */
+  onLoadAll?: () => void
 }) {
   const settings = useSettings((s) => s.settings)
   const [active, setActive] = useState<string>('auto')
@@ -88,11 +95,12 @@ export function ResultsPanel({
     // Labels are translated, so recompute when the language changes.
   }, [outcomes, language, tr, pinned])
 
-  const hasError = outcomes?.some((o) => o.error)
+  const hasError = outcomes?.some((o) => o.error && !cancelled(o))
+  const wasCancelled = outcomes?.some(cancelled)
   const activeKey =
     active !== 'auto' && (active === 'messages' || tabs.some((t) => t.key === active))
       ? active
-      : hasError || tabs.length === 0
+      : hasError || wasCancelled || tabs.length === 0
         ? 'messages'
         : tabs[tabs.length - 1]!.key
   const isPinned = (key: string) => key.startsWith('pin:')
@@ -219,8 +227,13 @@ export function ResultsPanel({
         {current && (
           <>
             {current.result.truncated && (
-              <span className="flex items-center gap-1 pr-2 text-[11.5px] text-warning" title={tr('Raise the limit in Settings → Max result rows')}>
+              <span className="flex items-center gap-1 pr-2 text-[11.5px] text-warning" title={tr('The limit is in Settings → Max result rows')}>
                 <AlertTriangle size={12} /> {tr('First {n} rows', { n: formatCount(current.result.rowCount) })}
+                {onLoadAll && (
+                  <Button size="xs" variant="ghost" className="ml-1" onClick={onLoadAll}>
+                    {tr('Load all rows')}
+                  </Button>
+                )}
               </span>
             )}
             <span className="pr-2 text-[11.5px] text-fg-faint">{formatDuration(current.result.durationMs)}</span>
@@ -279,17 +292,25 @@ export function ResultsPanel({
             {outcomes.map((o, i) => (
               <div
                 key={i}
-                className={cn('mb-1.5 rounded-md border p-2', o.error ? 'border-danger/30 bg-danger-soft' : 'border-line bg-subtle')}
+                className={cn('mb-1.5 rounded-md border p-2', o.error && !cancelled(o) ? 'border-danger/30 bg-danger-soft' : 'border-line bg-subtle')}
               >
                 <div className="flex items-center gap-2">
-                  {o.error ? <XCircle size={13} className="shrink-0 text-danger" /> : <CheckCircle2 size={13} className="shrink-0 text-success" />}
+                  {cancelled(o) ? (
+                    <CircleStop size={13} className="shrink-0 text-fg-muted" />
+                  ) : o.error ? (
+                    <XCircle size={13} className="shrink-0 text-danger" />
+                  ) : (
+                    <CheckCircle2 size={13} className="shrink-0 text-success" />
+                  )}
                   <button type="button" className="min-w-0 flex-1 truncate text-left text-fg-muted hover:text-fg" onClick={() => onShowStatement(o)} title={tr('Show in editor')}>
                     {o.sql.replace(/\s+/g, ' ').slice(0, 160)}
                   </button>
                   <span className="shrink-0 text-fg-faint">{formatDuration(o.durationMs)}</span>
                 </div>
                 {o.note && <div className="mt-1 pl-5 text-fg-muted">{o.note}</div>}
-                {o.error ? (
+                {cancelled(o) ? (
+                  <div className="mt-1.5 pl-5 text-fg-muted">{tr('Cancelled')}</div>
+                ) : o.error ? (
                   <div className="mt-1.5 pl-5 whitespace-pre-wrap text-danger">
                     {o.error.message}
                     {o.error.code && <span className="ml-2 text-fg-faint">[{o.error.code}]</span>}

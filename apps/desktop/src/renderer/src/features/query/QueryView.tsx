@@ -33,6 +33,9 @@ const FORMATTER_LANGUAGE: Record<DriverId, SqlLanguage> = {
   trino: 'trino',
 }
 
+
+/** "Load all rows": no practical limit (the grid is virtualized; exports stream instead). */
+const ALL_ROWS = 10_000_000
 export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
   const connection = useConnections((s) => s.list.find((c) => c.id === tab.connectionId))
   const schema = useConnections((s) => s.runtime[tab.connectionId]?.schema)
@@ -62,11 +65,14 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
   // Persist text without re-rendering the tab list on every keystroke.
   const persistSql = useRef(debounce((id: string, sql: string) => updateTab(id, { sql }), 300)).current
 
+  const lastRun = useRef<{ target: { sql: string; offset: number }; parameterValues?: ParamValues }>(undefined)
   const run = useCallback(
-    async (mode: 'current' | 'all', parameterValues?: ParamValues) => {
+    async (mode: 'current' | 'all', parameterValues?: ParamValues, again?: { maxRows: number }) => {
       // A ref, not state: the menu accelerator and the editor keymap can both fire in the same tick.
       if (runId.current) return
-      const target = mode === 'all' ? { sql: editor.current?.getValue() ?? '', offset: 0 } : editor.current?.getRunTarget()
+      // "Load all rows" runs the same statement again, wherever the cursor is now.
+      const target = again && lastRun.current ? lastRun.current.target : mode === 'all' ? { sql: editor.current?.getValue() ?? '', offset: 0 } : editor.current?.getRunTarget()
+      if (again && lastRun.current) parameterValues = lastRun.current.parameterValues
       if (!target || !target.sql.trim()) return
       if (!parameterValues) {
         const params = extractParameters(target.sql, driver)
@@ -88,15 +94,16 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       const id = uid('run')
       runId.current = id
       lastFragmentOffset.current = target.offset
+      lastRun.current = { target, parameterValues }
       setRunning(true)
       setStartedAt(Date.now())
       setOutcomes(null)
       try {
         setPlan(null)
-        const result = await api.runQuery({ connectionId: tab.connectionId, sql: target.sql, runId: id, session: tab.id, parameterValues })
+        const result = await api.runQuery({ connectionId: tab.connectionId, sql: target.sql, runId: id, session: tab.id, parameterValues, maxRows: again?.maxRows })
         if (runId.current !== id) return
         setOutcomes(result)
-        const failed = result.find((o) => o.error)
+        const failed = result.find((o) => o.error && o.error.code !== 'CANCELLED')
         if (failed?.error) {
           const pos = failed.error.position
           editor.current?.markError(target.offset + failed.start + (pos ? pos - 1 : 0))
@@ -330,6 +337,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
           startedAt={startedAt}
           driver={driver}
           connectionId={tab.connectionId}
+          onLoadAll={() => void run('current', undefined, { maxRows: ALL_ROWS })}
           onFixWithAi={(o) => {
             const view = editor.current?.view()
             if (!view || !o.error) return
