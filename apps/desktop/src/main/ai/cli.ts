@@ -55,6 +55,39 @@ export async function cliAvailable(provider: 'claude-code' | 'codex'): Promise<s
   }
 }
 
+/** How to sign in, for messages. */
+export function loginHint(provider: 'claude-code' | 'codex'): string {
+  return provider === 'codex' ? 'run `codex login` in a terminal' : 'run `claude auth login` in a terminal'
+}
+
+/**
+ * Whether the CLI is signed in: `claude auth status` (JSON) or `codex login status` (exit code). Null when it can't
+ * tell (an older CLI without the command), which callers treat as "probably fine".
+ */
+export async function cliLoggedIn(provider: 'claude-code' | 'codex'): Promise<{ loggedIn: boolean; detail?: string } | null> {
+  const args = provider === 'codex' ? ['login', 'status'] : ['auth', 'status', '--json']
+  const env = { ...process.env, PATH: await resolvedPath() }
+  try {
+    const { stdout, stderr } = await execFileAsync(binary(provider), args, { env, timeout: 15_000, shell: process.platform === 'win32' })
+    // Codex prints its status on stderr.
+    const text = `${stdout}\n${stderr}`.trim()
+    if (provider === 'codex') return { loggedIn: !/not logged in/i.test(text), detail: text.split('\n').find((l) => /logged in/i.test(l))?.trim().replace(/^Logged in (using\s+)?/i, '') }
+    const status = JSON.parse(stdout) as { loggedIn?: boolean; authMethod?: string }
+    return typeof status.loggedIn === 'boolean' ? { loggedIn: status.loggedIn, detail: status.authMethod } : null
+  } catch (err) {
+    const out = `${(err as { stdout?: string }).stdout ?? ''}\n${(err as { stderr?: string }).stderr ?? ''}`
+    if (provider === 'codex' && /not logged in/i.test(out)) return { loggedIn: false }
+    // `claude auth status` exits with 1 when signed out, still printing its JSON.
+    try {
+      const status = JSON.parse((err as { stdout?: string }).stdout ?? '') as { loggedIn?: boolean }
+      if (status.loggedIn === false) return { loggedIn: false }
+    } catch {
+      // Not JSON: an older CLI without `auth status`.
+    }
+    return null
+  }
+}
+
 export type CliEvent =
   | { type: 'text'; text: string }
   | { type: 'tool-start'; id: string; name: string; input: unknown }
@@ -185,7 +218,7 @@ export async function runCli(options: CliRunOptions): Promise<void> {
     const detail = failure ?? (stderr.trim().split('\n').filter((l) => !/^\S+Z\s+(ERROR|WARN)/.test(l)).join('\n') || stderr.trim() || `exited with code ${code}`)
     const name = options.provider === 'codex' ? 'Codex' : 'Claude Code'
     const login = /401|unauthori[sz]ed|log ?in|sign in|expired|credential/i.test(`${detail}\n${stderr}`)
-    throw new Error(`${name}: ${detail}${login ? `\nSign in again: run \`${binary(options.provider)} login\` in a terminal.` : ''}`)
+    throw new Error(`${name}: ${detail}${login ? `\nSign in again: ${loginHint(options.provider)}.` : ''}`)
   }
 }
 

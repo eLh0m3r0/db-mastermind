@@ -6,7 +6,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { generateText, type LanguageModel } from 'ai'
 import type { AiProviderSettings } from '@shared/api'
-import { cliAvailable } from './cli'
+import { cliAvailable, cliLoggedIn, loginHint } from './cli'
 
 export const DEFAULT_MODELS: Partial<Record<AiProviderSettings['id'], string>> = {
   anthropic: 'claude-sonnet-5-5',
@@ -90,7 +90,10 @@ export async function testProvider(settings: AiProviderSettings): Promise<string
   if (settings.id === 'claude-code' || settings.id === 'codex') {
     const version = await cliAvailable(settings.id)
     if (!version) throw new Error(`${settings.id === 'codex' ? 'codex' : 'claude'} CLI was not found on PATH`)
-    return `Found ${version}`
+    // Finding the CLI isn't enough: a signed-out CLI fails on the first question.
+    const login = await cliLoggedIn(settings.id)
+    if (login && !login.loggedIn) throw new Error(`Found ${version}, but it isn't signed in: ${loginHint(settings.id)}, then test again.`)
+    return `Found ${version}${login?.detail ? `, signed in (${login.detail})` : ''}`
   }
   const started = Date.now()
   const result = await generateText({
