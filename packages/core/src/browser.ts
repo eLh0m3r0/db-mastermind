@@ -15,3 +15,5 @@ export { dataSyncScript, type DataCompareResult, type DataSyncOptions, type RowD
 export type { Grant, Principal } from './roles.js'
 export * from './dbml.js'
 export * from './type-map.js'
+export * from './er-text.js'
+export { buildDataDictionary, type DictionaryOptions } from './dictionary.js'

@@ -29,8 +29,11 @@ import {
   getDialect,
   incomingReferences,
   joinPathSql,
+  buildDataDictionary,
   toDbml,
   toDesignTable,
+  toMermaid,
+  toPlantUml,
   type DesignTable,
   type SchemaSnapshot,
   type TableInfo,
@@ -455,15 +458,23 @@ function DiagramInner({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot 
   }
 
   const exportMermaid = () => {
-    const lines = ['erDiagram']
-    for (const t of tables) {
-      lines.push(`  ${t.name} {`)
-      for (const c of t.columns) lines.push(`    ${c.dataType.replace(/[^\w]/g, '_')} ${c.name}${c.isPrimaryKey ? ' PK' : t.foreignKeys.some((f) => f.columns.includes(c.name)) ? ' FK' : ''}`)
-      lines.push('  }')
-    }
-    for (const t of tables) for (const fk of t.foreignKeys) lines.push(`  ${fk.refTable} ||--o{ ${t.name} : "${fk.columns.join(', ')}"`)
-    void navigator.clipboard.writeText(lines.join('\n'))
+    void navigator.clipboard.writeText(toMermaid(tables))
     toast({ kind: 'success', message: tr('Mermaid diagram copied to clipboard') })
+  }
+
+  const exportPlantUml = () => {
+    void navigator.clipboard.writeText(toPlantUml(tables))
+    toast({ kind: 'success', message: tr('PlantUML diagram copied to clipboard') })
+  }
+
+  /** Model documents get the same HTML data dictionary as live databases (DBML notes become column comments). */
+  const exportDictionary = () => {
+    if (!schema) return
+    const html = buildDataDictionary({ ...schema, tables }, { format: 'html', title: tab.title })
+    const a = document.createElement('a')
+    a.href = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`
+    a.download = `${tab.title.replace(/[^\w.-]+/g, '_')} - data dictionary.html`
+    a.click()
   }
 
   const exportDbml = () => {
@@ -756,9 +767,10 @@ function DiagramInner({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot 
               { label: tr('SVG image'), onClick: () => void exportImage('svg') },
               'separator',
               { label: tr('Copy as Mermaid'), onClick: exportMermaid },
+              { label: tr('Copy as PlantUML'), onClick: exportPlantUml },
               { label: tr('Copy as DBML (dbdiagram.io)'), onClick: exportDbml },
               ...(model
-                ? []
+                ? ['separator' as const, { label: tr('Data dictionary (HTML)…'), onClick: exportDictionary }]
                 : [
                     'separator' as const,
                     {

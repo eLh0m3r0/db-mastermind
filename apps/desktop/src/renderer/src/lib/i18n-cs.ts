@@ -916,4 +916,6 @@ export const cs: Record<string, string> = {
   'Invalid JSON: {error}': 'Neplatný JSON: {error}',
   'Minify': 'Zhustit',
   'Edit value…': 'Upravit hodnotu…',
+  'PlantUML diagram copied to clipboard': 'Diagram PlantUML zkopírován do schránky',
+  'Copy as PlantUML': 'Kopírovat jako PlantUML',
 }
