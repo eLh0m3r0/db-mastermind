@@ -424,12 +424,17 @@ export async function openImportMenu(anchor: HTMLElement) {
 
 export async function importFrom(source: ImportSourceId | 'file', label?: string) {
   try {
-    const n = await api.importConnections(source)
+    const { added: n, passwords } = await api.importConnections(source)
     await useConnections.getState().load()
+    const filled = passwords ? tp(passwords, { one: 'Added the saved password to {n} connection', many: 'Added saved passwords to {n} connections' }) : undefined
     toast({
-      kind: n ? 'success' : 'info',
-      message: n ? tp(n, { one: 'Imported {n} connection', many: 'Imported {n} connections' }) : t('Nothing new to import'),
-      detail: n && label && source !== 'dbeaver' && source !== 'pgpass' && source !== 'sqltools' ? t('Passwords stay in {app}, so enter them when you first connect.', { app: label }) : undefined,
+      kind: n || passwords ? 'success' : 'info',
+      message: n ? tp(n, { one: 'Imported {n} connection', many: 'Imported {n} connections' }) : filled ?? t('Nothing new to import'),
+      detail:
+        (n && filled) ||
+        (n && label && !['dbeaver', 'pgpass', 'sqltools', 'beekeeper'].includes(source)
+          ? t('Passwords stay in {app}, so enter them when you first connect.', { app: label })
+          : undefined),
     })
   } catch (err) {
     toast({ kind: 'error', message: t('Import failed'), detail: errorMessage(err) })

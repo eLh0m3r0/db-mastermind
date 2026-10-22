@@ -416,7 +416,8 @@ export interface MastermindApi {
   sshHostKey(host: string, port?: number): Promise<string | null>
   forgetSshHostKey(host: string, port?: number): Promise<void>
   addToMcpClient(id: McpClientId): Promise<{ path: string; via: 'cli' | 'file'; backup: boolean }>
-  importConnections(source: ImportSourceId | 'file'): Promise<number>
+  /** New connections added, and existing ones that got a missing password from the import. */
+  importConnections(source: ImportSourceId | 'file'): Promise<{ added: number; passwords: number }>
   /** Database tools on this computer with saved connections to import, and how many each has. */
   detectImportSources(): Promise<{ id: ImportSourceId; label: string; count: number }[]>
   /** Writes connections without passwords or keys to a JSON file for colleagues; all when `ids` is empty. */

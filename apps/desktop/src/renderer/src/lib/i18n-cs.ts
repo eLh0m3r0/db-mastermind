@@ -1,6 +1,8 @@
 /**
  * Czech UI strings keyed by the exact English source text (see `i18n.ts`).
  * Plural forms: `{n} rows` is the 1/5+ form, `{n} rows|few` the Czech 2–4 form.
+  'Added the saved password to {n} connection': 'Uložené heslo doplněno k {n} připojení',
+  'Added saved passwords to {n} connections': 'Uložená hesla doplněna k {n} připojením',
   'Password for {user} on {name}': 'Heslo pro {user} na {name}',
   'Password for {name}': 'Heslo pro {name}',
   'The server rejected the password.': 'Server heslo odmítl.',

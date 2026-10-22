@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { createDecipheriv } from 'node:crypto'
+import { createDecipheriv, createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -27,7 +27,7 @@ import {
   type DriverId,
   type Environment,
 } from '@dbmastermind/core'
-import type { ImportSourceId } from '@shared/api'
+import type { ImportSourceId, StoredConnection } from '@shared/api'
 import { listConnections, saveConnection } from './connections'
 
 type Imported = Omit<ConnectionConfig, 'id'>
@@ -49,10 +49,45 @@ const BEEKEEPER_TYPES: Record<string, DriverId> = {
   sqlite: 'sqlite',
 }
 
-/** Beekeeper Studio keeps connections in its own SQLite database. Passwords are encrypted there, so they aren't imported. */
+/** Beekeeper's simple-encryptor format: HMAC-SHA256 (hex) + IV (hex) + AES-256-CBC (base64), keyed by sha256(key). */
+function beekeeperDecrypt(key: string, text: string): unknown {
+  const k = createHash('sha256').update(key).digest()
+  const mac = text.slice(0, 64)
+  const body = text.slice(64)
+  if (!timingSafeEqual(Buffer.from(mac, 'hex'), createHmac('sha256', k).update(body).digest())) throw new Error('Wrong key')
+  const d = createDecipheriv('aes-256-cbc', k, Buffer.from(body.slice(0, 32), 'hex'))
+  return JSON.parse(d.update(body.slice(32), 'base64', 'utf8') + d.final('utf8'))
+}
+
+/**
+ * Beekeeper Studio's own key for its saved passwords: the `.key` file next to its database, encrypted with the
+ * default key from Beekeeper's source (apps/studio/src/common/encryption_key.ts). Undefined when unreadable.
+ */
+function beekeeperKey(dir: string): string | undefined {
+  try {
+    const data = beekeeperDecrypt('38782F413F442A472D4B6150645367566B59703373367639792442264529482B', readFileSync(join(dir, '.key'), 'utf8').trim())
+    const key = (data as { encryptionKey?: unknown }).encryptionKey
+    return typeof key === 'string' ? key : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** Beekeeper Studio keeps connections in its own SQLite database, passwords encrypted with its local key. */
 function readBeekeeper(): Imported[] {
-  const file = join(appDataDir(), 'beekeeper-studio', 'app.db')
+  const dir = join(appDataDir(), 'beekeeper-studio')
+  const file = join(dir, 'app.db')
   if (!existsSync(file)) throw new Error('Beekeeper Studio data was not found on this computer')
+  const key = beekeeperKey(dir)
+  const secret = (v: unknown): string | undefined => {
+    if (!key || typeof v !== 'string' || !v) return undefined
+    try {
+      const plain = beekeeperDecrypt(key, v)
+      return typeof plain === 'string' && plain ? plain : undefined
+    } catch {
+      return undefined
+    }
+  }
   const db = new DatabaseSync(file, { readOnly: true })
   try {
     const rows = db.prepare('SELECT * FROM saved_connection ORDER BY id').all() as Record<string, unknown>[]
@@ -67,6 +102,7 @@ function readBeekeeper(): Imported[] {
         host: str(r.host),
         port: r.port ? Number(r.port) : undefined,
         user: str(r.username),
+        password: Number(r.rememberPassword ?? 1) ? secret(r.password) : undefined,
         database: str(r.defaultDatabase),
         filePath: str(r.path),
         ssl: r.ssl ? { mode: Number(r.sslRejectUnauthorized) ? 'verify-full' : 'require' } : undefined,
@@ -77,6 +113,9 @@ function readBeekeeper(): Imported[] {
               port: r.sshPort ? Number(r.sshPort) : 22,
               user: String(r.sshUsername ?? ''),
               authMethod: r.sshMode === 'agent' ? 'agent' : r.sshMode === 'userpass' ? 'password' : 'privateKey',
+              password: r.sshMode === 'userpass' ? secret(r.sshPassword) : undefined,
+              passphrase: r.sshMode === 'keyfile' ? secret(r.sshKeyfilePassword) : undefined,
+              privateKey: r.sshMode === 'keyfile' && typeof r.sshKeyfile === 'string' && existsSync(r.sshKeyfile) ? readFileSync(r.sshKeyfile, 'utf8') : undefined,
             }
           : undefined,
         options:
@@ -411,18 +450,30 @@ export async function exportConnections(ids?: string[]): Promise<string | null> 
   return r.filePath
 }
 
-export async function importConnections(source: ImportSourceId | 'file'): Promise<number> {
+/**
+ * Adds the connections that aren't here yet. A connection already here (same name, driver and host; the database
+ * may have been changed since) only gets passwords it lacks, so importing again fills in what an earlier import
+ * couldn't read.
+ */
+export async function importConnections(source: ImportSourceId | 'file'): Promise<{ added: number; passwords: number }> {
   const reader = IMPORT_SOURCES.find((x) => x.id === source)
   const items = source === 'file' ? await readFileExport() : reader ? await reader.read() : []
   const existing = listConnections()
-  let count = 0
+  let added = 0
+  let passwords = 0
   for (const item of items) {
-    const duplicate = existing.some(
-      (c) => c.name === item.name && c.driver === item.driver && c.host === item.host && c.database === item.database,
-    )
-    if (duplicate) continue
-    saveConnection({ ...item, id: '' })
-    count++
+    const same = existing.find((c) => c.name === item.name && c.driver === item.driver && c.host === item.host)
+    if (!same) {
+      saveConnection({ ...item, id: '' })
+      added++
+      continue
+    }
+    const fill: Partial<StoredConnection> = {}
+    if (!same.password && item.password) fill.password = item.password
+    if (same.ssh && item.ssh && !same.ssh.password && item.ssh.password) fill.ssh = { ...same.ssh, password: item.ssh.password }
+    if (!Object.keys(fill).length || same.managed) continue
+    saveConnection({ ...same, ...fill })
+    passwords++
   }
-  return count
+  return { added, passwords }
 }
