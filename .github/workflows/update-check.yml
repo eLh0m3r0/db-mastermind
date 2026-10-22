@@ -3,6 +3,7 @@ name: Auto-update check
 # Installs an old version with the Windows installer, lets it find, download and install the latest release
 # through electron-updater, and checks that the installed version changed.
 #   current: the code in this commit, built as version 0.0.1 (tests the updater code before it ships)
+#   mac: the same on macOS (the unsigned app's own updater, mac-update.ts)
 #   release: the previous release (tests what users actually have)
 on:
   workflow_run:
@@ -47,6 +48,29 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./.github/scripts/update-check.ps1 -Latest ((gh release view -R $env:GITHUB_REPOSITORY --json tagName -q .tagName) -replace '^v', '')
+
+  mac:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - name: Build this code as version 0.0.1 and install it
+        working-directory: apps/desktop
+        run: |
+          npx electron-vite build && npx electron-builder --mac dir --arm64 --publish never --config.extraMetadata.version=0.0.1
+          mkdir -p "$HOME/Applications" && rm -rf "$HOME/Applications/DB Mastermind.app"
+          ditto "release/mac-arm64/DB Mastermind.app" "$HOME/Applications/DB Mastermind.app"
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Update to the latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node e2e/mac-update-check.mjs "$HOME/Applications/DB Mastermind.app" "$(gh release view -R "$GITHUB_REPOSITORY" --json tagName -q .tagName | sed 's/^v//')"
 
   release:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'

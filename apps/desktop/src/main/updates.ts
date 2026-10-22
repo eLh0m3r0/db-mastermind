@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { app } from 'electron'
+import { canSelfUpdateMac, downloadMacUpdate, installMacUpdateNow } from './mac-update'
 import { managedConfig } from './managed'
 import { isPortable } from './storage'
 
@@ -17,12 +18,14 @@ function newer(a: string, b: string): boolean {
 
 /**
  * Installs that can update themselves: the per-user Windows installer (NSIS) and the Linux AppImage. Not the
- * portable zip (Scoop or the user replaces it), not MSI (IT deploys it), not macOS (Squirrel needs a signed app).
+ * portable zip (Scoop or the user replaces it), not MSI (IT deploys it). macOS: see mac-update.ts.
  */
 export function canAutoUpdate(): boolean {
   // Microsoft Store installs are updated by the Store.
   if (process.windowsStore) return false
   if (process.platform === 'win32') return !isPortable && existsSync(join(dirname(app.getPath('exe')), 'Uninstall DB Mastermind.exe'))
+  // The unsigned macOS app updates through its own path (mac-update.ts) when it may replace its bundle.
+  if (process.platform === 'darwin') return canSelfUpdateMac()
   return process.platform === 'linux' && !!process.env.APPIMAGE
 }
 
@@ -96,6 +99,11 @@ export async function checkForUpdates(
   log('INFO', `Version ${app.getVersion()} on ${process.platform}/${process.arch}; self-updating install: ${auto}; exe ${app.getPath('exe')}`)
   if (auto) {
     try {
+      if (process.platform === 'darwin') {
+        const version = await downloadMacUpdate(app.getVersion(), newer, log)
+        if (version) ready({ version })
+        return
+      }
       await (await autoUpdaterFor(ready)).checkForUpdates()
       return
     } catch (err) {
@@ -121,6 +129,11 @@ export async function checkNow(ready: (info: { version: string }) => void): Prom
   if (!app.isPackaged) return { state: 'development' }
   if (disabled()) return { state: 'disabled' }
   try {
+    if (canAutoUpdate() && process.platform === 'darwin') {
+      const version = await downloadMacUpdate(app.getVersion(), newer, log)
+      if (version) ready({ version })
+      return version ? { state: 'downloading', version } : { state: 'up-to-date', version: app.getVersion() }
+    }
     if (canAutoUpdate()) {
       const result = await (await autoUpdaterFor(ready)).checkForUpdates()
       const version = result?.updateInfo.version
@@ -136,6 +149,7 @@ export async function checkNow(ready: (info: { version: string }) => void): Prom
 
 /** Restarts into the downloaded update. */
 export async function installUpdate(): Promise<void> {
+  if (process.platform === 'darwin') return installMacUpdateNow()
   const autoUpdater = await loadAutoUpdater()
   autoUpdater.quitAndInstall(false, true)
 }
