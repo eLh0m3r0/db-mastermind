@@ -874,4 +874,10 @@ export const cs: Record<string, string> = {
   'History exported': 'Historie exportována',
   'Export…': 'Export…',
   'MCP': 'MCP',
+  'Local HTTP endpoint while the app is running': 'Lokální HTTP endpoint, když aplikace běží',
+  'Agents connect to this window instead of starting their own copy. Only this computer can reach it, with the token below.': 'Agenti se připojí k tomuto oknu místo spouštění vlastní kopie. Dostupné jen z tohoto počítače a s tokenem níže.',
+  'Running at {url}': 'Běží na {url}',
+  'Not running': 'Neběží',
+  'Token': 'Token',
+  'New token': 'Nový token',
 }

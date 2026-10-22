@@ -44,6 +44,7 @@ import { cancelChat, respondApproval, startChat } from './ai/assistant'
 import { completeText, extractJson } from './ai/complete'
 import { listModels, testProvider } from './ai/models'
 import { exportConnections, importConnections } from './importers'
+import { applyMcpHttp, mcpHttpStatus } from './mcp-http'
 import { buildMenu } from './menu'
 import * as library from './library'
 import { getSettings, updateSettings } from './settings'
@@ -143,6 +144,7 @@ export const api: MastermindApi = {
   async updateSettings(patch) {
     const next = updateSettings(patch)
     if (patch.language) buildMenu()
+    if (patch.mcp) await applyMcpHttp()
     return next
   },
 
@@ -184,6 +186,9 @@ export const api: MastermindApi = {
   },
   async parseConnectionString(text) {
     return parseConnectionString(text)
+  },
+  async mcpHttpStatus() {
+    return mcpHttpStatus()
   },
   async exportHistory(connectionId) {
     const window = BrowserWindow.getFocusedWindow()

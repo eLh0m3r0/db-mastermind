@@ -279,6 +279,8 @@ export interface MastermindApi {
   parseConnectionString(text: string): Promise<Partial<ConnectionConfig>>
   /** Writes the full statement history of a connection (or all) to CSV; returns the path or null. */
   exportHistory(connectionId?: string): Promise<string | null>
+  /** State of the local HTTP MCP endpoint (Settings → MCP server). */
+  mcpHttpStatus(): Promise<{ running: boolean; error?: string; url: string }>
   importConnections(source: 'beekeeper' | 'dbeaver' | 'pgpass' | 'file'): Promise<number>
   /** Writes connections without passwords or keys to a JSON file for colleagues; all when `ids` is empty. */
   exportConnections(ids?: string[]): Promise<string | null>
@@ -388,6 +390,7 @@ export const API_METHODS = [
   'parseConnectionString',
   'importConnections',
   'exportHistory',
+  'mcpHttpStatus',
   'exportConnections',
   'createSampleDatabase',
   'getSchema',

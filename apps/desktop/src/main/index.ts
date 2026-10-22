@@ -7,6 +7,7 @@ import { buildMenu } from './menu'
 import { flushHistory } from './library'
 import { flushConnections, loadConnections } from './connections'
 import { getSettings, loadSettings } from './settings'
+import { applyMcpHttp } from './mcp-http'
 import { isMcpMode, runMcpMode } from './mcp-mode'
 import { configureDataDir, readJson, writeJson } from './storage'
 import { checkForUpdates } from './updates'
@@ -104,6 +105,7 @@ function startApp() {
     await Promise.all([loadConnections(), loadSettings()])
     buildMenu()
     createWindow()
+    void applyMcpHttp()
     void checkForUpdates((info) => mainWindow?.webContents.send('update:available', info))
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()

@@ -141,7 +141,7 @@ project's (AI) maintainer and updated with every release.
 ### MCP server
 - ✅ `npx dbmastermind-mcp` — standalone stdio MCP server using the same connections & knowledge base
 - ✅ Desktop app as MCP server (`--mcp` stdio mode: saved connections + keychain passwords)
-- ⬜ Streamable HTTP endpoint inside the running app (token-protected)
+- ✅ Streamable HTTP endpoint inside the running app (localhost, bearer token, origin check; audited)
 - 🚧 One-click "Add to Claude Code / Claude Desktop / Codex / Cursor / VS Code" config snippets
 - ✅ Tools: `list_connections`, `list_tables`, `describe_table`, `search_schema`, `run_query` (read-only by
   default), `explain_query`, `get_relationships`, `read_knowledge`, `write_knowledge` (opt-in)
