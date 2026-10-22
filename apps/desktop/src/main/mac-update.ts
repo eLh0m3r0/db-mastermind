@@ -106,22 +106,28 @@ export async function downloadMacUpdate(current: string, newer: (a: string, b: s
   return latest.version
 }
 
+/**
+ * Replaces the bundle once this process has exited. Arguments: pid, installed app, new app, folder to clean up, and
+ * 1 to reopen. The new version is copied next to the app first and swapped in with two renames: the app is never
+ * half-copied, any failure leaves (or puts back) the installed one, and only the copies are ever deleted.
+ */
+export const SWAP_SCRIPT = [
+  'while kill -0 "$1" 2>/dev/null; do sleep 0.3; done',
+  // An earlier swap cut off between its renames (power loss) left only the old copy: put it back first.
+  '[ -d "$2" ] || [ ! -d "$2.old" ] || mv "$2.old" "$2"',
+  'rm -rf "$2.old" "$2.new"',
+  'if /usr/bin/ditto "$3" "$2.new" && mv "$2" "$2.old" && mv "$2.new" "$2"; then rm -rf "$2.old"; else [ -d "$2" ] || mv "$2.old" "$2"; rm -rf "$2.new"; fi',
+  '/usr/bin/xattr -dr com.apple.quarantine "$2" 2>/dev/null',
+  'rm -rf "$4"',
+  'if [ "$5" = 1 ]; then /usr/bin/open "$2"; fi',
+].join('\n')
+
 /** Starts the detached script that replaces the bundle once this process has exited. */
 function swapAfterExit(log: Log): void {
   if (!pending || !existsSync(pending.app)) return
   const target = macBundle()
-  const script = [
-    'while kill -0 "$1" 2>/dev/null; do sleep 0.3; done',
-    // Copy next to the app first, then swap with two renames: the app is never half-copied, and a failed copy leaves
-    // the old one untouched.
-    'rm -rf "$2.old" "$2.new"',
-    'if /usr/bin/ditto "$3" "$2.new" && mv "$2" "$2.old" && mv "$2.new" "$2"; then rm -rf "$2.old"; else [ -d "$2" ] || mv "$2.old" "$2"; rm -rf "$2.new"; fi',
-    '/usr/bin/xattr -dr com.apple.quarantine "$2" 2>/dev/null',
-    'rm -rf "$4"',
-    'if [ "$5" = 1 ]; then /usr/bin/open "$2"; fi',
-  ].join('\n')
   log('INFO', `Installing ${pending.version} into ${target} after quit${relaunch ? ', then reopening' : ''}`)
-  const child = spawn('/bin/sh', ['-c', script, 'dbm-update', String(process.pid), target, pending.app, dirname(dirname(pending.app)), relaunch ? '1' : '0'], {
+  const child = spawn('/bin/sh', ['-c', SWAP_SCRIPT, 'dbm-update', String(process.pid), target, pending.app, dirname(dirname(pending.app)), relaunch ? '1' : '0'], {
     detached: true,
     stdio: 'ignore',
   })
