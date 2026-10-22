@@ -73,6 +73,23 @@ for (const engine of engines) {
       expect(again!.results![0]!.rows).toEqual([[42]])
     })
 
+    it.runIf(engine.id === 'mssql')('a T-SQL batch cut at maxRows still runs to the end', async () => {
+      const t = svc.qualifiedName(id, orders)
+      await svc.runScript(id, "IF OBJECT_ID('dbo.batch_marker') IS NOT NULL DROP TABLE dbo.batch_marker; CREATE TABLE dbo.batch_marker (v int)")
+      const [o] = await svc.runScript(id, `SELECT * FROM ${t}\nINSERT INTO dbo.batch_marker VALUES (1)\nSELECT COUNT(*) AS n FROM dbo.batch_marker`, { maxRows: 5 })
+      expect(o!.error).toBeUndefined()
+      expect(o!.results![0]!.rows).toHaveLength(5)
+      expect(o!.results![0]!.truncated).toBe(true)
+      expect(o!.results!.at(-1)!.rows).toEqual([[1]])
+      // A transaction around a large SELECT is committed, not left open.
+      await svc.runScript(id, `BEGIN TRAN\nSELECT * FROM ${t}\nINSERT INTO dbo.batch_marker VALUES (2)\nCOMMIT`, { maxRows: 5, session: 'cut' })
+      const [open] = await svc.runScript(id, 'SELECT @@TRANCOUNT AS n', { session: 'cut' })
+      expect(open!.results![0]!.rows).toEqual([[0]])
+      await svc.releaseSession(id, 'cut')
+      const [count] = await svc.runScript(id, 'SELECT COUNT(*) AS n FROM dbo.batch_marker; DROP TABLE dbo.batch_marker')
+      expect(count!.results![0]!.rows).toEqual([[2]])
+    })
+
     it('reports affected rows for DML', async () => {
       const [outcome] = await svc.runScript(id, `UPDATE ${svc.qualifiedName(id, orders)} SET status = 'paid' WHERE status = 'paid'`)
       expect(outcome!.error).toBeUndefined()

@@ -4,6 +4,7 @@ import sql from 'mssql'
 import { mssqlDialect } from '../dialect.js'
 import { batchesFromEvents, ConnectionLostError, elapsed, QueryCancelledError, SessionTransactions, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
+import { isReadOnlyScript } from '../sql-split.js'
 import { openSshTunnel, type SshTunnel } from '../ssh.js'
 import type { ConnectionConfig, QueryOptions, QueryResult, ResultField, SchemaSnapshot, ServerInfo, TableInfo } from '../types.js'
 import { normalizeValue } from '../values.js'
@@ -202,6 +203,10 @@ export class MssqlDriver implements DatabaseDriver {
     request.arrayRowMode = true
     options.params?.forEach((value, i) => request.input(`p${i + 1}`, value))
     const maxRows = options.maxRows ?? Number.POSITIVE_INFINITY
+    // Past maxRows, cancelling saves fetching rows nobody sees, but it stops the whole batch: in one that also writes
+    // or ends a transaction (`SELECT * FROM big; UPDATE …; COMMIT`) the rest would silently not run. Such a batch
+    // runs to the end and the extra rows are dropped.
+    const canStopEarly = Number.isFinite(maxRows) && isReadOnlyScript(text, 'mssql')
     const start = process.hrtime.bigint()
 
     return new Promise<QueryResult[]>((resolve, reject) => {
@@ -249,10 +254,12 @@ export class MssqlDriver implements DatabaseDriver {
           // `date` columns arrive as midnight Dates; show them as dates like every other engine.
           current.rows.push(row.map((v, i) => (v instanceof Date && current!.fields[i]?.dataType === 'date' ? String(normalizeValue(v)).slice(0, 10) : normalizeValue(v))))
           current.rowCount = current.rows.length
-        } else if (!stoppedEarly) {
-          stoppedEarly = true
+        } else if (!current.truncated) {
           current.truncated = true
-          request.cancel()
+          if (canStopEarly) {
+            stoppedEarly = true
+            request.cancel()
+          }
         }
       })
       request.on('rowsaffected', (count: number) => {
