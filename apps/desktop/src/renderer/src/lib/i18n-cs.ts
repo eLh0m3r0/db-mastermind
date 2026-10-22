@@ -960,4 +960,7 @@ export const cs: Record<string, string> = {
   'Write to DBML': 'Zapsat do DBML',
   'Edit the model visually: tables, columns, keys and indexes': 'Upravit model vizuálně: tabulky, sloupce, klíče a indexy',
   'Click a table to edit it, drag from a column dot to another table to add a foreign key. Write to DBML puts the changes into the model text.': 'Kliknutím na tabulku ji upravíte, tažením od tečky sloupce k jiné tabulce přidáte cizí klíč. Zapsat do DBML přenese změny do textu modelu.',
+  'What changed compared with another DBML file, e.g. an older version of this model': 'Co se změnilo oproti jinému souboru DBML, např. starší verzi tohoto modelu',
+  'Compare with file…': 'Porovnat se souborem…',
+  'Changes since {name}': 'Změny oproti {name}',
 }

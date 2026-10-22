@@ -177,6 +177,18 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     replaceText(toDbml(snap.tables, { defaultSchema: snap.defaultSchema }), { dirty: true })
   }
 
+  /** Versions: this model against another .dbml file (older copy, another branch…). */
+  const compareWithFile = async () => {
+    try {
+      const file = await api.openModelFile(undefined, connection?.knowledgeBasePath)
+      if (!file) return
+      const name = file.path.split(/[\\/]/).pop() ?? 'DBML'
+      openTab({ kind: 'compare', connectionId: tab.connectionId, sourceModel: text, targetModel: file.text, targetLabel: name, title: t('Changes since {name}', { name }) }, { reuse: false })
+    } catch (err) {
+      toast({ kind: 'error', message: t('Could not open the model'), detail: errorMessage(err) })
+    }
+  }
+
   const importDdl = async () => {
     try {
       const r = await api.importDdlFile()
@@ -272,6 +284,16 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           title={t('Compare the model with the database and generate the migration')}
         >
           {t('Compare with {name}', { name: connection?.name ?? t('database') })}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<GitCompare size={13} />}
+          disabled={model.errors.length > 0}
+          title={t('What changed compared with another DBML file, e.g. an older version of this model')}
+          onClick={() => void compareWithFile()}
+        >
+          {t('Compare with file…')}
         </Button>
       </div>
       <div className="flex min-h-0 flex-1">

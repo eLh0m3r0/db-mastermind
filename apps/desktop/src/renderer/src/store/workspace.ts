@@ -60,6 +60,10 @@ export interface CompareTab extends BaseTab {
   targetSchema?: string
   /** Compare a DBML model (instead of a connection) with the target. */
   sourceModel?: string
+  /** Compare with another DBML model (e.g. an older version) instead of the database. */
+  targetModel?: string
+  /** File name of `targetModel`, for the header. */
+  targetLabel?: string
 }
 
 /** Table data compare: `connectionId` is the target that receives the sync script. */

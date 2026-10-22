@@ -178,7 +178,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ Reverse engineer: model from a live connection ("From database", or "Edit as model" from any diagram)
 - ✅ Forward engineer: DDL for any supported database from the model, with type translation (boolean → bit, jsonb → nvarchar(max), indexed text → bounded strings; verified by running PostgreSQL's schema on every engine)
 - ✅ **Model ↔ database diff** → migration script, reviewed and opened in the SQL editor
-- ⬜ Model versions / snapshots with visual diff between them
+- ✅ Model versions: compare a model with another DBML file (older copy, another branch) — changes and migration
 - ✅ Import from DBML and SQL DDL scripts (pg_dump, mysqldump, SSMS) · ⬜ Prisma, Django/Rails migrations (via AI)
 - ✅ Export: SQL (any engine), DBML, Mermaid, PlantUML, PNG, SVG, HTML data dictionary (PDF via its print view)
 - ✅ AI on models: design or extend, review, suggest indexes, normalize, add audit columns — results apply to the model

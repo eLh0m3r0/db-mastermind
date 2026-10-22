@@ -39,6 +39,17 @@ export function CompareView({ tab }: { tab: CompareTab }) {
     if (!tab.sourceId && tab.sourceModel === undefined) return
     setBusy(true)
     try {
+      if (tab.sourceModel !== undefined && tab.targetModel !== undefined) {
+        // Two versions of a model: enums stay named types on both sides.
+        const read = (text: string, label: string) => {
+          const m = parseDbml(text)
+          if (m.errors.length) throw new Error(`${label}: ${m.errors.map((e) => `${t('line {n}', { n: String(e.line) })}: ${e.message}`).join('\n')}`)
+          return { tables: m.tables, schemas: [...new Set(m.tables.map((x) => x.schema ?? ''))], routines: [], capturedAt: '' } as SchemaSnapshot
+        }
+        setSnapshots({ source: read(tab.sourceModel, t('Model (DBML)')), target: read(tab.targetModel, tab.targetLabel ?? 'DBML') })
+        setExcluded(new Set())
+        return
+      }
       if (tab.sourceModel !== undefined) {
         await connect(tab.connectionId)
         const targetSnap = await loadSchema(tab.connectionId, true)
@@ -112,6 +123,9 @@ export function CompareView({ tab }: { tab: CompareTab }) {
           </Select>
         )}
         <ArrowRight size={14} className="text-fg-faint" />
+        {tab.targetModel !== undefined ? (
+          <span className="rounded-md bg-subtle px-2 py-1 text-[12px] font-medium">{tab.targetLabel ?? 'DBML'}</span>
+        ) : (
         <Select inputSize="sm" className="w-52" value={tab.connectionId} onChange={(e) => pickConnection(e.target.value, 'target')}>
           {connections.map((c) => (
             <option key={c.id} value={c.id}>
@@ -119,6 +133,7 @@ export function CompareView({ tab }: { tab: CompareTab }) {
             </option>
           ))}
         </Select>
+        )}
         {targetSchemas && targetSchemas.length > 1 && (
           <Select inputSize="sm" className="w-36" value={tab.targetSchema ?? ''} onChange={(e) => updateTab(tab.id, { targetSchema: e.target.value || undefined })}>
             <option value="">{t('All schemas')}</option>
