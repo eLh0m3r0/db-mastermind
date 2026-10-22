@@ -196,7 +196,8 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ Schema compare (two connections / two schemas) → migration script (structural matching of keys and indexes)
 - ⬜ Data compare between tables / environments
 - ⬜ Backup / restore helpers (pg_dump, mysqldump wrappers when available)
-- ⬜ Server activity: running queries, locks, kill session
+- ✅ Server activity: sessions and running queries with auto-refresh, cancel query, end session (PG, MySQL/MariaDB, MSSQL, Oracle)
+- ⬜ Server activity: lock waits / blocking chains
 - ⬜ Users & roles browser
 - ⬜ Snippets with variables
 - ⬜ Split editor panes, side-by-side results

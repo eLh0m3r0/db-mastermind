@@ -7,6 +7,7 @@ import type {
   RowChange,
   SchemaSnapshot,
   ServerInfo,
+  SessionActivity,
   SortSpec,
   StatementOutcome,
   TablePage,
@@ -224,6 +225,8 @@ export interface MastermindApi {
   cancelQuery(runId: string): Promise<void>
   explainQuery(connectionId: string, sql: string, analyze?: boolean): Promise<ExplainResult>
   releaseSession(connectionId: string, session: string): Promise<void>
+  listActivity(connectionId: string): Promise<SessionActivity[]>
+  stopSession(connectionId: string, sessionId: string, mode: 'cancel' | 'terminate'): Promise<void>
 
   fetchTable(request: FetchTableRequest): Promise<TablePage>
   countTable(request: Omit<FetchTableRequest, 'limit' | 'offset'>): Promise<number>
@@ -300,6 +303,8 @@ export const API_METHODS = [
   'cancelQuery',
   'explainQuery',
   'releaseSession',
+  'listActivity',
+  'stopSession',
   'fetchTable',
   'countTable',
   'importPreview',

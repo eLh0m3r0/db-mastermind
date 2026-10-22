@@ -56,8 +56,20 @@ export interface CompareTab extends BaseTab {
   targetSchema?: string
 }
 
-export type Tab = QueryTab | TableTab | StructureTab | DiagramTab | KnowledgeTab | CompareTab
-export type NewTab = Omit<QueryTab, 'id'> | Omit<TableTab, 'id'> | Omit<StructureTab, 'id'> | Omit<DiagramTab, 'id'> | Omit<KnowledgeTab, 'id'> | Omit<CompareTab, 'id'>
+/** Server activity: sessions and running queries. */
+export interface ActivityTab extends BaseTab {
+  kind: 'activity'
+}
+
+export type Tab = QueryTab | TableTab | StructureTab | DiagramTab | KnowledgeTab | CompareTab | ActivityTab
+export type NewTab =
+  | Omit<QueryTab, 'id'>
+  | Omit<TableTab, 'id'>
+  | Omit<StructureTab, 'id'>
+  | Omit<DiagramTab, 'id'>
+  | Omit<KnowledgeTab, 'id'>
+  | Omit<CompareTab, 'id'>
+  | Omit<ActivityTab, 'id'>
 
 interface WorkspaceState {
   tabs: Tab[]

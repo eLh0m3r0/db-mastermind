@@ -8,6 +8,8 @@ import {
   buildChangeStatements,
   detectDelimiter,
   explainQuery,
+  listActivity,
+  stopSession,
   filterPrompt,
   sanitizeFilter,
   parseDelimited,
@@ -219,6 +221,15 @@ export const api: MastermindApi = {
   async explainQuery(connectionId, sql, analyze) {
     await ensureConnected(connectionId)
     return explainQuery(db, connectionId, sql, analyze)
+  },
+  async listActivity(connectionId) {
+    await ensureConnected(connectionId)
+    return listActivity(db, connectionId)
+  },
+  async stopSession(connectionId, sessionId, mode) {
+    await ensureConnected(connectionId)
+    if (connections.getConnection(connectionId).readOnly) throw new Error('This connection is read-only')
+    await stopSession(db, connectionId, sessionId, mode)
   },
   async cancelQuery(runId) {
     running.get(runId)?.abort()

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import {
+  Activity,
   BookMarked,
   BookOpen,
   ChevronDown,
@@ -148,6 +149,16 @@ export function Sidebar() {
             >
               <BookOpen size={12} />
             </button>
+            {connection.driver !== 'sqlite' && (
+              <button
+                type="button"
+                title={t('Server activity')}
+                onClick={() => useWorkspace.getState().open({ kind: 'activity', connectionId: connection.id, title: t('Server activity') })}
+                className="flex h-6 w-7 items-center justify-center rounded-md text-fg-muted hover:bg-hover hover:text-fg"
+              >
+                <Activity size={12} />
+              </button>
+            )}
           </div>
           {panel === 'explorer' &&
             (runtime?.status === 'connected' ? (

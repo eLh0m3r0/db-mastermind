@@ -87,6 +87,9 @@ export class PostgresDriver implements DatabaseDriver {
   }
 
   async close(): Promise<void> {
+    // Sticky session clients are checked out; pool.end() would wait for them forever.
+    for (const client of this.sessions.values()) client.release(true)
+    this.sessions.clear()
     await this.pool?.end()
     this.pool = undefined
     await this.tunnel?.close()

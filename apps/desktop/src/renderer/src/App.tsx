@@ -11,6 +11,7 @@ import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { toast, useUi } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
+import { ActivityView } from './features/activity/ActivityView'
 import { AiPanel } from './features/ai/AiPanel'
 import { CompareView } from './features/compare/CompareView'
 import { ConnectionForm } from './features/connections/ConnectionForm'
@@ -139,6 +140,7 @@ export function App() {
                 {tab.kind === 'diagram' && tab.id === activeId && <DiagramView tab={tab} />}
                 {tab.kind === 'knowledge' && <KnowledgeView tab={tab} active={tab.id === activeId} />}
                 {tab.kind === 'compare' && <CompareView tab={tab} />}
+                {tab.kind === 'activity' && <ActivityView tab={tab} />}
               </div>
             ))}
             {!activeTab && <HomeScreen />}
