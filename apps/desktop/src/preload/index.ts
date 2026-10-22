@@ -27,6 +27,11 @@ const api = Object.fromEntries(
 
 const bridge = {
   api,
+  /**
+   * The raw result of an API call. Errors thrown through contextBridge keep only their message, so the renderer
+   * builds its errors from this (lib/api.ts) to keep codes such as PASSWORD_REQUIRED.
+   */
+  call: (method: keyof MastermindApi, args: unknown[]) => ipcRenderer.invoke(API_CHANNEL, method, args) as Promise<IpcResult<unknown>>,
   platform: process.platform,
   on<K extends keyof MainEvents>(channel: K, listener: (payload: MainEvents[K]) => void): () => void {
     const wrapped = (_e: unknown, payload: MainEvents[K]) => listener(payload)

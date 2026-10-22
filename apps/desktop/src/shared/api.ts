@@ -378,7 +378,8 @@ export interface MastermindApi {
   deleteConnection(id: string): Promise<void>
   duplicateConnection(id: string): Promise<StoredConnection>
   testConnection(config: ConnectionConfig): Promise<ServerInfo>
-  connect(id: string): Promise<ConnectResult>
+  /** `password` is used for this connection (asked for when none is saved or it was rejected), saved if `save`. */
+  connect(id: string, password?: { value: string; save: boolean }): Promise<ConnectResult>
   disconnect(id: string): Promise<void>
   isConnected(id: string): Promise<boolean>
   parseConnectionString(text: string): Promise<Partial<ConnectionConfig>>

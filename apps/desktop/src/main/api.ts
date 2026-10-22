@@ -42,6 +42,9 @@ import {
   TOOLS_FOLDER,
   forgetHostKey,
   trustedHostKey,
+  isPasswordProblem,
+  describeError,
+  PasswordRequiredError,
 } from '@dbmastermind/core'
 import type { ExportFormat, MastermindApi } from '@shared/api'
 import * as connections from './connections'
@@ -192,9 +195,18 @@ export const api: MastermindApi = {
   async testConnection(config) {
     return db.test(config as ConnectionConfig)
   },
-  async connect(id) {
-    const config = connections.getConnection(id)
-    const serverInfo = await db.connect(config)
+  async connect(id, password) {
+    const stored = connections.getConnection(id)
+    const config = password ? { ...stored, password: password.value } : stored
+    let serverInfo
+    try {
+      serverInfo = await db.connect(config)
+    } catch (err) {
+      // No saved password (imports leave them out) or a wrong one: the window asks for it.
+      if (isPasswordProblem(err)) throw new PasswordRequiredError(describeError(err).message)
+      throw err
+    }
+    if (password?.save) connections.saveConnection({ ...connections.getConnection(id), password: password.value })
     connections.touchConnection(id)
     return { serverInfo }
   },

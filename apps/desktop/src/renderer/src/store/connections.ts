@@ -3,6 +3,7 @@ import type { ConnectionConfig, SchemaSnapshot, ServerInfo } from '@dbmastermind
 import type { StoredConnection } from '@shared/api'
 import { api } from '@/lib/api'
 import { errorMessage } from '@/lib/utils'
+import { askPassword, type PasswordAnswer } from '@/features/connections/PasswordPrompt'
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
@@ -81,15 +82,29 @@ export const useConnections = create<ConnectionsState>((set, get) => {
       const current = get().runtime[id]
       if (current?.status === 'connected') return true
       patch(id, { status: 'connecting', error: undefined })
-      try {
-        const { serverInfo } = await api.connect(id)
-        patch(id, { status: 'connected', serverInfo })
-        void get().loadSchema(id)
-        void get().load()
-        return true
-      } catch (err) {
-        patch(id, { status: 'error', error: errorMessage(err) })
-        return false
+      let password: PasswordAnswer | undefined
+      for (;;) {
+        try {
+          const { serverInfo } = await api.connect(id, password)
+          patch(id, { status: 'connected', serverInfo })
+          void get().loadSchema(id)
+          void get().load()
+          return true
+        } catch (err) {
+          if ((err as { code?: string }).code !== 'PASSWORD_REQUIRED') {
+            patch(id, { status: 'error', error: errorMessage(err) })
+            return false
+          }
+          // No saved password (imported connections have none) or a rejected one: ask, as other clients do.
+          const c = get().get(id)
+          const tried = !!password || !!c?.password
+          const answer = await askPassword(c?.name ?? id, c?.user, tried ? errorMessage(err) : undefined)
+          if (!answer) {
+            patch(id, { status: 'disconnected', error: undefined })
+            return false
+          }
+          password = answer
+        }
       }
     },
     async disconnect(id) {

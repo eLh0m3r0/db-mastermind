@@ -111,6 +111,28 @@ export async function* batchesFromEvents(source: EventRowSource, batchSize: numb
   }
 }
 
+/**
+ * The server wants a password and didn't get the right one (none saved, or a wrong one): the app asks for it.
+ * Covers each driver's wording, including PostgreSQL's "client password must be a string" for a missing one.
+ */
+export function isPasswordProblem(err: unknown): boolean {
+  // Some drivers reject with a plain string (pg's SASL "client password must be a string").
+  const e = (typeof err === 'string' ? { message: err } : err) as { code?: string | number; errno?: number; message?: string } | undefined
+  const code = String(e?.code ?? '')
+  if (['28P01', '28000', 'ER_ACCESS_DENIED_ERROR', 'ELOGIN', '516'].includes(code) || e?.errno === 1045) return true
+  return /client password must be a string|password authentication failed|no password supplied|Login failed for user|ORA-01017|ORA-01005|NJS-101|Authentication failed|AUTHENTICATION_FAILED|Access denied for user/i.test(
+    e?.message ?? '',
+  )
+}
+
+export class PasswordRequiredError extends Error {
+  override name = 'PasswordRequiredError'
+  readonly code = 'PASSWORD_REQUIRED'
+  constructor(message: string) {
+    super(message)
+  }
+}
+
 /** A session's connection dropped (server restart, network) while it had uncommitted changes. */
 export class ConnectionLostError extends Error {
   override name = 'ConnectionLostError'

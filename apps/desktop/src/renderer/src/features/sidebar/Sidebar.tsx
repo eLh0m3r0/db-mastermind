@@ -58,7 +58,7 @@ export async function connectAndSelect(id: string): Promise<boolean> {
     const existing = ws.tabs.find((t) => t.connectionId === id)
     if (existing) ws.activate(existing.id)
     else ws.newQuery(id)
-  } else {
+  } else if (useConnections.getState().runtime[id]?.status === 'error') {
     const c = useConnections.getState().get(id)
     toast({ kind: 'error', message: c ? t('Could not connect to {name}', { name: c.name }) : t('Could not connect to the database'), detail: useConnections.getState().runtime[id]?.error })
   }

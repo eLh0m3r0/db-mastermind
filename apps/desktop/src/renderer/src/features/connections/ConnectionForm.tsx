@@ -128,7 +128,7 @@ export function ConnectionForm() {
       if (andConnect) {
         const ok = await connect(saved.id)
         if (ok) useUi.getState().set({ selectedConnectionId: saved.id })
-        else toast({ kind: 'error', message: t('Could not connect to {name}', { name: saved.name }), detail: useConnections.getState().runtime[saved.id]?.error })
+        else if (useConnections.getState().runtime[saved.id]?.status === 'error') toast({ kind: 'error', message: t('Could not connect to {name}', { name: saved.name }), detail: useConnections.getState().runtime[saved.id]?.error })
       }
     } catch (err) {
       toast({ kind: 'error', message: t('Could not save connection'), detail: errorMessage(err) })

@@ -1,6 +1,12 @@
 /**
  * Czech UI strings keyed by the exact English source text (see `i18n.ts`).
  * Plural forms: `{n} rows` is the 1/5+ form, `{n} rows|few` the Czech 2–4 form.
+  'Password for {user} on {name}': 'Heslo pro {user} na {name}',
+  'Password for {name}': 'Heslo pro {name}',
+  'The server rejected the password.': 'Server heslo odmítl.',
+  'No password is saved for this connection.': 'Pro toto připojení není uložené heslo.',
+  'Save password': 'Uložit heslo',
+  'Stored encrypted with your operating system keychain.': 'Uloží se šifrovaně pomocí klíčenky operačního systému.',
   'SSH host key': 'Klíč SSH serveru',
   'Remembered on the first connection': 'Zapamatuje se při prvním připojení',
   'Forget': 'Zapomenout',

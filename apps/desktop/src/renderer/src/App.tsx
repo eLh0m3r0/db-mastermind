@@ -1,3 +1,4 @@
+import { PasswordPrompt } from './features/connections/PasswordPrompt'
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { CellViewer } from '@/components/grid/CellViewer'
@@ -263,6 +264,7 @@ export function App() {
       <StatusBar />
       <ConnectionForm />
       <SettingsModal />
+      <PasswordPrompt />
       <CommandPalette />
       <CellViewer />
       <ContextMenuHost />
