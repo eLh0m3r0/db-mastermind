@@ -60,13 +60,24 @@ jobs:
             tar -xzf "duckdb-node-bindings-$T-$V.tgz" -C "$DEST" --strip-components 1
           done
           ls node_modules/@duckdb
-      - name: Build and publish
+      - name: Build
         working-directory: apps/desktop
-        run: npx electron-vite build && npx electron-builder ${{ matrix.args }} --publish always
+        run: npx electron-vite build && npx electron-builder ${{ matrix.args }} --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Builds are unsigned for now (see docs/STRATEGY.md).
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # electron-builder's own publishing looks the release up in the release list, which can lag right after the
+      # create-release job; it then tries to create it again and fails with 422. Upload to the release by tag instead.
+      - name: Upload to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        working-directory: apps/desktop/release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          files=$(find . -maxdepth 1 -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.blockmap' -o -name 'latest*.yml' \) | sort)
+          echo "$files"
+          for attempt in 1 2 3; do gh release upload "$GITHUB_REF_NAME" $files --clobber -R "$GITHUB_REPOSITORY" && break; sleep 20; done
       - name: Scoop manifest
         if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
         shell: bash
@@ -80,7 +91,10 @@ jobs:
       - name: MSI package (x64, for Intune / SCCM)
         if: runner.os == 'Windows'
         working-directory: apps/desktop
-        run: npx electron-builder --win msi --x64 --prepackaged release/win-unpacked --publish always
+        shell: bash
+        run: |
+          npx electron-builder --win msi --x64 --prepackaged release/win-unpacked --publish never
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then gh release upload "$GITHUB_REF_NAME" release/*.msi --clobber -R "$GITHUB_REPOSITORY"; fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -90,13 +104,14 @@ jobs:
         working-directory: apps/desktop
         shell: bash
         run: >
-          npx electron-builder --win appx --x64 --prepackaged release/win-unpacked --publish always
+          npx electron-builder --win appx --x64 --prepackaged release/win-unpacked --publish never
           --config.appx.identityName="${{ vars.MSSTORE_IDENTITY_NAME }}"
           --config.appx.publisher="${{ vars.MSSTORE_PUBLISHER }}"
           --config.appx.publisherDisplayName="${{ vars.MSSTORE_PUBLISHER_NAME }}"
           --config.appx.applicationId=DBMastermind
           --config.appx.displayName="DB Mastermind"
           --config.appx.artifactName='DB-Mastermind-${version}-store.${ext}'
+          && if [[ "$GITHUB_REF" == refs/tags/v* ]]; then gh release upload "$GITHUB_REF_NAME" release/*-store.appx --clobber -R "$GITHUB_REPOSITORY"; fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
