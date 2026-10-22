@@ -25,7 +25,7 @@ export function SnippetsSection() {
   return (
     <>
       <p className="text-[12.5px] text-fg-muted">
-        {t('Type a trigger in the SQL editor and pick it from the suggestions; Tab jumps between the ${fields}.')}
+        {t('Type a trigger in the SQL editor and pick it from the suggestions; Tab jumps to the next field.')}
       </p>
       <div className="flex flex-col gap-3">
         {list.map((s, i) => (

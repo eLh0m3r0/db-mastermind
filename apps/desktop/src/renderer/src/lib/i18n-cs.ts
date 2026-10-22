@@ -751,7 +751,7 @@ export const cs: Record<string, string> = {
   'Connections exported': 'Připojení exportována',
   'Passwords and keys are not included. Colleagues import the file via New connection ▾ → From JSON file.': 'Hesla a klíče nejsou zahrnuty. Kolegové soubor naimportují přes Nové připojení ▾ → Ze souboru JSON.',
   'Snippets': 'Šablony',
-  'Type a trigger in the SQL editor and pick it from the suggestions; Tab jumps between the ${fields}.': 'Napište v SQL editoru zkratku a vyberte ji z nápovědy; Tab přeskakuje mezi poli ${pole}.',
+  'Type a trigger in the SQL editor and pick it from the suggestions; Tab jumps to the next field.': 'Napište v SQL editoru zkratku a vyberte ji z nápovědy; Tab přeskočí na další pole.',
   'trigger': 'zkratka',
   'Description': 'Popis',
   'Add snippet': 'Přidat šablonu',
