@@ -6,6 +6,7 @@ import { buildSystemPrompt, classifyStatement, DB_TOOLS, describeError, Knowledg
 import type { AiChatRequest, AiEvent } from '@shared/api'
 import { db } from '../api'
 import { aiAccess } from '../ai-access'
+import { chatMcpEndpoint } from './chat-mcp'
 import { getConnection } from '../connections'
 import { getSettings } from '../settings'
 import { activeProvider } from './complete'
@@ -112,22 +113,38 @@ async function runChat(request: AiChatRequest): Promise<void> {
     const system = await buildSystemPrompt(ctx, extra)
 
     if (provider.id === 'claude-code' || provider.id === 'codex') {
+      // Claude Code gets the tools from this process, so they follow the chat's permissions and a write is confirmed in
+      // the app. (Codex starts the separate `--mcp` server, where writes need "Agents may write".)
+      const endpoint =
+        provider.id === 'claude-code'
+          ? await chatMcpEndpoint({
+              db,
+              connections: [{ ...config, ai: { access: access.access, agents: true, agentWrites: false, knowledgeWrites: access.knowledgeWrites } }],
+              confirmWrite: ctx.confirmWrite,
+              version: app.getVersion(),
+              onExecuted: (_id, o) => ctx.onExecuted?.(o),
+            })
+          : undefined
       const transcript = request.messages
         .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
         .join('\n\n')
-      await runCli({
-        provider: provider.id,
-        prompt: request.messages.length > 1 ? `Conversation so far:\n\n${transcript}\n\nRespond to the last user message.` : (request.messages[0]?.content ?? ''),
-        system,
-        model: provider.model,
-        mcp: mcpCommandFor(connectionId),
-        signal,
-        onEvent: (e) => {
-          if (e.type === 'text') send({ chatId, type: 'text', text: `${e.text}\n\n` })
-          else if (e.type === 'tool-start') send({ chatId, type: 'tool-start', id: e.id, name: e.name, input: e.input })
-          else send({ chatId, type: 'tool-end', id: e.id, output: e.output, error: e.error })
-        },
-      })
+      try {
+        await runCli({
+          provider: provider.id,
+          prompt: request.messages.length > 1 ? `Conversation so far:\n\n${transcript}\n\nRespond to the last user message.` : (request.messages[0]?.content ?? ''),
+          system,
+          model: provider.model,
+          mcp: endpoint ? { url: endpoint.url, headers: endpoint.headers } : mcpCommandFor(connectionId),
+          signal,
+          onEvent: (e) => {
+            if (e.type === 'text') send({ chatId, type: 'text', text: `${e.text}\n\n` })
+            else if (e.type === 'tool-start') send({ chatId, type: 'tool-start', id: e.id, name: e.name, input: e.input })
+            else send({ chatId, type: 'tool-end', id: e.id, output: e.output, error: e.error })
+          },
+        })
+      } finally {
+        endpoint?.close()
+      }
       send({ chatId, type: 'done' })
       return
     }

@@ -33,6 +33,11 @@ export interface McpServerOptions {
   version?: string
   /** Called for every statement an agent ran (audit log). */
   onExecuted?: (connectionId: string, outcome: StatementOutcome) => void
+  /**
+   * Asks the user before a write on connections whose AI access is "write" (the app's own assistant, which can show
+   * a confirmation). External agents can't be asked, so without this they need agentWrites.
+   */
+  confirmWrite?: (sql: string) => Promise<boolean>
 }
 
 const INSTRUCTIONS = `DB Mastermind gives you safe access to the user's databases.
@@ -69,7 +74,12 @@ export function createMcpServer(options: McpServerOptions): Server {
       // A connection's own permissions (set in the app) win over the server-wide flags.
       allowData: !options.schemaOnly && (!config.ai || config.ai.access === 'read' || config.ai.access === 'write'),
       allowKnowledgeWrites: config.ai ? config.ai.knowledgeWrites === true : options.allowKnowledgeWrites,
-      confirmWrite: (config.ai ? config.ai.agentWrites === true && config.ai.access === 'write' : options.allowWrites) ? async () => true : undefined,
+      confirmWrite:
+        options.confirmWrite && config.ai?.access === 'write'
+          ? options.confirmWrite
+          : (config.ai ? config.ai.agentWrites === true && config.ai.access === 'write' : options.allowWrites)
+            ? async () => true
+            : undefined,
       maxRows: 100,
       onExecuted: options.onExecuted ? (o) => options.onExecuted!(config.id, o) : undefined,
     }

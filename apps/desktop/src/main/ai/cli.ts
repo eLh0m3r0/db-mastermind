@@ -59,8 +59,11 @@ export interface CliRunOptions {
   prompt: string
   system: string
   model?: string
-  /** DB Mastermind as an MCP server for the agent; omitted for plain text completions. */
-  mcp?: { command: string; args: string[] }
+  /**
+   * DB Mastermind as an MCP server for the agent: a command to start, or (Claude Code) the app's own endpoint for this
+   * chat. Omitted for plain text completions.
+   */
+  mcp?: { command: string; args: string[] } | { url: string; headers: Record<string, string> }
   signal: AbortSignal
   onEvent: (event: CliEvent) => void
 }
@@ -77,12 +80,14 @@ function textOf(content: unknown): string {
 
 /** Runs the agent CLI headless with DB Mastermind attached as an MCP server and streams its events. */
 export async function runCli(options: CliRunOptions): Promise<void> {
-  const env = { ...process.env, PATH: await resolvedPath() }
+  // A write waits in the app for the user's answer; Claude Code would give up on the tool call after its default timeout.
+  const env = { ...process.env, PATH: await resolvedPath(), MCP_TOOL_TIMEOUT: process.env.MCP_TOOL_TIMEOUT ?? '900000' }
   let args: string[]
   if (options.provider === 'claude-code') {
     args = ['-p', options.prompt, '--output-format', 'stream-json', '--verbose', '--append-system-prompt', options.system]
     if (options.mcp) {
-      const mcpConfig = JSON.stringify({ mcpServers: { dbmastermind: { command: options.mcp.command, args: options.mcp.args } } })
+      const server = 'url' in options.mcp ? { type: 'http', url: options.mcp.url, headers: options.mcp.headers } : { command: options.mcp.command, args: options.mcp.args }
+      const mcpConfig = JSON.stringify({ mcpServers: { dbmastermind: server } })
       args.push('--mcp-config', mcpConfig, '--strict-mcp-config', '--allowedTools', 'mcp__dbmastermind')
     } else {
       args.push('--strict-mcp-config', '--disallowedTools', 'Bash Edit Write Read Glob Grep WebFetch WebSearch')
@@ -94,7 +99,7 @@ export async function runCli(options: CliRunOptions): Promise<void> {
       'exec',
       '--json',
       '--skip-git-repo-check',
-      ...(options.mcp
+      ...(options.mcp && 'command' in options.mcp
         ? ['-c', `mcp_servers.dbmastermind.command=${toml(options.mcp.command)}`, '-c', `mcp_servers.dbmastermind.args=${toml(options.mcp.args)}`]
         : []),
       ...(options.model ? ['-m', options.model] : []),
