@@ -35,7 +35,8 @@ PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB — W
 
 ![SQL editor](docs/screenshots/query.png)
 
-- **Charts from any result**: bar, line or scatter in one click, with a colorblind-safe palette
+- **Charts from any result**: bar, line or scatter in one click, and **dashboards** of pinned results that refresh themselves
+- **Paste from Excel** into a table, hide/reorder columns, audit log of every statement (with CSV export)
 - **Import CSV / Excel** into a table with column mapping (Windows-1250 exports from Czech Excel included)
 - **Query a file with SQL**: drop a CSV, Parquet, JSON or Excel file on the window and query it right away
   (built-in DuckDB, nothing to install; `;`-separated files with decimal commas just work)
@@ -54,6 +55,8 @@ PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB — W
 - **Data compare** between two tables or environments, with the sync script
 - **Schema compare** between two connections or schemas (dev → prod) with the migration for the target
 - **Data dictionary**: one self-contained HTML page (or Markdown) documenting every table, with your notes
+- **Models as text (DBML)**: edit a model with a live diagram, import it from the database or a SQL script, compare it
+  with the database for the migration, or write it as DDL for any supported database (types translated)
 - **Schema designer on the live database**: edit tables, columns, keys and indexes right on the diagram. DB
   Mastermind generates the migration for your database (including SQLite table rebuilds and dependent views),
   checks the existing data first (NULLs, duplicates, orphans) and writes a rollback script
