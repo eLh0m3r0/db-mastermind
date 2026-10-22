@@ -388,6 +388,7 @@ function ConnectionList() {
             openMenu(e.currentTarget, [
               { label: t('From Beekeeper Studio'), onClick: () => void importFrom('beekeeper') },
               { label: t('From DBeaver'), onClick: () => void importFrom('dbeaver') },
+              { label: t('From DataGrip / IntelliJ'), onClick: () => void importFrom('datagrip') },
               { label: t('From .pgpass (PostgreSQL)'), onClick: () => void importFrom('pgpass') },
               { label: t('From JSON file…'), onClick: () => void importFrom('file') },
               'separator',
@@ -417,14 +418,17 @@ export async function shareConnections(ids?: string[]) {
   }
 }
 
-export async function importFrom(source: 'beekeeper' | 'dbeaver' | 'pgpass' | 'file') {
+export async function importFrom(source: 'beekeeper' | 'dbeaver' | 'datagrip' | 'pgpass' | 'file') {
   try {
     const n = await api.importConnections(source)
     await useConnections.getState().load()
     toast({
       kind: n ? 'success' : 'info',
       message: n ? tp(n, { one: 'Imported {n} connection', many: 'Imported {n} connections' }) : t('Nothing new to import'),
-      detail: source === 'beekeeper' && n ? t('Beekeeper stores passwords encrypted, so enter them when you first connect.') : undefined,
+      detail:
+        (source === 'beekeeper' || source === 'datagrip') && n
+          ? t('Passwords stay in {app}, so enter them when you first connect.', { app: source === 'beekeeper' ? 'Beekeeper Studio' : 'DataGrip' })
+          : undefined,
     })
   } catch (err) {
     toast({ kind: 'error', message: t('Import failed'), detail: errorMessage(err) })

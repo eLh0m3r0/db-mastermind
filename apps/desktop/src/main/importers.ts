@@ -1,10 +1,10 @@
 import { createDecipheriv } from 'node:crypto'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { BrowserWindow, dialog } from 'electron'
-import { parsePgpass, type ConnectionConfig, type DriverId, type Environment } from '@dbmastermind/core'
+import { parseDataGrip, parsePgpass, type ConnectionConfig, type DriverId, type Environment } from '@dbmastermind/core'
 import { listConnections, saveConnection } from './connections'
 
 type Imported = Omit<ConnectionConfig, 'id'>
@@ -79,6 +79,49 @@ const DBEAVER_PROVIDERS: Record<string, DriverId> = {
 
 /** DBeaver's well-known default key for credentials-config.json. */
 /** ~/.pgpass (Windows: %APPDATA%\\postgresql\\pgpass.conf), honouring PGPASSFILE. */
+/** JetBrains IDEs keep global data sources in <config>/options/dataSources.xml (newest version wins). */
+async function readDataGrip(): Promise<Imported[]> {
+  const base =
+    process.platform === 'darwin'
+      ? join(homedir(), 'Library', 'Application Support', 'JetBrains')
+      : process.platform === 'win32'
+        ? join(appDataDir(), 'JetBrains')
+        : join(homedir(), '.config', 'JetBrains')
+  const dirs = existsSync(base)
+    ? readdirSync(base)
+        .filter((d) => /^(DataGrip|IntelliJIdea|IdeaIC|PyCharm|WebStorm|PhpStorm|Rider|GoLand|RubyMine|CLion|RustRover)/i.test(d))
+        .sort()
+        .reverse()
+    : []
+  const seen = new Set<string>()
+  const out: Imported[] = []
+  const add = (xml: string, local: string) => {
+    for (const c of parseDataGrip(xml, local)) {
+      const key = `${c.driver}|${c.host}|${c.port}|${c.database}|${c.name}`
+      if (!seen.has(key)) {
+        seen.add(key)
+        out.push(c)
+      }
+    }
+  }
+  for (const d of dirs) {
+    const file = join(base, d, 'options', 'dataSources.xml')
+    if (!existsSync(file)) continue
+    const local = join(base, d, 'options', 'dataSources.local.xml')
+    add(readFileSync(file, 'utf8'), existsSync(local) ? readFileSync(local, 'utf8') : '')
+  }
+  if (out.length) return out
+  // Project data sources live in the project's .idea folder.
+  const window = BrowserWindow.getFocusedWindow()
+  const options = { title: 'DataGrip dataSources.xml (in the project’s .idea folder)', properties: ['openFile' as const], filters: [{ name: 'dataSources.xml', extensions: ['xml'] }] }
+  const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
+  const file = r.filePaths[0]
+  if (r.canceled || !file) return []
+  const local = file.replace(/dataSources\.xml$/i, 'dataSources.local.xml')
+  add(readFileSync(file, 'utf8'), local !== file && existsSync(local) ? readFileSync(local, 'utf8') : '')
+  return out
+}
+
 function readPgpass(): Imported[] {
   const file = process.env.PGPASSFILE ?? (process.platform === 'win32' ? join(appDataDir(), 'postgresql', 'pgpass.conf') : join(homedir(), '.pgpass'))
   if (!existsSync(file)) throw new Error('No .pgpass file was found on this computer')
@@ -165,8 +208,9 @@ export async function exportConnections(ids?: string[]): Promise<string | null> 
   return r.filePath
 }
 
-export async function importConnections(source: 'beekeeper' | 'dbeaver' | 'pgpass' | 'file'): Promise<number> {
-  const items = source === 'beekeeper' ? readBeekeeper() : source === 'dbeaver' ? readDbeaver() : source === 'pgpass' ? readPgpass() : await readFileExport()
+export async function importConnections(source: 'beekeeper' | 'dbeaver' | 'datagrip' | 'pgpass' | 'file'): Promise<number> {
+  const items =
+    source === 'beekeeper' ? readBeekeeper() : source === 'dbeaver' ? readDbeaver() : source === 'datagrip' ? await readDataGrip() : source === 'pgpass' ? readPgpass() : await readFileExport()
   const existing = listConnections()
   let count = 0
   for (const item of items) {

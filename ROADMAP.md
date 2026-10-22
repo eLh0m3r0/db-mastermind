@@ -47,7 +47,7 @@ project's (AI) maintainer and updated with every release.
 - ✅ Connection colors, groups/folders, environment tag (dev / test / prod) with prod safety rails
 - ✅ Read-only connection mode (enforced at session level where the DB supports it)
 - ✅ Test connection, reconnect, keep-alive
-- ✅ Import connections from Beekeeper Studio, DBeaver, `.pgpass` (with passwords), a colleague's JSON · DataGrip ⬜
+- ✅ Import connections from Beekeeper Studio, DBeaver, DataGrip/IntelliJ, `.pgpass` (with passwords), a colleague's JSON
 
 ### Schema explorer
 - ✅ Tree: databases → schemas → tables / views / materialized views / functions / procedures / sequences

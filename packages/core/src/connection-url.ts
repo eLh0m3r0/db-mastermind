@@ -40,6 +40,7 @@ export function parseConnectionString(input: string): Parsed {
   if (!text) throw new ConnectionUrlError('Empty connection string')
   if (text.toLowerCase().startsWith('jdbc:')) text = text.slice(5)
 
+  if (/^oracle:thin:/i.test(text)) return parseOracleThin(text)
   if (/^sqlserver:\/\/[^/]*;/i.test(text) || /^sqlserver:\/\/[^/;]*$/i.test(text)) return parseJdbcSqlServer(text)
   if (!/^[a-z][a-z0-9+.-]*:/i.test(text) && /=/.test(text)) return parseAdoNet(text)
 
@@ -160,6 +161,51 @@ export function parsePgpass(text: string): Omit<ConnectionConfig, 'id'>[] {
       user,
       password: fields.slice(4).join(':'),
     })
+  }
+  return out
+}
+
+/** `oracle:thin:@host:1521/service`, `@//host:1521/service`, `@host:1521:SID` or `@(DESCRIPTION=…)`. */
+function parseOracleThin(text: string): Parsed {
+  const target = text.replace(/^oracle:thin:/i, '')
+  const userPart = /^([^/@]+)(?:\/([^@]*))?@/.exec(target)
+  const rest = target.slice(target.indexOf('@') + 1)
+  const out: Parsed = { driver: 'oracle', user: userPart?.[1], password: userPart?.[2] || undefined }
+  if (rest.startsWith('(')) {
+    const pick = (key: string) => new RegExp(`\\(\\s*${key}\\s*=\\s*([^)\\s]+)`, 'i').exec(rest)?.[1]
+    return { ...out, host: pick('HOST'), port: Number(pick('PORT')) || undefined, database: pick('SERVICE_NAME') ?? pick('SID') }
+  }
+  const m = /^(?:\/\/)?([^:/]+)(?::(\d+))?(?:[/:]([^?]+))?/.exec(rest)
+  if (!m) throw new ConnectionUrlError('Invalid Oracle JDBC URL')
+  return { ...out, host: m[1], port: m[2] ? Number(m[2]) : undefined, database: m[3] }
+}
+
+const XML_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }
+const xmlText = (s: string) => s.replace(/&(#x?[0-9a-f]+|\w+);/gi, (m, e: string) => (e[0] === '#' ? String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : (XML_ENTITIES[e] ?? m)))
+
+/**
+ * Connections from JetBrains DataGrip / IntelliJ `dataSources.xml` (JDBC URLs) and the matching
+ * `dataSources.local.xml` (user names). Passwords live in the OS keychain and are not imported.
+ */
+export function parseDataGrip(xml: string, localXml = ''): Omit<ConnectionConfig, 'id'>[] {
+  const users = new Map<string, string>()
+  for (const m of localXml.matchAll(/<data-source\b([^>]*)>([\s\S]*?)<\/data-source>/g)) {
+    const uuid = /\buuid="([^"]+)"/.exec(m[1]!)?.[1]
+    const user = /<user-name>([\s\S]*?)<\/user-name>/.exec(m[2]!)?.[1]
+    if (uuid && user) users.set(uuid, xmlText(user.trim()))
+  }
+  const out: Omit<ConnectionConfig, 'id'>[] = []
+  for (const m of xml.matchAll(/<data-source\b([^>]*)>([\s\S]*?)<\/data-source>/g)) {
+    const name = xmlText(/\bname="([^"]*)"/.exec(m[1]!)?.[1] ?? '')
+    const uuid = /\buuid="([^"]+)"/.exec(m[1]!)?.[1]
+    const url = /<jdbc-url>([\s\S]*?)<\/jdbc-url>/.exec(m[2]!)?.[1]
+    if (!url) continue
+    try {
+      const parsed = parseConnectionString(xmlText(url.trim()))
+      out.push({ ...parsed, name: name || parsed.database || parsed.host || 'DataGrip', user: parsed.user ?? (uuid ? users.get(uuid) : undefined) })
+    } catch {
+      // Unsupported database (Redis, ClickHouse…): skipped.
+    }
   }
   return out
 }
