@@ -66,7 +66,10 @@ jobs:
           echo "latest=${latest#v}" >> "$GITHUB_OUTPUT"
           echo "from=${from#v}" >> "$GITHUB_OUTPUT"
           echo "Updating ${from#v} → ${latest#v}"
+          # 0.9.0 and 0.9.1 couldn't load electron-updater (fixed in 0.9.2): they update by hand, not by themselves.
+          case "${from#v}" in 0.9.0|0.9.1) echo "skip=true" >> "$GITHUB_OUTPUT"; echo "::notice::${from#v} predates working auto-update";; esac
       - name: Install the older release silently
+        if: steps.v.outputs.skip != 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -76,5 +79,6 @@ jobs:
           Start-Process "$env:RUNNER_TEMP\DB-Mastermind-$v-win-x64-setup.exe" -ArgumentList '/S' -Wait
           if (-not (Test-Path "$env:LOCALAPPDATA\Programs\DB Mastermind\DB Mastermind.exe")) { throw 'Not installed' }
       - name: Update to the latest release
+        if: steps.v.outputs.skip != 'true'
         shell: pwsh
         run: ./.github/scripts/update-check.ps1 -Latest '${{ steps.v.outputs.latest }}'
