@@ -110,6 +110,8 @@ export interface SavedDiagram {
   /** Table keys as "schema.table" ("" schema for engines without schemas). */
   tables: string[]
   positions?: Record<string, { x: number; y: number }>
+  /** Table header colors (series palette index 1–8) by table key. */
+  colors?: Record<string, number>
   createdAt: string
   updatedAt: string
 }

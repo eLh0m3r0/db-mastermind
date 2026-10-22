@@ -69,6 +69,8 @@ interface TableNodeData extends Record<string, unknown> {
   focus: boolean
   fkColumns: Set<string>
   referencedColumns: Set<string>
+  /** Series palette index (1–8) for the header, when the user colored the table. */
+  color?: number
 }
 
 function visibleColumns(t: TableInfo, keysOnly: boolean, fkColumns: Set<string>, referenced: Set<string>) {
@@ -92,8 +94,9 @@ const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData
       style={{ width: WIDTH }}
     >
       <div
-        className={cn('flex items-center gap-1.5 px-2.5 text-[12px] font-semibold', table.type === 'table' ? 'bg-accent text-accent-fg' : 'bg-info text-white')}
-        style={{ height: HEADER }}
+        className={cn('flex items-center gap-1.5 px-2.5 text-[12px] font-semibold', table.type === 'table' ? 'bg-accent text-accent-fg' : 'bg-info text-white', data.color && 'text-white')}
+        // Darkened series colors keep white text readable in both themes.
+        style={{ height: HEADER, ...(data.color ? { background: `color-mix(in srgb, var(--series-${data.color}) 78%, black)` } : {}) }}
         title={table.comment ?? undefined}
       >
         {table.type === 'table' ? <Table2 size={12} /> : <Eye size={12} />}
@@ -130,6 +133,9 @@ const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData
 })
 
 const nodeTypes = { table: TableNode }
+
+/** Names for the series palette colors, in palette order. */
+const COLOR_NAMES = ['Blue', 'Orange', 'Teal', 'Yellow', 'Pink', 'Green', 'Purple', 'Red']
 
 /** Tables within `depth` foreign-key hops of `focus`. */
 function neighbourhood(snapshot: SchemaSnapshot, focus: TableInfo, depth: number): Set<string> {
@@ -330,6 +336,7 @@ function DiagramInner({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot 
     focus: d.info.name === focusName,
     fkColumns: columnSets.fk.get(d.info.name) ?? new Set(),
     referencedColumns: columnSets.ref.get(d.info.name) ?? new Set(),
+    color: tab.colors?.[d.key],
   })
   // Re-layout only when the set of tables changes, not on every edit.
   const structure = `${liveTables.map(keyOf).join('|')}#${keysOnly}`
@@ -408,7 +415,7 @@ function DiagramInner({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot 
       })
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [display, columnSets, design])
+  }, [display, columnSets, design, tab.colors])
 
   // Hover highlighting without re-running layout.
   useEffect(() => {
@@ -525,7 +532,7 @@ function DiagramInner({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot 
 
   const saveAs = async (name: string) => {
     const tables = liveTables.map(keyOf)
-    const d = await api.saveDiagram({ connectionId: tab.connectionId, name, tables, positions: currentPositions() })
+    const d = await api.saveDiagram({ connectionId: tab.connectionId, name, tables, positions: currentPositions(), colors: tab.colors })
     setFocusName(undefined)
     setPathTo(undefined)
     updateTab(tab.id, { savedId: d.id, tables, positions: d.positions, title: name })
@@ -537,11 +544,11 @@ function DiagramInner({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot 
   useEffect(() => {
     if (!tab.savedId || !tab.tables || focusName) return
     const timer = setTimeout(() => {
-      void api.saveDiagram({ id: tab.savedId, connectionId: tab.connectionId, name: tab.title, tables: tab.tables!, positions: { ...currentPositions(), ...tab.positions } })
+      void api.saveDiagram({ id: tab.savedId, connectionId: tab.connectionId, name: tab.title, tables: tab.tables!, positions: { ...currentPositions(), ...tab.positions }, colors: tab.colors })
     }, 600)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab.savedId, tab.tables, tab.positions])
+  }, [tab.savedId, tab.tables, tab.positions, tab.colors])
 
   const matches = useMemo(() => {
     const q = search.trim()
@@ -731,7 +738,7 @@ function DiagramInner({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot 
               ...list.map((d) => ({
                 label: d.name,
                 icon: <Network size={13} />,
-                onClick: () => openTab({ kind: 'diagram', connectionId: tab.connectionId, title: d.name, tables: d.tables, positions: d.positions, savedId: d.id }, { reuse: false }),
+                onClick: () => openTab({ kind: 'diagram', connectionId: tab.connectionId, title: d.name, tables: d.tables, positions: d.positions, colors: d.colors, savedId: d.id }, { reuse: false }),
               })),
             ])
           }}
@@ -852,6 +859,18 @@ function DiagramInner({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot 
               { label: tr('Open data'), icon: <Table2 size={13} />, onClick: () => openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name }) },
               { label: tr('Open structure'), onClick: () => openTab({ kind: 'structure', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: tr('{name} · structure', { name: n.data.table.name }) }) },
               { label: tr('Focus here'), icon: <Network size={13} />, onClick: () => setFocusName(n.data.table.name) },
+              {
+                label: tr('Color'),
+                submenu: [
+                  { label: tr('Default'), checked: !tab.colors?.[n.id], onClick: () => updateTab(tab.id, { colors: Object.fromEntries(Object.entries(tab.colors ?? {}).filter(([k]) => k !== n.id)) }) },
+                  ...COLOR_NAMES.map((name, i) => ({
+                    label: tr(name),
+                    icon: <span className="block h-3 w-3 rounded-sm" style={{ background: `color-mix(in srgb, var(--series-${i + 1}) 78%, black)` }} />,
+                    checked: tab.colors?.[n.id] === i + 1,
+                    onClick: () => updateTab(tab.id, { colors: { ...tab.colors, [n.id]: i + 1 } }),
+                  })),
+                ],
+              },
               ...(tab.tables && !focusName
                 ? [
                     'separator' as const,

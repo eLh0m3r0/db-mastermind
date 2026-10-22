@@ -36,6 +36,8 @@ export interface DiagramTab extends BaseTab {
   tables?: string[]
   /** Saved diagram this tab edits. */
   savedId?: string
+  /** Table header colors (series palette index 1–8) by table key. */
+  colors?: Record<string, number>
   focus?: string
   /** Node positions the user dragged, by "schema.table". */
   positions?: Record<string, { x: number; y: number }>

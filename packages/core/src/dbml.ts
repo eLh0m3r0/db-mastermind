@@ -16,6 +16,8 @@ export interface DbmlError {
 export interface DbmlModel {
   tables: TableInfo[]
   enums: Record<string, string[]>
+  /** TableGroup name → table names, in file order. */
+  groups: Record<string, string[]>
   errors: DbmlError[]
 }
 
@@ -104,6 +106,7 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
   const lines = stripComments(text).split('\n')
   const tables: TableInfo[] = []
   const enums: Record<string, string[]> = {}
+  const groups: Record<string, string[]> = {}
   const errors: DbmlError[] = []
   const aliases = new Map<string, TableInfo>()
   const refs: { line: number; from: string; op: string; to: string; settings: string }[] = []
@@ -234,6 +237,15 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
       i++
       continue
     }
+    const group = /^TableGroup\s+("[^"]+"|[\w$]+)[^{]*\{/i.exec(line)
+    if (group) {
+      const end = blockEnd(i)
+      const body = lines.slice(i, end + 1).join('\n')
+      const content = body.slice(body.indexOf('{') + 1, body.lastIndexOf('}')).replace(/\[[^\]]*\]/g, ' ').replace(/Note\s*:\s*'[^']*'/gi, ' ')
+      groups[ident(group[1]!)] = (content.match(/"[^"]+"|[\w$.]+/g) ?? []).map((n) => ident(n.split('.').pop()!))
+      i = end + 1
+      continue
+    }
     if (/^(Project|TableGroup|Note|Records)\b[^{]*\{/i.test(line)) {
       i = blockEnd(i) + 1
       continue
@@ -284,7 +296,9 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
     }
     owner.foreignKeys.push(fk)
   }
-  return { tables, enums, errors }
+  // Aliases in groups mean their tables.
+  for (const [g, names] of Object.entries(groups)) groups[g] = names.map((n) => aliases.get(n)?.name ?? n)
+  return { tables, enums, groups, errors }
 }
 
 /** DBML for tables (round-trips through `parseDbml`). */

@@ -198,7 +198,15 @@ export function ModelView({ tab }: { tab: ModelTab }) {
       ),
     })
 
-  const diagramTab = { ...tab, kind: 'diagram' } as unknown as DiagramTab
+  // TableGroups color their tables (one palette color per group, in file order).
+  const groupColors = useMemo(() => {
+    const out: Record<string, number> = {}
+    Object.values(model.groups).forEach((names, gi) => {
+      for (const t of model.tables) if (names.includes(t.name)) out[`${t.schema ?? ''}.${t.name}`] = (gi % 8) + 1
+    })
+    return out
+  }, [model])
+  const diagramTab = { ...tab, kind: 'diagram', colors: groupColors } as unknown as DiagramTab
 
   return (
     <div className="flex h-full min-h-0 flex-col">

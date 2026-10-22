@@ -856,4 +856,12 @@ export const cs: Record<string, string> = {
   '-- ⚠ Referenced by: {tables}': '-- ⚠ Odkazují na ni: {tables}',
   '-- Change {name} to the new name, then run.': '-- Změňte {name} na nový název a spusťte.',
   'New table…': 'Nová tabulka…',
+  'Blue': 'Modrá',
+  'Orange': 'Oranžová',
+  'Green': 'Zelená',
+  'Purple': 'Fialová',
+  'Teal': 'Tyrkysová',
+  'Pink': 'Růžová',
+  'Yellow': 'Žlutá',
+  'Red': 'Červená',
 }

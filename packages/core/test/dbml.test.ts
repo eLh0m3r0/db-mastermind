@@ -41,6 +41,7 @@ describe('DBML', () => {
     const { tables, enums, errors } = parseDbml(source, { defaultSchema: 'public' })
     expect(errors).toEqual([])
     expect(enums.status).toEqual(['new', 'paid', 'shipped'])
+    expect(parseDbml(source, { defaultSchema: 'public' }).groups).toEqual({ sales: ['customers', 'orders'] })
     const customers = tables.find((t) => t.name === 'customers')!
     expect(customers.schema).toBe('public')
     expect(customers.comment).toBe('Customers')
