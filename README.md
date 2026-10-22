@@ -101,7 +101,7 @@ claude mcp add dbmastermind -- "/Applications/DB Mastermind.app/Contents/MacOS/D
 ```
 
 The agent gets `list_connections`, `list_tables`, `describe_table`, `search_schema`, `get_relationships`,
-`sample_rows`, `run_query`, `explain_query`, `search_knowledge`, `read_knowledge` and prompts like
+`find_join_path`, `sample_rows`, `run_query`, `explain_query`, `search_knowledge`, `read_knowledge` and prompts like
 *document_database*.
 
 On a server without the desktop app, use the standalone server with a connection URL (npm package coming soon;

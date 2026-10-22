@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DB Mastermind — free database client with AI</title>
+<meta name="description" content="Free, open-source database client for PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite and DuckDB: data browser with advanced filters, ER diagrams, live schema design with migrations, and AI that knows your database.">
+<link rel="icon" href="icon.svg">
+<style>
+:root {
+  --bg: #ffffff; --fg: #1b1d23; --muted: #5d6472; --faint: #8a919c; --line: #e5e7eb; --subtle: #f6f7f9;
+  --accent: #5b3ee6; --accent-fg: #ffffff; --accent-soft: #efebff; --card: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #121317; --fg: #e8e9ed; --muted: #a2a8b3; --faint: #7a808b; --line: #262931; --subtle: #181a1f; --accent: #9d8cff; --accent-fg: #14121f; --accent-soft: #241f45; --card: #17191e; }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; }
+a { color: var(--accent); }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+header { display: flex; align-items: center; gap: 12px; padding: 18px 0; }
+header img { width: 32px; height: 32px; }
+header nav { margin-left: auto; display: flex; gap: 20px; font-size: 14px; }
+header nav a { color: var(--muted); text-decoration: none; }
+header nav a:hover { color: var(--fg); }
+.hero { padding: 56px 0 32px; text-align: center; }
+.hero h1 { font-size: clamp(32px, 5vw, 52px); line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 16px; }
+.hero p { font-size: 19px; color: var(--muted); max-width: 720px; margin: 0 auto 28px; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 10px; font-weight: 600; text-decoration: none; border: 1px solid var(--line); color: var(--fg); background: var(--card); }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+.btn small { font-weight: 400; opacity: .8; }
+.note { font-size: 13px; color: var(--faint); margin-top: 12px; }
+.shot { margin: 40px auto 0; border-radius: 14px; border: 1px solid var(--line); overflow: hidden; box-shadow: 0 20px 60px rgba(30, 20, 80, .15); }
+.shot img { display: block; width: 100%; height: auto; }
+.engines { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 28px 0 0; padding: 0; list-style: none; }
+.engines li { padding: 4px 12px; border-radius: 999px; background: var(--subtle); border: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+section { padding: 64px 0 8px; }
+section > h2 { font-size: 30px; letter-spacing: -0.01em; margin: 0 0 8px; }
+section > p.lead { color: var(--muted); margin: 0 0 28px; max-width: 720px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.card { border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: 18px 20px; }
+.card h3 { margin: 0 0 6px; font-size: 16px; }
+.card p { margin: 0; color: var(--muted); font-size: 14.5px; }
+.feature { display: grid; grid-template-columns: 1fr 1.4fr; gap: 32px; align-items: center; margin: 48px 0; }
+.feature:nth-child(even) .text { order: 2; }
+.feature h3 { font-size: 22px; margin: 0 0 8px; }
+.feature p { color: var(--muted); margin: 0 0 8px; }
+.feature img { width: 100%; border-radius: 10px; border: 1px solid var(--line); }
+.kbd { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--subtle); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
+pre { background: var(--subtle); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow: auto; font-size: 13.5px; }
+footer { margin-top: 64px; padding: 28px 0 40px; border-top: 1px solid var(--line); color: var(--faint); font-size: 14px; display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; }
+.cz { background: var(--accent-soft); border-radius: 12px; padding: 18px 22px; }
+@media (max-width: 760px) {
+  header nav { display: none; }
+  .feature { grid-template-columns: 1fr; gap: 14px; }
+  .feature:nth-child(even) .text { order: 0; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="icon.svg" alt="">
+    <strong>DB Mastermind</strong>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#ai">AI</a>
+      <a href="#design">Design</a>
+      <a href="#mcp">MCP</a>
+      <a href="https://github.com/eLh0m3r0/db-mastermind">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <h1>The database client that<br>understands your data</h1>
+    <p>Browse and filter data without limits, draw and redesign your schema with generated migrations, and ask an AI that knows your database. Free and open source, nothing to install on Windows.</p>
+    <div class="cta">
+      <a class="btn primary" id="download" href="https://github.com/eLh0m3r0/db-mastermind/releases/latest">Download <small id="download-os"></small></a>
+      <a class="btn" href="https://github.com/eLh0m3r0/db-mastermind/releases/latest">All downloads</a>
+      <a class="btn" href="https://github.com/eLh0m3r0/db-mastermind">Source code</a>
+    </div>
+    <div class="note" id="download-note">Windows: portable zip, just unzip and run · macOS (Apple Silicon &amp; Intel) · Linux AppImage / deb</div>
+    <ul class="engines">
+      <li>PostgreSQL</li><li>SQL Server</li><li>Oracle</li><li>MySQL</li><li>MariaDB</li><li>SQLite</li><li>DuckDB</li><li>CSV · Parquet · Excel</li>
+    </ul>
+    <div class="shot"><img src="screenshots/table-filters.png" alt="Table browser with filters and row details"></div>
+  </div>
+
+  <section id="features">
+    <h2>Everything you do every day, done well</h2>
+    <p class="lead">No row limits, no paywalled features. English and Czech UI.</p>
+    <div class="grid">
+      <div class="card"><h3>Advanced filters</h3><p>Nested AND/OR groups, 25+ operators (in list, between, regex, last N days, this month), raw WHERE, or describe the filter in plain words.</p></div>
+      <div class="card"><h3>SQL editor</h3><p>Schema-aware autocomplete that writes whole JOINs from foreign keys, snippets, parameters, execution plans, history and saved queries.</p></div>
+      <div class="card"><h3>Query any file</h3><p>Drop a CSV, Parquet, JSON or Excel file on the window and query it with SQL. Czech exports with decimal commas just work.</p></div>
+      <div class="card"><h3>Charts &amp; dashboards</h3><p>Chart any result in one click and pin it to a dashboard that refreshes itself.</p></div>
+      <div class="card"><h3>Compare</h3><p>Schemas between environments with the migration for the target, and table data with a sync script.</p></div>
+      <div class="card"><h3>For DBAs too</h3><p>Running queries and lock waits, cancel or end sessions, users &amp; roles with their privileges.</p></div>
+      <div class="card"><h3>Enterprise connections</h3><p>SSH tunnels, SSL, read-only and production guard rails, SQL Server Windows authentication, Oracle without Instant Client.</p></div>
+      <div class="card"><h3>Share with your team</h3><p>Export connections without passwords, a data dictionary as one HTML page, and a Markdown knowledge base in Git.</p></div>
+    </div>
+  </section>
+
+  <section id="design">
+    <h2>Understand and redesign the model</h2>
+    <div class="feature">
+      <div class="text"><h3>Interactive ER diagrams</h3><p>Automatic layout, crow's-foot notation, focus on a table and its neighbours, saved subject-area diagrams, and the join path between any two tables as ready SQL.</p></div>
+      <img src="screenshots/join-path.png" alt="Join path between two tables in the ER diagram">
+    </div>
+    <div class="feature">
+      <div class="text"><h3>Design on the live database</h3><p>Edit tables, columns, keys and indexes right on the diagram. DB Mastermind writes the migration for your database, checks the existing data first and gives you the rollback script.</p></div>
+      <img src="screenshots/designer.png" alt="Schema designer">
+    </div>
+    <div class="feature">
+      <div class="text"><h3>Models as text</h3><p>Keep the model as a DBML file next to your notes, see the diagram as you type, and compare it with the database to get the migration.</p></div>
+      <img src="screenshots/migration.png" alt="Generated migration with impact checks">
+    </div>
+  </section>
+
+  <section id="ai">
+    <h2>AI that knows your database</h2>
+    <p class="lead">Use your own API key (Anthropic, OpenAI, OpenRouter, Gemini, Azure, local Ollama) or your existing Claude Code / Codex subscription.</p>
+    <div class="feature">
+      <div class="text">
+        <h3>Ask, explain, fix</h3>
+        <p>The assistant explores the schema, samples data, runs read-only queries and asks before any change. Press <span class="kbd">Ctrl/⌘ I</span> in the editor to describe a query; failed statements get a <em>Fix with AI</em> button.</p>
+        <p>A per-database <strong>knowledge base</strong> of Markdown notes teaches it what your codes and statuses mean — and AI can write the first version for you.</p>
+      </div>
+      <img src="screenshots/ai.png" alt="AI assistant">
+    </div>
+  </section>
+
+  <section id="mcp">
+    <h2>Your databases in Claude Code, Codex and Cursor</h2>
+    <p class="lead">DB Mastermind is also an MCP server: agents get schema exploration, read-only queries, join paths and your knowledge base, using the connections you already have.</p>
+<pre>claude mcp add dbmastermind -- "/Applications/DB Mastermind.app/Contents/MacOS/DB Mastermind" --mcp</pre>
+    <p class="lead">Settings → MCP server shows the exact command for your computer.</p>
+  </section>
+
+  <section>
+    <div class="cz">
+      <strong>Pro kolegy:</strong> stáhněte si <em>DB-Mastermind-…-win-x64-portable.zip</em>, rozbalte a spusťte <em>DB Mastermind.exe</em> — nic se neinstaluje. V Nastavení → Obecné → Jazyk přepněte na češtinu. Připojení vám může kolega poslat jako soubor (bez hesel).
+    </div>
+  </section>
+
+  <footer>
+    <span>DB Mastermind · MIT license · made with Claude</span>
+    <span><a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md">Roadmap</a> · <a href="https://github.com/eLh0m3r0/db-mastermind/issues">Issues</a></span>
+  </footer>
+</div>
+<script>
+// Point the main button at the right file of the latest release for this computer.
+(async () => {
+  const ua = navigator.userAgent
+  const os = /Windows/.test(ua) ? 'win' : /Mac/.test(ua) ? 'mac' : /Linux/.test(ua) ? 'linux' : null
+  if (!os) return
+  try {
+    const res = await fetch('https://api.github.com/repos/eLh0m3r0/db-mastermind/releases/latest')
+    if (!res.ok) return
+    const release = await res.json()
+    const assets = release.assets || []
+    const pick =
+      os === 'win' ? assets.find((a) => /win-x64-portable\.zip$/.test(a.name))
+      : os === 'mac' ? assets.find((a) => /mac-arm64\.dmg$/.test(a.name))
+      : assets.find((a) => /\.AppImage$/.test(a.name))
+    if (!pick) return
+    document.getElementById('download').href = pick.browser_download_url
+    document.getElementById('download-os').textContent = `${release.tag_name} for ${os === 'win' ? 'Windows (portable)' : os === 'mac' ? 'macOS (Apple Silicon)' : 'Linux'}`
+  } catch {
+    // Offline or rate-limited: the button still opens the releases page.
+  }
+})()
+</script>
+</body>
+</html>

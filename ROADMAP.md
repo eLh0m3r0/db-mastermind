@@ -232,7 +232,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 
 ## Milestone 7 — v1.0
 
-- ⬜ Polished onboarding & docs site (GitHub Pages)
+- ✅ Website on GitHub Pages (docs/index.html) with a download button for your OS; deeper docs ⬜
 - ⬜ Accessibility pass, high-contrast theme
 - ⬜ Plugin API for drivers and AI tools
 - ⬜ Mac App Store and Microsoft Store editions
