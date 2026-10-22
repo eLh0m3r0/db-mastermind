@@ -25,6 +25,8 @@ export function splitStatements(
   let delimiter = ';'
   let stmtStart = 0
   let i = 0
+  // Oracle PL/SQL (BEGIN/DECLARE/CREATE PROCEDURE…) ends only at a "/" line, like in SQL*Plus.
+  let plsql = false
   // BEGIN…END nesting, only tracked for statements that need it.
   let blockDepth = 0
   let trackBlocks = false
@@ -38,6 +40,7 @@ export function splitStatements(
     stmtStart = endIncl
     blockDepth = 0
     trackBlocks = false
+    plsql = false
     lastWords = []
   }
 
@@ -61,6 +64,16 @@ export function splitStatements(
         delimiter = newDelimiter
         i = lineEnd === -1 ? n : lineEnd + 1
         stmtStart = i
+        continue
+      }
+    }
+
+    // Oracle/SQL*Plus terminator: a line containing only "/".
+    if (driver === 'oracle' && ch === '/' && atLineStart(i)) {
+      const m = /^\/[ \t]*(?:\r?\n|$)/.exec(script.slice(i))
+      if (m) {
+        push(i, i + m[0].length)
+        i += m[0].length
         continue
       }
     }
@@ -137,6 +150,10 @@ export function splitStatements(
       const word = script.slice(i, j).toUpperCase()
       lastWords.push(word)
       if (lastWords.length > 6) lastWords.shift()
+      if (driver === 'oracle' && !plsql) {
+        const head = script.slice(stmtStart, j).replace(/^(\s|--[^\n]*\n|\/\*[\s\S]*?\*\/)*/, '').toUpperCase()
+        if (/^(DECLARE|BEGIN|CREATE\s+(OR\s+REPLACE\s+)?((NON)?EDITIONABLE\s+)?(PROCEDURE|FUNCTION|PACKAGE|TRIGGER|TYPE))\b/.test(head)) plsql = true
+      }
       if (!trackBlocks) {
         const head = script.slice(stmtStart, j).trimStart().toUpperCase()
         if (
@@ -155,7 +172,7 @@ export function splitStatements(
       continue
     }
 
-    if (!options.batchesOnly && script.startsWith(delimiter, i) && !(trackBlocks && blockDepth > 0)) {
+    if (!options.batchesOnly && !plsql && script.startsWith(delimiter, i) && !(trackBlocks && blockDepth > 0)) {
       push(i, i + delimiter.length)
       i += delimiter.length
       continue

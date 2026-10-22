@@ -1,4 +1,4 @@
-export type DriverId = 'postgres' | 'mssql' | 'mysql' | 'mariadb' | 'sqlite'
+export type DriverId = 'postgres' | 'mssql' | 'mysql' | 'mariadb' | 'sqlite' | 'oracle'
 
 export type SslMode = 'disable' | 'prefer' | 'require' | 'verify-ca' | 'verify-full'
 

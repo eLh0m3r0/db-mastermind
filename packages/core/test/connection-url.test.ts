@@ -54,6 +54,6 @@ describe('parseConnectionString', () => {
   })
 
   it('rejects unknown schemes', () => {
-    expect(() => parseConnectionString('oracle://x')).toThrow(/Unsupported/)
+    expect(() => parseConnectionString('mongodb://x')).toThrow(/Unsupported/)
   })
 })

@@ -6,6 +6,7 @@ export const DEFAULT_PORTS: Record<DriverId, number | undefined> = {
   mariadb: 3306,
   mssql: 1433,
   sqlite: undefined,
+  oracle: 1521,
 }
 
 const SCHEMES: Record<string, DriverId> = {
@@ -18,6 +19,7 @@ const SCHEMES: Record<string, DriverId> = {
   sqlserver: 'mssql',
   sqlite: 'sqlite',
   file: 'sqlite',
+  oracle: 'oracle',
 }
 
 export class ConnectionUrlError extends Error {

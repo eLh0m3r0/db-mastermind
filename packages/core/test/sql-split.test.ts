@@ -53,6 +53,16 @@ describe('splitStatements', () => {
     expect(texts(script, 'mssql', true)).toEqual(['select [a;b] from t;\nselect 1', 'select 2'])
   })
 
+  it('handles Oracle PL/SQL blocks terminated by a slash line', () => {
+    const script = `select 1 from dual;\ncreate or replace procedure p as\nbegin\n  null;\nend;\n/\nbegin\n  p;\nend;\n/\nselect 2 from dual`
+    expect(texts(script, 'oracle')).toEqual([
+      'select 1 from dual',
+      'create or replace procedure p as\nbegin\n  null;\nend;',
+      'begin\n  p;\nend;',
+      'select 2 from dual',
+    ])
+  })
+
   it('keeps offsets aligned with the source', () => {
     const script = '  select 1;\n\n  select 2  ;'
     const [a, b] = splitStatements(script, 'postgres')

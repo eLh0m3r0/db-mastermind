@@ -2,6 +2,7 @@ import { qualify } from './dialect.js'
 import { ReadOnlyViolationError, type DatabaseDriver } from './driver.js'
 import { MssqlDriver } from './drivers/mssql.js'
 import { MysqlDriver } from './drivers/mysql.js'
+import { OracleDriver } from './drivers/oracle.js'
 import { PostgresDriver } from './drivers/postgres.js'
 import { SqliteDriver } from './drivers/sqlite.js'
 import { buildCount, buildSelect, type BuiltQuery, type FilterNode, type SortSpec } from './filters.js'
@@ -23,6 +24,8 @@ export function createDriver(config: ConnectionConfig): DatabaseDriver {
       return new MssqlDriver(config)
     case 'sqlite':
       return new SqliteDriver(config)
+    case 'oracle':
+      return new OracleDriver(config)
   }
 }
 

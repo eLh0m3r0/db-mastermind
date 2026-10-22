@@ -5,6 +5,7 @@ export const DRIVERS: { id: DriverId; label: string; color: string; mark: string
   { id: 'mssql', label: 'SQL Server', color: '#c4262e', mark: 'MS' },
   { id: 'mysql', label: 'MySQL', color: '#00758f', mark: 'My' },
   { id: 'mariadb', label: 'MariaDB', color: '#7d5a3c', mark: 'Ma' },
+  { id: 'oracle', label: 'Oracle', color: '#c74634', mark: 'Or' },
   { id: 'sqlite', label: 'SQLite', color: '#0f80cc', mark: 'Lt' },
 ]
 

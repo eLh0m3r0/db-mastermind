@@ -9,6 +9,8 @@ files:
   - resources/**
   - package.json
 asar: true
+# Native modules ship N-API prebuilds (msnodesqlv8) or are optional (cpu-features): never compile from source.
+npmRebuild: false
 afterPack: build/after-pack.cjs
 publish:
   provider: github

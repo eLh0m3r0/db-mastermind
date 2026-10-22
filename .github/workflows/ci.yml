@@ -46,6 +46,15 @@ jobs:
         options: >-
           --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'Mastermind!2026' -Q 'select 1' || exit 1"
           --health-interval 5s --health-retries 60 --health-start-period 20s
+      oracle:
+        image: gvenzl/oracle-free:23-slim-faststart
+        env:
+          ORACLE_PASSWORD: Mastermind2026
+          APP_USER: shop
+          APP_USER_PASSWORD: mastermind
+        ports: ['15219:1521']
+        options: >-
+          --health-cmd healthcheck.sh --health-interval 5s --health-retries 60 --health-start-period 20s
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

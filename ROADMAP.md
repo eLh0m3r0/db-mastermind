@@ -78,7 +78,7 @@ project's (AI) maintainer and updated with every release.
 - ✅ Run statement under cursor / selection / whole script; multiple result sets
 - ✅ Cancel running query; elapsed timer
 - ✅ Format SQL; comment toggle; multi-cursor
-- ⬜ Query parameters (`:name`, `$1`, `?`) with prompt
+- 🚧 Query parameters (`:name`, `$1`, `?`) with prompt: engine ✅, prompt UI ⬜
 - ✅ Query history (searchable, per connection), saved queries in folders
 - ✅ Unlimited tabs, restored on restart (including unsaved text)
 
@@ -90,7 +90,7 @@ project's (AI) maintainer and updated with every release.
 ### General UX
 - ✅ Command palette (`Ctrl/Cmd+K`), customizable keyboard shortcuts
 - ✅ Light / dark / system theme
-- ⬜ English + Czech UI (i18n-ready)
+- ✅ English + Czech UI
 
 ---
 
@@ -191,7 +191,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ Table structure editor (columns, indexes, constraints, FKs) with DDL preview: "Edit structure" opens the live designer
 - ⬜ Create table wizard; drop/rename/truncate with safety confirmations
 - ✅ CSV / Excel import with column mapping (auto-matched by name), delimiter & Windows-1250 detection, one transaction
-- ⬜ Visual EXPLAIN / query plan viewer (PostgreSQL, SQL Server, MySQL)
+- 🚧 Visual EXPLAIN / query plan viewer: normalized plans for all databases ✅, viewer UI ⬜
 - 🚧 Charts from query results: bar, line, scatter ✅; pinned dashboards ⬜
 - ⬜ Schema compare (two connections / two schemas) → migration script
 - ⬜ Data compare between tables / environments
@@ -205,10 +205,11 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 
 ## Milestone 5 — More databases (v0.6)
 
-- ⬜ Oracle (thin mode, no Instant Client), ClickHouse, DuckDB, CockroachDB, Redshift, TimescaleDB,
+- ✅ Oracle (thin mode, no Instant Client: PL/SQL blocks, explain plans, migrations)
+- ⬜ ClickHouse, DuckDB, CockroachDB, Redshift, TimescaleDB,
   Snowflake, BigQuery, Cassandra
 - 💡 MongoDB, Redis (document/key-value browsers)
-- ⬜ SQL Server Windows (integrated) authentication
+- ✅ SQL Server Windows (integrated) authentication (msnodesqlv8 + ODBC, tested on Windows CI)
 
 ---
 

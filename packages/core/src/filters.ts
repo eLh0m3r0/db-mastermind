@@ -189,7 +189,9 @@ function renderCondition(
   const col = dialect.quoteIdent(c.column)
   const value = c.value ?? ''
   const like = (pattern: string, negate: boolean) =>
-    `${dialect.castToText(col)} ${negate ? 'NOT ' : ''}${dialect.ilike} ${params.add(pattern)} ESCAPE '${LIKE_ESCAPE}'`
+    dialect.likeExpr
+      ? `${dialect.likeExpr(dialect.castToText(col), params.add(pattern), negate)} ESCAPE '${LIKE_ESCAPE}'`
+      : `${dialect.castToText(col)} ${negate ? 'NOT ' : ''}${dialect.ilike} ${params.add(pattern)} ESCAPE '${LIKE_ESCAPE}'`
 
   switch (c.operator) {
     case 'eq':

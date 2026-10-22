@@ -13,7 +13,7 @@ import { useT } from '@/lib/i18n'
 
 export const CONNECTION_COLORS = ['#6d4aff', '#0b72d9', '#0f9f6e', '#d97706', '#dc2626', '#db2777', '#64748b']
 
-const DEFAULT_PORTS: Partial<Record<DriverId, number>> = { postgres: 5432, mysql: 3306, mariadb: 3306, mssql: 1433 }
+const DEFAULT_PORTS: Partial<Record<DriverId, number>> = { postgres: 5432, mysql: 3306, mariadb: 3306, mssql: 1433, oracle: 1521 }
 
 function blank(driver: DriverId = 'postgres'): ConnectionConfig {
   return { id: '', name: '', driver, host: 'localhost', port: DEFAULT_PORTS[driver], user: '', password: '', database: '' }

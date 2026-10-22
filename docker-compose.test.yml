@@ -42,3 +42,15 @@ services:
       interval: 5s
       retries: 60
       start_period: 20s
+  oracle:
+    image: gvenzl/oracle-free:23-slim-faststart
+    environment:
+      ORACLE_PASSWORD: Mastermind2026
+      APP_USER: shop
+      APP_USER_PASSWORD: mastermind
+    ports: ['15219:1521']
+    healthcheck:
+      test: ['CMD', 'healthcheck.sh']
+      interval: 5s
+      retries: 60
+      start_period: 20s

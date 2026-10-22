@@ -11,7 +11,7 @@ team's notes. It also exposes everything over MCP to Claude Code, Codex, Cursor 
 
 [Download](https://github.com/eLh0m3r0/db-mastermind/releases/latest) · [Roadmap](ROADMAP.md) · [Report an issue](https://github.com/eLh0m3r0/db-mastermind/issues/new)
 
-PostgreSQL · SQL Server · MySQL · MariaDB · SQLite — Windows · macOS · Linux — MIT, no feature limits
+PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite — Windows · macOS · Linux — English & čeština — MIT, no feature limits
 
 </div>
 
@@ -28,7 +28,9 @@ PostgreSQL · SQL Server · MySQL · MariaDB · SQLite — Windows · macOS · L
   reference this one
 - SQL editor with schema-aware autocomplete, multiple result sets, cancel, format, history and saved queries
 - Export a page or the whole (filtered) table to CSV, Excel, JSON, SQL or Markdown, streamed with no row limit
-- Command palette (`Ctrl/⌘ K`), quick table open (`Ctrl/⌘ P`), light & dark themes
+- Command palette (`Ctrl/⌘ K`), quick table open (`Ctrl/⌘ P`), light & dark themes, English and Czech UI
+- **Enterprise-ready connections**: SSH tunnels, SSL, read-only and production safety rails, **SQL Server Windows
+  authentication** (no password, your domain account), **Oracle without Instant Client**
 
 ![SQL editor](docs/screenshots/query.png)
 

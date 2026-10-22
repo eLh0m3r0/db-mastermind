@@ -1,7 +1,7 @@
 import { useEffect, useImperativeHandle, useRef, type Ref } from 'react'
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, type Completion } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab, toggleComment } from '@codemirror/commands'
-import { MSSQL, MySQL, MariaSQL, PostgreSQL, SQLite, sql, type SQLDialect, type SQLNamespace } from '@codemirror/lang-sql'
+import { MSSQL, MySQL, MariaSQL, PLSQL, PostgreSQL, SQLite, sql, type SQLDialect, type SQLNamespace } from '@codemirror/lang-sql'
 import { bracketMatching, HighlightStyle, indentOnInput, syntaxHighlighting } from '@codemirror/language'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { Compartment, EditorSelection, EditorState, RangeSetBuilder, StateEffect, StateField, type Extension } from '@codemirror/state'
@@ -29,6 +29,7 @@ const DIALECTS: Record<DriverId, SQLDialect> = {
   mysql: MySQL,
   mariadb: MariaSQL,
   sqlite: SQLite,
+  oracle: PLSQL,
 }
 
 export interface SqlEditorHandle {

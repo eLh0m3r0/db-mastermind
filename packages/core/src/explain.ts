@@ -164,6 +164,34 @@ export async function explainQuery(db: DatabaseService, connectionId: string, sq
         const raw = results.map((r) => cellToText(r.rows[0]?.[0] ?? '')).join('\n')
         return { root: mssqlPlan(raw), raw, format: 'xml' }
       }
+      case 'oracle': {
+        // EXPLAIN PLAN writes to PLAN_TABLE in the session; read it back as a tree.
+        const id = `dbm${Date.now().toString(36)}`
+        await run(`EXPLAIN PLAN SET STATEMENT_ID = '${id}' FOR ${body}`)
+        const [r] = await run(
+          `SELECT id, parent_id, operation, options, object_owner, object_name, cost, cardinality, access_predicates, filter_predicates FROM plan_table WHERE statement_id = '${id}' ORDER BY id`,
+        )
+        await run(`DELETE FROM plan_table WHERE statement_id = '${id}'`)
+        const byId = new Map<number, PlanNode>()
+        let root: PlanNode | undefined
+        for (const row of r?.rows ?? []) {
+          const [nid, parent, op, opt, owner, obj, cost, card, access, filter] = row
+          const node: PlanNode = {
+            operation: [op, opt].filter((x) => x !== null && x !== undefined && x !== '').map((x) => cellToText(x!)).join(' '),
+            object: obj ? `${owner ? `${cellToText(owner)}.` : ''}${cellToText(obj)}` : undefined,
+            detail: [access, filter].filter((x) => x !== null && x !== undefined).map((x) => cellToText(x!)).join(' · ') || undefined,
+            cost: num(cost),
+            rows: num(card),
+            children: [],
+          }
+          byId.set(Number(nid), node)
+          const p = parent === null ? undefined : byId.get(Number(parent))
+          if (p) p.children.push(node)
+          else root ??= node
+        }
+        const raw = (r?.rows ?? []).map((row) => row.map((x) => (x === null ? '' : cellToText(x))).join(' | ')).join('\n')
+        return { root: root ?? { operation: 'Query', children: [] }, raw, format: 'text' }
+      }
       case 'sqlite': {
         const [r] = await run(`EXPLAIN QUERY PLAN ${body}`)
         const rows = r?.rows ?? []
