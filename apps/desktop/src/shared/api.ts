@@ -133,6 +133,24 @@ export interface BackupResult {
   sql?: string
 }
 
+/** Tools whose saved connections can be imported. */
+export type ImportSourceId =
+  | 'beekeeper'
+  | 'dbeaver'
+  | 'datagrip'
+  | 'pgadmin'
+  | 'ssms'
+  | 'azuredatastudio'
+  | 'workbench'
+  | 'heidisql'
+  | 'navicat'
+  | 'sqldeveloper'
+  | 'dbvisualizer'
+  | 'tableplus'
+  | 'sequelace'
+  | 'sqltools'
+  | 'pgpass'
+
 export interface TeamStatus {
   folder?: string
   /** Set by the managed configuration: users can't change it. */
@@ -394,7 +412,9 @@ export interface MastermindApi {
   mcpClients(): Promise<McpClientStatus[]>
   /** Adds DB Mastermind to an agent app's MCP config (keeping a `.bak` copy); returns the changed file. */
   addToMcpClient(id: McpClientId): Promise<{ path: string; via: 'cli' | 'file'; backup: boolean }>
-  importConnections(source: 'beekeeper' | 'dbeaver' | 'datagrip' | 'pgpass' | 'file'): Promise<number>
+  importConnections(source: ImportSourceId | 'file'): Promise<number>
+  /** Database tools on this computer with saved connections to import, and how many each has. */
+  detectImportSources(): Promise<{ id: ImportSourceId; label: string; count: number }[]>
   /** Writes connections without passwords or keys to a JSON file for colleagues; all when `ids` is empty. */
   exportConnections(ids?: string[]): Promise<string | null>
   /** Creates (or reuses) the demo SQLite database with its knowledge base; returns the connection id. */
@@ -513,6 +533,7 @@ export const API_METHODS = [
   'isConnected',
   'parseConnectionString',
   'importConnections',
+  'detectImportSources',
   'exportHistory',
   'mcpHttpStatus',
   'mcpClients',

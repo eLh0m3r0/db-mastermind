@@ -1,10 +1,33 @@
+import { execFileSync } from 'node:child_process'
 import { createDecipheriv } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { BrowserWindow, dialog } from 'electron'
-import { parseDataGrip, parsePgpass, type ConnectionConfig, type DriverId, type Environment } from '@dbmastermind/core'
+import {
+  heidiSessions,
+  navicatSessions,
+  parseAzureDataStudio,
+  parseDataGrip,
+  parseDbVisualizer,
+  parseHeidiPortable,
+  parseMySqlWorkbench,
+  parsePgAdminServersJson,
+  parsePgpass,
+  parsePlist,
+  parseRegQuery,
+  parseSqlDeveloper,
+  parseSqlTools,
+  parseSsmsRegisteredServers,
+  pgAdminServerRows,
+  sequelAceFavorites,
+  tablePlusConnections,
+  type ConnectionConfig,
+  type DriverId,
+  type Environment,
+} from '@dbmastermind/core'
+import type { ImportSourceId } from '@shared/api'
 import { listConnections, saveConnection } from './connections'
 
 type Imported = Omit<ConnectionConfig, 'id'>
@@ -110,15 +133,7 @@ async function readDataGrip(): Promise<Imported[]> {
     const local = join(base, d, 'options', 'dataSources.local.xml')
     add(readFileSync(file, 'utf8'), existsSync(local) ? readFileSync(local, 'utf8') : '')
   }
-  if (out.length) return out
-  // Project data sources live in the project's .idea folder.
-  const window = BrowserWindow.getFocusedWindow()
-  const options = { title: 'DataGrip dataSources.xml (in the project’s .idea folder)', properties: ['openFile' as const], filters: [{ name: 'dataSources.xml', extensions: ['xml'] }] }
-  const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
-  const file = r.filePaths[0]
-  if (r.canceled || !file) return []
-  const local = file.replace(/dataSources\.xml$/i, 'dataSources.local.xml')
-  add(readFileSync(file, 'utf8'), local !== file && existsSync(local) ? readFileSync(local, 'utf8') : '')
+  // A project's .idea/dataSources.xml can be picked with "From a file…".
   return out
 }
 
@@ -180,12 +195,200 @@ function readDbeaver(): Imported[] {
   return out
 }
 
+/**
+ * "From a file…": our own export, or another tool's file, recognized by its content: pgAdmin servers.json,
+ * DataGrip dataSources.xml, MySQL Workbench connections.xml, SSMS RegSrvr.xml, SQL Developer connections.json,
+ * DbVisualizer dbvis.xml, HeidiSQL portable_settings.txt, TablePlus / Sequel Ace .plist.
+ */
 async function readFileExport(): Promise<Imported[]> {
   const window = BrowserWindow.getFocusedWindow()
-  const r = await dialog.showOpenDialog(window!, { filters: [{ name: 'JSON', extensions: ['json'] }], properties: ['openFile'] })
-  if (r.canceled || !r.filePaths[0]) return []
-  const parsed = JSON.parse(readFileSync(r.filePaths[0], 'utf8')) as Imported[] | { connections: Imported[] }
-  return Array.isArray(parsed) ? parsed : parsed.connections
+  const options = { title: 'Import connections', properties: ['openFile' as const], filters: [{ name: 'Connections', extensions: ['json', 'xml', 'txt', 'plist'] }] }
+  const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
+  const file = r.filePaths[0]
+  if (r.canceled || !file) return []
+  const text = readPlistFile(file) ?? readFileSync(file, 'utf8')
+  return parseAnyConnectionFile(text, file)
+}
+
+function parseAnyConnectionFile(text: string, file: string): Imported[] {
+  const t = text.trimStart()
+  if (t.startsWith('{') || t.startsWith('[')) {
+    const data = JSON.parse(text) as Record<string, unknown> | Imported[]
+    if (Array.isArray(data)) return data
+    if (data.Servers) return parsePgAdminServersJson(text)
+    if (Array.isArray(data.connections) && (data.connections as { info?: unknown }[]).some((c) => c.info)) return parseSqlDeveloper(text)
+    if (Array.isArray(data.connections)) return data.connections as Imported[]
+    throw new Error('This JSON file has no connections DB Mastermind knows')
+  }
+  if (/<plist/.test(t)) {
+    const plist = parsePlist(text)
+    return Array.isArray(plist) ? tablePlusConnections(plist as Record<string, unknown>[]) : sequelAceFavorites(plist)
+  }
+  if (/DataSourceManagerImpl|dataSourceStorage|<data-source/.test(t)) {
+    const local = file.replace(/dataSources\.xml$/i, 'dataSources.local.xml')
+    return parseDataGrip(text, local !== file && existsSync(local) ? readFileSync(local, 'utf8') : '')
+  }
+  if (/db\.mgmt\.Connection/.test(t)) return parseMySqlWorkbench(text)
+  if (/RegisteredServers:RegisteredServer/.test(t)) return parseSsmsRegisteredServers(text)
+  if (/<Database\b/.test(t) && /<Url>/.test(t)) return parseDbVisualizer(text)
+  if (/<\|\|\|>/.test(t)) return parseHeidiPortable(text)
+  throw new Error('Unknown file: pick a connection export from DB Mastermind or another database tool')
+}
+
+/** XML text of a property list (binary plists converted with plutil on macOS). */
+function readPlistFile(file: string): string | null {
+  if (!/\.plist$/i.test(file)) return null
+  const raw = readFileSync(file)
+  if (raw.subarray(0, 6).toString() !== 'bplist') return raw.toString('utf8')
+  if (process.platform !== 'darwin') throw new Error('Binary property lists can only be read on macOS')
+  return execFileSync('plutil', ['-convert', 'xml1', '-o', '-', file], { encoding: 'utf8' })
+}
+
+/** `reg query <key> /s` as text (Windows only; empty when the key doesn't exist). */
+function regQuery(key: string): string {
+  try {
+    return execFileSync('reg', ['query', key, '/s'], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] })
+  } catch {
+    return ''
+  }
+}
+
+const home = () => homedir()
+const firstExisting = (paths: string[]) => paths.find((p) => existsSync(p))
+const readIf = (path: string | undefined) => (path && existsSync(path) ? readFileSync(path, 'utf8') : undefined)
+/** Matching files one level below each directory (e.g. versioned settings folders). */
+function globDirs(base: string, pattern: RegExp, ...rest: string[]): string[] {
+  if (!existsSync(base)) return []
+  return readdirSync(base)
+    .filter((d) => pattern.test(d))
+    .sort()
+    .reverse()
+    .map((d) => join(base, d, ...rest))
+    .filter((p) => existsSync(p))
+}
+
+function readPgAdmin(): Imported[] {
+  const file = firstExisting(process.platform === 'win32' ? [join(appDataDir(), 'pgAdmin', 'pgadmin4.db')] : [join(home(), '.pgadmin', 'pgadmin4.db')])
+  if (!file) return []
+  const db = new DatabaseSync(file, { readOnly: true })
+  try {
+    return pgAdminServerRows(db.prepare('SELECT * FROM server').all() as Record<string, unknown>[])
+  } finally {
+    db.close()
+  }
+}
+
+function readWorkbench(): Imported[] {
+  const file =
+    process.platform === 'darwin'
+      ? join(appDataDir(), 'MySQL', 'Workbench', 'connections.xml')
+      : process.platform === 'win32'
+        ? join(appDataDir(), 'MySQL', 'Workbench', 'connections.xml')
+        : join(home(), '.mysql', 'workbench', 'connections.xml')
+  const xml = readIf(file)
+  return xml ? parseMySqlWorkbench(xml) : []
+}
+
+function readHeidi(): Imported[] {
+  if (process.platform !== 'win32') return []
+  return heidiSessions(parseRegQuery(regQuery('HKCU\\Software\\HeidiSQL\\Servers'), 'Software\\HeidiSQL\\Servers'))
+}
+
+function readNavicat(): Imported[] {
+  if (process.platform !== 'win32') return []
+  const products: [string, DriverId][] = [['Navicat', 'mysql'], ['NavicatPG', 'postgres'], ['NavicatMSSQL', 'mssql'], ['NavicatOra', 'oracle'], ['NavicatMARIADB', 'mariadb']]
+  return products.flatMap(([product, driver]) => {
+    const root = `Software\\PremiumSoft\\${product}\\Servers`
+    return navicatSessions(parseRegQuery(regQuery(`HKCU\\${root}`), root), driver)
+  })
+}
+
+const editorSettings = (app: string) => join(appDataDir(), app, 'User', 'settings.json')
+
+function readAzureDataStudio(): Imported[] {
+  const text = readIf(editorSettings('azuredatastudio'))
+  return text ? parseAzureDataStudio(text) : []
+}
+
+function readSqlTools(): Imported[] {
+  return ['Code', 'Code - Insiders', 'Cursor', 'VSCodium'].flatMap((app) => {
+    const text = readIf(editorSettings(app))
+    return text && text.includes('sqltools.connections') ? parseSqlTools(text) : []
+  })
+}
+
+function readSsms(): Imported[] {
+  if (process.platform !== 'win32') return []
+  const files = [
+    ...globDirs(join(appDataDir(), 'Microsoft', 'Microsoft SQL Server'), /^\d+$/, 'Tools', 'Shell', 'RegSrvr.xml'),
+    ...globDirs(join(appDataDir(), 'Microsoft', 'SQL Server Management Studio'), /^[\d.]+$/, 'RegSrvr.xml'),
+  ]
+  return files.flatMap((f) => parseSsmsRegisteredServers(readFileSync(f, 'utf8')))
+}
+
+function readSqlDeveloper(): Imported[] {
+  const base = process.platform === 'win32' ? join(appDataDir(), 'SQL Developer') : join(home(), '.sqldeveloper')
+  return globDirs(base, /^system/)
+    .flatMap((system) => globDirs(system, /^o\.jdeveloper\.db\.connection/, 'connections.json'))
+    .slice(0, 1)
+    .flatMap((f) => parseSqlDeveloper(readFileSync(f, 'utf8')))
+}
+
+function readDbVisualizer(): Imported[] {
+  const xml = readIf(firstExisting(globDirs(join(home(), '.dbvis'), /^config/, 'dbvis.xml')))
+  return xml ? parseDbVisualizer(xml) : []
+}
+
+function readTablePlus(): Imported[] {
+  if (process.platform === 'darwin') {
+    const file = join(appDataDir(), 'com.tinyapp.TablePlus', 'Data', 'Connections.plist')
+    if (!existsSync(file)) return []
+    const plist = parsePlist(readPlistFile(file)!)
+    return Array.isArray(plist) ? tablePlusConnections(plist as Record<string, unknown>[]) : []
+  }
+  return []
+}
+
+function readSequelAce(): Imported[] {
+  if (process.platform !== 'darwin') return []
+  const file = firstExisting([
+    join(home(), 'Library', 'Containers', 'com.sequel-ace.sequel-ace', 'Data', 'Library', 'Application Support', 'Sequel Ace', 'Data', 'Favorites.plist'),
+    join(appDataDir(), 'Sequel Pro', 'Data', 'Favorites.plist'),
+  ])
+  return file ? sequelAceFavorites(parsePlist(readPlistFile(file)!)) : []
+}
+
+/** Tools whose saved connections can be imported, in menu order. */
+export const IMPORT_SOURCES: { id: ImportSourceId; label: string; read: () => Imported[] | Promise<Imported[]>; note?: string }[] = [
+  { id: 'beekeeper', label: 'Beekeeper Studio', read: () => readBeekeeper(), note: 'passwords' },
+  { id: 'dbeaver', label: 'DBeaver', read: () => readDbeaver() },
+  { id: 'datagrip', label: 'DataGrip / IntelliJ', read: () => readDataGrip(), note: 'passwords' },
+  { id: 'pgadmin', label: 'pgAdmin 4', read: () => readPgAdmin(), note: 'passwords' },
+  { id: 'ssms', label: 'SQL Server Management Studio', read: () => readSsms(), note: 'passwords' },
+  { id: 'azuredatastudio', label: 'Azure Data Studio', read: () => readAzureDataStudio(), note: 'passwords' },
+  { id: 'workbench', label: 'MySQL Workbench', read: () => readWorkbench(), note: 'passwords' },
+  { id: 'heidisql', label: 'HeidiSQL', read: () => readHeidi(), note: 'passwords' },
+  { id: 'navicat', label: 'Navicat', read: () => readNavicat(), note: 'passwords' },
+  { id: 'sqldeveloper', label: 'Oracle SQL Developer', read: () => readSqlDeveloper(), note: 'passwords' },
+  { id: 'dbvisualizer', label: 'DbVisualizer', read: () => readDbVisualizer(), note: 'passwords' },
+  { id: 'tableplus', label: 'TablePlus', read: () => readTablePlus(), note: 'passwords' },
+  { id: 'sequelace', label: 'Sequel Ace / Sequel Pro', read: () => readSequelAce(), note: 'passwords' },
+  { id: 'sqltools', label: 'VS Code SQLTools', read: () => readSqlTools() },
+  { id: 'pgpass', label: '.pgpass (PostgreSQL)', read: () => readPgpass() },
+]
+
+/** Which tools on this computer have connections to import, with how many. */
+export async function detectImportSources(): Promise<{ id: ImportSourceId; label: string; count: number }[]> {
+  const out: { id: ImportSourceId; label: string; count: number }[] = []
+  for (const source of IMPORT_SOURCES) {
+    try {
+      const count = (await source.read()).length
+      if (count) out.push({ id: source.id, label: source.label, count })
+    } catch {
+      // Not installed, or a file we can't read: not offered.
+    }
+  }
+  return out
 }
 
 /** Connections for colleagues: everything except secrets (passwords, keys) and personal metadata. */
@@ -208,9 +411,9 @@ export async function exportConnections(ids?: string[]): Promise<string | null> 
   return r.filePath
 }
 
-export async function importConnections(source: 'beekeeper' | 'dbeaver' | 'datagrip' | 'pgpass' | 'file'): Promise<number> {
-  const items =
-    source === 'beekeeper' ? readBeekeeper() : source === 'dbeaver' ? readDbeaver() : source === 'datagrip' ? await readDataGrip() : source === 'pgpass' ? readPgpass() : await readFileExport()
+export async function importConnections(source: ImportSourceId | 'file'): Promise<number> {
+  const reader = IMPORT_SOURCES.find((x) => x.id === source)
+  const items = source === 'file' ? await readFileExport() : reader ? await reader.read() : []
   const existing = listConnections()
   let count = 0
   for (const item of items) {

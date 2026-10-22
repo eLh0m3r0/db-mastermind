@@ -47,7 +47,7 @@ project's (AI) maintainer and updated with every release.
 - ✅ Connection colors, groups/folders, environment tag (dev / test / prod) with prod safety rails
 - ✅ Read-only connection mode (enforced at session level where the DB supports it)
 - ✅ Test connection, reconnect, keep-alive
-- ✅ Import connections from Beekeeper Studio, DBeaver, DataGrip/IntelliJ, `.pgpass` (with passwords), a colleague's JSON
+- ✅ Import connections from the tools found on the computer (menu shows them with counts): Beekeeper Studio, DBeaver, DataGrip/IntelliJ, pgAdmin 4, SSMS, Azure Data Studio, MySQL Workbench, HeidiSQL, Navicat, Oracle SQL Developer, DbVisualizer, TablePlus, Sequel Ace, VS Code SQLTools, `.pgpass`; or from a file (format detected)
 
 ### Schema explorer
 - ✅ Tree: databases → schemas → tables / views / materialized views / functions / procedures / sequences

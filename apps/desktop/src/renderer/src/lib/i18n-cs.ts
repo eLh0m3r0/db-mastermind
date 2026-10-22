@@ -1044,4 +1044,8 @@ export const cs: Record<string, string> = {
   'Connection': 'Připojení',
   'AI may': 'AI smí',
   'Agents write': 'Agenti zapisují',
+  'From {app} ({n})': 'Z {app} ({n})',
+  'No other database tools found on this computer': 'Na tomto počítači nejsou jiné databázové nástroje',
+  'From a file… (export of DB Mastermind, pgAdmin, DataGrip, Workbench, SSMS…)': 'Ze souboru… (export DB Mastermind, pgAdmin, DataGrip, Workbench, SSMS…)',
+  'From Beekeeper, DBeaver, DataGrip, pgAdmin, SSMS, Workbench, HeidiSQL…': 'Z Beekeeperu, DBeaveru, DataGripu, pgAdminu, SSMS, Workbench, HeidiSQL…',
 }

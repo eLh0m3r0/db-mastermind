@@ -23,9 +23,10 @@ import {
   Users,
   HardDriveDownload,
   HardDriveUpload,
+  Download,
 } from 'lucide-react'
 import { isFileDriver } from '@dbmastermind/core/browser'
-import type { StoredConnection } from '@shared/api'
+import type { ImportSourceId, StoredConnection } from '@shared/api'
 import { IconButton } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { Input } from '@/components/ui/Input'
@@ -384,17 +385,7 @@ function ConnectionList() {
         <IconButton
           label={t('Import connections')}
           size="md"
-          onClick={(e) =>
-            openMenu(e.currentTarget, [
-              { label: t('From Beekeeper Studio'), onClick: () => void importFrom('beekeeper') },
-              { label: t('From DBeaver'), onClick: () => void importFrom('dbeaver') },
-              { label: t('From DataGrip / IntelliJ'), onClick: () => void importFrom('datagrip') },
-              { label: t('From .pgpass (PostgreSQL)'), onClick: () => void importFrom('pgpass') },
-              { label: t('From JSON file…'), onClick: () => void importFrom('file') },
-              'separator',
-              { label: t('Share all connections (without passwords)…'), icon: <Share2 size={13} />, onClick: () => void shareConnections() },
-            ])
-          }
+          onClick={(e) => void openImportMenu(e.currentTarget)}
         >
           <ChevronDown size={14} />
         </IconButton>
@@ -418,17 +409,27 @@ export async function shareConnections(ids?: string[]) {
   }
 }
 
-export async function importFrom(source: 'beekeeper' | 'dbeaver' | 'datagrip' | 'pgpass' | 'file') {
+/** Import menu: the tools found on this computer (with their connection counts), a file, and sharing. */
+export async function openImportMenu(anchor: HTMLElement) {
+  const found = await api.detectImportSources().catch(() => [])
+  openMenu(anchor, [
+    ...(found.length
+      ? found.map((s) => ({ label: t('From {app} ({n})', { app: s.label, n: s.count }), icon: <Download size={13} />, onClick: () => void importFrom(s.id, s.label) }))
+      : [{ label: t('No other database tools found on this computer'), disabled: true }]),
+    { label: t('From a file… (export of DB Mastermind, pgAdmin, DataGrip, Workbench, SSMS…)'), onClick: () => void importFrom('file') },
+    'separator',
+    { label: t('Share all connections (without passwords)…'), icon: <Share2 size={13} />, onClick: () => void shareConnections() },
+  ])
+}
+
+export async function importFrom(source: ImportSourceId | 'file', label?: string) {
   try {
     const n = await api.importConnections(source)
     await useConnections.getState().load()
     toast({
       kind: n ? 'success' : 'info',
       message: n ? tp(n, { one: 'Imported {n} connection', many: 'Imported {n} connections' }) : t('Nothing new to import'),
-      detail:
-        (source === 'beekeeper' || source === 'datagrip') && n
-          ? t('Passwords stay in {app}, so enter them when you first connect.', { app: source === 'beekeeper' ? 'Beekeeper Studio' : 'DataGrip' })
-          : undefined,
+      detail: n && label && source !== 'dbeaver' && source !== 'pgpass' && source !== 'sqltools' ? t('Passwords stay in {app}, so enter them when you first connect.', { app: label }) : undefined,
     })
   } catch (err) {
     toast({ kind: 'error', message: t('Import failed'), detail: errorMessage(err) })

@@ -7,7 +7,7 @@ import { queryFile } from '@/lib/files'
 import { useConnections } from '@/store/connections'
 import { useUi } from '@/store/ui'
 import { DriverIcon } from '../connections/drivers'
-import { connectAndSelect, importFrom, StatusDot } from '../sidebar/Sidebar'
+import { connectAndSelect, openImportMenu, StatusDot } from '../sidebar/Sidebar'
 import { useT } from '@/lib/i18n'
 
 async function openDemo() {
@@ -43,8 +43,8 @@ export function HomeScreen() {
               <Button size="sm" variant="ghost" icon={<FileSpreadsheet size={13} />} onClick={() => void queryFile()} title={t('CSV, Parquet, JSON or Excel: query it with SQL, no import needed')}>
                 {t('Query a file')}
               </Button>
-              <Button size="sm" variant="ghost" icon={<Download size={13} />} onClick={() => void importFrom('beekeeper')}>
-                {t('Import from Beekeeper')}
+              <Button size="sm" variant="ghost" icon={<Download size={13} />} onClick={(e) => void openImportMenu(e.currentTarget)} title={t('From Beekeeper, DBeaver, DataGrip, pgAdmin, SSMS, Workbench, HeidiSQL…')}>
+                {t('Import connections')}
               </Button>
               <Button size="sm" variant="primary" icon={<Plus size={14} />} onClick={() => setUi({ modal: { kind: 'connection' } })}>
                 {t('New connection')}
@@ -82,7 +82,7 @@ export function HomeScreen() {
             >
               <Database size={28} />
               <span className="text-[14px] font-medium">{t('Add your first connection')}</span>
-              <span className="text-[12px] text-fg-faint">PostgreSQL · SQL Server · MySQL · MariaDB · SQLite</span>
+              <span className="text-[12px] text-fg-faint">PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB · ClickHouse · CockroachDB</span>
             </button>
           )}
         </section>

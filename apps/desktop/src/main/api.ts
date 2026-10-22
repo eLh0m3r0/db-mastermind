@@ -47,7 +47,7 @@ import { createExportWriter, EXPORT_EXTENSIONS } from './export'
 import { cancelChat, respondApproval, startChat } from './ai/assistant'
 import { completeText, extractJson } from './ai/complete'
 import { listModels, testProvider } from './ai/models'
-import { exportConnections, importConnections } from './importers'
+import { detectImportSources, exportConnections, importConnections } from './importers'
 import { backupDatabase, restoreDatabase } from './backup'
 import { aiAccess } from './ai-access'
 import { managed } from './managed'
@@ -291,6 +291,9 @@ export const api: MastermindApi = {
   },
   async importConnections(source) {
     return importConnections(source)
+  },
+  async detectImportSources() {
+    return detectImportSources()
   },
   async exportConnections(ids) {
     return exportConnections(ids)
