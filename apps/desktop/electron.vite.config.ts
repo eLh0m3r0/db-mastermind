@@ -23,7 +23,13 @@ export default defineConfig({
           'fflate',
         ],
       },
-      rollupOptions: { input: { index: resolve(__dirname, 'src/main/index.ts') } },
+      rollupOptions: {
+        input: {
+          index: resolve(__dirname, 'src/main/index.ts'),
+          // Plain-Node MCP server process (no Electron APIs), see mcp-mode.ts.
+          'mcp-server': resolve(__dirname, 'src/main/mcp-server.ts'),
+        },
+      },
     },
     resolve: { alias: { '@shared': resolve(__dirname, 'src/shared') } },
   },

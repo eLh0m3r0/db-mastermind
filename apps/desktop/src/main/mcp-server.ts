@@ -1,0 +1,39 @@
+/**
+ * Stdio MCP server, run by the Electron binary in plain Node mode (ELECTRON_RUN_AS_NODE).
+ * The parent (`--mcp`, see mcp-mode.ts) decrypts saved connections with the OS keychain and hands them
+ * over IPC. Node mode has reliable stdio on every platform, which the GUI process lacks on Windows.
+ * Must not import 'electron'.
+ */
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import { DatabaseService, type ConnectionConfig } from '@dbmastermind/core'
+import { createMcpServer } from 'dbmastermind-mcp'
+
+export interface McpChildConfig {
+  connections: ConnectionConfig[]
+  allowWrites: boolean
+  schemaOnly: boolean
+  version: string
+}
+
+process.once('message', (config: McpChildConfig) => {
+  void (async () => {
+    const db = new DatabaseService()
+    const server = createMcpServer({
+      db,
+      connections: config.connections,
+      allowWrites: config.allowWrites,
+      allowKnowledgeWrites: config.allowWrites,
+      schemaOnly: config.schemaOnly,
+      version: config.version,
+    })
+    await server.connect(new StdioServerTransport())
+    // The IPC channel would otherwise keep the process alive after the agent disconnects.
+    process.disconnect?.()
+    const quit = () => void db.disconnectAll().finally(() => process.exit(0))
+    process.stdin.on('close', quit)
+    process.on('SIGTERM', quit)
+  })().catch((err: unknown) => {
+    process.stderr.write(`DB Mastermind MCP server failed: ${err instanceof Error ? err.message : String(err)}\n`)
+    process.exit(1)
+  })
+})
