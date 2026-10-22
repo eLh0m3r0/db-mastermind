@@ -11,6 +11,7 @@ const TARGETS: Record<DriverId, Partial<Record<Family, string>>> = {
   oracle: { bool: 'NUMBER(1)', json: 'CLOB', text: 'CLOB', string: 'VARCHAR2(255)', timestamp: 'TIMESTAMP', timestamptz: 'TIMESTAMP WITH TIME ZONE', uuid: 'VARCHAR2(36)', double: 'BINARY_DOUBLE', real: 'BINARY_FLOAT', binary: 'BLOB', tinyint: 'NUMBER(3)', datetime: 'TIMESTAMP' },
   duckdb: { bool: 'BOOLEAN', json: 'JSON', text: 'VARCHAR', string: 'VARCHAR', timestamp: 'TIMESTAMP', timestamptz: 'TIMESTAMPTZ', uuid: 'UUID', double: 'DOUBLE', real: 'REAL', binary: 'BLOB', datetime: 'TIMESTAMP' },
   clickhouse: { bool: 'Bool', json: 'String', text: 'String', string: 'String', timestamp: 'DateTime64(3)', timestamptz: 'DateTime64(3)', uuid: 'UUID', double: 'Float64', real: 'Float32', binary: 'String', tinyint: 'Int8', datetime: 'DateTime' },
+  trino: { bool: 'boolean', json: 'json', text: 'varchar', string: 'varchar', timestamp: 'timestamp(3)', timestamptz: 'timestamp(3) with time zone', uuid: 'uuid', double: 'double', real: 'real', binary: 'varbinary', tinyint: 'tinyint', datetime: 'timestamp(3)' },
   bigquery: { bool: 'BOOL', json: 'JSON', text: 'STRING', string: 'STRING', timestamp: 'DATETIME', timestamptz: 'TIMESTAMP', uuid: 'STRING', double: 'FLOAT64', real: 'FLOAT64', binary: 'BYTES', tinyint: 'INT64', datetime: 'DATETIME' },
 }
 

@@ -222,6 +222,9 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ BigQuery: datasets as schemas, typed filters (text values cast to the column type), SQL with named parameters,
   streaming exports, arrays/structs/exact NUMERIC and INT64; service account key (encrypted) or gcloud sign-in;
   read-only grid (keys aren't enforced); integration-tested in CI against the BigQuery emulator
+- ✅ Trino (and Starburst) over its HTTP protocol, no extra dependency: the connection's catalog is browsed, any
+  catalog is queryable; typed filters, exact BIGINT/DECIMAL, streaming exports that cancel the server query, EXPLAIN
+  (ANALYZE); read-only grid; integration-tested in CI against Trino 483
 - ⬜ Redshift, Snowflake, Cassandra (need cloud accounts to test)
 - 💡 MongoDB, Redis (document/key-value browsers)
 - ✅ SQL Server Windows (integrated) authentication (msnodesqlv8 + ODBC, tested on Windows CI)

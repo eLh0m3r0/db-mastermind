@@ -1,6 +1,7 @@
 import { qualify } from './dialect.js'
 import { ReadOnlyViolationError, type DatabaseDriver, type StreamBatch, type StreamOptions } from './driver.js'
 import { BigQueryDriver } from './drivers/bigquery.js'
+import { TrinoDriver } from './drivers/trino.js'
 import { ClickHouseDriver } from './drivers/clickhouse.js'
 import { DuckDBDriver } from './drivers/duckdb.js'
 import { MssqlDriver } from './drivers/mssql.js'
@@ -35,6 +36,8 @@ export function createDriver(config: ConnectionConfig): DatabaseDriver {
       return new ClickHouseDriver(config)
     case 'bigquery':
       return new BigQueryDriver(config)
+    case 'trino':
+      return new TrinoDriver(config)
   }
 }
 

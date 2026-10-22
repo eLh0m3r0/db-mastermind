@@ -68,3 +68,6 @@ services:
     image: ghcr.io/goccy/bigquery-emulator:0.8.1
     command: --project=dbm-test --dataset=shop
     ports: ['19050:9050']
+  trino:
+    image: trinodb/trino:483
+    ports: ['18080:8080']

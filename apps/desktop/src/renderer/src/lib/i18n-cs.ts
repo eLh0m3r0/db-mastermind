@@ -129,6 +129,8 @@ export const cs: Record<string, string> = {
   'Choose SQLite database': 'Vyberte databázi SQLite',
   'All files': 'Všechny soubory',
   'Defaults to "postgres"': 'Výchozí je „postgres“',
+  'Catalog': 'Katalog',
+  'Its schemas appear in the explorer, e.g. hive or iceberg': 'Jeho schémata se zobrazí v průzkumníku, např. hive nebo iceberg',
   'Dev': 'Vývoj',
   'Test': 'Test',
   'Staging': 'Staging',

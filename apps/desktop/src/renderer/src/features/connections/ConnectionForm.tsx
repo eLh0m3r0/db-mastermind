@@ -15,7 +15,7 @@ import { useT } from '@/lib/i18n'
 
 export const CONNECTION_COLORS = ['#6d4aff', '#0b72d9', '#0f9f6e', '#d97706', '#dc2626', '#db2777', '#64748b']
 
-const DEFAULT_PORTS: Partial<Record<DriverId, number>> = { postgres: 5432, mysql: 3306, mariadb: 3306, mssql: 1433, oracle: 1521 }
+const DEFAULT_PORTS: Partial<Record<DriverId, number>> = { postgres: 5432, mysql: 3306, mariadb: 3306, mssql: 1433, oracle: 1521, clickhouse: 8123, trino: 8080 }
 
 function blank(driver: DriverId = 'postgres'): ConnectionConfig {
   return { id: '', name: '', driver, host: 'localhost', port: DEFAULT_PORTS[driver], user: '', password: '', database: '' }
@@ -343,8 +343,11 @@ export function ConnectionForm() {
                         </Field>
                       </div>
                     )}
-                    <Field label={t('Database')} hint={config.driver === 'postgres' ? t('Defaults to "postgres"') : undefined}>
-                      <Input value={config.database ?? ''} onChange={(e) => set({ database: e.target.value })} />
+                    <Field
+                      label={config.driver === 'trino' ? t('Catalog') : t('Database')}
+                      hint={config.driver === 'postgres' ? t('Defaults to "postgres"') : config.driver === 'trino' ? t('Its schemas appear in the explorer, e.g. hive or iceberg') : undefined}
+                    >
+                      <Input value={config.database ?? ''} onChange={(e) => set({ database: e.target.value })} placeholder={config.driver === 'trino' ? 'hive' : undefined} />
                     </Field>
                     {config.driver === 'mssql' && (
                       <div className="flex gap-2">

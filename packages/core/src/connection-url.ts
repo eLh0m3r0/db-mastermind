@@ -10,6 +10,7 @@ export const DEFAULT_PORTS: Record<DriverId, number | undefined> = {
   duckdb: undefined,
   clickhouse: 8123,
   bigquery: undefined,
+  trino: 8080,
 }
 
 const SCHEMES: Record<string, DriverId> = {
@@ -27,6 +28,8 @@ const SCHEMES: Record<string, DriverId> = {
   clickhouse: 'clickhouse',
   ch: 'clickhouse',
   bigquery: 'bigquery',
+  trino: 'trino',
+  presto: 'trino',
 }
 
 export class ConnectionUrlError extends Error {
@@ -74,7 +77,7 @@ export function parseConnectionString(input: string): Parsed {
     password: url.password ? decodeURIComponent(url.password) : (params.get('password') ?? undefined),
   }
   const sslmode = (params.get('sslmode') ?? params.get('ssl-mode') ?? '').toLowerCase()
-  const sslFlag = (params.get('ssl') ?? params.get('encrypt') ?? '').toLowerCase()
+  const sslFlag = (params.get('ssl') ?? params.get('SSL') ?? params.get('encrypt') ?? '').toLowerCase()
   const modeMap: Record<string, SslMode> = {
     disable: 'disable',
     disabled: 'disable',
@@ -91,6 +94,12 @@ export function parseConnectionString(input: string): Parsed {
   if (modeMap[sslmode]) config.ssl = { mode: modeMap[sslmode] }
   else if (sslFlag === 'true' || sslFlag === '1') config.ssl = { mode: 'require' }
   else if (sslFlag === 'false' || sslFlag === '0') config.ssl = { mode: 'disable' }
+  // Trino: /catalog/schema.
+  if (driver === 'trino' && config.database?.includes('/')) {
+    const [catalog, schema] = config.database.split('/')
+    config.database = catalog || undefined
+    if (schema) config.options = { schema }
+  }
   return config
 }
 

@@ -11,7 +11,7 @@ team's notes. It also exposes everything over MCP to Claude Code, Codex, Cursor 
 
 [Download](https://github.com/eLh0m3r0/db-mastermind/releases/latest) · [Roadmap](ROADMAP.md) · [Report an issue](https://github.com/eLh0m3r0/db-mastermind/issues/new)
 
-PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB · ClickHouse · CockroachDB · BigQuery — Windows · macOS · Linux — English & čeština — MIT, no feature limits
+PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB · ClickHouse · CockroachDB · BigQuery · Trino — Windows · macOS · Linux — English & čeština — MIT, no feature limits
 
 </div>
 
@@ -172,7 +172,7 @@ relations:
 
 ```bash
 npm install
-npm run db:up              # PostgreSQL, MySQL, MariaDB, SQL Server, Oracle, ClickHouse, CockroachDB, BigQuery emulator in Docker
+npm run db:up              # PostgreSQL, MySQL, MariaDB, SQL Server, Oracle, ClickHouse, CockroachDB, BigQuery emulator, Trino in Docker
 npm run dev                # start the app
 npm test                   # unit tests
 npm run test:integration   # every driver and migration against real databases

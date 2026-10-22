@@ -1,4 +1,4 @@
-export type DriverId = 'postgres' | 'mssql' | 'mysql' | 'mariadb' | 'sqlite' | 'oracle' | 'duckdb' | 'clickhouse' | 'bigquery'
+export type DriverId = 'postgres' | 'mssql' | 'mysql' | 'mariadb' | 'sqlite' | 'oracle' | 'duckdb' | 'clickhouse' | 'bigquery' | 'trino'
 
 /** Engines that open a local file instead of connecting to a server. */
 export const FILE_DRIVERS: ReadonlySet<DriverId> = new Set(['sqlite', 'duckdb'])

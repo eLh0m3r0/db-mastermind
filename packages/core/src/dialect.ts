@@ -201,6 +201,35 @@ export const bigqueryDialect: Dialect = {
   rollback: '',
 }
 
+/** Trino types whose columns don't compare with a text value (filter values are text). */
+const TRINO_TYPED = /^(tinyint|smallint|integer|int|bigint|real|double|decimal(\(\s*\d+\s*,\s*\d+\s*\))?|boolean|date|uuid|(time|timestamp)(\(\d+\))?( with time zone)?)$/
+
+/**
+ * Trino: standard SQL with double-quoted identifiers. Parameters are inlined as literals by the driver (`{__pN}`
+ * tokens) and cast to the compared column's type, because Trino doesn't compare varchar with numbers or dates.
+ * No ILIKE: case-insensitive LIKE lowers both sides. OFFSET comes before LIMIT. No transactions from the app.
+ */
+export const trinoDialect: Dialect = {
+  id: 'trino',
+  sqlFlavor: 'postgresql',
+  quoteIdent: doubleQuote,
+  placeholder: (i) => `{__p${i}}`,
+  paginate: (sql, limit, offset) => `${sql}${offset > 0 ? ` OFFSET ${Math.floor(offset)}` : ''} LIMIT ${Math.max(0, Math.floor(limit))}`,
+  castToText: (expr) => `CAST(${expr} AS varchar)`,
+  ilike: 'LIKE',
+  likeExpr: (text, param, negate) => `lower(${text}) ${negate ? 'NOT ' : ''}LIKE lower(${param})`,
+  trueLiteral: 'true',
+  falseLiteral: 'false',
+  regex: (expr, param, negate) => `${negate ? 'NOT ' : ''}regexp_like(CAST(${expr} AS varchar), concat('(?i)', ${param}))`,
+  typedParam: (placeholder, dataType) => {
+    const t = dataType.trim().toLowerCase()
+    return TRINO_TYPED.test(t) ? `CAST(${placeholder} AS ${t})` : placeholder
+  },
+  begin: '',
+  commit: '',
+  rollback: '',
+}
+
 export const dialects: Record<DriverId, Dialect> = {
   postgres: postgresDialect,
   mysql: mysqlDialect,
@@ -211,6 +240,7 @@ export const dialects: Record<DriverId, Dialect> = {
   duckdb: duckdbDialect,
   clickhouse: clickhouseDialect,
   bigquery: bigqueryDialect,
+  trino: trinoDialect,
 }
 
 export function getDialect(id: DriverId): Dialect {

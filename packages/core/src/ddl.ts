@@ -793,6 +793,7 @@ export const COMMON_TYPES: Record<DriverId, string[]> = {
   oracle: ['NUMBER(19)', 'NUMBER(10)', 'NUMBER(12,2)', 'VARCHAR2(255)', 'NVARCHAR2(255)', 'CHAR(1)', 'CLOB', 'DATE', 'TIMESTAMP', 'BLOB', 'BOOLEAN'],
   duckdb: ['BIGINT', 'INTEGER', 'SMALLINT', 'DECIMAL(12,2)', 'BOOLEAN', 'VARCHAR', 'UUID', 'DATE', 'TIMESTAMP', 'TIMESTAMPTZ', 'JSON', 'BLOB', 'DOUBLE'],
   clickhouse: ['Int64', 'Int32', 'UInt32', 'Decimal(12,2)', 'Bool', 'String', 'LowCardinality(String)', 'UUID', 'Date', 'DateTime', 'DateTime64(3)', 'Float64', 'Nullable(String)', 'Array(String)'],
+  trino: ['bigint', 'integer', 'smallint', 'decimal(12,2)', 'boolean', 'varchar', 'varchar(255)', 'uuid', 'date', 'timestamp(3)', 'timestamp(3) with time zone', 'json', 'varbinary', 'double'],
   bigquery: ['INT64', 'NUMERIC', 'BIGNUMERIC', 'FLOAT64', 'BOOL', 'STRING', 'BYTES', 'DATE', 'DATETIME', 'TIMESTAMP', 'TIME', 'JSON', 'ARRAY<STRING>', 'GEOGRAPHY'],
 }
 

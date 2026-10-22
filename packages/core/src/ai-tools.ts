@@ -181,6 +181,7 @@ export const DIALECT_NAMES: Record<DriverId, string> = {
   duckdb: 'DuckDB',
   clickhouse: 'ClickHouse',
   bigquery: 'BigQuery (GoogleSQL; tables are `dataset.table`)',
+  trino: 'Trino (ANSI SQL; tables are `schema.table` in the connection\'s catalog, or `catalog.schema.table`)',
 }
 
 export const DB_TOOLS: DbTool[] = [

@@ -37,6 +37,7 @@ const DIALECTS: Record<DriverId, SQLDialect> = {
   duckdb: PostgreSQL,
   clickhouse: MySQL,
   bigquery: MySQL,
+  trino: PostgreSQL,
 }
 
 export interface SqlEditorHandle {

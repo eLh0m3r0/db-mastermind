@@ -30,6 +30,7 @@ const FORMATTER_LANGUAGE: Record<DriverId, SqlLanguage> = {
   duckdb: 'duckdb',
   clickhouse: 'clickhouse',
   bigquery: 'bigquery',
+  trino: 'trino',
 }
 
 export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {

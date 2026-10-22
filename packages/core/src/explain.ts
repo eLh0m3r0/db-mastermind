@@ -255,6 +255,12 @@ export async function explainQuery(db: DatabaseService, connectionId: string, sq
         const raw = results.map((r) => cellToText(r.rows[0]?.[0] ?? '')).join('\n')
         return { root: mssqlPlan(raw), raw, format: 'xml' }
       }
+      case 'trino': {
+        // One text cell holding the indented plan (with ANALYZE: also run it and show actual rows and times).
+        const [r] = await run(`EXPLAIN${analyze ? ' ANALYZE' : ''} ${body}`)
+        const lines = (r?.rows ?? []).flatMap((row) => cellToText(row[0] ?? '').split('\n')).filter((l) => l.trim())
+        return { root: indentedPlan(lines), raw: lines.join('\n'), format: 'text' }
+      }
       case 'bigquery':
         throw new Error('BigQuery has no EXPLAIN: run the query and open its execution details in the Google Cloud console')
       case 'oracle': {

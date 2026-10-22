@@ -10,6 +10,7 @@ export const DRIVERS: { id: DriverId; label: string; color: string; mark: string
   { id: 'duckdb', label: 'DuckDB', color: '#8a7a00', mark: 'Dk' },
   { id: 'clickhouse', label: 'ClickHouse', color: '#a8781c', mark: 'CH' },
   { id: 'bigquery', label: 'BigQuery', color: '#3b78e7', mark: 'BQ' },
+  { id: 'trino', label: 'Trino', color: '#dd00a1', mark: 'Tr' },
 ]
 
 export function driverLabel(id: DriverId): string {

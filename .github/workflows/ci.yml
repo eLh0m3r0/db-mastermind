@@ -73,6 +73,10 @@ jobs:
         run: |
           docker run -d --name bigquery -p 19050:9050 ghcr.io/goccy/bigquery-emulator:0.8.1 --project=dbm-test --dataset=shop
           for i in $(seq 1 60); do curl -sf http://127.0.0.1:19050/bigquery/v2/projects/dbm-test/datasets >/dev/null && break; sleep 2; done
+      - name: Start Trino
+        run: |
+          docker run -d --name trino -p 18080:8080 trinodb/trino:483
+          for i in $(seq 1 90); do curl -sf http://127.0.0.1:18080/v1/info | grep -q '"starting":false' && break; sleep 2; done
       - name: Start CockroachDB (needs a start command, so not a service container)
         run: |
           docker run -d --name cockroach -p 26257:26257 cockroachdb/cockroach:latest-v24.3 start-single-node --insecure

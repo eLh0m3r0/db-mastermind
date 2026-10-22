@@ -58,6 +58,8 @@ export function backupPlan(c: ConnectionConfig, file: string, format: BackupForm
       }
     case 'oracle':
       throw new Error('Oracle backups are made with Data Pump (expdp) on the server')
+    case 'trino':
+      throw new Error('Trino queries other systems: back up the data in its source (Hive, Iceberg, the database behind the catalog)')
     case 'bigquery':
       throw new Error('BigQuery keeps data in Google Cloud: use table snapshots or EXPORT DATA to Cloud Storage')
     case 'clickhouse':
