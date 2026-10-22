@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import net from 'node:net'
 import { dirname } from 'node:path'
 import { Client, type ConnectConfig } from 'ssh2'
@@ -18,18 +18,27 @@ export interface KnownHosts {
 const memoryHosts = new Map<string, string>()
 let knownHosts: KnownHosts = { get: (h) => memoryHosts.get(h), set: (h, f) => void memoryHosts.set(h, f), delete: (h) => void memoryHosts.delete(h) }
 
-/** Keeps trusted host keys in a JSON file (`{ "[host]:port": "SHA256:…" }`). */
+/**
+ * Keeps trusted host keys in a JSON file (`{ "[host]:port": "SHA256:…" }`). The app and its MCP server process share
+ * it, so writes are atomic. A file that exists but can't be read fails closed: treating it as empty would accept any
+ * key and then overwrite every other host's.
+ */
 export function useKnownHostsFile(file: string): void {
   const read = (): Record<string, string> => {
+    if (!existsSync(file)) return {}
     try {
-      return existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as Record<string, string>) : {}
-    } catch {
-      return {}
+      const hosts: unknown = JSON.parse(readFileSync(file, 'utf8'))
+      if (!hosts || typeof hosts !== 'object' || Array.isArray(hosts)) throw new Error('not a JSON object')
+      return hosts as Record<string, string>
+    } catch (err) {
+      throw new Error(`The trusted SSH host keys (${file}) can't be read, so the server can't be verified: ${(err as Error).message}. Fix or delete the file.`)
     }
   }
   const write = (hosts: Record<string, string>) => {
     mkdirSync(dirname(file), { recursive: true })
-    writeFileSync(file, `${JSON.stringify(hosts, null, 2)}\n`, 'utf8')
+    const tmp = `${file}.${process.pid}.tmp`
+    writeFileSync(tmp, `${JSON.stringify(hosts, null, 2)}\n`, 'utf8')
+    renameSync(tmp, file)
   }
   knownHosts = {
     get: (h) => read()[h],
@@ -84,7 +93,7 @@ export interface SshTunnel {
   close(): Promise<void>
 }
 
-function connectConfig(ssh: SshConfig, onMismatch: (err: HostKeyMismatchError) => void): ConnectConfig {
+function connectConfig(ssh: SshConfig, onRefused: (err: Error) => void): ConnectConfig {
   const id = sshHostId(ssh.host, ssh.port)
   const config: ConnectConfig = {
     host: ssh.host,
@@ -93,14 +102,18 @@ function connectConfig(ssh: SshConfig, onMismatch: (err: HostKeyMismatchError) =
     readyTimeout: 20_000,
     keepaliveInterval: 15_000,
     hostVerifier: (key: Buffer) => {
-      const actual = hostKeyFingerprint(key)
-      const expected = knownHosts.get(id)
-      if (!expected) {
-        knownHosts.set(id, actual)
-        return true
+      try {
+        const actual = hostKeyFingerprint(key)
+        const expected = knownHosts.get(id)
+        if (!expected) {
+          knownHosts.set(id, actual)
+          return true
+        }
+        if (expected === actual) return true
+        onRefused(new HostKeyMismatchError(`${ssh.host}:${ssh.port ?? 22}`, expected, actual))
+      } catch (err) {
+        onRefused(err as Error)
       }
-      if (expected === actual) return true
-      onMismatch(new HostKeyMismatchError(`${ssh.host}:${ssh.port ?? 22}`, expected, actual))
       return false
     },
   }
@@ -120,7 +133,7 @@ function connectSsh(ssh: SshConfig, onGone: () => void): Promise<Client> {
   return new Promise<Client>((resolve, reject) => {
     const client = new Client()
     let ready = false
-    let mismatch: HostKeyMismatchError | undefined
+    let mismatch: Error | undefined
     const config = connectConfig(ssh, (err) => (mismatch = err))
     // A permanent listener: an SSH 'error' event without one (keepalive timeout, server restart) crashes the app.
     client.on('error', (err) => {

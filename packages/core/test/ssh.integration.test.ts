@@ -61,6 +61,18 @@ describe.skipIf(skip.has('ssh'))('ssh tunnel', () => {
     expect(trustedHostKey('127.0.0.1', 2222)).toBe(trusted)
   })
 
+  it('refuses to connect while the trusted keys file is unreadable, and leaves it alone', async () => {
+    const before = readFileSync(knownHostsFile, 'utf8')
+    const broken = `${before.slice(0, -3)}`
+    writeFileSync(knownHostsFile, broken)
+    const conn = { ...base, id: 'ssh-broken', ssh: { ...ssh, authMethod: 'password', password: 'sshsecret' } } as ConnectionConfig
+    await expect(svc.connect(conn)).rejects.toThrow(/trusted SSH host keys .* can't be read/)
+    expect(readFileSync(knownHostsFile, 'utf8')).toBe(broken)
+    writeFileSync(knownHostsFile, before)
+    await svc.connect(conn)
+    expect(await value('ssh-broken')).toBe('1')
+  })
+
   it('reconnects after the SSH server restarts, without crashing', async () => {
     expect(await value('ssh-pw', 'tab')).toBe('1')
     execSync(`docker restart ${container}`)
