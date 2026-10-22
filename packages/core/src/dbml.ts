@@ -1,4 +1,5 @@
 import type { ColumnInfo, ForeignKeyInfo, TableInfo } from './types.js'
+import { designId, toDesignTable, type DesignTable } from './ddl.js'
 
 /**
  * DBML (dbdiagram.io's schema language) to and from the table model, so a model can live as a text file
@@ -357,3 +358,65 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
   return `${out.join('\n').trim()}\n`
 }
 
+
+/**
+ * Turns DBML with changed or new tables (e.g. an AI reply) into designer drafts against the live tables: matching
+ * tables, columns, keys and indexes keep their database names, so the migration alters instead of recreating.
+ * `// drop table name` lines mark tables to drop. Keys are "schema.table" for live tables, ids for new ones.
+ */
+export function designFromDbml(text: string, live: TableInfo[], options: { defaultSchema?: string } = {}): { drafts: Record<string, DesignTable>; errors: DbmlError[] } {
+  // Tables the reply defines; the other live tables are put in front as context so references to them resolve.
+  const defined = new Set([...text.matchAll(/^\s*Table\s+((?:"[^"]+"|[\w$]+)(?:\.(?:"[^"]+"|[\w$]+))?)/gim)].map((m) => ident(m[1]!.split('.').pop()!).toLowerCase()))
+  const context = toDbml(live.filter((l) => l.type === 'table' && !defined.has(l.name.toLowerCase())), options)
+    .split('\n')
+    .filter((l) => !/^Ref:/.test(l))
+    .join('\n')
+  const contextLines = context.split('\n').length
+  const parsed = parseDbml(`${context}\n${text}`, options)
+  const model = {
+    ...parsed,
+    tables: parsed.tables.filter((t) => defined.has(t.name.toLowerCase())),
+    // Line numbers refer to the reply.
+    errors: parsed.errors.map((e) => ({ ...e, line: e.line - contextLines })).filter((e) => e.line > 0),
+  }
+  const drafts: Record<string, DesignTable> = {}
+  const keyOf = (t: { schema?: string; name: string }) => `${t.schema ?? ''}.${t.name}`
+  const find = (name: string, schema?: string) => {
+    const same = live.filter((l) => l.type === 'table' && l.name.toLowerCase() === name.toLowerCase())
+    return same.find((l) => (l.schema ?? '') === (schema ?? options.defaultSchema ?? '')) ?? same.find((l) => !schema) ?? (same.length === 1 ? same[0] : undefined)
+  }
+  for (const t of model.tables) {
+    const existing = find(t.name, t.schema)
+    const base = existing ? toDesignTable(existing) : undefined
+    const sameCols = (a: string[], b: string[]) => a.length === b.length && a.every((c, i) => c.toLowerCase() === b[i]!.toLowerCase())
+    const draft: DesignTable = {
+      id: base?.id ?? designId('t'),
+      schema: existing?.schema ?? t.schema ?? options.defaultSchema,
+      name: t.name,
+      originalName: existing?.name,
+      comment: t.comment ?? null,
+      columns: t.columns.map((c) => {
+        const old = base?.columns.find((x) => x.name.toLowerCase() === c.name.toLowerCase())
+        return { id: old?.id ?? designId('c'), name: c.name, originalName: old?.originalName, dataType: c.dataType, nullable: c.nullable, defaultValue: c.defaultValue ?? null, identity: c.isIdentity, comment: c.comment ?? null }
+      }),
+      primaryKey: [...t.primaryKey],
+      foreignKeys: t.foreignKeys.map((f) => {
+        const old = base?.foreignKeys.find((x) => sameCols(x.columns, f.columns) && x.refTable.toLowerCase() === f.refTable.toLowerCase())
+        return { id: old?.id ?? designId('f'), name: old?.name ?? f.name, originalName: old?.originalName, columns: [...f.columns], refSchema: f.refSchema ?? old?.refSchema, refTable: f.refTable, refColumns: [...f.refColumns], onDelete: f.onDelete ?? old?.onDelete, onUpdate: f.onUpdate ?? old?.onUpdate }
+      }),
+      indexes: t.indexes
+        .filter((i) => !i.primary)
+        .map((i) => {
+          const old = base?.indexes.find((x) => sameCols(x.columns, i.columns) && x.unique === i.unique)
+          return { id: old?.id ?? designId('i'), name: old?.name ?? i.name, originalName: old?.originalName, columns: [...i.columns], unique: i.unique }
+        }),
+    }
+    drafts[existing ? keyOf(existing) : draft.id] = draft
+  }
+  for (const m of text.matchAll(/^\s*\/\/\s*drop\s+table\s+["`]?([\w$.]+?)["`]?\s*$/gim)) {
+    const [schema, name] = m[1]!.includes('.') ? (m[1]!.split('.') as [string, string]) : [undefined, m[1]!]
+    const existing = find(name, schema)
+    if (existing) drafts[keyOf(existing)] = { ...toDesignTable(existing), dropped: true }
+  }
+  return { drafts, errors: model.errors }
+}

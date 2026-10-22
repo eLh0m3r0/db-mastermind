@@ -168,8 +168,8 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ Rollback script generated alongside the forward script
 - ✅ Execute in the SQL editor (review first) or save as a migration file (plain SQL, Flyway `V…__name.sql`)
 - ✅ A migration can be opened for another connection of the same engine (dev → test → prod) · saved change sets ⬜
-- ⬜ AI: "add soft delete to all customer tables", "normalize address into its own table". The AI proposes a
-  change set and the user reviews it in the designer
+- ✅ AI in the live designer: "add soft delete to all customer tables", "move the address into its own table". The AI
+  proposes DBML, *Apply to design* turns it into pending changes (ALTERs, not recreates) reviewed as a migration
 
 ### Offline models
 - ✅ **Model documents** as `.dbml` files (saved next to the knowledge base, versioned in Git)

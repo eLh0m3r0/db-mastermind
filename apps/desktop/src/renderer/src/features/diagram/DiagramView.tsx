@@ -18,7 +18,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { toPng, toSvg } from 'html-to-image'
-import { Bookmark, Copy, Download, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Route, Search, Redo, Table2, Undo, Undo2 } from 'lucide-react'
+import { Bookmark, Copy, Download, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Route, Search, Redo, Sparkles, Table2, Undo, Undo2 } from 'lucide-react'
 import {
   designId,
   designToTableInfo,
@@ -48,7 +48,8 @@ import { Spinner } from '@/components/ui/Spinner'
 import { cn, copyText, errorMessage, fuzzyScore } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
-import { toast } from '@/store/ui'
+import { askAi, toast } from '@/store/ui'
+import { driverLabel } from '../connections/drivers'
 import { useWorkspace, type DiagramTab } from '@/store/workspace'
 import type { SavedDiagram } from '@shared/api'
 import { MigrationModal } from './MigrationModal'
@@ -197,6 +198,11 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
   const [selected, setSelected] = useState<string | null>(tab.startDesign ?? null)
   const [reviewOpen, setReviewOpen] = useState(false)
   const drafts = useMemo(() => tab.design ?? {}, [tab.design])
+  // Changes arriving from outside (the AI assistant) switch the designer on.
+  const draftCount = Object.keys(drafts).length
+  useEffect(() => {
+    if (draftCount > 0) setDesign(true)
+  }, [draftCount])
   // Undo/redo of design changes. Quick successive edits (typing a name) count as one step.
   const history = useRef<{ past: Record<string, DesignTable>[]; future: Record<string, DesignTable>[]; at: number; key?: string }>({ past: [], future: [], at: 0 })
   const [, setHistoryVersion] = useState(0)
@@ -551,6 +557,19 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
     }
     setDrafts({ ...drafts, [key]: table })
   }
+  const designWithAi = () => {
+    const request = window.prompt(tr('What should change? E.g. "add soft delete to all customer tables" or "move the address into its own table"'))
+    if (!request?.trim() || !connection) return
+    const shown = display.filter((d) => d.status !== 'dropped').map((d) => d.info)
+    askAi({
+      prompt: tr(
+        'Change this {db} database design: {request}\n\nReply with a short explanation and one ```dbml block with only the tables you add or change, each complete (all columns, keys and indexes), using {db} column types. To drop a table, put a line `// drop table name` in the block. I will review it as a migration. Current tables:\n\n```dbml\n{model}```',
+        { db: driverLabel(connection.driver), request: request.trim(), model: toDbml(shown, { defaultSchema: schema?.defaultSchema }) },
+      ),
+      send: true,
+    })
+  }
+
   const addTable = () => {
     const key = designId('new')
     const pkType = connection?.driver === 'sqlite' ? 'INTEGER' : connection?.driver === 'postgres' ? 'bigint' : 'bigint'
@@ -746,6 +765,11 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
             <Button size="sm" variant="ghost" icon={<Plus size={13} />} onClick={addTable}>
               {tr('New table')}
             </Button>
+            {!model && (
+              <Button size="sm" variant="ghost" icon={<Sparkles size={13} />} onClick={designWithAi} title={tr('Describe a change, e.g. "add soft delete to all customer tables"; the AI proposes it as design changes')}>
+                {tr('Design with AI…')}
+              </Button>
+            )}
             <IconButton label={`${tr('Undo')} (⌘Z)`} disabled={!history.current.past.length} onClick={undoDesign}>
               <Undo size={14} />
             </IconButton>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { create } from 'zustand'
 import { ArrowUp, BookOpen, Check, ChevronRight, Plus, Settings2, Sparkles, Square, Wrench, X } from 'lucide-react'
+import { designFromDbml } from '@dbmastermind/core/browser'
 import type { AiEvent } from '@shared/api'
 import { Button, IconButton } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
@@ -9,12 +10,12 @@ import { runCommand } from '@/lib/commands'
 import { cn, uid } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
-import { useUi } from '@/store/ui'
+import { toast, useUi } from '@/store/ui'
 import { useActiveTab, useWorkspace } from '@/store/workspace'
 import { useCurrentConnectionId } from '../sidebar/Sidebar'
 import { Markdown } from './Markdown'
 import { providerMeta } from './providers'
-import { useT } from '@/lib/i18n'
+import { tp, useT } from '@/lib/i18n'
 
 type Part =
   | { type: 'text'; text: string }
@@ -203,6 +204,25 @@ export function AiPanel() {
     } else ws.open({ kind: 'model', connectionId, title: t('Model'), text: dbml }, { reuse: false })
   }
 
+  // With a live ER diagram open, DBML from the assistant becomes pending design changes (reviewed as a migration).
+  const diagramTab = useWorkspace((s) => {
+    const active = s.tabs.find((x) => x.id === s.activeTabId)
+    return active?.kind === 'diagram' && active.connectionId === connectionId ? active : undefined
+  })
+  const applyDesign = (dbml: string) => {
+    if (!diagramTab || !connectionId) return
+    const schema = useConnections.getState().runtime[connectionId]?.schema
+    if (!schema) return
+    const { drafts, errors } = designFromDbml(dbml, schema.tables, { defaultSchema: schema.defaultSchema })
+    if (errors.length) {
+      toast({ kind: 'error', message: t('The DBML has errors'), detail: errors.map((e) => `${t('line {n}', { n: String(e.line) })}: ${e.message}`).join('\n') })
+      return
+    }
+    const current = useWorkspace.getState().tabs.find((x) => x.id === diagramTab.id)
+    useWorkspace.getState().update(diagramTab.id, { design: { ...(current?.kind === 'diagram' ? current.design : undefined), ...drafts } })
+    toast({ kind: 'success', message: tp(Object.keys(drafts).length, { one: '{n} table in the design', many: '{n} tables in the design' }), detail: t('Review the migration in the diagram toolbar.') })
+  }
+
   const runSql = (sql: string) => {
     if (!connectionId) return
     useWorkspace.getState().newQuery(connectionId, sql, t('AI query'))
@@ -282,7 +302,7 @@ export function AiPanel() {
                 <div key={m.id} className="mb-3">
                   {m.parts.map((p, i) =>
                     p.type === 'text' ? (
-                      <Markdown key={i} text={p.text} actions={{ onInsert: insertSql, onRun: runSql, onApplyModel: applyModel }} />
+                      <Markdown key={i} text={p.text} actions={{ onInsert: insertSql, onRun: runSql, onApplyModel: applyModel, onApplyDesign: diagramTab ? applyDesign : undefined }} />
                     ) : p.type === 'tool' ? (
                       <ToolCall key={p.id || i} part={p} />
                     ) : (

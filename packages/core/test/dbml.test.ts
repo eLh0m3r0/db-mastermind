@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareSchemas, parseDbml, toDbml } from '../src/index.js'
+import { compareSchemas, designFromDbml, diffTables, parseDbml, toDbml } from '../src/index.js'
 
 const source = `
 Project shop { database_type: 'PostgreSQL' }
@@ -112,5 +112,39 @@ TableGroup Sales {
     expect(again.enums).toEqual({ order_status: ['new', 'in progress', 'done'] })
     expect(again.groups).toEqual({ Sales: ['customers', 'orders'] })
     expect(again.tables.find((t) => t.name === 'orders')!.columns.find((c) => c.name === 'status')!.dataType).toBe('order_status')
+  })
+})
+
+describe('designFromDbml', () => {
+  const live = parseDbml(`
+Table customers {
+  id int [pk, increment]
+  email varchar(200) [not null, unique]
+  created_at timestamp [default: \`now()\`]
+}
+Table orders {
+  id int [pk]
+  customer_id int [not null]
+}
+Table legacy {
+  id int [pk]
+}
+Ref: orders.customer_id > customers.id
+`).tables
+
+  it('turns an AI reply into drafts that only add what changed', () => {
+    const reply = `${toDbml(live.filter((t) => t.name === 'customers'))}`.replace('created_at', 'deleted_at timestamp\n  created_at') + '\n// drop table legacy\n'
+    const fixed = reply.replace(/deleted_at timestamp\n  created_at timestamp/, 'deleted_at timestamp\n  created_at timestamp')
+    const { drafts, errors } = designFromDbml(fixed, live)
+    expect(errors).toEqual([])
+    const changes = diffTables(live, Object.values(drafts))
+    expect(changes.map((c) => `${c.kind}:${c.table.name}`).sort()).toEqual(['add_column:customers', 'drop_table:legacy'])
+  })
+
+  it('creates new tables with foreign keys to live ones', () => {
+    const { drafts } = designFromDbml(`Table addresses {\n  id int [pk]\n  customer_id int [ref: > customers.id]\n}`, live)
+    const changes = diffTables(live, Object.values(drafts))
+    expect(changes).toHaveLength(1)
+    expect(changes[0]).toMatchObject({ kind: 'create_table', table: { name: 'addresses', foreignKeys: [{ refTable: 'customers' }] } })
   })
 })
