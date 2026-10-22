@@ -53,7 +53,8 @@ project's (AI) maintainer and updated with every release.
 - ✅ Tree: databases → schemas → tables / views / materialized views / functions / procedures / sequences
 - ✅ Instant fuzzy filter over thousands of objects
 - ✅ Column details (type, nullability, default, PK/FK/identity, comments) on hover
-- ⬜ Pin favourite tables, hide system schemas
+- ✅ Pin favourite tables to the top of the explorer
+- ⬜ Hide chosen schemas per connection
 - ✅ Context actions: open data, open structure, copy name, generate SELECT/INSERT/UPDATE/DELETE, count rows,
   open in diagram, ask AI about table
 

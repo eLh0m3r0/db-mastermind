@@ -672,4 +672,7 @@ export const cs: Record<string, string> = {
   'Export data dictionary (Markdown)…': 'Exportovat datový slovník (Markdown)…',
   'Explain with AI': 'Vysvětlit pomocí AI',
   'Explain the table {table}: what it stores, what its columns mean (look at a few sample rows to decode statuses and codes), how it relates to other tables, and two or three typical queries. Use the knowledge base if it documents this table.': 'Vysvětli tabulku {table}: co obsahuje, co znamenají její sloupce (podívej se na pár ukázkových řádků, abys rozluštil stavy a kódy), jak souvisí s ostatními tabulkami, a ukaž dva tři typické dotazy. Pokud ji popisuje znalostní báze, vycházej z ní. Odpovídej česky.',
+  'Pinned': 'Připnuté',
+  'Unpin': 'Odepnout',
+  'Pin to top': 'Připnout nahoru',
 }

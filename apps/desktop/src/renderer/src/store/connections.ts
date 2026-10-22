@@ -22,6 +22,7 @@ interface ConnectionsState {
   load(): Promise<void>
   save(config: ConnectionConfig): Promise<StoredConnection>
   remove(id: string): Promise<void>
+  togglePin(id: string, table: string): void
   duplicate(id: string): Promise<StoredConnection>
   connect(id: string): Promise<boolean>
   disconnect(id: string): Promise<void>
@@ -48,6 +49,14 @@ export const useConnections = create<ConnectionsState>((set, get) => {
       // Saving disconnects so the new settings apply.
       if (get().runtime[saved.id]?.status === 'connected') patch(saved.id, { status: 'disconnected', schema: undefined })
       return saved
+    },
+    togglePin(id, table) {
+      const c = get().list.find((x) => x.id === id)
+      if (!c) return
+      const pins = c.pinnedTables ?? []
+      const next = pins.includes(table) ? pins.filter((p) => p !== table) : [...pins, table]
+      set((s) => ({ list: s.list.map((x) => (x.id === id ? { ...x, pinnedTables: next } : x)) }))
+      void api.setPinnedTables(id, next)
     },
     async remove(id) {
       await api.deleteConnection(id)

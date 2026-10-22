@@ -63,6 +63,7 @@ export function saveConnection(config: ConnectionConfig): StoredConnection {
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
     lastUsedAt: existing?.lastUsedAt,
+    pinnedTables: (config as StoredConnection).pinnedTables ?? existing?.pinnedTables,
   }
   cache = existing ? all.map((c) => (c.id === id ? saved : c)) : [...all, saved]
   persist()
@@ -71,6 +72,11 @@ export function saveConnection(config: ConnectionConfig): StoredConnection {
 
 export function touchConnection(id: string): void {
   cache = listConnections().map((c) => (c.id === id ? { ...c, lastUsedAt: new Date().toISOString() } : c))
+  persist()
+}
+
+export function setPinnedTables(id: string, tables: string[]): void {
+  cache = listConnections().map((c) => (c.id === id ? { ...c, pinnedTables: tables.length ? tables : undefined } : c))
   persist()
 }
 

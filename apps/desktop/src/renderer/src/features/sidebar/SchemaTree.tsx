@@ -12,6 +12,8 @@ import {
   Layers,
   Link2,
   Network,
+  Pin,
+  PinOff,
   RefreshCw,
   Search,
   Sparkles,
@@ -66,12 +68,15 @@ export function generateSql(kind: 'select' | 'insert' | 'update' | 'delete' | 'c
   }
 }
 
+const pinKey = (t: TableInfo) => (t.schema ? `${t.schema}.${t.name}` : t.name)
+
 export const EXPLAIN_TABLE_PROMPT =
   'Explain the table {table}: what it stores, what its columns mean (look at a few sample rows to decode statuses and codes), how it relates to other tables, and two or three typical queries. Use the knowledge base if it documents this table.'
 
 export function SchemaTree({ connection, schema }: { connection: StoredConnection; schema?: SchemaSnapshot }) {
   const runtime = useConnections((s) => s.runtime[connection.id])
   const loadSchema = useConnections((s) => s.loadSchema)
+  const togglePin = useConnections((s) => s.togglePin)
   const openTab = useWorkspace((s) => s.open)
   const newQuery = useWorkspace((s) => s.newQuery)
   const [filter, setFilter] = useState('')
@@ -93,6 +98,18 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
     const q = filter.trim()
     const matches = (t: TableInfo) => !q || fuzzyScore(t.name, q) >= 0 || t.columns.some((c) => c.name.toLowerCase() === q.toLowerCase())
     const out: Node[] = []
+    const pinned = (connection.pinnedTables ?? []).map((p) => schema.tables.find((t) => pinKey(t) === p)).filter((t): t is TableInfo => !!t)
+    if (pinned.length && !q) {
+      const groupKey = 'g::Pinned'
+      out.push({ kind: 'group', key: groupKey, label: 'Pinned', count: pinned.length, depth: 0, groupKey })
+      if (!expanded.has(`${groupKey}:collapsed`)) {
+        for (const t of pinned) {
+          const key = `p:${pinKey(t)}`
+          out.push({ kind: 'table', key, table: t, depth: 1 })
+          if (expanded.has(key)) for (const c of t.columns) out.push({ kind: 'column', key: `${key}.${c.name}`, table: t, column: c, depth: 2 })
+        }
+      }
+    }
     const schemaNames = schema.schemas.length ? schema.schemas : [...new Set(schema.tables.map((t) => t.schema ?? ''))]
     const multi = schemaNames.length > 1
     const ordered = [...schemaNames].sort((a, b) => (a === schema.defaultSchema ? -1 : b === schema.defaultSchema ? 1 : a.localeCompare(b)))
@@ -139,7 +156,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
       }
     }
     return out
-  }, [schema, filter, expanded, collapsedSchemas])
+  }, [schema, filter, expanded, collapsedSchemas, connection.pinnedTables])
 
   const virtualizer = useVirtualizer({
     count: nodes.length,
@@ -157,6 +174,9 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
       { label: tr('Open data'), icon: <Table2 size={13} />, onClick: () => openTable(t) },
       { label: tr('Open structure'), icon: <Layers size={13} />, onClick: () => openTab({ kind: 'structure', connectionId: connection.id, table: { schema: t.schema, name: t.name }, title: tr('{name} · structure', { name: t.name }) }) },
       { label: tr('Show in diagram'), icon: <Network size={13} />, onClick: () => openTab({ kind: 'diagram', connectionId: connection.id, title: tr('Diagram: {name}', { name: t.name }), focus: t.name }) },
+      connection.pinnedTables?.includes(pinKey(t))
+        ? { label: tr('Unpin'), icon: <PinOff size={13} />, onClick: () => togglePin(connection.id, pinKey(t)) }
+        : { label: tr('Pin to top'), icon: <Pin size={13} />, onClick: () => togglePin(connection.id, pinKey(t)) },
       {
         label: tr('Explain with AI'),
         icon: <Sparkles size={13} />,
