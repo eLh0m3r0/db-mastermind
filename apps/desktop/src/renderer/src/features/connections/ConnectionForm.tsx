@@ -12,6 +12,7 @@ import { toast, useUi } from '@/store/ui'
 import { DriverIcon, DRIVERS } from './drivers'
 import { useSettings } from '@/store/settings'
 import { AiPermissionControls, aiDefaultsOf } from '../ai/AiPermissions'
+import { KnowledgeLocationBar, useKnowledgeLocation } from '../knowledge/KnowledgeLocation'
 import { useT } from '@/lib/i18n'
 
 export const CONNECTION_COLORS = ['#6d4aff', '#0b72d9', '#0f9f6e', '#d97706', '#dc2626', '#db2777', '#64748b']
@@ -77,6 +78,7 @@ export function ConnectionForm() {
   const [test, setTest] = useState<{ state: 'idle' | 'running' | 'ok' | 'error'; message?: string }>({ state: 'idle' })
   const [busy, setBusy] = useState(false)
   const [urlText, setUrlText] = useState('')
+  const { location: kbLocation } = useKnowledgeLocation(existing?.id, existing?.knowledgeBasePath)
   /** Why "Save & connect" failed, shown once the form reopens on the saved connection. */
   const failedConnect = useRef<{ state: 'error'; message?: string }>(undefined)
   const t = useT()
@@ -574,8 +576,20 @@ export function ConnectionForm() {
                   </Field>
                 )}
                 <Field label={t('Knowledge base folder')} hint={t('Markdown notes about this database, used by the AI assistant. Optional.')}>
+                  {existing && kbLocation && (
+                    <KnowledgeLocationBar
+                      compact
+                      connection={existing}
+                      location={kbLocation}
+                      // The change is already saved; keep the form's copy in step so Save doesn't undo it.
+                      onChanged={(l) => set({ knowledgeBasePath: l.path, knowledgeBaseLocal: l.personal || undefined } as Partial<ConnectionConfig>)}
+                    />
+                  )}
                   <div className="flex gap-2">
-                    <Input className="flex-1 font-mono text-[12px]" value={config.knowledgeBasePath ?? ''} onChange={(e) => set({ knowledgeBasePath: e.target.value || undefined })} />
+                    <Input className="flex-1 font-mono text-[12px]" value={config.knowledgeBasePath ?? ''}
+                      // A team connection pointed elsewhere by hand is this user's own (the team's path would win otherwise).
+                      onChange={(e) => set({ knowledgeBasePath: e.target.value || undefined, ...(existing?.team ? { knowledgeBaseLocal: true } : {}) } as Partial<ConnectionConfig>)}
+                    />
                     <Button icon={<FolderOpen size={14} />} onClick={() => void api.pickDirectory(t('Knowledge base folder')).then((p) => p && set({ knowledgeBasePath: p }))}>
                       {t('Browse')}
                     </Button>

@@ -20,6 +20,7 @@ import { Markdown } from '../ai/Markdown'
 import { askAiToDocument } from './generate'
 import { t, tp, useT } from '@/lib/i18n'
 import { askText, confirmAction } from '@/components/ui/ConfirmDialog'
+import { KnowledgeLocationBar, useKnowledgeLocation } from './KnowledgeLocation'
 
 const TEMPLATE = (title: string) => `---
 tables: []
@@ -87,6 +88,7 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
   const [preview, setPreview] = useState(true)
   const t = useT()
   const folder = connection?.knowledgeBasePath
+  const { location, reload: reloadLocation } = useKnowledgeLocation(connection?.id, folder)
   const current = tab.file
 
   const refresh = useCallback(async () => {
@@ -240,6 +242,7 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
             <FolderOpen size={13} />
           </IconButton>
         </div>
+        {location && <KnowledgeLocationBar connection={connection} location={location} onChanged={reloadLocation} />}
         <div className="p-2">
           <Input inputSize="sm" placeholder={t('Find note…')} value={search} onChange={(e) => setSearch(e.target.value)} leading={<Search size={12} />} />
         </div>

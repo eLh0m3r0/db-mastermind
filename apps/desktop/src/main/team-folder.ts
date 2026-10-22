@@ -184,7 +184,7 @@ export function writeTeamConnection(dir: string, connection: ConnectionConfig): 
   const raw = existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as unknown) : { format: 'db-mastermind-connections', version: 1, connections: [] }
   const list = (Array.isArray(raw) ? raw : ((raw as { connections?: TeamConnection[] }).connections ?? [])) as TeamConnection[]
   const { password: _pw, ...rest } = connection as ConnectionConfig & Record<string, unknown>
-  for (const key of ['createdAt', 'updatedAt', 'lastUsedAt', 'pinnedTables', 'hiddenSchemas', 'managed', 'team']) delete rest[key]
+  for (const key of ['createdAt', 'updatedAt', 'lastUsedAt', 'pinnedTables', 'hiddenSchemas', 'managed', 'team', 'knowledgeBaseLocal']) delete rest[key]
   if (rest.ssh) rest.ssh = { ...rest.ssh, password: undefined, privateKey: undefined, passphrase: undefined }
   if (rest.ssl) rest.ssl = { ...rest.ssl, key: undefined }
   // A knowledge base on this computer is copied into knowledge/<id>: colleagues can't reach a local path.

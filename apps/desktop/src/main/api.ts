@@ -54,11 +54,13 @@ import { createExportWriter, EXPORT_EXTENSIONS } from './export'
 import { cancelChat, respondApproval, startChat } from './ai/assistant'
 import { completeText, extractJson } from './ai/complete'
 import { listModels, testProvider } from './ai/models'
+import { deleteChat, deleteChatsOf, getChat, listChats, renameChat, saveChat } from './ai/chat-store'
 import { detectImportSources, exportConnections, importConnections } from './importers'
 import { backupDatabase, restoreDatabase } from './backup'
 import { aiAccess } from './ai-access'
 import { managed } from './managed'
 import { checkNow, installUpdate } from './updates'
+import { defaultKnowledgeFolder, inspectKnowledgeFolder, knowledgeLocation, setKnowledgeLocation } from './kb-location'
 import { reloadTeam, setTeamFolder, teamDir, teamStatus } from './team'
 import { removeTeamConnection, writeTeamConnection } from './team-folder'
 import { addToMcpClient, mcpClientStatuses, type McpLaunch } from './mcp-clients'
@@ -190,6 +192,7 @@ export const api: MastermindApi = {
     for (const d of library.listDiagrams(id)) library.deleteDiagram(d.id)
     for (const c of library.listChangeSets(id)) library.deleteChangeSet(c.id)
     for (const d of library.listDashboards(id)) library.deleteDashboard(d.id)
+    deleteChatsOf(id)
   },
   async duplicateConnection(id) {
     return connections.duplicateConnection(id)
@@ -748,10 +751,19 @@ export const api: MastermindApi = {
   async kbEnsureFolder(connectionId) {
     const config = connections.getConnection(connectionId)
     if (config.knowledgeBasePath) return config.knowledgeBasePath
-    const folder = join(app.getPath('userData'), 'knowledge', `${config.name.replace(/[^\p{L}\p{N}._-]+/gu, '_')}-${config.id.slice(0, 6)}`)
+    const folder = defaultKnowledgeFolder(config)
     await mkdir(folder, { recursive: true })
     connections.saveConnection({ ...config, knowledgeBasePath: folder })
     return folder
+  },
+  async kbLocation(connectionId) {
+    return knowledgeLocation(connectionId)
+  },
+  async kbInspectFolder(path) {
+    return inspectKnowledgeFolder(path)
+  },
+  async kbSetLocation(connectionId, target, copy) {
+    return setKnowledgeLocation(connectionId, target, copy)
   },
   async kbIssues(connectionId) {
     await ensureConnected(connectionId)
@@ -804,6 +816,21 @@ export const api: MastermindApi = {
     if (!info) throw new Error('Table not found')
     const { system, prompt } = filterPrompt(info, request)
     return sanitizeFilter(extractJson(await completeText(system, prompt)), info)
+  },
+  async listAiChats(connectionId) {
+    return listChats(connectionId)
+  },
+  async getAiChat(id) {
+    return getChat(id)
+  },
+  async saveAiChat(chat) {
+    saveChat(chat)
+  },
+  async renameAiChat(id, title) {
+    renameChat(id, title)
+  },
+  async deleteAiChat(id) {
+    deleteChat(id)
   },
   async cancelAiChat(chatId) {
     cancelChat(chatId)

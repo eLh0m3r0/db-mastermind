@@ -73,6 +73,8 @@ export function mergeManagedConnections(
     const def = byId.get(c.id)
     if (!def) return c[mark] ? { ...c, [mark]: undefined } : c
     const merged = { ...c, ...strip(def), [mark]: true } as StoredConnection
+    // A team connection's knowledge base pointed elsewhere by this user stays theirs.
+    if (mark === 'team' && c.knowledgeBaseLocal && c.knowledgeBasePath) merged.knowledgeBasePath = c.knowledgeBasePath
     // Keep the user's SSH secrets when the managed entry defines the tunnel.
     if (def.ssh && c.ssh) merged.ssh = { ...merged.ssh!, password: c.ssh.password, privateKey: c.ssh.privateKey, passphrase: c.ssh.passphrase }
     return merged

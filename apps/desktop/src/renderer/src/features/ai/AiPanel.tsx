@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { create } from 'zustand'
-import { ArrowUp, BookOpen, Check, ChevronRight, Plus, Settings2, Sparkles, Square, Wrench, X } from 'lucide-react'
+import { ArrowUp, BookOpen, Check, ChevronRight, History, MessageSquare, Pencil, Plus, Settings2, Sparkles, Square, Trash2, Wrench, X } from 'lucide-react'
 import { designFromDbml } from '@dbmastermind/core/browser'
-import type { AiEvent } from '@shared/api'
+import type { AiChatSummary, AiEvent } from '@shared/api'
+import { askText, confirmAction } from '@/components/ui/ConfirmDialog'
 import { Button, IconButton } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
 import { api, bridge, modKey } from '@/lib/api'
@@ -38,23 +39,63 @@ interface Chat {
 
 interface ChatStore {
   chats: Record<string, Chat>
+  /** Connections whose last saved chat was already looked up this session. */
+  restored: Record<string, boolean>
   get(connectionId: string): Chat
   update(connectionId: string, fn: (chat: Chat) => Chat): void
   reset(connectionId: string): void
+  /** Opens a saved chat (or the newest one when `id` is omitted). */
+  open(connectionId: string, id?: string): Promise<void>
+}
+
+const saveTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+/** Chats are kept between sessions (main process, ai-chats.json); saved shortly after each change. */
+function scheduleSave(connectionId: string, chat: Chat) {
+  if (!chat.messages.length) return
+  clearTimeout(saveTimers.get(chat.id))
+  saveTimers.set(
+    chat.id,
+    setTimeout(() => {
+      saveTimers.delete(chat.id)
+      const first = chat.messages.find((m) => m.role === 'user')
+      const title = first ? messageText(first).replace(/\s+/g, ' ').slice(0, 80) : undefined
+      void api.saveAiChat({ id: chat.id, connectionId, title, messages: chat.messages }).catch(() => {})
+    }, 400),
+  )
 }
 
 const useChats = create<ChatStore>((set, get) => ({
   chats: {},
+  restored: {},
   get: (connectionId) => get().chats[connectionId] ?? { id: uid('chat'), messages: [], running: false },
-  update: (connectionId, fn) => set((s) => ({ chats: { ...s.chats, [connectionId]: fn(s.get(connectionId)) } })),
+  update: (connectionId, fn) => {
+    const next = fn(get().get(connectionId))
+    set((s) => ({ chats: { ...s.chats, [connectionId]: next } }))
+    scheduleSave(connectionId, next)
+  },
   reset: (connectionId) =>
     set((s) => {
       const chats = { ...s.chats }
       const old = chats[connectionId]
       if (old?.running) void api.cancelAiChat(old.id)
       delete chats[connectionId]
-      return { chats }
+      return { chats, restored: { ...s.restored, [connectionId]: true } }
     }),
+  open: async (connectionId, id) => {
+    set((s) => ({ restored: { ...s.restored, [connectionId]: true } }))
+    const target = id ?? (await api.listAiChats(connectionId))[0]?.id
+    const saved = target ? await api.getAiChat(target) : null
+    if (!saved) return
+    const old = get().chats[connectionId]
+    if (old?.running) void api.cancelAiChat(old.id)
+    // A question that waited for an answer when the app closed can't be answered any more.
+    const messages = (saved.messages as Message[]).map((m) => ({
+      ...m,
+      parts: m.parts.map((p) => (p.type === 'approval' && p.answer === undefined ? { ...p, answer: false } : p)),
+    }))
+    set((s) => ({ chats: { ...s.chats, [connectionId]: { id: saved.id, messages, running: false } } }))
+  },
 }))
 
 // Route streamed events to the chat that owns them.
@@ -128,6 +169,7 @@ export function AiPanel() {
   const setUi = useUi((s) => s.set)
   const activeTab = useActiveTab()
   const [input, setInput] = useState('')
+  const [showHistory, setShowHistory] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const provider = settings?.ai.providers.find((p) => p.id === settings.ai.activeProvider)
@@ -137,6 +179,13 @@ export function AiPanel() {
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
   }, [chat?.messages])
+
+  // The connection's last chat comes back after a restart.
+  const restored = useChats((s) => (connectionId ? s.restored[connectionId] : true))
+  useEffect(() => {
+    if (connectionId && !restored && !useChats.getState().chats[connectionId]) void useChats.getState().open(connectionId)
+  }, [connectionId, restored])
+  useEffect(() => setShowHistory(false), [connectionId])
 
 
   const send = (text: string) => {
@@ -244,7 +293,19 @@ export function AiPanel() {
           </span>
         )}
         <div className="flex-1" />
-        <IconButton label={t('New chat')} disabled={!connectionId} onClick={() => connectionId && reset(connectionId)}>
+        <IconButton label={t('Chat history')} disabled={!connectionId} onClick={() => setShowHistory((v) => !v)} className={cn(showHistory && 'bg-muted text-fg')}>
+          <History size={13} />
+        </IconButton>
+        <IconButton
+          label={t('New chat')}
+          disabled={!connectionId}
+          onClick={() => {
+            if (!connectionId) return
+            reset(connectionId)
+            setShowHistory(false)
+            requestAnimationFrame(() => inputRef.current?.focus())
+          }}
+        >
           <Plus size={14} />
         </IconButton>
         <IconButton label={t('AI settings')} onClick={() => setUi({ modal: { kind: 'settings', section: 'ai' } })}>
@@ -275,6 +336,16 @@ export function AiPanel() {
           <p className="text-[12px] leading-relaxed text-fg-muted">{t('Nothing from this connection is sent to an AI model. You can allow it in AI permissions.')}</p>
           <Button onClick={() => setUi({ modal: { kind: 'settings', section: 'permissions' } })}>{t('AI permissions')}</Button>
         </div>
+      ) : showHistory && connectionId ? (
+        <ChatHistory
+          connectionId={connectionId}
+          currentId={chat?.id}
+          onOpen={(id) => {
+            void useChats.getState().open(connectionId, id)
+            setShowHistory(false)
+          }}
+          onDeletedCurrent={() => reset(connectionId)}
+        />
       ) : (
         <>
           <div ref={listRef} className="min-h-0 flex-1 overflow-auto px-3 py-3">
@@ -410,6 +481,53 @@ function ToolCall({ part }: { part: Extract<Part, { type: 'tool' }> }) {
           {part.output !== undefined && <pre className="max-h-64 overflow-auto font-mono text-[10.5px] whitespace-pre-wrap select-text">{part.output}</pre>}
         </div>
       )}
+    </div>
+  )
+}
+
+/** The connection's saved chats: open, rename, delete. */
+function ChatHistory({ connectionId, currentId, onOpen, onDeletedCurrent }: { connectionId: string; currentId?: string; onOpen: (id: string) => void; onDeletedCurrent: () => void }) {
+  const t = useT()
+  const [chats, setChats] = useState<AiChatSummary[] | null>(null)
+  const load = () => void api.listAiChats(connectionId).then(setChats)
+  useEffect(load, [connectionId])
+
+  const rename = async (c: AiChatSummary) => {
+    const title = await askText({ title: t('Rename chat'), value: c.title, confirmLabel: t('Rename') })
+    if (!title?.trim()) return
+    await api.renameAiChat(c.id, title)
+    load()
+  }
+  const remove = async (c: AiChatSummary) => {
+    if (!(await confirmAction({ title: t('Delete this chat?'), message: c.title, confirmLabel: t('Delete'), danger: true }))) return
+    await api.deleteAiChat(c.id)
+    if (c.id === currentId) onDeletedCurrent()
+    load()
+  }
+
+  if (!chats) return <div className="flex flex-1 items-center justify-center"><Spinner /></div>
+  if (!chats.length) return <div className="flex flex-1 items-center justify-center p-6 text-center text-[12px] text-fg-faint">{t('No saved chats yet. Chats are kept here when you ask something.')}</div>
+  return (
+    <div className="min-h-0 flex-1 overflow-auto p-2">
+      {chats.map((c) => (
+        <div key={c.id} className={cn('group flex items-center gap-1 rounded-md pr-1 hover:bg-muted', c.id === currentId && 'bg-muted')}>
+          <button type="button" className="flex min-w-0 flex-1 items-start gap-2 px-2 py-1.5 text-left" onClick={() => onOpen(c.id)}>
+            <MessageSquare size={13} className="mt-0.5 shrink-0 text-fg-faint" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[12.5px]">{c.title}</span>
+              <span className="block text-[11px] text-fg-faint">
+                {new Date(c.updatedAt).toLocaleString()} · {tp(c.messageCount, { one: '{n} message', many: '{n} messages' })}
+              </span>
+            </span>
+          </button>
+          <IconButton label={t('Rename chat')} className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => void rename(c)}>
+            <Pencil size={12} />
+          </IconButton>
+          <IconButton label={t('Delete chat')} className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => void remove(c)}>
+            <Trash2 size={12} />
+          </IconButton>
+        </div>
+      ))}
     </div>
   )
 }

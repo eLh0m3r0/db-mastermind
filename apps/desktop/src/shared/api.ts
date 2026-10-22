@@ -92,6 +92,22 @@ export interface AiSettings {
   autoRunReadQueries: boolean
 }
 
+/** An assistant chat kept between sessions; messages are the renderer's own format. */
+export interface AiStoredChat {
+  id: string
+  connectionId: string
+  title: string
+  updatedAt: string
+  messages: unknown[]
+}
+
+export interface AiChatSummary {
+  id: string
+  title: string
+  updatedAt: string
+  messageCount: number
+}
+
 export interface McpSettings {
   enabled: boolean
   port: number
@@ -172,7 +188,30 @@ export interface StoredConnection extends ConnectionConfig {
   managed?: boolean
   /** Comes from the team folder's connections.json (kept in sync with it). */
   team?: boolean
+  /** Team connection whose knowledge base this user pointed to another folder (applies only to them). */
+  knowledgeBaseLocal?: boolean
 }
+
+/** Where a connection's knowledge base lives, for the knowledge base header and the connection form. */
+export interface KbLocation {
+  path?: string
+  /** this-computer: the app's data folder · team-folder: inside the team folder · folder: a folder the user chose. */
+  place: 'none' | 'this-computer' | 'team-folder' | 'folder'
+  notes: number
+  /** Other connections using the same folder. */
+  sharedWith: string[]
+  team: boolean
+  /** A team connection pointed elsewhere for this user only. */
+  personal: boolean
+  /** The team folder's own knowledge base of a team connection. */
+  teamPath?: string
+  canMoveToTeam: boolean
+  isDefault: boolean
+  /** This computer's folder for it (<data>/knowledge/<name>-<id>). */
+  defaultPath: string
+}
+
+export type KbTarget = { kind: 'folder'; path: string } | { kind: 'same-as'; connectionId: string } | { kind: 'team' } | { kind: 'default' }
 
 export type ExplorerPrefs = Pick<StoredConnection, 'pinnedTables' | 'hiddenSchemas'>
 
@@ -489,6 +528,11 @@ export interface MastermindApi {
 
   /** Knowledge base of a connection; creates a default folder in the data dir when asked. */
   kbEnsureFolder(connectionId: string): Promise<string>
+  kbLocation(connectionId: string): Promise<KbLocation>
+  /** Whether a folder is empty (notes can be copied into it) and how many notes it has. */
+  kbInspectFolder(path: string): Promise<{ empty: boolean; notes: number }>
+  /** Points the knowledge base elsewhere; `copy` copies the current notes into an empty target folder. */
+  kbSetLocation(connectionId: string, target: KbTarget, copy: boolean): Promise<KbLocation>
   kbList(connectionId: string): Promise<KnowledgeFileInfo[]>
   /** Notes mentioning tables, columns or relationships the database no longer has. */
   kbIssues(connectionId: string): Promise<{ path: string; message: string }[]>
@@ -505,6 +549,12 @@ export interface MastermindApi {
   aiWriteSql(connectionId: string, request: string, sql?: string, selection?: string): Promise<string>
   aiSuggestFilter(connectionId: string, table: TableRef, request: string): Promise<FilterGroup>
   cancelAiChat(chatId: string): Promise<void>
+  /** Saved assistant chats of a connection, newest first. */
+  listAiChats(connectionId: string): Promise<AiChatSummary[]>
+  getAiChat(id: string): Promise<AiStoredChat | null>
+  saveAiChat(chat: { id: string; connectionId: string; title?: string; messages: unknown[] }): Promise<void>
+  renameAiChat(id: string, title: string): Promise<void>
+  deleteAiChat(id: string): Promise<void>
   /** `always` approves this and all later requests of the same kind in the chat. */
   respondAiApproval(id: string, answer: boolean | 'always'): Promise<void>
 
@@ -609,6 +659,9 @@ export const API_METHODS = [
   'openExternal',
   'showItemInFolder',
   'kbEnsureFolder',
+  'kbLocation',
+  'kbInspectFolder',
+  'kbSetLocation',
   'kbList',
   'kbIssues',
   'kbRead',
@@ -620,6 +673,11 @@ export const API_METHODS = [
   'aiSuggestFilter',
   'aiWriteSql',
   'cancelAiChat',
+  'listAiChats',
+  'getAiChat',
+  'saveAiChat',
+  'renameAiChat',
+  'deleteAiChat',
   'respondAiApproval',
   'loadWorkspace',
   'saveWorkspace',
