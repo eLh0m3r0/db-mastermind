@@ -8,6 +8,10 @@ import {
   buildChangeStatements,
   detectDelimiter,
   explainQuery,
+  DIALECT_NAMES,
+  extractSql,
+  schemaOverview,
+  writeSqlPrompt,
   listActivity,
   buildDataDictionary,
   compareTableData,
@@ -519,6 +523,19 @@ export const api: MastermindApi = {
   async aiChat(request) {
     // Runs in the background; progress arrives as 'ai:event' messages.
     startChat(request)
+  },
+  async aiWriteSql(connectionId, request, sql, selection) {
+    const config = connections.getConnection(connectionId)
+    if (config.aiEnabled === false) throw new Error('AI is turned off for this connection')
+    await ensureConnected(connectionId)
+    const snapshot = await db.schema(connectionId)
+    let notes: string | undefined
+    if (config.knowledgeBasePath) {
+      const hits = await knowledge(connectionId).search(request, 3).catch(() => [])
+      notes = hits.map((h) => `${h.title}: ${h.excerpt}`).join('\n') || undefined
+    }
+    const { system, prompt } = writeSqlPrompt({ driver: config.driver, dialectName: DIALECT_NAMES[config.driver], request, schema: schemaOverview(snapshot), sql, selection, notes })
+    return extractSql(await completeText(system, prompt))
   },
   async aiSuggestFilter(connectionId, table, request) {
     const config = connections.getConnection(connectionId)

@@ -168,7 +168,7 @@ async function runSql(ctx: ToolContext, sql: string, maxRows: number): Promise<s
     .join('\n\n')
 }
 
-const DIALECT_NAMES: Record<DriverId, string> = {
+export const DIALECT_NAMES: Record<DriverId, string> = {
   postgres: 'PostgreSQL',
   mssql: 'T-SQL (SQL Server)',
   mysql: 'MySQL',

@@ -5,7 +5,7 @@ import { Splitter } from '@/components/ui/Splitter'
 import { Toasts } from '@/components/ui/Toasts'
 import { bridge } from '@/lib/api'
 import { QUERYABLE_FILE, queryFile } from '@/lib/files'
-import { onCommand } from '@/lib/commands'
+import { onCommand, runCommand } from '@/lib/commands'
 import { t } from '@/lib/i18n'
 import { installKeymap } from '@/lib/keymap'
 import { useConnections } from '@/store/connections'
@@ -57,9 +57,13 @@ function useGlobalCommands() {
           case 'toggle-ai':
             ui.set({ aiPanelVisible: !ui.aiPanelVisible })
             break
-          case 'ask-ai':
-            askAi()
+          case 'ask-ai': {
+            // In a query tab, Cmd/Ctrl+I writes SQL inline; elsewhere it opens the assistant.
+            const ws = useWorkspace.getState()
+            if (ws.tabs.find((x) => x.id === ws.activeTabId)?.kind === 'query') runCommand('inline-ai')
+            else askAi()
             break
+          }
           case 'palette':
             ui.set({ palette: ui.palette ? undefined : 'commands' })
             break

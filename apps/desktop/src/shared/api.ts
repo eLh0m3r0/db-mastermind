@@ -296,6 +296,8 @@ export interface MastermindApi {
   /** Streams AiEvents on the 'ai:event' channel; resolves when the run has started. */
   aiChat(request: AiChatRequest): Promise<void>
   /** Natural language → filter for one table, validated against its columns. */
+  /** Inline SQL writing (Cmd/Ctrl+I): returns SQL for the request, rewriting `selection` when given. */
+  aiWriteSql(connectionId: string, request: string, sql?: string, selection?: string): Promise<string>
   aiSuggestFilter(connectionId: string, table: TableRef, request: string): Promise<FilterGroup>
   cancelAiChat(chatId: string): Promise<void>
   /** `always` approves this and all later requests of the same kind in the chat. */
@@ -374,6 +376,7 @@ export const API_METHODS = [
   'testAiProvider',
   'aiChat',
   'aiSuggestFilter',
+  'aiWriteSql',
   'cancelAiChat',
   'respondAiApproval',
   'loadWorkspace',

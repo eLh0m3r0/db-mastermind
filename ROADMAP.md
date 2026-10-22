@@ -123,7 +123,7 @@ project's (AI) maintainer and updated with every release.
 ### In-app assistant
 - ✅ Chat panel with tool use: list tables, describe table, run read-only query, sample rows, read
   knowledge base, search schema
-- 🚧 Inline "Ask AI" in the SQL editor (`Ctrl/Cmd+I`): natural language → SQL, explain, optimize,
+- ✅ Inline "Ask AI" in the SQL editor (`Ctrl/Cmd+I`): natural language → SQL, explain, optimize,
   fix the error that just happened
 - ✅ "Explain with AI" on any table in the explorer (column / relationship variants ⬜)
 - ✅ AI-suggested filters in the data browser ("orders from last month over 1000 CZK"), validated against real columns

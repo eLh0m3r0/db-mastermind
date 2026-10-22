@@ -150,9 +150,42 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
     } else setSaveOpen(true)
   }, [tab, updateTab, t])
 
-  const askAi = useCallback(() => {
-    askAi()
-  }, [])
+  // Inline AI (Cmd/Ctrl+I): describe the SQL, it lands in the editor (replacing the selection, if any).
+  const [inline, setInline] = useState<{ prompt: string; busy: boolean } | null>(null)
+  const openInline = useCallback(() => setInline((v) => v ?? { prompt: '', busy: false }), [])
+  const submitInline = useCallback(async () => {
+    const view = editor.current?.view()
+    if (!inline?.prompt.trim() || !view) return
+    const sel = view.state.selection.main
+    const selection = sel.empty ? undefined : view.state.sliceDoc(sel.from, sel.to)
+    setInline({ ...inline, busy: true })
+    try {
+      const sql = await api.aiWriteSql(tab.connectionId, inline.prompt.trim(), view.state.doc.toString(), selection)
+      if (!sql) throw new Error(t('The model returned no SQL'))
+      const doc = view.state.doc
+      let from = sel.from
+      let to = sel.to
+      let text = sql
+      if (sel.empty) {
+        // New statement: on its own lines after the current one, or replacing an empty editor.
+        const line = doc.lineAt(sel.head)
+        if (doc.toString().trim()) {
+          from = to = line.to
+          text = `${line.text.trim() ? '\n\n' : ''}${sql}`
+        } else {
+          from = 0
+          to = doc.length
+        }
+      }
+      const start = from + (text.length - sql.length)
+      view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: start, head: start + sql.length }, scrollIntoView: true })
+      setInline(null)
+      view.focus()
+    } catch (err) {
+      setInline((v) => (v ? { ...v, busy: false } : v))
+      toast({ kind: 'error', message: t('AI could not write the SQL'), detail: errorMessage(err) })
+    }
+  }, [inline, tab.connectionId, t])
 
   useEffect(() => {
     if (!active) return
@@ -163,8 +196,9 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       else if (command === 'format-sql') format()
       else if (command === 'save-query') void save()
       else if (command === 'focus-editor') editor.current?.focus()
+      else if (command === 'inline-ai') openInline()
     })
-  }, [active, run, cancel, format, save])
+  }, [active, run, cancel, format, save, openInline])
 
   useEffect(() => {
     if (active) requestAnimationFrame(() => editor.current?.focus())
@@ -221,12 +255,51 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
         >
           {t('Explain')}
         </Button>
-        <Button size="sm" variant="ghost" icon={<Sparkles size={14} />} onClick={askAi} title={`${t('Ask AI')} (${modKey}I)`}>
+        <Button size="sm" variant="ghost" icon={<Sparkles size={14} />} onClick={openInline} title={`${t('Ask AI')} (${modKey}I)`}>
           {t('Ask AI')}
         </Button>
         <div className="flex-1" />
         {connection?.readOnly && <span className="text-[11.5px] text-fg-faint">{t('read-only')}</span>}
       </div>
+      {inline && (
+        <form
+          className="flex shrink-0 items-center gap-2 border-b border-line bg-accent-soft/40 px-3 py-1.5"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void submitInline()
+          }}
+        >
+          <Sparkles size={14} className="shrink-0 text-accent" />
+          <Input
+            autoFocus
+            inputSize="sm"
+            className="flex-1"
+            disabled={inline.busy}
+            value={inline.prompt}
+            placeholder={editor.current?.view()?.state.selection.main.empty === false ? t('How should the selected SQL change?') : t('Describe the query, e.g. top 10 customers by revenue this year')}
+            onChange={(e) => setInline({ ...inline, prompt: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setInline(null)
+                editor.current?.focus()
+              }
+            }}
+          />
+          <Button size="sm" variant="primary" type="submit" loading={inline.busy} disabled={!inline.prompt.trim()}>
+            {t('Write SQL')}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              askAi({ prompt: inline.prompt })
+              setInline(null)
+            }}
+          >
+            {t('Chat instead')}
+          </Button>
+        </form>
+      )}
       <div style={{ height: editorHeight }} className="min-h-[80px] shrink-0">
         <SqlEditor
           ref={editor}
@@ -239,7 +312,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
           onRunAll={() => void run('all')}
           onFormat={format}
           onSave={() => void save()}
-          onAskAi={askAi}
+          onAskAi={openInline}
         />
       </div>
       <Splitter direction="vertical" size={editorHeight} onResize={setEditorHeight} min={80} max={window.innerHeight - 200} />

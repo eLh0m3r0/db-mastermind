@@ -738,4 +738,10 @@ export const cs: Record<string, string> = {
   'blocks {n} session': 'blokuje {n} relaci',
   'blocks {n} sessions': 'blokuje {n} relací',
   'blocks {n} sessions|few': 'blokuje {n} relace',
+  'The model returned no SQL': 'Model nevrátil žádné SQL',
+  'AI could not write the SQL': 'AI nedokázala SQL napsat',
+  'How should the selected SQL change?': 'Jak má AI upravit vybrané SQL?',
+  'Describe the query, e.g. top 10 customers by revenue this year': 'Popište dotaz, např. 10 nejlepších zákazníků podle tržeb za letošek',
+  'Write SQL': 'Napsat SQL',
+  'Chat instead': 'Raději chat',
 }
