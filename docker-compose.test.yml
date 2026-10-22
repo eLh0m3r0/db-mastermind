@@ -71,3 +71,15 @@ services:
   trino:
     image: trinodb/trino:483
     ports: ['18080:8080']
+  # SSH server for tunnel tests (container name is fixed: the test restarts it).
+  ssh:
+    image: lscr.io/linuxserver/openssh-server:10.3_p1-r1-ls238
+    container_name: dbm-ssh
+    environment:
+      PUID: '1000'
+      PGID: '1000'
+      USER_NAME: dbm
+      USER_PASSWORD: sshsecret
+      PASSWORD_ACCESS: 'true'
+      DOCKER_MODS: linuxserver/mods:openssh-server-ssh-tunnel
+    ports: ['2222:2222']

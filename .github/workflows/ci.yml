@@ -81,6 +81,12 @@ jobs:
         run: |
           docker run -d --name cockroach -p 26257:26257 cockroachdb/cockroach:latest-v24.3 start-single-node --insecure
           for i in $(seq 1 60); do docker exec cockroach ./cockroach sql --insecure -e 'select 1' >/dev/null 2>&1 && break; sleep 2; done
+      - name: Start an SSH server (tunnel tests reach the postgres service through it)
+        run: |
+          mkdir -p "$RUNNER_TEMP/ssh" && ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/ssh/id_test"
+          docker run -d --name dbm-ssh --network ${{ job.services.postgres.network }} -p 2222:2222 -e PUID=1000 -e PGID=1000 -e USER_NAME=dbm -e USER_PASSWORD=sshsecret -e PASSWORD_ACCESS=true -e PUBLIC_KEY="$(cat "$RUNNER_TEMP/ssh/id_test.pub")" -e DOCKER_MODS=linuxserver/mods:openssh-server-ssh-tunnel lscr.io/linuxserver/openssh-server:10.3_p1-r1-ls238
+          for i in $(seq 1 60); do docker logs dbm-ssh 2>&1 | grep -q 'ls.io-init] done' && nc -z 127.0.0.1 2222 && break; sleep 2; done
+          echo "DBM_SSH_KEY=$RUNNER_TEMP/ssh/id_test" >> "$GITHUB_ENV"
       - run: npm run test:integration
       - name: Build desktop bundles
         run: npx electron-vite build
