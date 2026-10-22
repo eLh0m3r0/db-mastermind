@@ -97,7 +97,9 @@ export function HomeScreen() {
             </div>
           </Feature>
           <Feature icon={<Sparkles size={16} />} title={t('AI that knows your schema')}>
-            {t('Connect Claude, OpenAI, OpenRouter or a local model, or use your Claude Code / Codex subscription.')} {t('Press')} <Kbd>{modKey}</Kbd> <Kbd>J</Kbd>.
+            {t('Connect Claude, OpenAI, OpenRouter or a local model, or use your Claude Code / Codex subscription.')} <span className="whitespace-nowrap">
+              {t('Press')} <Kbd>{modKey}</Kbd> <Kbd>J</Kbd>.
+            </span>
           </Feature>
           <Feature icon={<BookOpen size={16} />} title={t('Open source')}>
             {t('MIT licensed, no feature limits.')}{' '}

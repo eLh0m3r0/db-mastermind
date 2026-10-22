@@ -120,16 +120,17 @@ export function AiPermissionsSection() {
             <div key={c.id} className={cn(GRID, 'border-b border-line px-3 py-1.5 last:border-b-0')}>
               <span className="flex min-w-0 items-center gap-1.5 text-[12.5px]" title={c.name}>
                 <DriverIcon driver={c.driver} size={14} />
-                <span className="truncate">{c.name}</span>
+                <span className="flex min-w-0 flex-col">
+                  <span className="line-clamp-2 break-words">{c.name}</span>
+                  {!own && <span className="text-[11px] text-fg-faint">{t('default')}</span>}
+                </span>
               </span>
               <AiPermissionControls compact value={value} readOnlyConnection={c.readOnly} onChange={(p) => void save(c, p)} />
               <div className="flex items-center justify-end">
-                {own ? (
+                {own && (
                   <IconButton label={t('Use the default')} onClick={() => void save(c, undefined)}>
                     <RotateCcw size={12} />
                   </IconButton>
-                ) : (
-                  <span className="text-[11px] text-fg-faint">{t('default')}</span>
                 )}
               </div>
             </div>
