@@ -1,6 +1,77 @@
+import { createHash } from 'node:crypto'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import net from 'node:net'
+import { dirname } from 'node:path'
 import { Client, type ConnectConfig } from 'ssh2'
 import type { SshConfig } from './types.js'
+
+/**
+ * Trusted SSH host keys, like OpenSSH's known_hosts: the first connection to a host remembers its key's fingerprint
+ * (trust on first use); a different key later is refused, because that's what a server in the middle looks like.
+ */
+export interface KnownHosts {
+  get(host: string): string | undefined
+  set(host: string, fingerprint: string): void
+  delete(host: string): void
+}
+
+const memoryHosts = new Map<string, string>()
+let knownHosts: KnownHosts = { get: (h) => memoryHosts.get(h), set: (h, f) => void memoryHosts.set(h, f), delete: (h) => void memoryHosts.delete(h) }
+
+/** Keeps trusted host keys in a JSON file (`{ "[host]:port": "SHA256:…" }`). */
+export function useKnownHostsFile(file: string): void {
+  const read = (): Record<string, string> => {
+    try {
+      return existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as Record<string, string>) : {}
+    } catch {
+      return {}
+    }
+  }
+  const write = (hosts: Record<string, string>) => {
+    mkdirSync(dirname(file), { recursive: true })
+    writeFileSync(file, `${JSON.stringify(hosts, null, 2)}\n`, 'utf8')
+  }
+  knownHosts = {
+    get: (h) => read()[h],
+    set: (h, f) => write({ ...read(), [h]: f }),
+    delete: (h) => {
+      const hosts = read()
+      delete hosts[h]
+      write(hosts)
+    },
+  }
+}
+
+/** The known_hosts key of an SSH server. */
+export const sshHostId = (host: string, port?: number) => `[${host.trim().toLowerCase()}]:${port ?? 22}`
+
+export function trustedHostKey(host: string, port?: number): string | undefined {
+  return knownHosts.get(sshHostId(host, port))
+}
+
+export function forgetHostKey(host: string, port?: number): void {
+  knownHosts.delete(sshHostId(host, port))
+}
+
+/** OpenSSH-style fingerprint of a raw host key: `SHA256:` + unpadded base64. */
+export function hostKeyFingerprint(key: Buffer): string {
+  return `SHA256:${createHash('sha256').update(key).digest('base64').replace(/=+$/, '')}`
+}
+
+export class HostKeyMismatchError extends Error {
+  override name = 'HostKeyMismatchError'
+  constructor(
+    readonly host: string,
+    readonly expected: string,
+    readonly actual: string,
+  ) {
+    super(
+      `The SSH server ${host} presented a different host key than before (expected ${expected}, got ${actual}). ` +
+        'Someone may be intercepting the connection, or the server was reinstalled. If your administrator confirms the new key, ' +
+        'forget the old one in the connection\'s SSH settings and connect again.',
+    )
+  }
+}
 
 export interface SshTunnel {
   localHost: string
@@ -8,13 +79,25 @@ export interface SshTunnel {
   close(): Promise<void>
 }
 
-function connectConfig(ssh: SshConfig): ConnectConfig {
+function connectConfig(ssh: SshConfig, onMismatch: (err: HostKeyMismatchError) => void): ConnectConfig {
+  const id = sshHostId(ssh.host, ssh.port)
   const config: ConnectConfig = {
     host: ssh.host,
     port: ssh.port ?? 22,
     username: ssh.user,
     readyTimeout: 20_000,
     keepaliveInterval: 15_000,
+    hostVerifier: (key: Buffer) => {
+      const actual = hostKeyFingerprint(key)
+      const expected = knownHosts.get(id)
+      if (!expected) {
+        knownHosts.set(id, actual)
+        return true
+      }
+      if (expected === actual) return true
+      onMismatch(new HostKeyMismatchError(`${ssh.host}:${ssh.port ?? 22}`, expected, actual))
+      return false
+    },
   }
   if (ssh.authMethod === 'password') config.password = ssh.password
   if (ssh.authMethod === 'privateKey') {
@@ -28,17 +111,19 @@ function connectConfig(ssh: SshConfig): ConnectConfig {
 }
 
 /** One SSH connection; resolves when it's ready. Later errors and the close are reported through `onGone`. */
-function connectSsh(config: ConnectConfig, onGone: () => void): Promise<Client> {
+function connectSsh(ssh: SshConfig, onGone: () => void): Promise<Client> {
   return new Promise<Client>((resolve, reject) => {
     const client = new Client()
     let ready = false
+    let mismatch: HostKeyMismatchError | undefined
+    const config = connectConfig(ssh, (err) => (mismatch = err))
     // A permanent listener: an SSH 'error' event without one (keepalive timeout, server restart) crashes the app.
     client.on('error', (err) => {
-      if (!ready) reject(err)
+      if (!ready) reject(mismatch ?? err)
       else onGone()
     })
     client.on('close', () => {
-      if (!ready) reject(new Error('The SSH server closed the connection'))
+      if (!ready) reject(mismatch ?? new Error('The SSH server closed the connection'))
       else onGone()
     })
     client.once('ready', () => {
@@ -54,7 +139,6 @@ function connectSsh(config: ConnectConfig, onGone: () => void): Promise<Client> 
  * drops (bastion restart, VPN, laptop sleep), the next database connection through the tunnel reconnects it.
  */
 export async function openSshTunnel(ssh: SshConfig, targetHost: string, targetPort: number): Promise<SshTunnel> {
-  const config = connectConfig(ssh)
   let client: Client | undefined
   let connecting: Promise<Client> | undefined
   let closed = false
@@ -63,7 +147,7 @@ export async function openSshTunnel(ssh: SshConfig, targetHost: string, targetPo
   }
   const ensure = (): Promise<Client> => {
     if (client) return Promise.resolve(client)
-    connecting ??= connectSsh(config, () => undefined)
+    connecting ??= connectSsh(ssh, () => undefined)
       .then((c) => {
         c.removeAllListeners('close')
         c.on('close', gone(c))

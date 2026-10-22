@@ -411,6 +411,9 @@ export interface MastermindApi {
   /** Which agent apps are installed and already know about DB Mastermind. */
   mcpClients(): Promise<McpClientStatus[]>
   /** Adds DB Mastermind to an agent app's MCP config (keeping a `.bak` copy); returns the changed file. */
+  /** The trusted host key fingerprint of an SSH server (remembered on first connect), if any. */
+  sshHostKey(host: string, port?: number): Promise<string | null>
+  forgetSshHostKey(host: string, port?: number): Promise<void>
   addToMcpClient(id: McpClientId): Promise<{ path: string; via: 'cli' | 'file'; backup: boolean }>
   importConnections(source: ImportSourceId | 'file'): Promise<number>
   /** Database tools on this computer with saved connections to import, and how many each has. */
@@ -547,6 +550,8 @@ export const API_METHODS = [
   'setTeamFolder',
   'addConnectionToTeam',
   'removeConnectionFromTeam',
+  'sshHostKey',
+  'forgetSshHostKey',
   'addToMcpClient',
   'exportConnections',
   'createSampleDatabase',

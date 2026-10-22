@@ -6,7 +6,7 @@
  */
 import { appendFileSync } from 'node:fs'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { DatabaseService, type ConnectionConfig } from '@dbmastermind/core'
+import { DatabaseService, useKnownHostsFile, type ConnectionConfig } from '@dbmastermind/core'
 import { createMcpServer } from 'dbmastermind-mcp'
 
 export interface McpChildConfig {
@@ -16,9 +16,12 @@ export interface McpChildConfig {
   version: string
   /** JSON-lines audit file the app merges into its history. */
   historyFile?: string
+  /** Trusted SSH host keys, shared with the app. */
+  knownHostsFile?: string
 }
 
 process.once('message', (config: McpChildConfig) => {
+  if (config.knownHostsFile) useKnownHostsFile(config.knownHostsFile)
   void (async () => {
     const db = new DatabaseService()
     const server = createMcpServer({

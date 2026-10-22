@@ -46,6 +46,7 @@ export async function runMcpMode(): Promise<void> {
     schemaOnly: settings.ai.dataSharing === 'schema',
     version: app.getVersion(),
     historyFile: dataPath(MCP_HISTORY_FILE),
+    knownHostsFile: dataPath('known-hosts.json'),
   }
   const child = fork(join(__dirname, 'mcp-server.js'), [], {
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },

@@ -1,6 +1,11 @@
 /**
  * Czech UI strings keyed by the exact English source text (see `i18n.ts`).
  * Plural forms: `{n} rows` is the 1/5+ form, `{n} rows|few` the Czech 2–4 form.
+  'SSH host key': 'Klíč SSH serveru',
+  'Remembered on the first connection': 'Zapamatuje se při prvním připojení',
+  'Forget': 'Zapomenout',
+  'The next connection will trust the key the server presents.': 'Další připojení bude důvěřovat klíči, který server předloží.',
+  'A different key later means someone may be intercepting the connection, so the app refuses it.': 'Jiný klíč později znamená, že spojení může někdo odposlouchávat, proto ho aplikace odmítne.',
  */
 export const cs: Record<string, string> = {
   'DB Mastermind {version} is available': 'K dispozici je DB Mastermind {version}',

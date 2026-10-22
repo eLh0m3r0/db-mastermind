@@ -17,6 +17,43 @@ export const CONNECTION_COLORS = ['#6d4aff', '#0b72d9', '#0f9f6e', '#d97706', '#
 
 const DEFAULT_PORTS: Partial<Record<DriverId, number>> = { postgres: 5432, mysql: 3306, mariadb: 3306, mssql: 1433, oracle: 1521, clickhouse: 8123, trino: 8080 }
 
+/** The SSH server's key as remembered on the first connection; forgetting it trusts the next one (a reinstalled server). */
+function SshHostKey({ host, port }: { host: string; port?: number }) {
+  const t = useT()
+  const [key, setKey] = useState<string | null>(null)
+  useEffect(() => {
+    let live = true
+    void api.sshHostKey(host, port).then((k) => live && setKey(k))
+    return () => {
+      live = false
+    }
+  }, [host, port])
+  return (
+    <Field label={t('SSH host key')}>
+      <div className="flex items-center gap-2">
+        <code className="min-w-0 flex-1 truncate rounded bg-subtle px-2 py-1 font-mono text-[11.5px]" title={key ?? undefined}>
+          {key ?? t('Remembered on the first connection')}
+        </code>
+        {key && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() =>
+              void api.forgetSshHostKey(host, port).then(() => {
+                setKey(null)
+                toast({ kind: 'info', message: t('The next connection will trust the key the server presents.') })
+              })
+            }
+          >
+            {t('Forget')}
+          </Button>
+        )}
+      </div>
+      <span className="text-[11.5px] text-fg-faint">{t('A different key later means someone may be intercepting the connection, so the app refuses it.')}</span>
+    </Field>
+  )
+}
+
 function blank(driver: DriverId = 'postgres'): ConnectionConfig {
   return { id: '', name: '', driver, host: 'localhost', port: DEFAULT_PORTS[driver], user: '', password: '', database: '' }
 }
@@ -496,6 +533,7 @@ export function ConnectionForm() {
                       </Field>
                     </>
                   )}
+                  {ssh.host.trim() && <SshHostKey host={ssh.host.trim()} port={ssh.port} />}
                 </fieldset>
               </>
             )}

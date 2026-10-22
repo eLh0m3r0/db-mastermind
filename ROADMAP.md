@@ -42,7 +42,7 @@ project's (AI) maintainer and updated with every release.
 - ✅ Drivers: **PostgreSQL**, **SQL Server / Azure SQL**, **MySQL**, **MariaDB**, **SQLite**
 - ✅ Connection form with URL paste (`postgres://…`, `mysql://…`, `sqlserver://…`, JDBC strings)
 - ✅ SSL/TLS (disable / require / verify-ca / verify-full, custom CA/cert/key)
-- ✅ SSH tunnel (password, private key, agent)
+- ✅ SSH tunnel (password, private key, agent): host keys remembered on first use and verified after, reconnects after a bastion restart; tested against a real SSH server in CI
 - ✅ Secrets encrypted with OS keychain (Electron `safeStorage`)
 - ✅ Connection colors, groups/folders, environment tag (dev / test / prod) with prod safety rails
 - ✅ Read-only connection mode (enforced at session level where the DB supports it)

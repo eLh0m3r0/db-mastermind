@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron'
-import { describeError } from '@dbmastermind/core'
+import { describeError, useKnownHostsFile } from '@dbmastermind/core'
 import { API_CHANNEL, type IpcResult, type MastermindApi } from '@shared/api'
 import { api, db } from './api'
 import { buildMenu } from './menu'
@@ -10,7 +10,7 @@ import { getSettings, loadSettings } from './settings'
 import { watchTeamFolder } from './team'
 import { applyMcpHttp } from './mcp-http'
 import { isMcpMode, runMcpMode } from './mcp-mode'
-import { configureDataDir, readJson, writeJson } from './storage'
+import { configureDataDir, dataPath, readJson, writeJson } from './storage'
 import { checkForUpdates } from './updates'
 
 configureDataDir()
@@ -104,6 +104,7 @@ function startApp() {
 
   app.whenReady().then(async () => {
     app.setAppUserModelId('dev.dbmastermind.app')
+    useKnownHostsFile(dataPath('known-hosts.json'))
     // Settings first: they name the team folder that contributes connections.
     await loadSettings()
     await loadConnections()

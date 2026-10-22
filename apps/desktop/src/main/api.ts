@@ -40,6 +40,8 @@ import {
   DB_TOOLS,
   loadSqlTools,
   TOOLS_FOLDER,
+  forgetHostKey,
+  trustedHostKey,
 } from '@dbmastermind/core'
 import type { ExportFormat, MastermindApi } from '@shared/api'
 import * as connections from './connections'
@@ -270,6 +272,12 @@ export const api: MastermindApi = {
   },
   async mcpClients() {
     return mcpClientStatuses()
+  },
+  async sshHostKey(host, port) {
+    return trustedHostKey(host, port) ?? null
+  },
+  async forgetSshHostKey(host, port) {
+    forgetHostKey(host, port)
   },
   async addToMcpClient(id) {
     return addToMcpClient(id, mcpLaunch())
