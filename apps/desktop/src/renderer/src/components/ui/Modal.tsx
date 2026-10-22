@@ -25,13 +25,17 @@ export function Modal({
   bodyClassName?: string
 }) {
   const panel = useRef<HTMLDivElement>(null)
+  // Callers pass a new onClose on every render; the effect below must run only when the modal opens, or each
+  // keystroke in a field would move the focus back to the first one.
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
   useEffect(() => {
     if (!open) return
     const previous = document.activeElement as HTMLElement | null
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation()
-        onClose()
+        closeRef.current()
       }
     }
     window.addEventListener('keydown', onKey, true)
@@ -44,7 +48,7 @@ export function Modal({
       window.removeEventListener('keydown', onKey, true)
       previous?.focus?.()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
   return createPortal(
