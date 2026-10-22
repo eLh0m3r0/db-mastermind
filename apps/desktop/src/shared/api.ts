@@ -307,6 +307,8 @@ export interface MastermindApi {
   /** Saves a .dbml model; asks where when `path` is omitted. Returns the path, or null if cancelled. */
   saveModelFile(text: string, path?: string, defaultDir?: string): Promise<string | null>
   /** Reads a SQL DDL script (pg_dump, mysqldump, SSMS…) into DBML; asks for the file. */
+  /** Saves a SQL script (migrations); asks where, suggesting `name`. Returns the path or null. */
+  saveSqlFile(text: string, name: string, defaultDir?: string): Promise<string | null>
   importDdlFile(): Promise<{ path: string; dbml: string; skipped: { sql: string; error: string }[] } | null>
   queryFile(path?: string): Promise<{ connectionId: string; sql: string; title: string } | null>
 
@@ -409,6 +411,7 @@ export const API_METHODS = [
   'openModelFile',
   'saveModelFile',
   'importDdlFile',
+  'saveSqlFile',
   'fetchTable',
   'countTable',
   'importPreview',

@@ -933,9 +933,9 @@ function DiagramInner({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot 
           driver={connection.driver}
           tables={schema.tables}
           connectionId={tab.connectionId}
-          onOpenInEditor={(sql) => {
+          onOpenInEditor={(sql, targetId) => {
             setReviewOpen(false)
-            newQuery(tab.connectionId, sql, tr('Migration'))
+            newQuery(targetId ?? tab.connectionId, sql, tr('Migration'))
           }}
         />
       )}

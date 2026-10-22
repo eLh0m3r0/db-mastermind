@@ -166,9 +166,8 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ **Impact analysis** before running: data-loss warnings (narrowing types, dropping columns, NOT NULL on
   columns with NULLs; counts are checked live), lock/rewrite warnings for large tables, dependent views
 - ✅ Rollback script generated alongside the forward script
-- 🚧 Execute in the SQL editor (review first) ✅ or save as a migration file (plain SQL, Flyway `V__`,
-  Liquibase SQL, Prisma/Knex-friendly)
-- ⬜ Change sets can be saved, shared and re-applied to another environment (dev → test → prod)
+- ✅ Execute in the SQL editor (review first) or save as a migration file (plain SQL, Flyway `V…__name.sql`)
+- ✅ A migration can be opened for another connection of the same engine (dev → test → prod) · saved change sets ⬜
 - ⬜ AI: "add soft delete to all customer tables", "normalize address into its own table". The AI proposes a
   change set and the user reviews it in the designer
 

@@ -342,6 +342,15 @@ export const api: MastermindApi = {
     if (extname(path).toLowerCase() !== '.dbml') throw new Error('Models are .dbml files')
     return { path, text: await readFile(path, 'utf8') }
   },
+  async saveSqlFile(text, name, defaultDir) {
+    const window = BrowserWindow.getFocusedWindow()
+    const options = { title: 'Save SQL', defaultPath: defaultDir ? join(defaultDir, name) : name, filters: [{ name: 'SQL', extensions: ['sql'] }] }
+    const r = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
+    if (r.canceled || !r.filePath) return null
+    if (extname(r.filePath).toLowerCase() !== '.sql') throw new Error('Scripts are saved as .sql files')
+    await writeFile(r.filePath, text, 'utf8')
+    return r.filePath
+  },
   async importDdlFile() {
     const window = BrowserWindow.getFocusedWindow()
     const options = { title: 'Import SQL DDL', properties: ['openFile' as const], filters: [{ name: 'SQL', extensions: ['sql', 'ddl', 'txt'] }] }
