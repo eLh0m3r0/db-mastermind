@@ -8,6 +8,7 @@ export const DEFAULT_PORTS: Record<DriverId, number | undefined> = {
   sqlite: undefined,
   oracle: 1521,
   duckdb: undefined,
+  clickhouse: 8123,
 }
 
 const SCHEMES: Record<string, DriverId> = {
@@ -22,6 +23,8 @@ const SCHEMES: Record<string, DriverId> = {
   file: 'sqlite',
   oracle: 'oracle',
   duckdb: 'duckdb',
+  clickhouse: 'clickhouse',
+  ch: 'clickhouse',
 }
 
 export class ConnectionUrlError extends Error {

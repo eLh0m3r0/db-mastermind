@@ -77,6 +77,6 @@ export function inlineParams(query: BuiltQuery, dialect: Dialect): string {
     let i = 0
     return query.sql.replace(/\?/g, () => literal(query.params[i++]))
   }
-  const pattern = dialect.id === 'mssql' ? /@p(\d+)/g : dialect.id === 'oracle' ? /:(\d+)/g : /\$(\d+)/g
+  const pattern = dialect.id === 'mssql' ? /@p(\d+)/g : dialect.id === 'oracle' ? /:(\d+)/g : dialect.id === 'clickhouse' ? /\{__p(\d+)\}/g : /\$(\d+)/g
   return query.sql.replace(pattern, (_, n: string) => literal(query.params[Number(n) - 1]))
 }

@@ -15,6 +15,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@clickhouse/client": "1.23.1",
     "@duckdb/node-api": "1.4.5-r.1",
     "fflate": "^0.8.2",
     "mssql": "^12.7.10",

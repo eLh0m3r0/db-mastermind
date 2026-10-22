@@ -28,6 +28,7 @@ const FORMATTER_LANGUAGE: Record<DriverId, SqlLanguage> = {
   sqlite: 'sqlite',
   oracle: 'plsql',
   duckdb: 'duckdb',
+  clickhouse: 'clickhouse',
 }
 
 export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {

@@ -214,7 +214,9 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ CockroachDB through the PostgreSQL driver (schema, editing, streaming, its own EXPLAIN and session views,
   designer migrations; integration-tested in CI). TimescaleDB, Supabase, Neon and other PostgreSQL-compatible services
   work as PostgreSQL
-- ⬜ ClickHouse, Redshift, Snowflake, BigQuery, Cassandra
+- ✅ ClickHouse over HTTP: schema (sorting keys, engines, views), filters, SQL, streaming exports, EXPLAIN; read-only
+  grid (no row-level UPDATE); integration-tested in CI
+- ⬜ Redshift, Snowflake, BigQuery, Cassandra (need cloud accounts to test)
 - 💡 MongoDB, Redis (document/key-value browsers)
 - ✅ SQL Server Windows (integrated) authentication (msnodesqlv8 + ODBC, tested on Windows CI)
 

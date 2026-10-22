@@ -134,6 +134,27 @@ export const oracleDialect: Dialect = {
   rollback: 'ROLLBACK',
 }
 
+/**
+ * ClickHouse: positional parameters are inlined as literals by the driver (`{__p1}` tokens), because its typed
+ * query parameters don't compare across types. No transactions: begin/commit are empty.
+ */
+export const clickhouseDialect: Dialect = {
+  id: 'clickhouse',
+  sqlFlavor: 'mysql',
+  defaultSchema: 'default',
+  quoteIdent: backtick,
+  placeholder: (i) => `{__p${i}}`,
+  paginate: (sql, limit, offset) => limitOffset(sql, limit, offset),
+  castToText: (expr) => `toString(${expr})`,
+  ilike: 'ILIKE',
+  trueLiteral: 'true',
+  falseLiteral: 'false',
+  regex: (expr, param, negate) => `${negate ? 'NOT ' : ''}match(toString(${expr}), concat('(?i)', ${param}))`,
+  begin: '',
+  commit: '',
+  rollback: '',
+}
+
 export const dialects: Record<DriverId, Dialect> = {
   postgres: postgresDialect,
   mysql: mysqlDialect,
@@ -142,6 +163,7 @@ export const dialects: Record<DriverId, Dialect> = {
   sqlite: sqliteDialect,
   oracle: oracleDialect,
   duckdb: duckdbDialect,
+  clickhouse: clickhouseDialect,
 }
 
 export function getDialect(id: DriverId): Dialect {

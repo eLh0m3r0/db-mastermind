@@ -190,10 +190,10 @@ export function dataSyncScript(result: DataCompareResult, table: TableRef, diale
   return [
     ...notes,
     dialect.id === 'mssql' ? 'SET XACT_ABORT ON;' : '',
-    `${dialect.begin};`,
+    dialect.begin ? `${dialect.begin};` : '',
     ...(identityInsert ? [`-- If the key is an IDENTITY column, wrap the INSERTs in SET IDENTITY_INSERT … ON / OFF.`] : []),
     ...statements,
-    `${dialect.commit};`,
+    dialect.commit ? `${dialect.commit};` : '',
   ]
     .filter(Boolean)
     .join('\n')

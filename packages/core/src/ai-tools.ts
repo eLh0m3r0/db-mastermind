@@ -179,6 +179,7 @@ export const DIALECT_NAMES: Record<DriverId, string> = {
   sqlite: 'SQLite',
   oracle: 'Oracle',
   duckdb: 'DuckDB',
+  clickhouse: 'ClickHouse',
 }
 
 export const DB_TOOLS: DbTool[] = [

@@ -704,7 +704,7 @@ export function migrationScript(migration: Migration, dialect: Dialect): string 
   const body = migration.statements.join(separator) + ';'
   // Without XACT_ABORT, SQL Server continues after an error and would commit a half-applied migration.
   const prefix = dialect.id === 'mssql' ? 'SET XACT_ABORT ON;\n' : ''
-  const wrapped = migration.transactional
+  const wrapped = migration.transactional && dialect.begin
     ? `${prefix}${dialect.begin};\n${body}\n${dialect.commit};`
     : body
   return [...header, ...(header.length ? [''] : []), wrapped].join('\n')
@@ -792,6 +792,7 @@ export const COMMON_TYPES: Record<DriverId, string[]> = {
   sqlite: ['INTEGER', 'TEXT', 'REAL', 'NUMERIC', 'BLOB', 'BOOLEAN', 'DATE', 'DATETIME'],
   oracle: ['NUMBER(19)', 'NUMBER(10)', 'NUMBER(12,2)', 'VARCHAR2(255)', 'NVARCHAR2(255)', 'CHAR(1)', 'CLOB', 'DATE', 'TIMESTAMP', 'BLOB', 'BOOLEAN'],
   duckdb: ['BIGINT', 'INTEGER', 'SMALLINT', 'DECIMAL(12,2)', 'BOOLEAN', 'VARCHAR', 'UUID', 'DATE', 'TIMESTAMP', 'TIMESTAMPTZ', 'JSON', 'BLOB', 'DOUBLE'],
+  clickhouse: ['Int64', 'Int32', 'UInt32', 'Decimal(12,2)', 'Bool', 'String', 'LowCardinality(String)', 'UUID', 'Date', 'DateTime', 'DateTime64(3)', 'Float64', 'Nullable(String)', 'Array(String)'],
 }
 
 /**

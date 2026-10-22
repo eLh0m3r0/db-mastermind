@@ -21,6 +21,7 @@ export function backupFileType(driver: ConnectionConfig['driver'], format: Backu
   if (driver === 'sqlite') return { ext: 'db', name: 'SQLite database' }
   if (driver === 'duckdb') return { ext: 'duckdb', name: 'DuckDB database' }
   if (driver === 'mssql') return { ext: 'bak', name: 'SQL Server backup' }
+  if (driver === 'clickhouse') return { ext: 'zip', name: 'ClickHouse backup' }
   return { ext: 'sql', name: 'SQL script' }
 }
 
@@ -57,6 +58,12 @@ export function backupPlan(c: ConnectionConfig, file: string, format: BackupForm
       }
     case 'oracle':
       throw new Error('Oracle backups are made with Data Pump (expdp) on the server')
+    case 'clickhouse':
+      return {
+        kind: 'server-sql',
+        sql: `-- Runs on the server: needs a backup disk in the server config (<backups><allowed_disk>backups</allowed_disk>).\nBACKUP DATABASE \`${(c.database ?? 'default').replaceAll('`', '``')}\` TO Disk('backups', ${quoteSql(file.split(/[\\/]/).pop() ?? 'backup.zip')});`,
+        note: 'ClickHouse writes backups on the server',
+      }
   }
 }
 

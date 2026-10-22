@@ -58,3 +58,9 @@ services:
     image: cockroachdb/cockroach:latest-v24.3
     command: start-single-node --insecure
     ports: ['26257:26257']
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    environment:
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: mastermind
+    ports: ['18123:8123']

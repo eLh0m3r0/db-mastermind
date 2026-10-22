@@ -1,5 +1,6 @@
 import { qualify } from './dialect.js'
 import { ReadOnlyViolationError, type DatabaseDriver, type StreamBatch, type StreamOptions } from './driver.js'
+import { ClickHouseDriver } from './drivers/clickhouse.js'
 import { DuckDBDriver } from './drivers/duckdb.js'
 import { MssqlDriver } from './drivers/mssql.js'
 import { MysqlDriver } from './drivers/mysql.js'
@@ -29,6 +30,8 @@ export function createDriver(config: ConnectionConfig): DatabaseDriver {
       return new OracleDriver(config)
     case 'duckdb':
       return new DuckDBDriver(config)
+    case 'clickhouse':
+      return new ClickHouseDriver(config)
   }
 }
 

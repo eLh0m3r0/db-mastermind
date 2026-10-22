@@ -56,8 +56,8 @@ export async function backupDatabase(connectionId: string): Promise<BackupResult
   const filters = custom.ext === plain.ext ? [{ name: custom.name, extensions: [custom.ext] }] : [{ name: custom.name, extensions: [custom.ext] }, { name: plain.name, extensions: [plain.ext] }]
   const safeName = `${c.name.replace(/[\\/:*?"<>|]/g, '_')}-${stamp}.${custom.ext}`
   // SQL Server writes on the server: suggest a server-side path instead of asking for a local file.
-  if (c.driver === 'mssql') {
-    const plan = backupPlan(c, `C:\\Backup\\${safeName}`)
+  if (c.driver === 'mssql' || c.driver === 'clickhouse') {
+    const plan = backupPlan(c, c.driver === 'mssql' ? `C:\\Backup\\${safeName}` : safeName)
     return { sql: plan.kind === 'server-sql' ? plan.sql : '' }
   }
   const file = await askSave({ title: 'Back up database', defaultPath: safeName, filters })

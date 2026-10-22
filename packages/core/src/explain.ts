@@ -163,6 +163,28 @@ function duckNode(n: DuckNode): PlanNode {
  * CockroachDB's text plan: `• operator` lines nested by the column of the bullet, with `key: value` details below.
  * Planning summary lines before the first operator are skipped.
  */
+/** ClickHouse's EXPLAIN: operators nested by indentation, `Key: value` lines describe the operator above. */
+export function indentedPlan(lines: string[]): PlanNode {
+  const root: PlanNode = { operation: 'Query', children: [] }
+  const stack: { indent: number; node: PlanNode }[] = [{ indent: -1, node: root }]
+  for (const line of lines) {
+    if (!line.trim()) continue
+    const indent = line.length - line.trimStart().length
+    const text = line.trim()
+    const detail = /^([A-Z][\w ]*?):\s*(.*)$/.exec(text)
+    if (detail && stack.length > 1) {
+      const owner = stack.at(-1)!.node
+      owner.detail = [owner.detail, `${detail[1]}: ${detail[2]}`].filter(Boolean).join(' · ')
+      continue
+    }
+    const node: PlanNode = { operation: text, children: [] }
+    while (stack.length > 1 && stack.at(-1)!.indent >= indent) stack.pop()
+    stack.at(-1)!.node.children.push(node)
+    stack.push({ indent, node })
+  }
+  return root.children.length === 1 ? root.children[0]! : root
+}
+
 export function cockroachPlan(lines: string[]): PlanNode {
   const root: PlanNode = { operation: 'Query', children: [] }
   const stack: { col: number; node: PlanNode }[] = [{ col: -1, node: root }]
@@ -221,6 +243,12 @@ export async function explainQuery(db: DatabaseService, connectionId: string, sq
         const json = JSON.parse(raw) as Record<string, unknown>
         const nodes = mysqlNode('root', json)
         return { root: nodes.length === 1 ? nodes[0]! : { operation: 'Query', children: nodes }, raw, format: 'json' }
+      }
+      case 'clickhouse': {
+        // Indented text plan; with indexes = 1 it also shows which parts and granules the primary key skips.
+        const [r] = await run(`EXPLAIN${analyze ? ' PIPELINE' : ' indexes = 1'} ${body}`)
+        const lines = (r?.rows ?? []).map((row) => cellToText(row[0] ?? ''))
+        return { root: indentedPlan(lines), raw: lines.join('\n'), format: 'text' }
       }
       case 'mssql': {
         const results = await run(`SET SHOWPLAN_XML ON\nGO\n${body}\nGO\nSET SHOWPLAN_XML OFF`)
