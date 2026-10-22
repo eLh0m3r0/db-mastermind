@@ -19,6 +19,7 @@ import { askAi, toast } from '@/store/ui'
 import { useWorkspace, type DiagramTab, type ModelTab } from '@/store/workspace'
 import { DiagramView } from '../diagram/DiagramView'
 import { editorTheme } from '../query/SqlEditor'
+import { confirmAction } from '@/components/ui/ConfirmDialog'
 
 /** One-click AI tasks on the model: [menu label, request]. */
 const MODEL_TASKS: [string, string][] = [
@@ -174,7 +175,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const fromDatabase = async () => {
     const snap = liveSchema ?? (await loadSchema(tab.connectionId))
     if (!snap) return
-    if (text.trim() && !window.confirm(t('Replace the model with the tables of {name}?', { name: connection?.name ?? '' }))) return
+    if (text.trim() && !(await confirmAction({ title: t('Replace the model with the tables of {name}?', { name: connection?.name ?? '' }), confirmLabel: t('Replace'), danger: true }))) return
     replaceText(toDbml(snap.tables, { defaultSchema: snap.defaultSchema }), { dirty: true })
   }
 
@@ -194,7 +195,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     try {
       const r = await api.importDdlFile()
       if (!r) return
-      if (text.trim() && !window.confirm(t('Replace the model with the tables from {file}?', { file: r.path.split(/[\\/]/).pop() ?? '' }))) return
+      if (text.trim() && !(await confirmAction({ title: t('Replace the model with the tables from {file}?', { file: r.path.split(/[\\/]/).pop() ?? '' }), confirmLabel: t('Replace'), danger: true }))) return
       replaceText(r.dbml, { dirty: true })
       if (r.skipped.length) toast({ kind: 'warning', message: tp(r.skipped.length, { one: '{n} statement could not be read', many: '{n} statements could not be read' }), detail: r.skipped.map((x) => `${x.error}\n  ${x.sql.split('\n')[0]}`).join('\n') })
     } catch (err) {

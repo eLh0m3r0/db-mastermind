@@ -59,6 +59,7 @@ import { ImportModal } from './ImportModal'
 import { RowDetails } from './RowDetails'
 import { useAiAllowed } from '../ai/AiPermissions'
 import { tp, useT } from '@/lib/i18n'
+import { confirmAction } from '@/components/ui/ConfirmDialog'
 
 type EditValue = string | null
 
@@ -129,6 +130,8 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
   const [draft, setDraft] = useState<FilterGroup>(() => rootGroup(tab.filter))
   const [pending, setPending] = useState<PendingChanges>(emptyPending)
   const [preview, setPreview] = useState<string[] | null>(null)
+  /** Why the last apply was rolled back, shown in the review dialog next to the SQL. */
+  const [applyError, setApplyError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [selection, setSelection] = useState<GridSelection | null>(null)
   const [showDetails, setShowDetails] = useState(false)
@@ -241,22 +244,24 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
     void count()
   }, [active, countKey, count])
 
-  const confirmDiscard = () => pendingCount === 0 || window.confirm(tp(pendingCount, { one: 'Discard {n} pending change?', many: 'Discard {n} pending changes?' }))
+  const confirmDiscard = async () =>
+    pendingCount === 0 ||
+    confirmAction({ title: tp(pendingCount, { one: 'Discard {n} pending change?', many: 'Discard {n} pending changes?' }), confirmLabel: t('Discard'), danger: true })
 
-  const applyFilter = (group: FilterGroup = draft) => {
-    if (!confirmDiscard()) return
+  const applyFilter = async (group: FilterGroup = draft) => {
+    if (!(await confirmDiscard())) return
     const active = countActiveConditions(group) > 0
     updateTab(tab.id, { filter: active ? group : undefined })
     setOffset(0)
   }
 
-  const setSort = (next: SortSpec[]) => {
-    if (!confirmDiscard()) return
+  const setSort = async (next: SortSpec[]) => {
+    if (!(await confirmDiscard())) return
     updateTab(tab.id, { sort: next.length ? next : undefined })
   }
 
-  const refresh = () => {
-    if (!confirmDiscard()) return
+  const refresh = async () => {
+    if (!(await confirmDiscard())) return
     loadedKey.current = null
     countedKey.current = null
     void load()
@@ -450,6 +455,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
 
   const showPreview = async () => {
     try {
+      setApplyError(null)
       setPreview(await api.previewChanges(tab.connectionId, tab.table, buildChanges()))
     } catch (err) {
       toast({ kind: 'error', message: t('Could not build SQL'), detail: errorMessage(err) })
@@ -469,7 +475,9 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
       void load()
       void count()
     } catch (err) {
-      toast({ kind: 'error', message: t('Changes were rolled back'), detail: errorMessage(err) })
+      // In the open review dialog the reason sits next to the SQL; otherwise a toast says it.
+      if (preview !== null) setApplyError(errorMessage(err))
+      else toast({ kind: 'error', message: t('Changes were rolled back'), detail: errorMessage(err) })
     } finally {
       setSaving(false)
     }
@@ -684,8 +692,8 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
   const pageEnd = offset + (result?.rows.length ?? 0)
   const lastPage = total !== null ? Math.max(0, Math.ceil(total / limit) - 1) : null
   const currentPage = Math.floor(offset / limit)
-  const goTo = (page: number) => {
-    if (!confirmDiscard()) return
+  const goTo = async (page: number) => {
+    if (!(await confirmDiscard())) return
     setOffset(Math.max(0, page) * limit)
   }
 
@@ -919,9 +927,10 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
           inputSize="sm"
           className="h-6 w-auto min-w-[112px] text-[12px]"
           value={limit}
-          onChange={(e) => {
-            if (!confirmDiscard()) return
-            setLimit(Number(e.target.value))
+          onChange={async (e) => {
+            const next = Number(e.target.value)
+            if (!(await confirmDiscard())) return
+            setLimit(next)
             setOffset(0)
           }}
         >
@@ -965,6 +974,12 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
           </>
         }
       >
+        {applyError && (
+          <div role="alert" className="mb-3 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-[12.5px]">
+            <div className="font-medium">{t('Changes were rolled back: nothing was saved.')}</div>
+            <div className="mt-0.5 text-fg-muted select-text">{applyError}</div>
+          </div>
+        )}
         <pre className="max-h-[50vh] overflow-auto rounded-md bg-subtle p-3 font-mono text-[12px] leading-relaxed whitespace-pre-wrap select-text">
           {(preview ?? []).map((s) => `${s};`).join('\n')}
         </pre>

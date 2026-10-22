@@ -1,4 +1,5 @@
 import { PasswordPrompt } from './features/connections/PasswordPrompt'
+import { ConfirmDialog } from './components/ui/ConfirmDialog'
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { CellViewer } from '@/components/grid/CellViewer'
@@ -265,6 +266,7 @@ export function App() {
       <ConnectionForm />
       <SettingsModal />
       <PasswordPrompt />
+      <ConfirmDialog />
       <CommandPalette />
       <CellViewer />
       <ContextMenuHost />

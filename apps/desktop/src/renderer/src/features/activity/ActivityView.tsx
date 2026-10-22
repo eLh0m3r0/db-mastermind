@@ -10,6 +10,7 @@ import { cn, errorMessage, formatDuration } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { toast } from '@/store/ui'
 import { useWorkspace, type ActivityTab } from '@/store/workspace'
+import { confirmAction } from '@/components/ui/ConfirmDialog'
 
 const IDLE = /^(idle|sleep|sleeping|inactive)$/i
 const SLOW_MS = 10_000
@@ -63,7 +64,7 @@ export function ActivityView({ tab }: { tab: ActivityTab }) {
   }, [sessions, showIdle, search, blocking])
 
   const stop = async (s: SessionActivity, mode: 'cancel' | 'terminate') => {
-    if (mode === 'terminate' && !window.confirm(t('End session {id}? Its open transaction is rolled back.', { id: s.id }))) return
+    if (mode === 'terminate' && !(await confirmAction({ title: t('End session {id}?', { id: s.id }), message: t('Its open transaction is rolled back.'), confirmLabel: t('End session'), danger: true }))) return
     try {
       await api.stopSession(tab.connectionId, s.id, mode)
       toast({ kind: 'success', message: mode === 'cancel' ? t('Query cancelled') : t('Session ended') })

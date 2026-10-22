@@ -39,6 +39,7 @@ import { DriverIcon, driverLabel } from '../connections/drivers'
 import { HistoryPanel, SavedQueriesPanel } from './LibraryPanels'
 import { SchemaTree } from './SchemaTree'
 import { t, tp, useT } from '@/lib/i18n'
+import { confirmAction } from '@/components/ui/ConfirmDialog'
 
 export function useCurrentConnectionId(): string | undefined {
   const tab = useActiveTab()
@@ -80,7 +81,7 @@ async function restore(c: StoredConnection) {
   const question = production
     ? t('{name} is a PRODUCTION database. Restoring replaces its tables with the backup. Continue?', { name: c.name })
     : t('Restoring replaces the tables of {name} with the backup. Continue?', { name: c.name })
-  if (!window.confirm(question)) return
+  if (!(await confirmAction({ title: t('Restore from backup?'), message: question, confirmLabel: t('Restore'), danger: true, warning: production ? t('Production database') : undefined }))) return
   const pending = toast({ kind: 'info', message: t('Restoring {name}…', { name: c.name }), duration: 0 })
   try {
     const r = await api.restoreDatabase(c.id)
@@ -140,8 +141,8 @@ export function connectionMenu(c: StoredConnection): Parameters<typeof openMenu>
       icon: <Trash2 size={13} />,
       danger: true,
       disabled: !!c.managed || !!c.team,
-      onClick: () => {
-        if (window.confirm(t('Delete connection “{name}”? Saved queries are kept.', { name: c.name }))) {
+      onClick: async () => {
+        if (await confirmAction({ title: t('Delete connection “{name}”?', { name: c.name }), message: t('Saved queries are kept.'), confirmLabel: t('Delete'), danger: true })) {
           useWorkspace.getState().closeForConnection(c.id)
           void remove(c.id)
         }

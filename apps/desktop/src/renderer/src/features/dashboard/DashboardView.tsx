@@ -12,6 +12,7 @@ import { openDashboard } from '@/lib/dashboards'
 import { useT } from '@/lib/i18n'
 import { cn, debounce, errorMessage, formatDuration, uid } from '@/lib/utils'
 import { useWorkspace, type DashboardTab } from '@/store/workspace'
+import { confirmAction } from '@/components/ui/ConfirmDialog'
 
 interface TileState {
   result?: QueryResult
@@ -229,8 +230,8 @@ export function DashboardView({ tab }: { tab: DashboardTab }) {
         </Button>
         <IconButton
           label={t('Delete dashboard')}
-          onClick={() => {
-            if (!window.confirm(t('Delete dashboard “{name}”?', { name: dashboard.name }))) return
+          onClick={async () => {
+            if (!(await confirmAction({ title: t('Delete dashboard “{name}”?', { name: dashboard.name }), confirmLabel: t('Delete'), danger: true }))) return
             void api.deleteDashboard(dashboard.id).then(() => close(tab.id))
           }}
         >

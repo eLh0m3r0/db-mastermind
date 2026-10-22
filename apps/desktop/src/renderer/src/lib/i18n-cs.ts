@@ -3,6 +3,18 @@
  * Plural forms: `{n} rows` is the 1/5+ form, `{n} rows|few` the Czech 2–4 form.
  */
 export const cs: Record<string, string> = {
+  'Run a statement that can delete data?': 'Spustit příkaz, který může smazat data?',
+  'Run statements that can delete data?': 'Spustit příkazy, které mohou smazat data?',
+  'Restore from backup?': 'Obnovit ze zálohy?',
+  'Production database': 'Produkční databáze',
+  'Delete connection “{name}”?': 'Smazat připojení „{name}“?',
+  'Saved queries are kept.': 'Uložené dotazy zůstanou.',
+  'Replace': 'Nahradit',
+  'End session {id}?': 'Ukončit relaci {id}?',
+  'Its open transaction is rolled back.': 'Její otevřená transakce se vrátí.',
+  'Delete and import': 'Smazat a importovat',
+  'Run anyway': 'Přesto spustit',
+  'Changes were rolled back: nothing was saved.': 'Změny byly vráceny: nic se neuložilo.',
   'Load all rows': 'Načíst všechny řádky',
   'Cancelled': 'Zrušeno',
   'The limit is in Settings → Max result rows': 'Limit je v Nastavení → Max. počet řádků výsledku',

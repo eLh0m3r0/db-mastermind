@@ -20,6 +20,7 @@ import { PlanView } from './PlanView'
 import { ResultsPanel } from './ResultsPanel'
 import { SqlEditor, type SqlEditorHandle } from './SqlEditor'
 import { useT } from '@/lib/i18n'
+import { confirmAction } from '@/components/ui/ConfirmDialog'
 
 const FORMATTER_LANGUAGE: Record<DriverId, SqlLanguage> = {
   postgres: 'postgresql',
@@ -89,10 +90,13 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       const dangerous = statements.filter((s) => isDangerousStatement(s.text))
       const isProd = connection?.environment === 'production'
       if (dangerous.length && (settings?.confirmDangerousStatements !== false || isProd)) {
-        const list = dangerous.map((d) => `• ${d.text.replace(/\s+/g, ' ').slice(0, 120)}`).join('\n')
-        const ok = window.confirm(
-          `${isProd ? `⚠️ ${t('PRODUCTION connection')}\n\n` : ''}${dangerous.length === 1 ? t('This will run a statement that can delete data:') : t('This will run statements that can delete data:')}\n\n${list}\n\n${t('Continue?')}`,
-        )
+        const ok = await confirmAction({
+          title: dangerous.length === 1 ? t('Run a statement that can delete data?') : t('Run statements that can delete data?'),
+          items: dangerous.map((d) => d.text.replace(/\s+/g, ' ').slice(0, 200)),
+          warning: isProd ? t('PRODUCTION connection') : undefined,
+          confirmLabel: t('Run anyway'),
+          danger: true,
+        })
         if (!ok) return
       }
       const id = uid('run')

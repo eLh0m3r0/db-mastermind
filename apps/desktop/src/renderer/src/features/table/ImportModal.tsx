@@ -9,6 +9,7 @@ import { api } from '@/lib/api'
 import { cn, errorMessage } from '@/lib/utils'
 import { toast } from '@/store/ui'
 import { tp, useT } from '@/lib/i18n'
+import { confirmAction } from '@/components/ui/ConfirmDialog'
 
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '')
 
@@ -93,7 +94,7 @@ export function ImportModal({
 
   const run = async () => {
     if (!path) return
-    if (replace && !window.confirm(t('Delete all existing rows of {table} before importing?', { table: table.name }))) return
+    if (replace && !(await confirmAction({ title: t('Delete all existing rows of {table} before importing?', { table: table.name }), confirmLabel: t('Delete and import'), danger: true }))) return
     setBusy(true)
     try {
       const n = await api.importFile({ connectionId, table, path, delimiter, hasHeader, mapping, emptyAsNull, replace })

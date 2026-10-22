@@ -58,6 +58,7 @@ import type { SavedDiagram, DiagramNote } from '@shared/api'
 import { MigrationModal } from './MigrationModal'
 import { TableEditor } from './TableEditor'
 import { t, tp, useT } from '@/lib/i18n'
+import { confirmAction } from '@/components/ui/ConfirmDialog'
 
 const elk = new ELK()
 const HEADER = 32
@@ -938,8 +939,8 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
                       submenu: [
                         {
                           label: tr('Load (replaces the current changes)'),
-                          onClick: () => {
-                            if (Object.keys(drafts).length && !window.confirm(tr('Replace the current design changes with “{name}”?', { name: cs.name }))) return
+                          onClick: async () => {
+                            if (Object.keys(drafts).length && !(await confirmAction({ title: tr('Replace the current design changes with “{name}”?', { name: cs.name }), confirmLabel: tr('Replace'), danger: true }))) return
                             setSelected(null)
                             setDrafts(cs.design)
                           },
@@ -964,8 +965,8 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
                 size="sm"
                 variant="ghost"
                 icon={<Undo2 size={13} />}
-                onClick={() => {
-                  if (window.confirm(tr('Discard all design changes?'))) {
+                onClick={async () => {
+                  if (await confirmAction({ title: tr('Discard all design changes?'), confirmLabel: tr('Discard'), danger: true })) {
                     setDrafts({})
                     setSelected(null)
                   }
@@ -1047,8 +1048,8 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
                     {
                       label: tr('Delete this diagram'),
                       danger: true,
-                      onClick: () => {
-                        if (!window.confirm(tr('Delete diagram “{name}”?', { name: tab.title }))) return
+                      onClick: async () => {
+                        if (!(await confirmAction({ title: tr('Delete diagram “{name}”?', { name: tab.title }), confirmLabel: tr('Delete'), danger: true }))) return
                         void api.deleteDiagram(tab.savedId!).then(() => {
                           updateTab(tab.id, { savedId: undefined, tables: undefined, title: tr('ER diagram') })
                         })

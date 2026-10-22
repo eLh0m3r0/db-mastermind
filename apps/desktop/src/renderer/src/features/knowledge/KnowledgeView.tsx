@@ -18,6 +18,7 @@ import { useWorkspace, type KnowledgeTab } from '@/store/workspace'
 import { Markdown } from '../ai/Markdown'
 import { askAiToDocument } from './generate'
 import { t, tp, useT } from '@/lib/i18n'
+import { confirmAction } from '@/components/ui/ConfirmDialog'
 
 const TEMPLATE = (title: string) => `---
 tables: []
@@ -134,8 +135,8 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
     }
   }
 
-  const open = (path: string) => {
-    if (dirty && !window.confirm(t('Discard unsaved changes?'))) return
+  const open = async (path: string) => {
+    if (dirty && !(await confirmAction({ title: t('Discard unsaved changes?'), confirmLabel: t('Discard'), danger: true }))) return
     updateTab(tab.id, { file: path })
   }
 
@@ -150,7 +151,7 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
   }
 
   const remove = async () => {
-    if (!current || !window.confirm(t('Delete {name}?', { name: current }))) return
+    if (!current || !(await confirmAction({ title: t('Delete {name}?', { name: current }), confirmLabel: t('Delete'), danger: true }))) return
     await api.kbDelete(tab.connectionId, current)
     updateTab(tab.id, { file: undefined })
     void refresh()

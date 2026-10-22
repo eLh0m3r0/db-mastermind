@@ -8,6 +8,7 @@ import { copyText, cn, errorMessage, formatDuration, fuzzyScore } from '@/lib/ut
 import { toast } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
 import { t, tp, useT } from '@/lib/i18n'
+import { confirmAction } from '@/components/ui/ConfirmDialog'
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
@@ -86,7 +87,7 @@ export function HistoryPanel({ connectionId }: { connectionId: string }) {
             type="button"
             className="h-7 flex-1 rounded-md text-[12px] text-fg-muted hover:bg-hover hover:text-fg"
             onClick={() => {
-              if (window.confirm(t('Clear query history for this connection?'))) void api.clearHistory(connectionId).then(load)
+              void confirmAction({ title: t('Clear query history for this connection?'), confirmLabel: t('Clear history'), danger: true }).then((ok) => ok && api.clearHistory(connectionId).then(load))
             }}
           >
             {t('Clear history')}
@@ -148,7 +149,7 @@ export function SavedQueriesPanel({ connectionId }: { connectionId: string }) {
                       icon: <Trash2 size={13} />,
                       danger: true,
                       onClick: () => {
-                        if (window.confirm(t('Delete saved query “{name}”?', { name: q.name }))) void api.deleteSavedQuery(q.id).then(load)
+                        void confirmAction({ title: t('Delete saved query “{name}”?', { name: q.name }), confirmLabel: t('Delete'), danger: true }).then((ok) => ok && api.deleteSavedQuery(q.id).then(load))
                       },
                     },
                   ])
