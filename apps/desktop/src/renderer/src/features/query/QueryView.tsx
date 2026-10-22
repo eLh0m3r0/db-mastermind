@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { closeCompletion } from '@codemirror/autocomplete'
 import { format as formatSql, type SqlLanguage } from 'sql-formatter'
 import { Activity, BookmarkPlus, Play, PlayCircle, Sparkles, Square, Wand2 } from 'lucide-react'
 import { extractParameters, isDangerousStatement, splitStatements, type DriverId, type ExplainResult, type QueryParameter, type StatementOutcome } from '@dbmastermind/core/browser'
@@ -70,6 +71,9 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
     async (mode: 'current' | 'all', parameterValues?: ParamValues, again?: { maxRows: number }) => {
       // A ref, not state: the menu accelerator and the editor keymap can both fire in the same tick.
       if (runId.current) return
+      // An open completion list would float over the parameters dialog (and catch its Enter).
+      const view = editor.current?.view()
+      if (view) closeCompletion(view)
       // "Load all rows" runs the same statement again, wherever the cursor is now.
       const target = again && lastRun.current ? lastRun.current.target : mode === 'all' ? { sql: editor.current?.getValue() ?? '', offset: 0 } : editor.current?.getRunTarget()
       if (again && lastRun.current) parameterValues = lastRun.current.parameterValues
