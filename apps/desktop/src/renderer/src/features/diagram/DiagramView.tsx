@@ -29,6 +29,7 @@ import {
   getDialect,
   incomingReferences,
   joinPathSql,
+  toDbml,
   toDesignTable,
   type DesignTable,
   type SchemaSnapshot,
@@ -159,14 +160,15 @@ function nodeHeight(t: TableInfo, keysOnly: boolean, fk: Set<string>, ref: Set<s
   return HEADER + visible * ROW + (keysOnly && visible < t.columns.length ? ROW : 0) + 2
 }
 
-function DiagramInner({ tab }: { tab: DiagramTab }) {
+function DiagramInner({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot }) {
   const tr = useT()
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const loadSchema = useConnections((s) => s.loadSchema)
   const openTab = useWorkspace((s) => s.open)
   const updateTab = useWorkspace((s) => s.update)
   const dark = useSettings((s) => s.dark)
-  const schema = runtime?.schema
+  // A model (DBML) replaces the live schema: read-only preview, no designer.
+  const schema = model ?? runtime?.schema
   const flow = useReactFlow()
   const wrapper = useRef<HTMLDivElement>(null)
 
@@ -189,8 +191,8 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
   const setDrafts = (next: Record<string, DesignTable>) => updateTab(tab.id, { design: next })
 
   useEffect(() => {
-    if (!schema) void loadSchema(tab.connectionId)
-  }, [schema, loadSchema, tab.connectionId])
+    if (!schema && !model) void loadSchema(tab.connectionId)
+  }, [schema, model, loadSchema, tab.connectionId])
 
   useEffect(() => {
     if (!schema || schemaFilter) return
@@ -458,18 +460,7 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
   }
 
   const exportDbml = () => {
-    const out: string[] = []
-    for (const t of tables) {
-      out.push(`Table ${t.schema && t.schema !== schema?.defaultSchema ? `${t.schema}.` : ''}${t.name} {`)
-      for (const c of t.columns) {
-        const attrs = [c.isPrimaryKey ? 'pk' : '', c.isIdentity ? 'increment' : '', c.nullable ? '' : 'not null', c.comment ? `note: '${c.comment.replaceAll("'", "\\'")}'` : ''].filter(Boolean)
-        out.push(`  ${c.name} ${c.dataType.replace(/\s+/g, '_')}${attrs.length ? ` [${attrs.join(', ')}]` : ''}`)
-      }
-      if (t.comment) out.push(`  Note: '${t.comment.replaceAll("'", "\\'")}'`)
-      out.push('}', '')
-    }
-    for (const t of tables) for (const fk of t.foreignKeys) fk.columns.forEach((c, i) => out.push(`Ref: ${t.name}.${c} > ${fk.refTable}.${fk.refColumns[i]}`))
-    void navigator.clipboard.writeText(out.join('\n'))
+    void navigator.clipboard.writeText(toDbml(tables, { defaultSchema: schema?.defaultSchema }))
     toast({ kind: 'success', message: tr('DBML copied to clipboard'), detail: tr('Paste it into dbdiagram.io or a .dbml file.') })
   }
 
@@ -695,6 +686,7 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
             </Button>
           </>
         )}
+        {!model && (
         <Button
           size="sm"
           variant={design ? 'subtle' : 'ghost'}
@@ -707,9 +699,11 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
         >
           {design ? tr('Designing') : tr('Design')}
         </Button>
+        )}
         <Button size="sm" variant="ghost" icon={<LayoutGrid size={13} />} onClick={resetLayout}>
           {tr('Auto layout')}
         </Button>
+        {!model && (
         <Button
           size="sm"
           variant="ghost"
@@ -744,6 +738,7 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
         >
           {tab.savedId ? tab.title : tr('Diagrams')}
         </Button>
+        )}
         <Button
           size="sm"
           variant="ghost"
@@ -755,6 +750,16 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
               'separator',
               { label: tr('Copy as Mermaid'), onClick: exportMermaid },
               { label: tr('Copy as DBML (dbdiagram.io)'), onClick: exportDbml },
+              ...(model
+                ? []
+                : [
+                    'separator' as const,
+                    {
+                      label: tr('Edit as model (DBML)…'),
+                      icon: <FileCode2 size={13} />,
+                      onClick: () => openTab({ kind: 'model', connectionId: tab.connectionId, title: tr('Model'), text: toDbml(tables, { defaultSchema: schema.defaultSchema }) }, { reuse: false }),
+                    },
+                  ]),
             ])
           }
         >
@@ -919,10 +924,10 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
   )
 }
 
-export function DiagramView({ tab }: { tab: DiagramTab }) {
+export function DiagramView({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot }) {
   return (
     <ReactFlowProvider>
-      <DiagramInner tab={tab} />
+      <DiagramInner tab={tab} model={model} />
     </ReactFlowProvider>
   )
 }

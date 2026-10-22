@@ -173,12 +173,12 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
   change set and the user reviews it in the designer
 
 ### Offline models
-- ⬜ **Model documents** (`*.dbm.json` + DBML) stored in the knowledge base folder, so they're versioned in Git
+- ✅ **Model documents** as `.dbml` files (saved next to the knowledge base, versioned in Git)
 - ⬜ Visual designer: add tables, columns, types, PK/FK, indexes, notes and colored groups on an infinite canvas
-- ⬜ **DBML editor** with live diagram (two-way: edit text or canvas)
-- ⬜ Reverse engineer: create a model from a live connection (whole schema or selected tables)
+- ✅ **DBML editor** with live diagram (text → canvas; canvas → text ⬜)
+- ✅ Reverse engineer: model from a live connection ("From database", or "Edit as model" from any diagram)
 - ⬜ Forward engineer: generate DDL for PostgreSQL / SQL Server / MySQL / SQLite from the model
-- ⬜ **Model ↔ database diff** → migration script (ALTER statements), reviewed and executed in the SQL editor
+- ✅ **Model ↔ database diff** → migration script, reviewed and opened in the SQL editor
 - ⬜ Model versions / snapshots with visual diff between them
 - ⬜ Import from DBML, SQL DDL, Prisma schema, Django/Rails migrations (via AI), dbdiagram.io export
 - ⬜ Export: SQL, DBML, Mermaid, PlantUML, PNG, SVG, PDF data dictionary

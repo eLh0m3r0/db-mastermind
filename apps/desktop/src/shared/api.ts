@@ -273,6 +273,10 @@ export interface MastermindApi {
   exportDataDictionary(connectionId: string, format: 'html' | 'markdown', schemas?: string[]): Promise<string | null>
   compareData(request: CompareDataRequest): Promise<DataCompareResult>
   /** Opens a CSV / Parquet / JSON / Excel file for SQL in the built-in DuckDB; asks for the file when `path` is omitted. */
+  /** Opens a .dbml model file (asks for it when `path` is omitted). */
+  openModelFile(path?: string, defaultDir?: string): Promise<{ path: string; text: string } | null>
+  /** Saves a .dbml model; asks where when `path` is omitted. Returns the path, or null if cancelled. */
+  saveModelFile(text: string, path?: string, defaultDir?: string): Promise<string | null>
   queryFile(path?: string): Promise<{ connectionId: string; sql: string; title: string } | null>
 
   fetchTable(request: FetchTableRequest): Promise<TablePage>
@@ -364,6 +368,8 @@ export const API_METHODS = [
   'exportDataDictionary',
   'compareData',
   'queryFile',
+  'openModelFile',
+  'saveModelFile',
   'fetchTable',
   'countTable',
   'importPreview',

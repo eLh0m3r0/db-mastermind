@@ -307,6 +307,30 @@ export const api: MastermindApi = {
     await writeFile(result.filePath, content, 'utf8')
     return result.filePath
   },
+  async openModelFile(path, defaultDir) {
+    if (!path) {
+      const window = BrowserWindow.getFocusedWindow()
+      const options = { title: 'Open model', defaultPath: defaultDir, properties: ['openFile' as const], filters: [{ name: 'DBML', extensions: ['dbml'] }] }
+      const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
+      if (r.canceled || !r.filePaths[0]) return null
+      path = r.filePaths[0]
+    }
+    if (extname(path).toLowerCase() !== '.dbml') throw new Error('Models are .dbml files')
+    return { path, text: await readFile(path, 'utf8') }
+  },
+  async saveModelFile(text, path, defaultDir) {
+    if (!path) {
+      const window = BrowserWindow.getFocusedWindow()
+      const options = { title: 'Save model', defaultPath: defaultDir ? join(defaultDir, 'model.dbml') : 'model.dbml', filters: [{ name: 'DBML', extensions: ['dbml'] }] }
+      const r = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
+      if (r.canceled || !r.filePath) return null
+      path = r.filePath
+    }
+    // Only model files: the renderer must not be able to write anything else.
+    if (extname(path).toLowerCase() !== '.dbml') throw new Error('Models are saved as .dbml files')
+    await writeFile(path, text, 'utf8')
+    return path
+  },
   async queryFile(path) {
     if (!path) {
       const window = BrowserWindow.getFocusedWindow()

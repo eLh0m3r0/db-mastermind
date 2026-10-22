@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Command } from 'cmdk'
-import { Activity, BookOpen, FileSpreadsheet, FileText, Rows3, ShieldCheck, Eye, GitCompare, Moon, Network, Plug, Plus, RefreshCw, Settings, Sparkles, Sun, Table2, TerminalSquare, Unplug } from 'lucide-react'
+import { Activity, BookOpen, FileCode2, FileSpreadsheet, FileText, Rows3, ShieldCheck, Eye, GitCompare, Moon, Network, Plug, Plus, RefreshCw, Settings, Sparkles, Sun, Table2, TerminalSquare, Unplug } from 'lucide-react'
 import { Kbd } from '@/components/ui/Input'
-import { modKey } from '@/lib/api'
+import { api, modKey } from '@/lib/api'
 import { runCommand } from '@/lib/commands'
 import { exportDataDictionary } from '@/lib/dictionary'
 import { queryFile } from '@/lib/files'
@@ -61,6 +61,18 @@ export function CommandPalette() {
     { id: 'dictionary-md', label: t('Export data dictionary (Markdown)…'), icon: <FileText size={14} />, run: () => connectionId && void exportDataDictionary(connectionId, 'markdown'), needsConnection: true },
     { id: 'datacompare', label: t('Compare table data…'), icon: <Rows3 size={14} />, run: () => connectionId && openTab({ kind: 'datacompare', connectionId, sourceId: connectionId, title: t('Data compare') }, { reuse: false }), needsConnection: true },
     { id: 'roles', label: t('Users & roles'), icon: <ShieldCheck size={14} />, run: () => connectionId && openTab({ kind: 'roles', connectionId, title: t('Users & roles') }), needsConnection: true },
+    { id: 'model-new', label: t('New model (DBML)'), icon: <FileCode2 size={14} />, run: () => connectionId && openTab({ kind: 'model', connectionId, title: t('Model'), text: '' }, { reuse: false }), needsConnection: true },
+    {
+      id: 'model-open',
+      label: t('Open model (.dbml)…'),
+      icon: <FileCode2 size={14} />,
+      run: () => {
+        if (!connectionId) return
+        const kb = useConnections.getState().list.find((c) => c.id === connectionId)?.knowledgeBasePath
+        void api.openModelFile(undefined, kb).then((f) => f && openTab({ kind: 'model', connectionId, title: f.path.split(/[\\/]/).pop() ?? t('Model'), text: f.text, path: f.path }, { reuse: false }))
+      },
+      needsConnection: true,
+    },
     { id: 'knowledge', label: t('Open knowledge base'), icon: <BookOpen size={14} />, run: () => connectionId && openTab({ kind: 'knowledge', connectionId, title: t('Knowledge base') }), needsConnection: true },
     { id: 'refresh', label: t('Refresh schema'), icon: <RefreshCw size={14} />, shortcut: 'F5', run: () => runCommand('refresh-schema'), needsConnection: true },
     { id: 'ai', label: t('Toggle AI assistant'), icon: <Sparkles size={14} />, shortcut: `${modKey}J`, run: () => runCommand('toggle-ai') },

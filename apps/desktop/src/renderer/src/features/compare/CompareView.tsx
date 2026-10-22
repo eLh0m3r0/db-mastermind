@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ArrowRight, GitCompare, Minus, Pencil, Plus } from 'lucide-react'
-import { compareSchemas, generateMigration, getDialect, migrationScript, type SchemaChange, type SchemaSnapshot } from '@dbmastermind/core/browser'
+import { compareSchemas, generateMigration, getDialect, migrationScript, parseDbml, type SchemaChange, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Checkbox, Select } from '@/components/ui/Input'
@@ -66,9 +66,21 @@ export function CompareView({ tab }: { tab: CompareTab }) {
   const crossEngine = !!source && !!target && source.driver !== target.driver
 
   const run = async () => {
-    if (!tab.sourceId) return
+    if (!tab.sourceId && tab.sourceModel === undefined) return
     setBusy(true)
     try {
+      if (tab.sourceModel !== undefined) {
+        await connect(tab.connectionId)
+        const targetSnap = await loadSchema(tab.connectionId, true)
+        if (!targetSnap) throw new Error(t('Could not read both schemas'))
+        const model = parseDbml(tab.sourceModel, { defaultSchema: targetSnap.defaultSchema })
+        if (model.errors.length) throw new Error(model.errors.map((e) => `${t('line {n}', { n: String(e.line) })}: ${e.message}`).join('\n'))
+        const schemas = [...new Set(model.tables.map((x) => x.schema ?? ''))]
+        setSnapshots({ source: { tables: model.tables, schemas, routines: [], defaultSchema: targetSnap.defaultSchema, capturedAt: '' }, target: targetSnap })
+        setExcluded(new Set())
+        return
+      }
+      if (!tab.sourceId) return
       await Promise.all([connect(tab.sourceId), connect(tab.connectionId)])
       const [source, targetSnap] = await Promise.all([loadSchema(tab.sourceId, true), loadSchema(tab.connectionId, true)])
       if (!source || !targetSnap) throw new Error(t('Could not read both schemas'))
@@ -107,15 +119,19 @@ export function CompareView({ tab }: { tab: CompareTab }) {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line px-3 py-2">
         <GitCompare size={15} className="text-accent" />
-        <Select inputSize="sm" className="w-52" value={tab.sourceId ?? ''} onChange={(e) => pickConnection(e.target.value, 'source')}>
-          <option value="">{t('Source…')}</option>
-          {connections.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </Select>
-        {sourceSchemas && sourceSchemas.length > 1 && (
+        {tab.sourceModel !== undefined ? (
+          <span className="rounded-md bg-accent-soft px-2 py-1 text-[12px] font-medium text-accent">{t('Model (DBML)')}</span>
+        ) : (
+          <Select inputSize="sm" className="w-52" value={tab.sourceId ?? ''} onChange={(e) => pickConnection(e.target.value, 'source')}>
+            <option value="">{t('Source…')}</option>
+            {connections.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
+        )}
+        {tab.sourceModel === undefined && sourceSchemas && sourceSchemas.length > 1 && (
           <Select inputSize="sm" className="w-36" value={tab.sourceSchema ?? ''} onChange={(e) => updateTab(tab.id, { sourceSchema: e.target.value || undefined })}>
             <option value="">{t('All schemas')}</option>
             {sourceSchemas.map((s) => (
@@ -139,7 +155,7 @@ export function CompareView({ tab }: { tab: CompareTab }) {
             ))}
           </Select>
         )}
-        <Button size="sm" variant="primary" loading={busy} disabled={!tab.sourceId} onClick={() => void run()}>
+        <Button size="sm" variant="primary" loading={busy} disabled={!tab.sourceId && tab.sourceModel === undefined} onClick={() => void run()}>
           {t('Compare')}
         </Button>
         <Checkbox checked={!keepExtra} onChange={(v) => setKeepExtra(!v)} label={t('Drop tables missing in source')} />

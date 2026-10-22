@@ -63,7 +63,7 @@ interface Props {
   ref?: Ref<SqlEditorHandle>
 }
 
-const lightHighlight = HighlightStyle.define([
+export const lightHighlight = HighlightStyle.define([
   { tag: t.keyword, color: '#7c3aed', fontWeight: '500' },
   { tag: [t.string, t.special(t.string)], color: '#0f7b3f' },
   { tag: [t.number, t.bool, t.null], color: '#b45309' },
@@ -74,7 +74,7 @@ const lightHighlight = HighlightStyle.define([
   { tag: t.punctuation, color: '#64748b' },
 ])
 
-const darkHighlight = HighlightStyle.define([
+export const darkHighlight = HighlightStyle.define([
   { tag: t.keyword, color: '#c4a7ff', fontWeight: '500' },
   { tag: [t.string, t.special(t.string)], color: '#86d9a8' },
   { tag: [t.number, t.bool, t.null], color: '#f5b86b' },
@@ -85,7 +85,7 @@ const darkHighlight = HighlightStyle.define([
   { tag: t.punctuation, color: '#8b93a1' },
 ])
 
-function editorTheme(dark: boolean): Extension {
+export function editorTheme(dark: boolean): Extension {
   return [
     EditorView.theme(
       {

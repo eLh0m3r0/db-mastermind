@@ -56,6 +56,8 @@ export interface CompareTab extends BaseTab {
   sourceId?: string
   sourceSchema?: string
   targetSchema?: string
+  /** Compare a DBML model (instead of a connection) with the target. */
+  sourceModel?: string
 }
 
 /** Table data compare: `connectionId` is the target that receives the sync script. */
@@ -65,6 +67,16 @@ export interface DataCompareTab extends BaseTab {
   sourceTable?: TableRef
   targetTable?: TableRef
   keyColumns?: string
+}
+
+/** A model as DBML text with a live diagram; compared against `connectionId`. */
+export interface ModelTab extends BaseTab {
+  kind: 'model'
+  text: string
+  /** File the model is saved to (.dbml). */
+  path?: string
+  dirty?: boolean
+  positions?: Record<string, { x: number; y: number }>
 }
 
 /** Users, roles and their privileges. */
@@ -78,7 +90,7 @@ export interface ActivityTab extends BaseTab {
   kind: 'activity'
 }
 
-export type Tab = QueryTab | TableTab | StructureTab | DiagramTab | KnowledgeTab | CompareTab | ActivityTab | DataCompareTab | RolesTab
+export type Tab = QueryTab | TableTab | StructureTab | DiagramTab | KnowledgeTab | CompareTab | ActivityTab | DataCompareTab | RolesTab | ModelTab
 export type NewTab =
   | Omit<QueryTab, 'id'>
   | Omit<TableTab, 'id'>
@@ -89,6 +101,7 @@ export type NewTab =
   | Omit<ActivityTab, 'id'>
   | Omit<DataCompareTab, 'id'>
   | Omit<RolesTab, 'id'>
+  | Omit<ModelTab, 'id'>
 
 interface WorkspaceState {
   tabs: Tab[]

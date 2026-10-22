@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Activity, BookOpen, Rows3, ShieldCheck, GitCompare, Layers, Network, PanelLeft, Plus, Sparkles, Table2, TerminalSquare, X } from 'lucide-react'
+import { Activity, BookOpen, FileCode2, Rows3, ShieldCheck, GitCompare, Layers, Network, PanelLeft, Plus, Sparkles, Table2, TerminalSquare, X } from 'lucide-react'
 import { IconButton } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { isMac, modKey } from '@/lib/api'
@@ -10,7 +10,7 @@ import { useWorkspace, type Tab } from '@/store/workspace'
 import { useCurrentConnectionId } from '../sidebar/Sidebar'
 import { useT } from '@/lib/i18n'
 
-const ICONS = { query: TerminalSquare, table: Table2, structure: Layers, diagram: Network, knowledge: BookOpen, compare: GitCompare, activity: Activity, datacompare: Rows3, roles: ShieldCheck }
+const ICONS = { query: TerminalSquare, table: Table2, structure: Layers, diagram: Network, knowledge: BookOpen, compare: GitCompare, activity: Activity, datacompare: Rows3, roles: ShieldCheck, model: FileCode2 }
 
 export function TabBar() {
   const tabs = useWorkspace((s) => s.tabs)
