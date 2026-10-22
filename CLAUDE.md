@@ -62,3 +62,12 @@ npm run dev                   # desktop app with HMR
   `npx electron-builder --dir -c.directories.output="$TMPDIR/dbm-release"`.
 - The UI starts in the system language (Czech on a Czech Mac). E2E scripts pass `DBM_LANGUAGE: 'en'` so English
   labels match.
+- CockroachDB goes through the PostgreSQL driver: its catalog returns NULL where PostgreSQL has booleans
+  (`relispartition`), so wrap such columns in `coalesce`. `serverInfo().product === 'CockroachDB'` switches
+  EXPLAIN (text plan) and activity (crdb_internal, CANCEL QUERIES/SESSION).
+- ClickHouse placeholders are `{__pN}` tokens the driver replaces with escaped literals (typed query parameters
+  don't compare across types). Its dialect has empty begin/commit: code that wraps scripts must skip empty ones.
+  Rows are read-only (no primary key reported; the sorting key shows as an `ORDER BY` index).
+- New dependencies: pin an exact version published at least two weeks ago.
+- Things that touch the user's machine in tests (MCP client configs, DataGrip, team folders) run against a temp
+  `HOME` / `DBM_USER_DATA`; never against the real configuration.
