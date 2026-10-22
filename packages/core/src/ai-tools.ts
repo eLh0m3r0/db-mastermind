@@ -175,6 +175,7 @@ const DIALECT_NAMES: Record<DriverId, string> = {
   mariadb: 'MariaDB',
   sqlite: 'SQLite',
   oracle: 'Oracle',
+  duckdb: 'DuckDB',
 }
 
 export const DB_TOOLS: DbTool[] = [

@@ -27,6 +27,7 @@ const FORMATTER_LANGUAGE: Record<DriverId, SqlLanguage> = {
   mariadb: 'mariadb',
   sqlite: 'sqlite',
   oracle: 'plsql',
+  duckdb: 'duckdb',
 }
 
 export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {

@@ -9,6 +9,9 @@ files:
   - resources/**
   - package.json
 asar: true
+# DuckDB's native binding (per platform package) loads from disk; after-pack removes the other platforms' copies.
+asarUnpack:
+  - '**/node_modules/@duckdb/**'
 # Native modules ship N-API prebuilds (msnodesqlv8) or are optional (cpu-features): never compile from source.
 npmRebuild: false
 afterPack: build/after-pack.cjs

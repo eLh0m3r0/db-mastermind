@@ -37,3 +37,13 @@ describe('data compare', () => {
     expect(dataSyncScript(result, { name: 'people' }, pg, { insertMissing: false, updateChanged: false })).toBe('')
   })
 })
+
+describe('cellToText', () => {
+  it('hides float noise', async () => {
+    const { cellToText } = await import('../src/index.js')
+    expect(cellToText(97604.95999999999)).toBe('97604.96')
+    expect(cellToText(0.1 + 0.2)).toBe('0.3')
+    expect(cellToText(1e21)).toBe('1e+21')
+    expect(cellToText(123456789.123456)).toBe('123456789.123456')
+  })
+})

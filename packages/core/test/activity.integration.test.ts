@@ -5,7 +5,7 @@ import { engines, skip, tmp } from './fixtures.js'
 
 afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 
-for (const engine of engines.filter((e) => e.id !== 'sqlite')) {
+for (const engine of engines.filter((e) => e.id !== 'sqlite' && e.id !== 'duckdb')) {
   describe.skipIf(skip.has(engine.id))(`server activity on ${engine.id}`, () => {
     it('lists a long-running query and cancels it', async () => {
       const svc = new DatabaseService()

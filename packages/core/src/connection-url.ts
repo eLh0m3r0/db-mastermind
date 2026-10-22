@@ -7,6 +7,7 @@ export const DEFAULT_PORTS: Record<DriverId, number | undefined> = {
   mssql: 1433,
   sqlite: undefined,
   oracle: 1521,
+  duckdb: undefined,
 }
 
 const SCHEMES: Record<string, DriverId> = {
@@ -20,6 +21,7 @@ const SCHEMES: Record<string, DriverId> = {
   sqlite: 'sqlite',
   file: 'sqlite',
   oracle: 'oracle',
+  duckdb: 'duckdb',
 }
 
 export class ConnectionUrlError extends Error {
@@ -45,7 +47,7 @@ export function parseConnectionString(input: string): Parsed {
   const driver = SCHEMES[scheme]
   if (!driver) throw new ConnectionUrlError(`Unsupported scheme "${scheme}"`)
 
-  if (driver === 'sqlite') {
+  if (driver === 'sqlite' || driver === 'duckdb') {
     const path = decodeURIComponent(text.replace(/^[a-z]+:(\/\/)?/i, ''))
     return { driver, filePath: path }
   }

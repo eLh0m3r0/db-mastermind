@@ -31,6 +31,7 @@ const DIALECTS: Record<DriverId, SQLDialect> = {
   mariadb: MariaSQL,
   sqlite: SQLite,
   oracle: PLSQL,
+  duckdb: PostgreSQL,
 }
 
 export interface SqlEditorHandle {

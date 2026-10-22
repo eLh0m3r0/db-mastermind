@@ -134,7 +134,7 @@ export function splitStatements(
       i++
       continue
     }
-    if (ch === '$' && driver === 'postgres' && !isWordChar(script[i - 1])) {
+    if (ch === '$' && (driver === 'postgres' || driver === 'duckdb') && !isWordChar(script[i - 1])) {
       const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(script.slice(i))
       if (m) {
         const tag = m[0]

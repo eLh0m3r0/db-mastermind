@@ -132,6 +132,33 @@ function sqliteTree(rows: unknown[][]): PlanNode {
  * Execution plan of a read-only statement. `analyze` executes the query (PostgreSQL EXPLAIN ANALYZE)
  * to show actual times; it's only allowed for reads.
  */
+interface DuckNode {
+  name?: string
+  operator_name?: string
+  operator_timing?: number
+  operator_cardinality?: number
+  extra_info?: Record<string, unknown>
+  children?: DuckNode[]
+}
+
+function duckNode(n: DuckNode): PlanNode {
+  const info = n.extra_info ?? {}
+  const text = (v: unknown) => (Array.isArray(v) ? v.join(', ') : v === undefined || v === null ? undefined : String(v))
+  const children = (n.children ?? []).map(duckNode)
+  const ownMs = n.operator_timing !== undefined ? n.operator_timing * 1000 : undefined
+  const totalMs = ownMs !== undefined ? ownMs + children.reduce((s, c) => s + (c.cost ?? 0), 0) : undefined
+  return {
+    operation: String(n.operator_name ?? n.name ?? '?').trim().replaceAll('_', ' '),
+    object: text(info.Table),
+    detail: [text(info.Filters), text(info.Aggregates), text(info.Conditions)].filter(Boolean).join(' · ') || undefined,
+    rows: n.operator_cardinality ?? num(info['Estimated Cardinality']),
+    actualMs: ownMs,
+    // DuckDB has no cost model in plans; with ANALYZE, time spent stands in for cost.
+    cost: totalMs,
+    children,
+  }
+}
+
 export async function explainQuery(db: DatabaseService, connectionId: string, sql: string, analyze = false): Promise<ExplainResult> {
   if (classifyStatement(sql) !== 'read') throw new Error('Only SELECT statements can be explained')
   const driver = db.config(connectionId).driver
@@ -191,6 +218,15 @@ export async function explainQuery(db: DatabaseService, connectionId: string, sq
         }
         const raw = (r?.rows ?? []).map((row) => row.map((x) => (x === null ? '' : cellToText(x))).join(' | ')).join('\n')
         return { root: root ?? { operation: 'Query', children: [] }, raw, format: 'text' }
+      }
+      case 'duckdb': {
+        const [r] = await run(`EXPLAIN (${analyze ? 'ANALYZE, ' : ''}FORMAT JSON) ${body}`)
+        const raw = cellToText(r?.rows[0]?.[r.rows[0]!.length - 1] ?? '[]')
+        const json = JSON.parse(raw) as DuckNode | DuckNode[]
+        const top = Array.isArray(json) ? json : (json.children ?? [])
+        // ANALYZE wraps the plan in an EXPLAIN_ANALYZE operator.
+        const nodes = top.flatMap((n) => (/EXPLAIN_ANALYZE/.test(String(n.operator_name ?? n.name)) ? (n.children ?? []) : [n])).map(duckNode)
+        return { root: nodes.length === 1 ? nodes[0]! : { operation: 'Query', children: nodes }, raw, format: 'json' }
       }
       case 'sqlite': {
         const [r] = await run(`EXPLAIN QUERY PLAN ${body}`)

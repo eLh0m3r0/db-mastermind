@@ -17,6 +17,7 @@
     "dist:dir": "electron-vite build && electron-builder --dir"
   },
   "dependencies": {
+    "@duckdb/node-api": "1.4.5-r.1",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "mssql": "^12.7.10",

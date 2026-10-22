@@ -1,7 +1,9 @@
-import { ArrowRight, BookOpen, Coffee, Database, Download, Keyboard, Plus, Sparkles } from 'lucide-react'
+import { ArrowRight, BookOpen, Coffee, Database, Download, FileSpreadsheet, Keyboard, Plus, Sparkles } from 'lucide-react'
+import { isFileDriver } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { Kbd } from '@/components/ui/Input'
 import { api, modKey } from '@/lib/api'
+import { queryFile } from '@/lib/files'
 import { useConnections } from '@/store/connections'
 import { useUi } from '@/store/ui'
 import { DriverIcon } from '../connections/drivers'
@@ -38,6 +40,9 @@ export function HomeScreen() {
               <Button size="sm" variant="ghost" icon={<Coffee size={13} />} onClick={() => void openDemo()}>
                 {t('Try the demo database')}
               </Button>
+              <Button size="sm" variant="ghost" icon={<FileSpreadsheet size={13} />} onClick={() => void queryFile()} title={t('CSV, Parquet, JSON or Excel: query it with SQL, no import needed')}>
+                {t('Query a file')}
+              </Button>
               <Button size="sm" variant="ghost" icon={<Download size={13} />} onClick={() => void importFrom('beekeeper')}>
                 {t('Import from Beekeeper')}
               </Button>
@@ -62,7 +67,7 @@ export function HomeScreen() {
                       <span className="truncate text-[13px] font-medium">{c.name}</span>
                       {c.environment === 'production' && <span className="rounded bg-danger px-1 text-[9.5px] font-bold text-white">PROD</span>}
                     </div>
-                    <div className="truncate text-[11.5px] text-fg-faint">{c.driver === 'sqlite' ? c.filePath : `${c.host ?? ''}${c.database ? `/${c.database}` : ''}`}</div>
+                    <div className="truncate text-[11.5px] text-fg-faint">{isFileDriver(c.driver) ? c.filePath || t('in-memory') : `${c.host ?? ''}${c.database ? `/${c.database}` : ''}`}</div>
                   </div>
                   <StatusDot id={c.id} />
                   <ArrowRight size={14} className="text-fg-faint opacity-0 transition-opacity group-hover:opacity-100" />

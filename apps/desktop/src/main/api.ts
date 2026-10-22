@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rm, writeFile } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
-import { basename, join } from 'node:path'
+import { basename, extname, join } from 'node:path'
 import { app, BrowserWindow, dialog, shell } from 'electron'
 import {
   buildBatchInserts,
@@ -71,6 +71,21 @@ function knowledge(connectionId: string): KnowledgeBase {
   const path = connections.getConnection(connectionId).knowledgeBasePath
   if (!path) throw new Error('This connection has no knowledge base folder')
   return new KnowledgeBase(path)
+}
+
+const FILES_GROUP = 'Files'
+
+/** Czech/European exports: `;` separated with decimal commas, which DuckDB's sniffer reads as text. */
+async function csvOptions(path: string): Promise<string> {
+  const handle = await open(path, 'r')
+  try {
+    const { buffer, bytesRead } = await handle.read(Buffer.alloc(64 * 1024), 0, 64 * 1024, 0)
+    const sample = buffer.subarray(0, bytesRead).toString('utf8')
+    if (detectDelimiter(sample) !== ';') return ''
+    return /;-?\d+,\d+(;|\r?\n|$)/.test(sample) ? ", decimal_separator = ','" : ''
+  } finally {
+    await handle.close()
+  }
 }
 
 async function ensureConnected(id: string) {
@@ -274,6 +289,33 @@ export const api: MastermindApi = {
     })
     await writeFile(result.filePath, content, 'utf8')
     return result.filePath
+  },
+  async queryFile(path) {
+    if (!path) {
+      const window = BrowserWindow.getFocusedWindow()
+      const options = {
+        title: 'Query a file with SQL',
+        properties: ['openFile' as const],
+        filters: [
+          { name: 'Data files', extensions: ['csv', 'tsv', 'txt', 'parquet', 'json', 'jsonl', 'ndjson', 'xlsx'] },
+          { name: 'All files', extensions: ['*'] },
+        ],
+      }
+      const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
+      if (r.canceled || !r.filePaths[0]) return null
+      path = r.filePaths[0]
+    }
+    // One in-memory DuckDB connection serves all ad-hoc file queries.
+    const existing = connections.listConnections().find((c) => c.driver === 'duckdb' && !c.filePath && c.group === FILES_GROUP)
+    const connection = existing ?? connections.saveConnection({ id: '', name: 'Files (DuckDB)', driver: 'duckdb', group: FILES_GROUP })
+    const literal = `'${path.replaceAll("'", "''")}'`
+    const ext = extname(path).slice(1).toLowerCase()
+    const reader =
+      ext === 'parquet' ? `read_parquet(${literal})`
+      : ext === 'json' || ext === 'jsonl' || ext === 'ndjson' ? `read_json(${literal})`
+      : ext === 'xlsx' ? `read_xlsx(${literal})`
+      : `read_csv(${literal}${await csvOptions(path)})`
+    return { connectionId: connection.id, sql: `SELECT *\nFROM ${reader}\nLIMIT 1000;\n`, title: basename(path) }
   },
   async compareData(request) {
     await Promise.all([ensureConnected(request.source.connectionId), ensureConnected(request.target.connectionId)])

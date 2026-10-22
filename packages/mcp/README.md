@@ -1,7 +1,7 @@
 # dbmastermind-mcp
 
 MCP server that gives AI agents (Claude Code, Codex, Cursor, Claude Desktop, VS Code…) safe access to your
-databases: **PostgreSQL, SQL Server, MySQL, MariaDB, SQLite**.
+databases: **PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite, DuckDB**.
 
 - Read-only by default: writes only with `--allow-writes`, and read-only connections stay read-only
 - Schema exploration: `list_tables`, `describe_table` (columns, keys, indexes, comments, incoming references),

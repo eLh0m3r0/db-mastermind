@@ -15,6 +15,7 @@ const copySql: Record<string, string[]> = {
     'SELECT CAST(id AS bigint) AS id, customer_id, total, status, ordered_on INTO shop.orders_copy FROM shop.orders',
   ],
   sqlite: ['DROP TABLE IF EXISTS orders_copy', 'CREATE TABLE orders_copy AS SELECT * FROM orders'],
+  duckdb: ['DROP TABLE IF EXISTS orders_copy', 'CREATE TABLE orders_copy AS SELECT * FROM orders'],
 }
 
 for (const engine of engines) {

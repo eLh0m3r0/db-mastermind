@@ -49,5 +49,8 @@
   "devDependencies": {
     "@dbmastermind/core": "*",
     "esbuild": "^0.28.2"
+  },
+  "optionalDependencies": {
+    "@duckdb/node-api": "1.4.5-r.1"
   }
 }

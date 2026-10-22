@@ -1,4 +1,8 @@
-export type DriverId = 'postgres' | 'mssql' | 'mysql' | 'mariadb' | 'sqlite' | 'oracle'
+export type DriverId = 'postgres' | 'mssql' | 'mysql' | 'mariadb' | 'sqlite' | 'oracle' | 'duckdb'
+
+/** Engines that open a local file instead of connecting to a server. */
+export const FILE_DRIVERS: ReadonlySet<DriverId> = new Set(['sqlite', 'duckdb'])
+export const isFileDriver = (driver: DriverId) => FILE_DRIVERS.has(driver)
 
 export type SslMode = 'disable' | 'prefer' | 'require' | 'verify-ca' | 'verify-full'
 

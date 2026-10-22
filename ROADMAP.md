@@ -210,7 +210,9 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 ## Milestone 5 — More databases (v0.6)
 
 - ✅ Oracle (thin mode, no Instant Client: PL/SQL blocks, explain plans, migrations)
-- ⬜ ClickHouse, DuckDB, CockroachDB, Redshift, TimescaleDB,
+- ✅ DuckDB (in process): `.duckdb` files, and SQL straight over CSV / Parquet / JSON / Excel files — "Query a file",
+  drag & drop, Czech decimal-comma CSVs detected
+- ⬜ ClickHouse, CockroachDB, Redshift, TimescaleDB,
   Snowflake, BigQuery, Cassandra
 - 💡 MongoDB, Redis (document/key-value browsers)
 - ✅ SQL Server Windows (integrated) authentication (msnodesqlv8 + ODBC, tested on Windows CI)

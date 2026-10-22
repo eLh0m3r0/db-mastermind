@@ -4,6 +4,7 @@ import { ContextMenuHost } from '@/components/ui/ContextMenu'
 import { Splitter } from '@/components/ui/Splitter'
 import { Toasts } from '@/components/ui/Toasts'
 import { bridge } from '@/lib/api'
+import { QUERYABLE_FILE, queryFile } from '@/lib/files'
 import { onCommand } from '@/lib/commands'
 import { t } from '@/lib/i18n'
 import { installKeymap } from '@/lib/keymap'
@@ -87,11 +88,37 @@ function useGlobalCommands() {
   )
 }
 
+/** Dropping a CSV / Parquet / JSON / Excel file anywhere opens it for SQL (other drops keep their default handling). */
+function useFileDrop() {
+  useEffect(() => {
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer && [...e.dataTransfer.types].includes('Files')
+    const onDragOver = (e: DragEvent) => {
+      if (hasFiles(e)) e.preventDefault()
+    }
+    const onDrop = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      // Never let Electron navigate to the dropped file, nor the editor paste its contents.
+      e.preventDefault()
+      e.stopPropagation()
+      const file = [...(e.dataTransfer?.files ?? [])].find((f) => QUERYABLE_FILE.test(f.name))
+      if (file) void queryFile(bridge.pathForFile(file))
+      else toast({ kind: 'info', message: t('Drop a CSV, Parquet, JSON or Excel file to query it with SQL') })
+    }
+    window.addEventListener('dragover', onDragOver)
+    window.addEventListener('drop', onDrop, true)
+    return () => {
+      window.removeEventListener('dragover', onDragOver)
+      window.removeEventListener('drop', onDrop, true)
+    }
+  }, [])
+}
+
 export function App() {
   const tabs = useWorkspace((s) => s.tabs)
   const activeId = useWorkspace((s) => s.activeTabId)
   const { sidebarVisible, sidebarWidth, aiPanelVisible, aiPanelWidth, set } = useUi()
   useGlobalCommands()
+  useFileDrop()
 
   useEffect(() => {
     void useSettings.getState().load()

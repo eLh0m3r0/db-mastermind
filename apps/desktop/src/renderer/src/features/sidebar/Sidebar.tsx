@@ -18,6 +18,7 @@ import {
   Trash2,
   Unplug,
 } from 'lucide-react'
+import { isFileDriver } from '@dbmastermind/core/browser'
 import type { StoredConnection } from '@shared/api'
 import { IconButton } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
@@ -152,7 +153,7 @@ export function Sidebar() {
             >
               <BookOpen size={12} />
             </button>
-            {connection.driver !== 'sqlite' && (
+            {!isFileDriver(connection.driver) && (
               <button
                 type="button"
                 title={t('Server activity')}
@@ -229,7 +230,7 @@ function ConnectionHeader({ connection }: { connection: StoredConnection }) {
           </div>
           <div className="flex items-center gap-1.5 text-[11px] text-fg-faint">
             <StatusDot id={connection.id} />
-            <span className="truncate">{connection.driver === 'sqlite' ? connection.filePath : `${connection.user ? `${connection.user}@` : ''}${connection.host ?? ''}${connection.database ? `/${connection.database}` : ''}`}</span>
+            <span className="truncate">{isFileDriver(connection.driver) ? connection.filePath || t('in-memory') : `${connection.user ? `${connection.user}@` : ''}${connection.host ?? ''}${connection.database ? `/${connection.database}` : ''}`}</span>
           </div>
         </div>
         <ChevronDown size={13} className="shrink-0 text-fg-faint" />
@@ -278,7 +279,7 @@ function ConnectionList() {
                     {c.color && <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: c.color }} />}
                     {c.name}
                   </div>
-                  <div className="truncate text-[11px] text-fg-faint">{c.driver === 'sqlite' ? c.filePath : `${c.host ?? ''}${c.database ? `/${c.database}` : ''}`}</div>
+                  <div className="truncate text-[11px] text-fg-faint">{isFileDriver(c.driver) ? c.filePath || t('in-memory') : `${c.host ?? ''}${c.database ? `/${c.database}` : ''}`}</div>
                 </div>
                 <StatusDot id={c.id} />
               </button>

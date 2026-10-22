@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { CheckCircle2, ClipboardPaste, FolderOpen, XCircle } from 'lucide-react'
-import type { ConnectionConfig, DriverId, Environment, SslMode } from '@dbmastermind/core/browser'
+import { isFileDriver, type ConnectionConfig, type DriverId, type Environment, type SslMode } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { Checkbox, Field, Input, Segmented, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -97,7 +97,8 @@ export function ConnectionForm() {
     }
   }
 
-  const isSqlite = config.driver === 'sqlite'
+  const isFile = isFileDriver(config.driver)
+  const isDuck = config.driver === 'duckdb'
   const windowsAuth = config.driver === 'mssql' && config.options?.authentication === 'windows'
   const isWindows = bridge.platform === 'win32'
   const ssl = config.ssl ?? { mode: (config.driver === 'mssql' ? 'prefer' : 'disable') as SslMode }
@@ -163,7 +164,7 @@ export function ConnectionForm() {
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          {!isSqlite && (
+          {!isFile && (
             <div className="flex gap-1 border-b border-line px-4 pt-3">
               {(['general', 'ssl', 'ssh', 'advanced'] as Section[]).map((s) => (
                 <button
@@ -190,9 +191,9 @@ export function ConnectionForm() {
               void submit(true)
             }}
           >
-            {(section === 'general' || isSqlite) && (
+            {(section === 'general' || isFile) && (
               <>
-                {!isSqlite && (
+                {!isFile && (
                   <div className="flex gap-2">
                     <Input
                       className="flex-1 font-mono text-[12px]"
@@ -217,17 +218,22 @@ export function ConnectionForm() {
                   </div>
                 )}
                 <Field label={t('Name')}>
-                  <Input value={config.name} placeholder={isSqlite ? 'my-app.db' : t('Production CRM')} onChange={(e) => set({ name: e.target.value })} />
+                  <Input value={config.name} placeholder={isFile ? 'my-app.db' : t('Production CRM')} onChange={(e) => set({ name: e.target.value })} />
                 </Field>
-                {isSqlite ? (
+                {isFile ? (
                   <Field label={t('Database file')}>
                     <div className="flex gap-2">
-                      <Input className="flex-1 font-mono text-[12px]" value={config.filePath ?? ''} onChange={(e) => set({ filePath: e.target.value })} placeholder="/path/to/database.db" />
+                      <Input
+                        className="flex-1 font-mono text-[12px]"
+                        value={config.filePath ?? ''}
+                        onChange={(e) => set({ filePath: e.target.value })}
+                        placeholder={isDuck ? t('Empty: in-memory database for querying files') : '/path/to/database.db'}
+                      />
                       <Button
                         icon={<FolderOpen size={14} />}
                         onClick={() =>
-                          void pickFile(t('Choose SQLite database'), (p) => set({ filePath: p, name: config.name || p.split(/[\\/]/).pop() || '' }), [
-                            { name: 'SQLite', extensions: ['db', 'sqlite', 'sqlite3', 'db3', 's3db'] },
+                          void pickFile(isDuck ? t('Choose DuckDB database') : t('Choose SQLite database'), (p) => set({ filePath: p, name: config.name || p.split(/[\\/]/).pop() || '' }), [
+                            isDuck ? { name: 'DuckDB', extensions: ['duckdb', 'ddb', 'db'] } : { name: 'SQLite', extensions: ['db', 'sqlite', 'sqlite3', 'db3', 's3db'] },
                             { name: t('All files'), extensions: ['*'] },
                           ])
                         }
@@ -341,7 +347,7 @@ export function ConnectionForm() {
               </>
             )}
 
-            {section === 'ssl' && !isSqlite && (
+            {section === 'ssl' && !isFile && (
               <>
                 <Field label={t('SSL mode')}>
                   <Select value={ssl.mode} onChange={(e) => set({ ssl: { ...ssl, mode: e.target.value as SslMode } })}>
@@ -378,7 +384,7 @@ export function ConnectionForm() {
               </>
             )}
 
-            {section === 'ssh' && !isSqlite && (
+            {section === 'ssh' && !isFile && (
               <>
                 <Checkbox checked={ssh.enabled} onChange={(enabled) => set({ ssh: { ...ssh, enabled } })} label={t('Connect through an SSH tunnel')} />
                 <fieldset disabled={!ssh.enabled} className={cn('flex flex-col gap-3', !ssh.enabled && 'opacity-50')}>
@@ -433,7 +439,7 @@ export function ConnectionForm() {
               </>
             )}
 
-            {section === 'advanced' && !isSqlite && (
+            {section === 'advanced' && !isFile && (
               <>
                 {config.driver === 'mssql' && (
                   <Field label={t('Query timeout (seconds, 0 = none)')}>

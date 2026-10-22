@@ -257,6 +257,8 @@ export interface MastermindApi {
   /** Writes HTML/Markdown documentation of the schema (with knowledge base notes); returns the path or null if cancelled. */
   exportDataDictionary(connectionId: string, format: 'html' | 'markdown', schemas?: string[]): Promise<string | null>
   compareData(request: CompareDataRequest): Promise<DataCompareResult>
+  /** Opens a CSV / Parquet / JSON / Excel file for SQL in the built-in DuckDB; asks for the file when `path` is omitted. */
+  queryFile(path?: string): Promise<{ connectionId: string; sql: string; title: string } | null>
 
   fetchTable(request: FetchTableRequest): Promise<TablePage>
   countTable(request: Omit<FetchTableRequest, 'limit' | 'offset'>): Promise<number>
@@ -341,6 +343,7 @@ export const API_METHODS = [
   'stopSession',
   'exportDataDictionary',
   'compareData',
+  'queryFile',
   'fetchTable',
   'countTable',
   'importPreview',

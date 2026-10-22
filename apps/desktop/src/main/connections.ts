@@ -102,6 +102,7 @@ export function duplicateConnection(id: string): StoredConnection {
 
 export function defaultName(c: Partial<ConnectionConfig>): string {
   if (c.driver === 'sqlite') return c.filePath?.split(/[\\/]/).pop() ?? 'SQLite'
+  if (c.driver === 'duckdb') return c.filePath?.split(/[\\/]/).pop() || 'DuckDB'
   const db = c.database ? `/${c.database}` : ''
   return `${c.host ?? 'localhost'}${db}`
 }

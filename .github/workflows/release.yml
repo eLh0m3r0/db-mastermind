@@ -42,6 +42,24 @@ jobs:
           cache: npm
       - run: npm install --no-audit --no-fund
       - run: npm run build -w packages/mcp
+      # npm installs only the host's DuckDB binding; this runner also builds the other architecture.
+      - name: DuckDB bindings for every target architecture
+        shell: bash
+        run: |
+          V=$(node -p "require('@duckdb/node-bindings/package.json').version")
+          case "$RUNNER_OS" in
+            macOS) TARGETS="darwin-arm64 darwin-x64" ;;
+            Windows) TARGETS="win32-x64 win32-arm64" ;;
+            *) TARGETS="linux-x64" ;;
+          esac
+          for T in $TARGETS; do
+            DEST="node_modules/@duckdb/node-bindings-$T"
+            [ -d "$DEST" ] && continue
+            npm pack "@duckdb/node-bindings-$T@$V" --silent
+            mkdir -p "$DEST"
+            tar -xzf "duckdb-node-bindings-$T-$V.tgz" -C "$DEST" --strip-components 1
+          done
+          ls node_modules/@duckdb
       - name: Build and publish
         working-directory: apps/desktop
         run: npx electron-vite build && npx electron-builder ${{ matrix.args }} --publish always

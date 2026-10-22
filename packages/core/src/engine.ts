@@ -1,5 +1,6 @@
 import { qualify } from './dialect.js'
 import { ReadOnlyViolationError, type DatabaseDriver } from './driver.js'
+import { DuckDBDriver } from './drivers/duckdb.js'
 import { MssqlDriver } from './drivers/mssql.js'
 import { MysqlDriver } from './drivers/mysql.js'
 import { OracleDriver } from './drivers/oracle.js'
@@ -26,6 +27,8 @@ export function createDriver(config: ConnectionConfig): DatabaseDriver {
       return new SqliteDriver(config)
     case 'oracle':
       return new OracleDriver(config)
+    case 'duckdb':
+      return new DuckDBDriver(config)
   }
 }
 
@@ -171,45 +174,52 @@ export class DatabaseService {
     const statements = splitStatements(script, entry.config.driver, { batchesOnly: entry.config.driver === 'mssql' })
     const outcomes: StatementOutcome[] = []
     let inTransaction = false
-    for (const statement of statements) {
-      if (!statement.text) continue
-      const started = Date.now()
-      try {
-        this.assertAllowed(entry, statement.text)
-        let text = statement.text
-        let params = statements.length === 1 ? options.params : undefined
-        if (options.parameterValues && extractParameters(text, entry.config.driver).length) {
-          const bound = bindParameters(text, entry.config.driver, entry.driver.dialect, options.parameterValues)
-          text = bound.sql
-          params = bound.params
-        }
-        const results = await entry.driver.execute(text, {
-          session: options.session,
-          maxRows: options.maxRows,
-          signal: options.signal,
-          params,
-        })
-        outcomes.push({ sql: statement.text, start: statement.start, end: statement.end, results, durationMs: Date.now() - started })
-        if (classifyStatement(statement.text) === 'transaction') inTransaction = /^\s*(BEGIN|START)\b/i.test(statement.text)
-        // T-SQL batches contain BEGIN TRAN … COMMIT inside one statement.
-        if (entry.config.driver === 'mssql' && /\bBEGIN\s+TRAN/i.test(statement.text)) inTransaction = !/\b(COMMIT|ROLLBACK)\b/i.test(statement.text.slice(statement.text.search(/\bBEGIN\s+TRAN/i)))
-      } catch (err) {
-        outcomes.push({
-          sql: statement.text,
-          start: statement.start,
-          end: statement.end,
-          error: describeError(err),
-          durationMs: Date.now() - started,
-        })
-        if (!options.continueOnError || options.signal?.aborted) {
-          // A failed script must not leave its transaction open (PostgreSQL would reject everything after).
-          if (inTransaction && options.session) {
-            await entry.driver.execute(entry.driver.dialect.rollback, { session: options.session }).catch(() => {})
-            outcomes.push({ sql: entry.driver.dialect.rollback, start: statement.end, end: statement.end, results: [], durationMs: 0, note: 'The transaction was rolled back: no changes were saved.' })
+    // A multi-statement script runs on one connection (BEGIN … COMMIT must not hop between pooled connections).
+    const temporary = !options.session && statements.filter((s) => s.text).length > 1 ? `script-${Date.now()}-${Math.random().toString(36).slice(2)}` : undefined
+    if (temporary) options = { ...options, session: temporary }
+    try {
+      for (const statement of statements) {
+        if (!statement.text) continue
+        const started = Date.now()
+        try {
+          this.assertAllowed(entry, statement.text)
+          let text = statement.text
+          let params = statements.length === 1 ? options.params : undefined
+          if (options.parameterValues && extractParameters(text, entry.config.driver).length) {
+            const bound = bindParameters(text, entry.config.driver, entry.driver.dialect, options.parameterValues)
+            text = bound.sql
+            params = bound.params
           }
-          break
+          const results = await entry.driver.execute(text, {
+            session: options.session,
+            maxRows: options.maxRows,
+            signal: options.signal,
+            params,
+          })
+          outcomes.push({ sql: statement.text, start: statement.start, end: statement.end, results, durationMs: Date.now() - started })
+          if (classifyStatement(statement.text) === 'transaction') inTransaction = /^\s*(BEGIN|START)\b/i.test(statement.text)
+          // T-SQL batches contain BEGIN TRAN … COMMIT inside one statement.
+          if (entry.config.driver === 'mssql' && /\bBEGIN\s+TRAN/i.test(statement.text)) inTransaction = !/\b(COMMIT|ROLLBACK)\b/i.test(statement.text.slice(statement.text.search(/\bBEGIN\s+TRAN/i)))
+        } catch (err) {
+          outcomes.push({
+            sql: statement.text,
+            start: statement.start,
+            end: statement.end,
+            error: describeError(err),
+            durationMs: Date.now() - started,
+          })
+          if (!options.continueOnError || options.signal?.aborted) {
+            // A failed script must not leave its transaction open (PostgreSQL would reject everything after).
+            if (inTransaction && options.session) {
+              await entry.driver.execute(entry.driver.dialect.rollback, { session: options.session }).catch(() => {})
+              outcomes.push({ sql: entry.driver.dialect.rollback, start: statement.end, end: statement.end, results: [], durationMs: 0, note: 'The transaction was rolled back: no changes were saved.' })
+            }
+            break
+          }
         }
       }
+    } finally {
+      if (temporary) await entry.driver.releaseSession(temporary).catch(() => {})
     }
     if (/^\s*(CREATE|ALTER|DROP|RENAME)\b/im.test(script)) {
       // DDL changes the schema; drop the cache so the explorer refreshes lazily.

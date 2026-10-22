@@ -48,6 +48,15 @@ export const postgresDialect: Dialect = {
   rollback: 'ROLLBACK',
 }
 
+export const duckdbDialect: Dialect = {
+  ...postgresDialect,
+  id: 'duckdb',
+  defaultSchema: 'main',
+  castToText: (expr) => `CAST(${expr} AS VARCHAR)`,
+  regex: (expr, param, negate) => `${negate ? 'NOT ' : ''}regexp_matches(CAST(${expr} AS VARCHAR), ${param}, 'i')`,
+  begin: 'BEGIN TRANSACTION',
+}
+
 const backtick = (name: string) => `\`${name.replaceAll('`', '``')}\``
 
 export const mysqlDialect: Dialect = {
@@ -132,6 +141,7 @@ export const dialects: Record<DriverId, Dialect> = {
   mssql: mssqlDialect,
   sqlite: sqliteDialect,
   oracle: oracleDialect,
+  duckdb: duckdbDialect,
 }
 
 export function getDialect(id: DriverId): Dialect {

@@ -724,4 +724,12 @@ export const cs: Record<string, string> = {
   'Data compare': 'Porovnání dat',
   'Compare data with…': 'Porovnat data s…',
   'Data: {name}': 'Data: {name}',
+  'in-memory': 'v paměti',
+  'Empty: in-memory database for querying files': 'Prázdné: databáze v paměti pro dotazy nad soubory',
+  'Choose DuckDB database': 'Vyberte databázi DuckDB',
+  'Could not open the file': 'Soubor se nepodařilo otevřít',
+  'CSV, Parquet, JSON or Excel: query it with SQL, no import needed': 'CSV, Parquet, JSON nebo Excel: dotazujte se SQL bez importu',
+  'Query a file': 'Dotaz nad souborem',
+  'Query a CSV, Parquet, JSON or Excel file…': 'Dotaz nad souborem CSV, Parquet, JSON nebo Excel…',
+  'Drop a CSV, Parquet, JSON or Excel file to query it with SQL': 'Přetáhněte soubor CSV, Parquet, JSON nebo Excel a dotazujte se na něj SQL',
 }

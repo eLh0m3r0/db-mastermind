@@ -45,7 +45,9 @@ for (const engine of engines) {
         expect(c.columns.find((x) => x.name === 'vip')!.comment).toBe('Very important person')
       }
       expect(o.foreignKeys).toHaveLength(1)
-      expect(o.foreignKeys[0]).toMatchObject({ columns: ['customer_id'], refTable: 'customers', refColumns: ['id'], onDelete: 'CASCADE' })
+      expect(o.foreignKeys[0]).toMatchObject({ columns: ['customer_id'], refTable: 'customers', refColumns: ['id'] })
+      // DuckDB foreign keys have no referential actions.
+      if (engine.id !== 'duckdb') expect(o.foreignKeys[0]!.onDelete).toBe('CASCADE')
       const idx = o.indexes.find((i) => i.name === 'orders_status_idx')!
       expect(idx.columns).toEqual(['status', 'ordered_on'])
       expect(idx.unique).toBe(false)

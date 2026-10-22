@@ -11,7 +11,7 @@ team's notes. It also exposes everything over MCP to Claude Code, Codex, Cursor 
 
 [Download](https://github.com/eLh0m3r0/db-mastermind/releases/latest) · [Roadmap](ROADMAP.md) · [Report an issue](https://github.com/eLh0m3r0/db-mastermind/issues/new)
 
-PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite — Windows · macOS · Linux — English & čeština — MIT, no feature limits
+PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB — Windows · macOS · Linux — English & čeština — MIT, no feature limits
 
 </div>
 
@@ -37,6 +37,8 @@ PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite — Windows · 
 
 - **Charts from any result**: bar, line or scatter in one click, with a colorblind-safe palette
 - **Import CSV / Excel** into a table with column mapping (Windows-1250 exports from Czech Excel included)
+- **Query a file with SQL**: drop a CSV, Parquet, JSON or Excel file on the window and query it right away
+  (built-in DuckDB, nothing to install; `;`-separated files with decimal commas just work)
 - **Server activity**: running queries and sessions, cancel a query or end a session
 - Pin favourite tables, hide schemas you don't use
 

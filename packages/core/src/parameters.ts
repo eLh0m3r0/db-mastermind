@@ -57,7 +57,7 @@ export function extractParameters(sql: string, driver: DriverId): QueryParameter
       i++
       continue
     }
-    if (ch === '$' && driver === 'postgres') {
+    if (ch === '$' && (driver === 'postgres' || driver === 'duckdb')) {
       const tag = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i))
       if (tag) {
         const e = sql.indexOf(tag[0], i + tag[0].length)
@@ -81,7 +81,7 @@ export function extractParameters(sql: string, driver: DriverId): QueryParameter
       i += m[0].length
       continue
     }
-    if (ch === '?' && driver !== 'postgres') {
+    if (ch === '?' && driver !== 'postgres' && driver !== 'duckdb') {
       positional += 1
       add(String(positional), 'positional', i, i + 1)
       i++

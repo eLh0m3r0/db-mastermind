@@ -60,6 +60,26 @@ const ddl = {
        SELECT 1 + (n % 3), n * 10.5, CASE WHEN n % 2 = 0 THEN 'paid' ELSE 'new' END, DATEADD(day, n, '2026-01-01')
          FROM (SELECT TOP 120 ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS n FROM sys.all_objects) g`,
   ],
+  duckdb: [
+    'DROP VIEW IF EXISTS vip_customers',
+    'DROP TABLE IF EXISTS payments',
+    'DROP TABLE IF EXISTS orders_copy',
+    'DROP TABLE IF EXISTS orders',
+    'DROP TABLE IF EXISTS customers',
+    'DROP SEQUENCE IF EXISTS customers_seq',
+    'DROP SEQUENCE IF EXISTS orders_seq',
+    'CREATE SEQUENCE customers_seq',
+    'CREATE SEQUENCE orders_seq',
+    `CREATE TABLE customers (id INTEGER DEFAULT nextval('customers_seq') PRIMARY KEY, name VARCHAR NOT NULL, email VARCHAR UNIQUE, vip BOOLEAN DEFAULT false, created_at TIMESTAMP DEFAULT current_timestamp, meta JSON)`,
+    `COMMENT ON TABLE customers IS 'People who buy things'`,
+    `COMMENT ON COLUMN customers.vip IS 'Very important person'`,
+    // DuckDB foreign keys have no ON DELETE actions.
+    `CREATE TABLE orders (id BIGINT DEFAULT nextval('orders_seq') PRIMARY KEY, customer_id INTEGER NOT NULL REFERENCES customers(id), total DECIMAL(12,2) NOT NULL, status VARCHAR, ordered_on DATE)`,
+    `CREATE INDEX orders_status_idx ON orders (status, ordered_on)`,
+    `CREATE VIEW vip_customers AS SELECT * FROM customers WHERE vip`,
+    `INSERT INTO customers (name, email, vip, meta) VALUES ('Alice', 'alice@example.com', true, '{"tier":"gold"}'), ('Bob', 'bob@example.com', false, NULL), ('Čeněk 50%_off', NULL, false, NULL)`,
+    `INSERT INTO orders (customer_id, total, status, ordered_on) SELECT 1 + (g % 3), g * 10.5, CASE WHEN g % 2 = 0 THEN 'paid' ELSE 'new' END, DATE '2026-01-01' + g::INTEGER FROM range(1, 121) t(g)`,
+  ],
   sqlite: [
     'DROP TABLE IF EXISTS payments',
     'DROP VIEW IF EXISTS vip_customers',
@@ -114,6 +134,13 @@ export const engines: Engine[] = [
     schema: 'shop',
     setup: ddl.mssql,
     sleep: "WAITFOR DELAY '00:00:30'",
+  },
+  {
+    id: 'duckdb',
+    config: { id: 'duck', name: 'duck', driver: 'duckdb', filePath: join(tmp, 'test.duckdb') },
+    schema: 'main',
+    setup: ddl.duckdb,
+    sleep: `SELECT sum(hash(i)) FROM range(50000000000) t(i)`,
   },
   {
     id: 'sqlite',

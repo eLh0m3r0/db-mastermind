@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { API_CHANNEL, API_METHODS, type IpcResult, type MainEvents, type MastermindApi } from '../shared/api'
 
 /** Error that keeps the database error code across the IPC boundary. */
@@ -32,6 +32,10 @@ const bridge = {
     const wrapped = (_e: unknown, payload: MainEvents[K]) => listener(payload)
     ipcRenderer.on(channel, wrapped)
     return () => ipcRenderer.removeListener(channel, wrapped)
+  },
+  /** Local path of a dropped file (File.path no longer exists in Electron). */
+  pathForFile(file: File): string {
+    return webUtils.getPathForFile(file)
   },
   setTheme(theme: 'system' | 'light' | 'dark') {
     ipcRenderer.send('theme:set', theme)

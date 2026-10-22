@@ -55,7 +55,9 @@ export function normalizeValue(value: unknown): CellValue {
 export function cellToText(value: CellValue): string {
   if (value === null) return 'NULL'
   if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  // 15 significant digits hide binary float noise (0.1 + 0.2 → 0.3) without losing real precision.
+  if (typeof value === 'number') return Number.isInteger(value) ? String(value) : String(Number(value.toPrecision(15)))
+  if (typeof value === 'boolean') return String(value)
   if (isBinaryValue(value)) return `0x${value.$binary}${value.length * 2 > value.$binary.length ? '…' : ''}`
   return JSON.stringify(value)
 }

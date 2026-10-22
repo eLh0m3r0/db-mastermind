@@ -48,3 +48,12 @@ npm run dev                   # desktop app with HMR
 - pg user queries use identity type parsers (exact text); catalog queries must use `pg.types`.
 - npm optional-deps bug: if rolldown/vitest says "Cannot find native binding", delete `node_modules` and
   `package-lock.json` and reinstall.
+- DuckDB: one connection per statement (interrupt cancels a whole connection). File databases checkpoint after
+  every commit (`checkpoint_threshold = 0b`): DuckDB 1.4 fails replaying some WAL entries, and a second
+  instance on the same file needs the data in the file. A table with indexes, views or incoming foreign keys
+  can't be ALTERed: `generateMigration` drops/recreates indexes and views around it, creates new tables last,
+  and warns about referenced tables.
+- DuckDB bindings are per-platform npm packages: release.yml fetches the other architecture's binding with
+  `npm pack`, `build/after-pack.cjs` keeps only the target's binding in each package.
+- `runScript` without a session runs multi-statement scripts on a temporary session, so BEGIN … COMMIT stay
+  on one connection.

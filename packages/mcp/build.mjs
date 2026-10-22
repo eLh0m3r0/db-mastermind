@@ -9,6 +9,6 @@ await build({
   format: 'esm',
   target: 'node22',
   banner: { js: '#!/usr/bin/env node\nimport { createRequire as __cr } from "node:module"; const require = __cr(import.meta.url);' },
-  external: ['@modelcontextprotocol/sdk', 'mssql', 'mysql2', 'pg', 'pg-cursor', 'ssh2'],
+  external: ['@modelcontextprotocol/sdk', '@duckdb/node-api', 'mssql', 'mysql2', 'pg', 'pg-cursor', 'ssh2'],
   logLevel: 'info',
 })

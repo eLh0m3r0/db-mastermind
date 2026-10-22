@@ -21,9 +21,12 @@ const TYPES: Record<string, { text150: string; money: string; note: string; int:
   mariadb: { text150: 'varchar(150)', money: 'decimal(12,2)', note: 'varchar(200)', int: 'int' },
   mssql: { text150: 'nvarchar(150)', money: 'decimal(12,2)', note: 'nvarchar(200)', int: 'int' },
   sqlite: { text150: 'VARCHAR(150)', money: 'NUMERIC', note: 'TEXT', int: 'INTEGER' },
+  // DuckDB has no VARCHAR length; retype to TEXT (an alias, still a real ALTER).
+  duckdb: { text150: 'TEXT', money: 'DECIMAL(12,2)', note: 'VARCHAR', int: 'INTEGER' },
 }
 
-for (const engine of engines) {
+// DuckDB can't alter tables that others reference; it has its own scenario below.
+for (const engine of engines.filter((e) => e.id !== 'duckdb')) {
   describe.skipIf(skip.has(engine.id))(`schema migrations on ${engine.id}`, () => {
     it('designs changes on a live schema and applies the generated migration', async () => {
       const svc = new DatabaseService()
@@ -78,7 +81,7 @@ for (const engine of engines) {
         const c2 = findTable(after, { schema: engine.schema, name: 'customers' })!
         expect(c2.columns.map((c) => c.name)).toEqual(expect.arrayContaining(['email_address', 'phone']))
         expect(c2.columns.map((c) => c.name)).not.toContain('email')
-        expect(c2.columns.find((c) => c.name === 'name')!.dataType.toLowerCase()).toContain('150')
+        if (engine.id !== 'duckdb') expect(c2.columns.find((c) => c.name === 'name')!.dataType.toLowerCase()).toContain('150')
         const p = findTable(after, { schema: engine.schema, name: 'payments' })!
         expect(p.primaryKey).toEqual(['id'])
         expect(p.foreignKeys[0]).toMatchObject({ columns: ['order_id'], refTable: 'orders' })
@@ -99,3 +102,54 @@ for (const engine of engines) {
     })
   })
 }
+
+const duck = engines.find((e) => e.id === 'duckdb')!
+describe.skipIf(skip.has('duckdb'))('schema migrations on duckdb', () => {
+  it('alters a table, creates one with a sequence and an inline foreign key, and warns about referenced tables', async () => {
+    const svc = new DatabaseService()
+    try {
+      const config = await setupEngine(svc, duck)
+      const snapshot = await svc.schema(config.id, true)
+      const customers = findTable(snapshot, { name: 'customers' })!
+      const orders = findTable(snapshot, { name: 'orders' })!
+
+      const draftCustomers = toDesignTable(customers)
+      draftCustomers.columns = draftCustomers.columns.map((c) => (c.name === 'email' ? { ...c, name: 'email_address' } : c))
+      const blocked = generateMigration(diffTables(snapshot.tables, [draftCustomers]), getDialect('duckdb'), snapshot.tables)
+      expect(blocked.warnings.some((w) => /reference it with foreign keys/.test(w.message))).toBe(true)
+
+      const draftOrders = toDesignTable(orders)
+      draftOrders.columns = draftOrders.columns.map((c) => (c.name === 'status' ? { ...c, name: 'state' } : c))
+      draftOrders.columns.push({ id: designId(), name: 'note', dataType: 'VARCHAR', nullable: true, comment: 'Free text' })
+      draftOrders.indexes.push({ id: designId(), name: 'ix_orders_ordered_on', columns: ['ordered_on'], unique: false })
+      const payments: DesignTable = {
+        id: designId(),
+        name: 'payments',
+        columns: [
+          { id: designId(), name: 'id', dataType: 'INTEGER', nullable: false, identity: true },
+          { id: designId(), name: 'order_id', dataType: 'BIGINT', nullable: false },
+          { id: designId(), name: 'amount', dataType: 'DECIMAL(12,2)', nullable: false },
+        ],
+        primaryKey: ['id'],
+        foreignKeys: [{ id: designId(), columns: ['order_id'], refTable: 'orders', refColumns: ['id'] }],
+        indexes: [],
+      }
+      const migration = generateMigration(diffTables(snapshot.tables, [draftOrders, payments]), getDialect('duckdb'), snapshot.tables)
+      const outcomes = await svc.runScript(config.id, migrationScript(migration, getDialect('duckdb')))
+      const failed = outcomes.find((o) => o.error)
+      expect(failed?.error?.message, failed?.sql).toBeUndefined()
+
+      const after = await svc.schema(config.id, true)
+      const o2 = findTable(after, { name: 'orders' })!
+      expect(o2.columns.map((c) => c.name)).toEqual(expect.arrayContaining(['state', 'note']))
+      expect(o2.indexes.map((i) => i.name)).toContain('ix_orders_ordered_on')
+      const p = findTable(after, { name: 'payments' })!
+      expect(p.foreignKeys[0]).toMatchObject({ columns: ['order_id'], refTable: 'orders' })
+      const [insert] = await svc.runScript(config.id, 'INSERT INTO payments (order_id, amount) VALUES (1, 10)')
+      expect(insert!.error).toBeUndefined()
+      expect(diffTables(after.tables, after.tables.map(toDesignTable))).toEqual([])
+    } finally {
+      await svc.disconnectAll()
+    }
+  })
+})
