@@ -68,15 +68,29 @@ jobs:
             throw "The update to $latest was not downloaded"
           }
           Write-Host "Downloaded: $($found.FullName)"
-          # A normal close (not a kill) quits the app, which runs the installer (autoInstallOnAppQuit).
+          # Let the download settle, then quit normally (not a kill): autoInstallOnAppQuit runs the installer.
+          Start-Sleep -Seconds 20
+          Write-Host "Main window handle: $($app.MainWindowHandle)"
           $app.CloseMainWindow() | Out-Null
           Start-Sleep -Seconds 5
-          Get-Process 'DB Mastermind' -ErrorAction SilentlyContinue | ForEach-Object { $_.CloseMainWindow() | Out-Null }
+          if (Get-Process -Id $app.Id -ErrorAction SilentlyContinue) {
+            Write-Host 'Still running after CloseMainWindow; asking with taskkill (WM_CLOSE)'
+            taskkill /PID $app.Id /T
+            Start-Sleep -Seconds 5
+          }
+          Write-Host "App running: $([bool](Get-Process -Id $app.Id -ErrorAction SilentlyContinue))"
+          Get-Process | Where-Object { $_.ProcessName -match 'installer|DB Mastermind|setup' } | Format-Table ProcessName, Id, Path
           $deadline = (Get-Date).AddMinutes(4)
           do {
             Start-Sleep -Seconds 10
             $v = (Get-Item $exe -ErrorAction SilentlyContinue).VersionInfo.ProductVersion
             Write-Host "Installed version: $v"
           } while ((Get-Date) -lt $deadline -and -not ("$v" -like "$latest*"))
-          if (-not ("$v" -like "$latest*")) { throw "Expected $latest after quitting, found $v" }
+          if (-not ("$v" -like "$latest*")) {
+            Get-Process | Where-Object { $_.ProcessName -match 'installer|DB Mastermind|setup' } | Format-Table ProcessName, Id, Path
+            Get-ChildItem "$env:LOCALAPPDATA" -Directory -Filter '*-updater' | ForEach-Object { Get-ChildItem $_.FullName -Recurse | Format-Table FullName, Length, LastWriteTime }
+            Write-Host '--- app stdout ---'; Get-Content "$env:RUNNER_TEMP\app-out.log" -Tail 60 -ErrorAction SilentlyContinue
+            Write-Host '--- app stderr ---'; Get-Content "$env:RUNNER_TEMP\app-err.log" -Tail 60 -ErrorAction SilentlyContinue
+            throw "Expected $latest after quitting, found $v"
+          }
           Write-Host "Updated to $latest"
