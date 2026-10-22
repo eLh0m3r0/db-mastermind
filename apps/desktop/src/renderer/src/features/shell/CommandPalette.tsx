@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Command } from 'cmdk'
-import { Activity, BookOpen, FileCode2, FileSpreadsheet, LayoutDashboard, FileText, Rows3, ShieldCheck, Eye, GitCompare, Moon, Network, Plug, Plus, RefreshCw, Settings, Sparkles, Sun, Table2, TerminalSquare, Unplug, Columns2 } from 'lucide-react'
+import { Activity, BookOpen, FileCode2, FileSpreadsheet, LayoutDashboard, FileText, Rows3, ShieldCheck, Eye, GitCompare, Moon, Network, Plug, Plus, RefreshCw, Settings, Sparkles, Sun, Table2, TerminalSquare, Unplug, Columns2, Download } from 'lucide-react'
 import { Kbd } from '@/components/ui/Input'
 import { api, modKey } from '@/lib/api'
 import { runCommand } from '@/lib/commands'
@@ -89,6 +89,7 @@ export function CommandPalette() {
     { id: 'knowledge', label: t('Open knowledge base'), icon: <BookOpen size={14} />, run: () => connectionId && openTab({ kind: 'knowledge', connectionId, title: t('Knowledge base') }), needsConnection: true },
     { id: 'refresh', label: t('Refresh schema'), icon: <RefreshCw size={14} />, shortcut: 'F5', run: () => runCommand('refresh-schema'), needsConnection: true },
     { id: 'ai', label: t('Toggle AI assistant'), icon: <Sparkles size={14} />, shortcut: `${modKey}J`, run: () => runCommand('toggle-ai') },
+    { id: 'updates', label: t('Check for updates…'), icon: <Download size={14} />, run: () => runCommand('check-updates') },
     { id: 'split', label: t('Split view: open the current tab to the side'), icon: <Columns2 size={14} />, shortcut: `${modKey}\\`, run: () => runCommand('split-view') },
     { id: 'sidebar', label: t('Toggle sidebar'), icon: <Eye size={14} />, shortcut: `${modKey}B`, run: () => runCommand('toggle-sidebar') },
     { id: 'theme', label: dark ? t('Switch to light theme') : t('Switch to dark theme'), icon: dark ? <Sun size={14} /> : <Moon size={14} />, run: () => void useSettings.getState().update({ theme: dark ? 'light' : 'dark' }) },

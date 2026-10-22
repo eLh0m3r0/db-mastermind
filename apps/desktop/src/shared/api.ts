@@ -369,6 +369,10 @@ export interface MastermindApi {
   backupDatabase(connectionId: string): Promise<BackupResult | null>
   /** Restores a backup file into the database (replaces its contents); SQL Server returns the RESTORE statement. */
   restoreDatabase(connectionId: string): Promise<BackupResult | null>
+  /** Checks for a new version now (Help → Check for Updates). */
+  checkForUpdatesNow(): Promise<
+    { state: 'up-to-date' | 'downloading'; version: string } | { state: 'available'; version: string; url: string } | { state: 'disabled' | 'development' | 'offline' }
+  >
   /** Restarts the app into a downloaded update. */
   installUpdate(): Promise<void>
   /** The team folder in use and what it shares. */
@@ -508,6 +512,7 @@ export const API_METHODS = [
   'backupDatabase',
   'restoreDatabase',
   'installUpdate',
+  'checkForUpdatesNow',
   'teamStatus',
   'setTeamFolder',
   'addConnectionToTeam',

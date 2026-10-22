@@ -55,6 +55,17 @@ function useGlobalCommands() {
           case 'reopen-tab':
             ws.reopen()
             break
+          case 'check-updates':
+            void window.mastermind.api.checkForUpdatesNow().then((r) => {
+              if (r.state === 'up-to-date') toast({ kind: 'success', message: t('DB Mastermind {version} is up to date', { version: r.version }) })
+              else if (r.state === 'downloading') toast({ kind: 'info', message: t('Downloading DB Mastermind {version}…', { version: r.version }), detail: t('You will be asked to restart when it is ready.') })
+              else if (r.state === 'available')
+                toast({ kind: 'info', message: t('DB Mastermind {version} is available', { version: r.version }), action: { label: t('Download'), run: () => void window.mastermind.api.openExternal(r.url) } })
+              else if (r.state === 'disabled') toast({ kind: 'info', message: t('Update checks are turned off by your organization') })
+              else if (r.state === 'development') toast({ kind: 'info', message: t('Updates are checked in installed builds only') })
+              else toast({ kind: 'error', message: t('Could not check for updates (offline?)') })
+            })
+            break
           case 'split-view':
             // Toggles: split the current tab off to the right, or go back to one pane.
             if (ws.split) ws.unsplit()

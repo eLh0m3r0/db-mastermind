@@ -33,6 +33,7 @@ const CS: Record<string, string> = {
   Documentation: 'Dokumentace',
   Roadmap: 'Plán vývoje',
   'Report an Issue': 'Nahlásit problém',
+  'Check for Updates…': 'Zkontrolovat aktualizace…',
   'Keyboard Shortcuts': 'Klávesové zkratky',
 }
 
@@ -128,6 +129,7 @@ export function buildMenu(): void {
         { label: m('Documentation'), click: () => void shell.openExternal('https://github.com/eLh0m3r0/db-mastermind#readme') },
         { label: m('Roadmap'), click: () => void shell.openExternal('https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md') },
         { label: m('Report an Issue'), click: () => void shell.openExternal('https://github.com/eLh0m3r0/db-mastermind/issues/new') },
+        cmd(m('Check for Updates…'), 'check-updates'),
         { type: 'separator' },
         cmd(m('Keyboard Shortcuts'), 'shortcuts'),
       ],

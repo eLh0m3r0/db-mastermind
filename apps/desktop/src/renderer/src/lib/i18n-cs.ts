@@ -1007,4 +1007,11 @@ export const cs: Record<string, string> = {
   'DB Mastermind {version} is ready': 'DB Mastermind {version} je připraven',
   'It installs when you quit, or restart now.': 'Nainstaluje se při ukončení, nebo restartujte hned.',
   'Restart now': 'Restartovat',
+  'DB Mastermind {version} is up to date': 'DB Mastermind {version} je aktuální',
+  'Downloading DB Mastermind {version}…': 'Stahuji DB Mastermind {version}…',
+  'You will be asked to restart when it is ready.': 'Až bude připraven, nabídnu restart.',
+  'Update checks are turned off by your organization': 'Kontrolu aktualizací vypnula vaše organizace',
+  'Updates are checked in installed builds only': 'Aktualizace se kontrolují jen v nainstalované aplikaci',
+  'Could not check for updates (offline?)': 'Aktualizace nejde zkontrolovat (offline?)',
+  'Check for updates…': 'Zkontrolovat aktualizace…',
 }
