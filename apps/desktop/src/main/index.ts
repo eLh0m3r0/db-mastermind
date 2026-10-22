@@ -1,8 +1,9 @@
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, Menu, nativeTheme, shell, type MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron'
 import { describeError } from '@dbmastermind/core'
 import { API_CHANNEL, type IpcResult, type MastermindApi } from '@shared/api'
 import { api, db } from './api'
+import { buildMenu } from './menu'
 import { flushHistory } from './library'
 import { flushConnections, loadConnections } from './connections'
 import { getSettings, loadSettings } from './settings'
@@ -71,105 +72,6 @@ function createWindow() {
   } else {
     void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
-}
-
-function sendCommand(command: string) {
-  mainWindow?.webContents.send('menu:command', command)
-}
-
-function buildMenu() {
-  const isMac = process.platform === 'darwin'
-  // Accelerators are only displayed; the renderer's keymap handles the keys (see lib/keymap.ts).
-  const cmd = (label: string, command: string, accelerator?: string): MenuItemConstructorOptions => ({
-    label,
-    accelerator,
-    registerAccelerator: false,
-    click: () => sendCommand(command),
-  })
-  const template: MenuItemConstructorOptions[] = [
-    ...(isMac
-      ? [
-          {
-            label: app.name,
-            submenu: [
-              { role: 'about' },
-              { type: 'separator' },
-              cmd('Settings…', 'settings', 'CmdOrCtrl+,'),
-              { type: 'separator' },
-              { role: 'services' },
-              { type: 'separator' },
-              { role: 'hide' },
-              { role: 'hideOthers' },
-              { role: 'unhide' },
-              { type: 'separator' },
-              { role: 'quit' },
-            ],
-          } satisfies MenuItemConstructorOptions,
-        ]
-      : []),
-    {
-      label: 'File',
-      submenu: [
-        cmd('New Query Tab', 'new-query', 'CmdOrCtrl+T'),
-        cmd('New Connection…', 'new-connection', 'CmdOrCtrl+Shift+N'),
-        { type: 'separator' },
-        cmd('Close Tab', 'close-tab', 'CmdOrCtrl+W'),
-        cmd('Reopen Closed Tab', 'reopen-tab', 'CmdOrCtrl+Shift+T'),
-        { type: 'separator' },
-        cmd('Save Query', 'save-query', 'CmdOrCtrl+S'),
-        cmd('Export Results…', 'export', 'CmdOrCtrl+Shift+E'),
-        { type: 'separator' },
-        cmd('Disconnect', 'disconnect'),
-        ...(isMac ? [] : [{ type: 'separator' } as const, cmd('Settings…', 'settings', 'Ctrl+,'), { role: 'quit' } as const]),
-      ],
-    },
-    { role: 'editMenu' },
-    {
-      label: 'View',
-      submenu: [
-        cmd('Command Palette…', 'palette', 'CmdOrCtrl+K'),
-        cmd('Quick Open Table…', 'quick-open', 'CmdOrCtrl+P'),
-        { type: 'separator' },
-        cmd('Toggle Sidebar', 'toggle-sidebar', 'CmdOrCtrl+B'),
-        cmd('Toggle AI Assistant', 'toggle-ai', 'CmdOrCtrl+J'),
-        { type: 'separator' },
-        cmd('Refresh Schema', 'refresh-schema', 'F5'),
-        { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' },
-        ...(app.isPackaged ? [] : [{ role: 'toggleDevTools' } as const, { role: 'reload' } as const]),
-      ],
-    },
-    {
-      label: 'Query',
-      submenu: [
-        cmd('Run Statement / Selection', 'run-current', 'CmdOrCtrl+Enter'),
-        cmd('Run All', 'run-all', 'CmdOrCtrl+Shift+Enter'),
-        cmd('Cancel Query', 'cancel-query', 'CmdOrCtrl+.'),
-        { type: 'separator' },
-        cmd('Format SQL', 'format-sql', 'CmdOrCtrl+Shift+F'),
-        cmd('Ask AI…', 'ask-ai', 'CmdOrCtrl+I'),
-        { type: 'separator' },
-        cmd('History', 'history', 'CmdOrCtrl+Y'),
-        cmd('Saved Queries', 'saved-queries'),
-      ],
-    },
-    { role: 'windowMenu' },
-    {
-      role: 'help',
-      submenu: [
-        { label: 'Documentation', click: () => void shell.openExternal('https://github.com/eLh0m3r0/db-mastermind#readme') },
-        { label: 'Roadmap', click: () => void shell.openExternal('https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md') },
-        { label: 'Report an Issue', click: () => void shell.openExternal('https://github.com/eLh0m3r0/db-mastermind/issues/new') },
-        { type: 'separator' },
-        cmd('Keyboard Shortcuts', 'shortcuts'),
-      ],
-    },
-  ]
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
 function startApp() {

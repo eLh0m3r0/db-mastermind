@@ -27,6 +27,7 @@ import { createExportWriter, EXPORT_EXTENSIONS } from './export'
 import { cancelChat, respondApproval, startChat } from './ai/assistant'
 import { listModels, testProvider } from './ai/models'
 import { importConnections } from './importers'
+import { buildMenu } from './menu'
 import * as library from './library'
 import { getSettings, updateSettings } from './settings'
 import { isPortable } from './storage'
@@ -108,7 +109,9 @@ export const api: MastermindApi = {
     return getSettings()
   },
   async updateSettings(patch) {
-    return updateSettings(patch)
+    const next = updateSettings(patch)
+    if (patch.language) buildMenu()
+    return next
   },
 
   async listConnections() {

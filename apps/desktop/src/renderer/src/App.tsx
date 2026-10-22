@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { CellViewer } from '@/components/grid/CellViewer'
 import { ContextMenuHost } from '@/components/ui/ContextMenu'
 import { Splitter } from '@/components/ui/Splitter'
 import { Toasts } from '@/components/ui/Toasts'
@@ -156,6 +157,7 @@ export function App() {
       <ConnectionForm />
       <SettingsModal />
       <CommandPalette />
+      <CellViewer />
       <ContextMenuHost />
       <Toasts />
     </div>

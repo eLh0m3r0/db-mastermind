@@ -33,6 +33,7 @@ import {
   type SortSpec,
 } from '@dbmastermind/core/browser'
 import type { ExportFormat } from '@shared/api'
+import { openCellViewer } from '@/components/grid/CellViewer'
 import { DataGrid, selectionBounds, selectionToTsv, type DataGridHandle, type GridColumnMeta, type GridSelection } from '@/components/grid/DataGrid'
 import { Button, IconButton } from '@/components/ui/Button'
 import { openMenu, type MenuItem } from '@/components/ui/ContextMenu'
@@ -437,6 +438,7 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
     const fk = table?.foreignKeys.find((k) => k.columns.includes(colName))
     const incoming = schema && table ? incomingReferences(schema, table) : []
     const items: MenuItem[] = [
+      { label: t('View value…'), onClick: () => openCellViewer(value, colName, columnMeta[pos.col]?.dataType) },
       { label: t('Copy'), shortcut: '⌘C', icon: <Copy size={13} />, onClick: () => sel && void copyText(selectionToTsv(fields, displayRows, sel, false, '')) },
       { label: t('Copy with headers'), onClick: () => sel && void copyText(selectionToTsv(fields, displayRows, sel, true, '')) },
       {

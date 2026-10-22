@@ -637,4 +637,9 @@ export const cs: Record<string, string> = {
   'Schema compare': 'Porovnání schémat',
   'These are different database engines: column types and defaults are written differently, so review the migration carefully.':
     'Jde o různé databázové systémy: typy sloupců a výchozí hodnoty se zapisují jinak, migraci proto pečlivě zkontrolujte.',
+  '{n} bytes': '{n} bajtů',
+  '{n} characters': '{n} znaků',
+  'Formatted': 'Formátovaně',
+  'Raw': 'Surově',
+  'View value…': 'Zobrazit hodnotu…',
 }

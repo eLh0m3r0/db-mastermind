@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, BarChart3, CheckCircle2, Copy, Download, TerminalSquare, XCircle } from 'lucide-react'
 import { cellToText, type CellValue, type QueryResult, type SortSpec, type StatementOutcome } from '@dbmastermind/core/browser'
 import { defaultChartConfig, ResultChart, type ChartConfig } from '@/components/chart/ResultChart'
+import { openCellViewer } from '@/components/grid/CellViewer'
 import { DataGrid, selectionToTsv, type GridSelection } from '@/components/grid/DataGrid'
 import { IconButton } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
@@ -255,8 +256,11 @@ export function ResultsPanel({
             onSortChange={(s) => setSorts((prev) => ({ ...prev, [current.key]: s }))}
             nullDisplay={settings?.nullDisplay}
             onSelectionChange={setSelection}
-            onContextMenu={(e, _pos, sel) =>
+            onContextMenu={(e, pos, sel) =>
               openMenu(e, [
+                ...(pos && pos.row >= 0
+                  ? [{ label: tr('View value…'), onClick: () => openCellViewer(sortedRows[pos.row]?.[pos.col] ?? null, current.result.fields[pos.col]?.name ?? '', current.result.fields[pos.col]?.dataType) }]
+                  : []),
                 { label: tr('Copy'), icon: <Copy size={13} />, onClick: () => sel && void copyText(selectionToTsv(current.result.fields, sortedRows, sel)) },
                 { label: tr('Copy with headers'), onClick: () => sel && void copyText(selectionToTsv(current.result.fields, sortedRows, sel, true)) },
                 {
