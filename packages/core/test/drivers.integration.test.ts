@@ -167,6 +167,13 @@ for (const engine of engines) {
       expect(again!.results![0]!.rows).toEqual([[1]])
     })
 
+    it('orders table pages by the primary key when no sort is chosen', async () => {
+      const page = await svc.fetchTable(id, { table: customers, limit: 2 })
+      const ids = page.result.rows.map((r) => Number(r[page.result.fields.findIndex((f) => f.name === 'id')]))
+      expect(ids).toEqual([...ids].sort((a, b) => a - b))
+      expect(page.sql).toMatch(/ORDER BY/i)
+    })
+
     it('enforces read-only connections', async () => {
       const ro = new DatabaseService()
       await ro.connect({ ...config, id: 'ro', readOnly: true })

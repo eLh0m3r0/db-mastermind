@@ -287,11 +287,14 @@ export class DatabaseService {
   async fetchTable(id: string, options: FetchTableOptions): Promise<TablePage> {
     const entry = this.get(id)
     const table = await this.findTable(id, options.table)
+    // Without a chosen order, rows come back in storage order: an edited row jumps away after saving, and pages
+    // (LIMIT/OFFSET) can overlap or skip rows. The primary key gives a stable order.
+    const sort = options.sort?.length ? options.sort : table?.primaryKey.length ? table.primaryKey.map((column) => ({ column, direction: 'asc' as const })) : options.sort
     const built = buildSelect(
       {
         table: options.table,
         filter: options.filter,
-        sort: options.sort,
+        sort,
         limit: options.limit,
         offset: options.offset,
         knownColumns: table?.columns.map((c) => c.name),

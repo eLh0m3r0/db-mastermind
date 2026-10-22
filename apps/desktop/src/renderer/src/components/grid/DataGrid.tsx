@@ -159,6 +159,8 @@ const Cell = memo(function Cell({
   }
   return (
     <div
+      role="gridcell"
+      aria-selected={selected || undefined}
       className={cn(
         'absolute top-0 flex h-full items-center overflow-hidden border-r border-b border-line px-2 whitespace-nowrap',
         numeric && 'justify-end font-mono text-[12px] tabular-nums',
@@ -543,6 +545,9 @@ export function DataGrid({
     return (
       <div
         key={index}
+        role="columnheader"
+        aria-colindex={index + 1}
+        aria-sort={s ? (s.direction === 'asc' ? 'ascending' : 'descending') : undefined}
         className={cn(
           'group absolute top-0 flex h-full items-center gap-1 border-r border-line pr-1 pl-2 text-[12px] font-semibold',
           onSortChange && 'cursor-pointer hover:bg-hover',
@@ -632,6 +637,9 @@ export function DataGrid({
     <div
       ref={scrollRef}
       tabIndex={0}
+      role="grid"
+      aria-rowcount={rows.length + 1}
+      aria-colcount={fields.length}
       onKeyDown={onKeyDown}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
@@ -642,6 +650,8 @@ export function DataGrid({
       <div style={{ width: totalWidth, height: Math.max(totalHeight, HEADER_HEIGHT), position: 'relative' }}>
         {/* Header */}
         <div
+          role="row"
+          aria-rowindex={1}
           className="sticky top-0 z-20 border-b border-line-strong bg-[var(--grid-header)]"
           style={{ height: HEADER_HEIGHT, width: totalWidth }}
         >
@@ -671,6 +681,8 @@ export function DataGrid({
           return (
             <div
               key={vr.key}
+              role="row"
+              aria-rowindex={vr.index + 2}
               className={cn(
                 'absolute left-0',
                 vr.index % 2 === 1 && 'bg-[var(--grid-row-alt)]',
