@@ -511,13 +511,20 @@ export const api: MastermindApi = {
         title: 'Query a file with SQL',
         properties: ['openFile' as const],
         filters: [
-          { name: 'Data files', extensions: ['csv', 'tsv', 'txt', 'parquet', 'json', 'jsonl', 'ndjson', 'xlsx'] },
+          { name: 'Data files', extensions: ['csv', 'tsv', 'txt', 'parquet', 'json', 'jsonl', 'ndjson', 'xlsx', 'db', 'sqlite', 'sqlite3', 'db3', 'duckdb'] },
           { name: 'All files', extensions: ['*'] },
         ],
       }
       const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
       if (r.canceled || !r.filePaths[0]) return null
       path = r.filePaths[0]
+    }
+    // A database file opens as its own connection (it used to go through read_csv and fail).
+    const database = await databaseFileDriver(path)
+    if (database) {
+      const same = connections.listConnections().find((c) => c.driver === database && c.filePath === path)
+      const saved = same ?? connections.saveConnection({ id: '', name: basename(path), driver: database, filePath: path })
+      return { connectionId: saved.id, sql: '', title: basename(path), database: true }
     }
     // One in-memory DuckDB connection serves all ad-hoc file queries.
     const existing = connections.listConnections().find((c) => c.driver === 'duckdb' && !c.filePath && c.group === FILES_GROUP)
@@ -818,6 +825,26 @@ function readPgpassPassword(config: ConnectionConfig): string | undefined {
   const file = process.env.PGPASSFILE ?? (process.platform === 'win32' ? join(app.getPath('appData'), 'postgresql', 'pgpass.conf') : join(homedir(), '.pgpass'))
   try {
     return existsSync(file) ? pgpassLookup(readFileSync(file, 'utf8'), config) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** SQLite or DuckDB for a database file (by extension, or SQLite's header for other names); undefined for data files. */
+async function databaseFileDriver(path: string): Promise<'sqlite' | 'duckdb' | undefined> {
+  const ext = extname(path).slice(1).toLowerCase()
+  if (ext === 'duckdb') return 'duckdb'
+  if (['db', 'sqlite', 'sqlite3', 'db3'].includes(ext)) return 'sqlite'
+  if (['csv', 'tsv', 'txt', 'parquet', 'json', 'jsonl', 'ndjson', 'xlsx'].includes(ext)) return undefined
+  try {
+    const handle = await open(path, 'r')
+    try {
+      const head = Buffer.alloc(16)
+      await handle.read(head, 0, 16, 0)
+      return head.toString('latin1') === 'SQLite format 3\0' ? 'sqlite' : undefined
+    } finally {
+      await handle.close()
+    }
   } catch {
     return undefined
   }

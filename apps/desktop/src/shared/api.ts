@@ -452,7 +452,8 @@ export interface MastermindApi {
   /** Saves a PNG/SVG data URL through a save dialog; null when cancelled. */
   saveImageFile(dataUrl: string, name: string): Promise<string | null>
   importDdlFile(): Promise<{ path: string; dbml: string; skipped: { sql: string; error: string }[] } | null>
-  queryFile(path?: string): Promise<{ connectionId: string; sql: string; title: string } | null>
+  /** A data file opens in the built-in DuckDB with a first SELECT; a SQLite/DuckDB database file as its own connection (`database`). */
+  queryFile(path?: string): Promise<{ connectionId: string; sql: string; title: string; database?: boolean } | null>
 
   fetchTable(request: FetchTableRequest): Promise<TablePage>
   countTable(request: Omit<FetchTableRequest, 'limit' | 'offset'>): Promise<number>
