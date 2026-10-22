@@ -38,6 +38,8 @@ nsis:
   artifactName: DB-Mastermind-${version}-win-${arch}-setup.${ext}
 linux:
   executableName: db-mastermind
+  # Ubuntu 24.04+ restricts the user namespaces Chromium's sandbox needs; AppImages can't ship a SUID helper.
+  executableArgs: ['--no-sandbox']
   category: Development
   target:
     - target: AppImage

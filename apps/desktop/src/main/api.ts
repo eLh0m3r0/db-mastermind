@@ -72,9 +72,11 @@ export const api: MastermindApi = {
       platform: process.platform,
       portable: isPortable,
       dataDir: app.getPath('userData'),
-      mcpCommand: app.isPackaged
-        ? { command: process.execPath, args: ['--mcp'] }
-        : { command: process.execPath, args: [app.getAppPath(), '--mcp'] },
+      // Linux: Chromium's SUID sandbox check runs before any app code; headless MCP mode doesn't need it.
+      mcpCommand: {
+        command: process.execPath,
+        args: [...(app.isPackaged ? [] : [app.getAppPath()]), ...(process.platform === 'linux' ? ['--no-sandbox'] : []), '--mcp'],
+      },
     }
   },
   async getSettings() {

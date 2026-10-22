@@ -48,7 +48,13 @@ export function cancelChat(chatId: string) {
 }
 
 function mcpCommandFor(connectionId: string) {
-  const args = app.isPackaged ? ['--mcp', '--connection', connectionId] : [app.getAppPath(), '--mcp', '--connection', connectionId]
+  const args = [
+    ...(app.isPackaged ? [] : [app.getAppPath()]),
+    ...(process.platform === 'linux' ? ['--no-sandbox'] : []),
+    '--mcp',
+    '--connection',
+    connectionId,
+  ]
   return { command: process.execPath, args }
 }
 

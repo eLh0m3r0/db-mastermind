@@ -21,7 +21,7 @@ const timer = setTimeout(() => {
   console.error('Timed out')
   process.exit(1)
 }, 90_000)
-const transport = new StdioClientTransport({ command: exe, args: ['--mcp'], env: { ...process.env, DBM_USER_DATA: dir, DBM_NO_UPDATE_CHECK: '1' }, stderr: 'pipe' })
+const transport = new StdioClientTransport({ command: exe, args: [...(process.platform === 'linux' ? ['--no-sandbox'] : []), '--mcp'], env: { ...process.env, DBM_USER_DATA: dir, DBM_NO_UPDATE_CHECK: '1' }, stderr: 'pipe' })
 transport.stderr?.on('data', (d) => process.stderr.write(`[app] ${d}`))
 await client.connect(transport)
 const text = (r) => r.content.map((c) => c.text).join('\n')
