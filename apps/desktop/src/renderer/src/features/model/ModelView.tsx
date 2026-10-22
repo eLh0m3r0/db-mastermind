@@ -10,7 +10,7 @@ import { openMenu } from '@/components/ui/ContextMenu'
 import { DRIVERS } from '../connections/drivers'
 import { Select } from '@/components/ui/Input'
 import { Splitter } from '@/components/ui/Splitter'
-import { api } from '@/lib/api'
+import { api, keys } from '@/lib/api'
 import { tp, useT } from '@/lib/i18n'
 import { debounce, errorMessage } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
@@ -245,7 +245,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
         <Button size="sm" variant="ghost" icon={<FolderOpen size={13} />} onClick={() => void open()}>
           {t('Open…')}
         </Button>
-        <Button size="sm" variant="ghost" icon={<Save size={13} />} onClick={() => void save()} title="Ctrl/⌘ S">
+        <Button size="sm" variant="ghost" icon={<Save size={13} />} onClick={() => void save()} title={keys('⌘S')}>
           {t('Save')}
         </Button>
         <Button size="sm" variant="ghost" onClick={() => void save(true)}>

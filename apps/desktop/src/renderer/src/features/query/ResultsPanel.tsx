@@ -9,7 +9,7 @@ import { IconButton } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Spinner } from '@/components/ui/Spinner'
-import { api } from '@/lib/api'
+import { api, keys } from '@/lib/api'
 import { pinToDashboard } from '@/lib/dashboards'
 import { cn, copyText, errorMessage, formatCount, formatDuration } from '@/lib/utils'
 import { useSettings } from '@/store/settings'
@@ -125,7 +125,7 @@ export function ResultsPanel({
     return (
       <EmptyState icon={<TerminalSquare size={26} />} title={tr('Run a query to see results')}>
         <span>
-          <b>⌘↵</b> {tr('runs the statement under the cursor or the selection')} · <b>⇧⌘↵</b> {tr('runs the whole script')}
+          <b>{keys('⌘↵')}</b> {tr('runs the statement under the cursor or the selection')} · <b>{keys('⇧⌘↵')}</b> {tr('runs the whole script')}
         </span>
       </EmptyState>
     )

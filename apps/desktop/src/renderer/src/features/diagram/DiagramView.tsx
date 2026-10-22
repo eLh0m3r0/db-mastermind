@@ -43,7 +43,7 @@ import {
 } from '@dbmastermind/core/browser'
 import { Button, IconButton } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { api } from '@/lib/api'
+import { api, keys } from '@/lib/api'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Checkbox, Input, Select } from '@/components/ui/Input'
@@ -953,10 +953,10 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
                 {tr('Change sets')}
               </Button>
             )}
-            <IconButton label={`${tr('Undo')} (⌘Z)`} disabled={!history.current.past.length} onClick={undoDesign}>
+            <IconButton label={`${tr('Undo')} (${keys('⌘Z')})`} disabled={!history.current.past.length} onClick={undoDesign}>
               <Undo size={14} />
             </IconButton>
-            <IconButton label={`${tr('Redo')} (⇧⌘Z)`} disabled={!history.current.future.length} onClick={redoDesign}>
+            <IconButton label={`${tr('Redo')} (${keys('⇧⌘Z')})`} disabled={!history.current.future.length} onClick={redoDesign}>
               <Redo size={14} />
             </IconButton>
             {Object.keys(drafts).length > 0 && (

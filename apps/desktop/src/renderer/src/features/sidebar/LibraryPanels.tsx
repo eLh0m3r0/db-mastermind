@@ -3,7 +3,7 @@ import { BookMarked, Copy, FileText, Search, Trash2, XCircle } from 'lucide-reac
 import type { HistoryEntry, SavedQuery } from '@shared/api'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { Input } from '@/components/ui/Input'
-import { api } from '@/lib/api'
+import { api, keys } from '@/lib/api'
 import { copyText, cn, errorMessage, formatDuration, fuzzyScore } from '@/lib/utils'
 import { toast } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
@@ -161,7 +161,7 @@ export function SavedQueriesPanel({ connectionId }: { connectionId: string }) {
           </div>
         ))}
         {grouped.length === 0 && (
-          <div className="p-4 text-center text-[12px] text-fg-faint">{search ? t('No matches') : t('Save a query with ⌘S to keep it here.')}</div>
+          <div className="p-4 text-center text-[12px] text-fg-faint">{search ? t('No matches') : t('Save a query with {key} to keep it here.', { key: keys('⌘S') })}</div>
         )}
       </div>
     </div>

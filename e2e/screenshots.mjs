@@ -9,7 +9,7 @@ const out = process.env.SHOTS_DIR ?? 'docs/screenshots'
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
 const withAi = process.argv.includes('--ai')
 const userData = mkdtempSync(join(tmpdir(), 'dbm-shots-'))
-const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, DBM_USER_DATA: userData, DBM_NO_UPDATE_CHECK: '1', DBM_LANGUAGE: process.env.DBM_LANGUAGE ?? 'en' } })
+const app = await electron.launch({ args: ['apps/desktop', ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-gpu'] : [])], env: { ...process.env, DBM_USER_DATA: userData, DBM_NO_UPDATE_CHECK: '1', DBM_LANGUAGE: process.env.DBM_LANGUAGE ?? 'en' } })
 const win = await app.firstWindow()
 win.on('dialog', (d) => d.accept())
 await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 900))

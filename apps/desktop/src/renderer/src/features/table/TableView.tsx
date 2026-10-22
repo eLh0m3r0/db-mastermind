@@ -46,7 +46,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge, Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Spinner } from '@/components/ui/Spinner'
-import { api } from '@/lib/api'
+import { api, keys } from '@/lib/api'
 import { columnView, loadColumnPrefs, pinnedCount, saveColumnPrefs, type ColumnPrefs } from '@/lib/columnPrefs'
 import { copyText, errorMessage, formatCount, formatDuration, uid } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
@@ -574,7 +574,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
         shortcut: '⇧↵',
         onClick: () => openValue(pos.row, pos.col),
       },
-      { label: t('Copy'), shortcut: '⌘C', icon: <Copy size={13} />, onClick: () => sel && void copyText(selectionToTsv(viewFields, viewRows, sel, false, '')) },
+      { label: t('Copy'), shortcut: keys('⌘C'), icon: <Copy size={13} />, onClick: () => sel && void copyText(selectionToTsv(viewFields, viewRows, sel, false, '')) },
       { label: t('Copy with headers'), onClick: () => sel && void copyText(selectionToTsv(viewFields, viewRows, sel, true, '')) },
       {
         label: t('Copy rows as'),
@@ -707,12 +707,12 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
             }
             setShowFilters((v) => !v)
           }}
-          title={`${t('Filters')} (⌘F)`}
+          title={`${t('Filters')} (${keys('⌘F')})`}
         >
           {t('Filter')}
           {activeFilters > 0 && <Badge tone="accent">{activeFilters}</Badge>}
         </Button>
-        <IconButton label={`${t('Refresh')} (⌘R)`} size="md" onClick={refresh}>
+        <IconButton label={`${t('Refresh')} (${keys('⌘R')})`} size="md" onClick={refresh}>
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
         </IconButton>
         <div className="mx-1 h-5 w-px bg-line" />
@@ -721,7 +721,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
             <IconButton label={t('Add row')} size="md" onClick={() => addRow()}>
               <Plus size={15} />
             </IconButton>
-            <IconButton label={`${t('Delete selected rows')} (⌘⌫)`} size="md" disabled={!selection} onClick={() => deleteRows(selectedRows())}>
+            <IconButton label={`${t('Delete selected rows')} (${keys('⌘⌫')})`} size="md" disabled={!selection} onClick={() => deleteRows(selectedRows())}>
               <Trash2 size={14} />
             </IconButton>
           </>

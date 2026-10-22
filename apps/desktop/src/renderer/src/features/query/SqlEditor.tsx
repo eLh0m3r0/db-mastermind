@@ -25,6 +25,7 @@ import { allSnippets, snippetSource } from './snippets'
 import { useSettings } from '@/store/settings'
 import { statementAtOffset, type DriverId, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { t as tr } from '@/lib/i18n'
+import { keys } from '@/lib/api'
 
 const DIALECTS: Record<DriverId, SQLDialect> = {
   postgres: PostgreSQL,
@@ -224,7 +225,7 @@ export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunA
           rectangularSelection(),
           highlightActiveLine(),
           highlightSelectionMatches(),
-          placeholderExt(tr('Write SQL…   ⌘↵ runs the statement under the cursor, ⇧⌘↵ runs everything')),
+          placeholderExt(tr('Write SQL…   {run} runs the statement under the cursor, {runAll} runs everything', { run: keys('⌘↵'), runAll: keys('⇧⌘↵') })),
           statementHighlight(() => driverRef.current),
           // Extra completion source next to the SQL language's own (tables, columns, keywords).
           // Sources need a stable identity: autocompletion matches results to sources by reference.
