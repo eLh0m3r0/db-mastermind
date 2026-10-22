@@ -746,4 +746,8 @@ export const cs: Record<string, string> = {
   'Chat instead': 'Raději chat',
   'Fix with AI': 'Opravit pomocí AI',
   'Fix this statement. It failed with: {error}': 'Oprav tento příkaz. Selhal s chybou: {error}',
+  'Share all connections (without passwords)…': 'Sdílet všechna připojení (bez hesel)…',
+  'Share with colleagues (without password)…': 'Sdílet s kolegy (bez hesla)…',
+  'Connections exported': 'Připojení exportována',
+  'Passwords and keys are not included. Colleagues import the file via New connection ▾ → From JSON file.': 'Hesla a klíče nejsou zahrnuty. Kolegové soubor naimportují přes Nové připojení ▾ → Ze souboru JSON.',
 }

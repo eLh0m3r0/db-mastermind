@@ -15,6 +15,7 @@ import {
   Plus,
   Power,
   Search,
+  Share2,
   Trash2,
   Unplug,
 } from 'lucide-react'
@@ -67,6 +68,7 @@ export function connectionMenu(c: StoredConnection): Parameters<typeof openMenu>
     { label: t('Edit…'), icon: <Pencil size={13} />, onClick: () => useUi.getState().set({ modal: { kind: 'connection', connectionId: c.id } }) },
     { label: t('Duplicate'), icon: <Copy size={13} />, onClick: () => void duplicate(c.id) },
     { label: t('Data dictionary (HTML)…'), icon: <FileText size={13} />, onClick: () => void exportDataDictionary(c.id, 'html') },
+    { label: t('Share with colleagues (without password)…'), icon: <Share2 size={13} />, onClick: () => void shareConnections([c.id]) },
     'separator',
     {
       label: t('Delete'),
@@ -309,6 +311,8 @@ function ConnectionList() {
               { label: t('From Beekeeper Studio'), onClick: () => void importFrom('beekeeper') },
               { label: t('From DBeaver'), onClick: () => void importFrom('dbeaver') },
               { label: t('From JSON file…'), onClick: () => void importFrom('file') },
+              'separator',
+              { label: t('Share all connections (without passwords)…'), icon: <Share2 size={13} />, onClick: () => void shareConnections() },
             ])
           }
         >
@@ -317,6 +321,21 @@ function ConnectionList() {
       </div>
     </div>
   )
+}
+
+export async function shareConnections(ids?: string[]) {
+  try {
+    const path = await api.exportConnections(ids)
+    if (path)
+      toast({
+        kind: 'success',
+        message: t('Connections exported'),
+        detail: t('Passwords and keys are not included. Colleagues import the file via New connection ▾ → From JSON file.'),
+        action: { label: t('Show in folder'), run: () => void api.showItemInFolder(path) },
+      })
+  } catch (err) {
+    toast({ kind: 'error', message: t('Export failed'), detail: errorMessage(err) })
+  }
 }
 
 export async function importFrom(source: 'beekeeper' | 'dbeaver' | 'file') {

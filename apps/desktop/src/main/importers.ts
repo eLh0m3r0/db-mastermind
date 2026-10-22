@@ -1,5 +1,5 @@
 import { createDecipheriv } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -136,6 +136,26 @@ async function readFileExport(): Promise<Imported[]> {
   if (r.canceled || !r.filePaths[0]) return []
   const parsed = JSON.parse(readFileSync(r.filePaths[0], 'utf8')) as Imported[] | { connections: Imported[] }
   return Array.isArray(parsed) ? parsed : parsed.connections
+}
+
+/** Connections for colleagues: everything except secrets (passwords, keys) and personal metadata. */
+export async function exportConnections(ids?: string[]): Promise<string | null> {
+  const chosen = listConnections().filter((c) => !ids?.length || ids.includes(c.id))
+  if (!chosen.length) throw new Error('No connections to export')
+  const window = BrowserWindow.getFocusedWindow()
+  const options = { title: 'Export connections', defaultPath: 'db-mastermind-connections.json', filters: [{ name: 'JSON', extensions: ['json'] }] }
+  const r = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
+  if (r.canceled || !r.filePath) return null
+  const connections = chosen.map((c) => {
+    const { id: _id, password: _pw, createdAt: _c, updatedAt: _u, lastUsedAt: _l, pinnedTables: _p, hiddenSchemas: _h, ...rest } = c
+    return {
+      ...rest,
+      ssh: c.ssh ? { ...c.ssh, password: undefined, privateKey: undefined, passphrase: undefined } : undefined,
+      ssl: c.ssl ? { ...c.ssl, key: undefined } : undefined,
+    }
+  })
+  writeFileSync(r.filePath, `${JSON.stringify({ format: 'db-mastermind-connections', version: 1, connections }, null, 2)}\n`, 'utf8')
+  return r.filePath
 }
 
 export async function importConnections(source: 'beekeeper' | 'dbeaver' | 'file'): Promise<number> {
