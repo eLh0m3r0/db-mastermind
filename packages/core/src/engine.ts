@@ -6,6 +6,7 @@ import { PostgresDriver } from './drivers/postgres.js'
 import { SqliteDriver } from './drivers/sqlite.js'
 import { buildCount, buildSelect, type BuiltQuery, type FilterNode, type SortSpec } from './filters.js'
 import { buildChangeStatements, type RowChange } from './mutations.js'
+import { bindParameters, extractParameters } from './parameters.js'
 import { KnowledgeBase, relationToForeignKey } from './knowledge.js'
 import { findTable } from './schema-utils.js'
 import { classifyStatement, isReadOnlyScript, splitStatements } from './sql-split.js'
@@ -33,6 +34,8 @@ export interface RunScriptOptions {
   /** Continue with the next statement after an error. */
   continueOnError?: boolean
   params?: unknown[]
+  /** Values for `:name` / `?` / `$1` parameters (keys: `name`, `$1`…); bound per statement. */
+  parameterValues?: Record<string, string | null>
 }
 
 
@@ -170,11 +173,18 @@ export class DatabaseService {
       const started = Date.now()
       try {
         this.assertAllowed(entry, statement.text)
-        const results = await entry.driver.execute(statement.text, {
+        let text = statement.text
+        let params = statements.length === 1 ? options.params : undefined
+        if (options.parameterValues && extractParameters(text, entry.config.driver).length) {
+          const bound = bindParameters(text, entry.config.driver, entry.driver.dialect, options.parameterValues)
+          text = bound.sql
+          params = bound.params
+        }
+        const results = await entry.driver.execute(text, {
           session: options.session,
           maxRows: options.maxRows,
           signal: options.signal,
-          params: statements.length === 1 ? options.params : undefined,
+          params,
         })
         outcomes.push({ sql: statement.text, start: statement.start, end: statement.end, results, durationMs: Date.now() - started })
         if (classifyStatement(statement.text) === 'transaction') inTransaction = /^\s*(BEGIN|START)\b/i.test(statement.text)

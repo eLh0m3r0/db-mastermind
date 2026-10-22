@@ -118,6 +118,8 @@ export interface RunQueryRequest {
   session?: string
   maxRows?: number
   continueOnError?: boolean
+  /** Values for `:name` / `?` / `$1` parameters, keyed `name` or `$1`. */
+  parameterValues?: Record<string, string | null>
 }
 
 export interface FetchTableRequest {

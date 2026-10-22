@@ -193,6 +193,7 @@ export const api: MastermindApi = {
         session: request.session,
         maxRows: request.maxRows ?? getSettings().maxResultRows,
         continueOnError: request.continueOnError,
+        parameterValues: request.parameterValues,
         signal,
       }),
     )

@@ -138,6 +138,12 @@ for (const engine of engines) {
       await svc.releaseSession(id, 's1')
     })
 
+    it.skipIf(engine.id !== 'mssql')('keeps SET options and #temp tables across batches in a session', async () => {
+      const outcomes = await svc.runScript(id, 'SET LANGUAGE Czech\nGO\nCREATE TABLE #t (x int); INSERT INTO #t VALUES (7)\nGO\nSELECT @@LANGUAGE, (SELECT x FROM #t)', { session: 'temp' })
+      expect(outcomes.at(-1)!.results![0]!.rows).toEqual([['čeština', 7]])
+      await svc.releaseSession(id, 'temp')
+    })
+
     it.skipIf(engine.id === 'mssql')('rolls back the transaction of a failed script', async () => {
       const t = svc.qualifiedName(id, customers)
       const outcomes = await svc.runScript(id, `BEGIN; UPDATE ${t} SET name = 'Lost' WHERE id = 3; SELECT * FROM nope;`, { session: 'rb' })

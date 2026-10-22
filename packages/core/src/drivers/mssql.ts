@@ -234,7 +234,10 @@ export class MssqlDriver implements DatabaseDriver {
       })
       request.on('error', (err: Error) => errors.push(err))
       request.on('done', finish)
-      void request.query(text)
+      // Without parameters, send a real batch like SSMS does: query() wraps text in sp_executesql,
+      // where SET options and #temp tables vanish when the call ends.
+      if (options.params?.length) void request.query(text)
+      else void request.batch(text)
     })
   }
 
