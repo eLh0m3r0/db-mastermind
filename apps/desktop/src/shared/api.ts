@@ -1,5 +1,6 @@
 import type {
   ConnectionConfig,
+  DataCompareResult,
   ExplainResult,
   FilterGroup,
   FilterNode,
@@ -143,6 +144,12 @@ export interface RunQueryRequest {
   parameterValues?: Record<string, string | null>
 }
 
+export interface CompareDataRequest {
+  source: { connectionId: string; table: TableRef }
+  target: { connectionId: string; table: TableRef }
+  keyColumns?: string[]
+}
+
 export interface FetchTableRequest {
   connectionId: string
   table: TableRef
@@ -249,6 +256,7 @@ export interface MastermindApi {
   stopSession(connectionId: string, sessionId: string, mode: 'cancel' | 'terminate'): Promise<void>
   /** Writes HTML/Markdown documentation of the schema (with knowledge base notes); returns the path or null if cancelled. */
   exportDataDictionary(connectionId: string, format: 'html' | 'markdown', schemas?: string[]): Promise<string | null>
+  compareData(request: CompareDataRequest): Promise<DataCompareResult>
 
   fetchTable(request: FetchTableRequest): Promise<TablePage>
   countTable(request: Omit<FetchTableRequest, 'limit' | 'offset'>): Promise<number>
@@ -332,6 +340,7 @@ export const API_METHODS = [
   'listActivity',
   'stopSession',
   'exportDataDictionary',
+  'compareData',
   'fetchTable',
   'countTable',
   'importPreview',

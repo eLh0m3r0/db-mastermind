@@ -16,6 +16,7 @@ import {
   Pin,
   PinOff,
   RefreshCw,
+  Rows3,
   Search,
   Sparkles,
   Table2,
@@ -181,6 +182,15 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
       { label: tr('Open data'), icon: <Table2 size={13} />, onClick: () => openTable(t) },
       { label: tr('Open structure'), icon: <Layers size={13} />, onClick: () => openTab({ kind: 'structure', connectionId: connection.id, table: { schema: t.schema, name: t.name }, title: tr('{name} · structure', { name: t.name }) }) },
       { label: tr('Show in diagram'), icon: <Network size={13} />, onClick: () => openTab({ kind: 'diagram', connectionId: connection.id, title: tr('Diagram: {name}', { name: t.name }), focus: t.name }) },
+      {
+        label: tr('Compare data with…'),
+        icon: <Rows3 size={13} />,
+        onClick: () =>
+          openTab(
+            { kind: 'datacompare', connectionId: connection.id, sourceId: connection.id, sourceTable: { schema: t.schema, name: t.name }, title: tr('Data: {name}', { name: t.name }) },
+            { reuse: false },
+          ),
+      },
       connection.pinnedTables?.includes(pinKey(t))
         ? { label: tr('Unpin'), icon: <PinOff size={13} />, onClick: () => togglePin(connection.id, pinKey(t)) }
         : { label: tr('Pin to top'), icon: <Pin size={13} />, onClick: () => togglePin(connection.id, pinKey(t)) },

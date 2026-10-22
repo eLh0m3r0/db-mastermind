@@ -216,7 +216,8 @@ export class MssqlDriver implements DatabaseDriver {
       request.on('row', (row: unknown[]) => {
         if (!current) return
         if (current.rows.length < maxRows) {
-          current.rows.push(row.map(normalizeValue))
+          // `date` columns arrive as midnight Dates; show them as dates like every other engine.
+          current.rows.push(row.map((v, i) => (v instanceof Date && current!.fields[i]?.dataType === 'date' ? String(normalizeValue(v)).slice(0, 10) : normalizeValue(v))))
           current.rowCount = current.rows.length
         } else if (!stoppedEarly) {
           stoppedEarly = true

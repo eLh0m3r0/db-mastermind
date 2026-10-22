@@ -10,6 +10,7 @@ import {
   explainQuery,
   listActivity,
   buildDataDictionary,
+  compareTableData,
   type DictionaryNote,
   stopSession,
   filterPrompt,
@@ -273,6 +274,10 @@ export const api: MastermindApi = {
     })
     await writeFile(result.filePath, content, 'utf8')
     return result.filePath
+  },
+  async compareData(request) {
+    await Promise.all([ensureConnected(request.source.connectionId), ensureConnected(request.target.connectionId)])
+    return compareTableData(db, request)
   },
   async cancelQuery(runId) {
     running.get(runId)?.abort()

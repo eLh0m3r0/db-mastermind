@@ -58,12 +58,21 @@ export interface CompareTab extends BaseTab {
   targetSchema?: string
 }
 
+/** Table data compare: `connectionId` is the target that receives the sync script. */
+export interface DataCompareTab extends BaseTab {
+  kind: 'datacompare'
+  sourceId?: string
+  sourceTable?: TableRef
+  targetTable?: TableRef
+  keyColumns?: string
+}
+
 /** Server activity: sessions and running queries. */
 export interface ActivityTab extends BaseTab {
   kind: 'activity'
 }
 
-export type Tab = QueryTab | TableTab | StructureTab | DiagramTab | KnowledgeTab | CompareTab | ActivityTab
+export type Tab = QueryTab | TableTab | StructureTab | DiagramTab | KnowledgeTab | CompareTab | ActivityTab | DataCompareTab
 export type NewTab =
   | Omit<QueryTab, 'id'>
   | Omit<TableTab, 'id'>
@@ -72,6 +81,7 @@ export type NewTab =
   | Omit<KnowledgeTab, 'id'>
   | Omit<CompareTab, 'id'>
   | Omit<ActivityTab, 'id'>
+  | Omit<DataCompareTab, 'id'>
 
 interface WorkspaceState {
   tabs: Tab[]
