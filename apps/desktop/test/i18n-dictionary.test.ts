@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { cs } from '../src/renderer/src/lib/i18n-cs'
 
@@ -5,6 +6,12 @@ const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) 
 
 describe('Czech dictionary', () => {
   const entries = Object.entries(cs)
+
+  it('keeps every entry inside the dictionary (not in the header comment)', () => {
+    const source = readFileSync(new URL('../src/renderer/src/lib/i18n-cs.ts', import.meta.url), 'utf8')
+    const header = source.slice(0, source.indexOf('export const cs'))
+    expect(header).not.toMatch(/^\s+'.+': '.*',$/m)
+  })
 
   it('has entries', () => {
     expect(entries.length).toBeGreaterThan(100)

@@ -1,6 +1,11 @@
 /**
  * Czech UI strings keyed by the exact English source text (see `i18n.ts`).
  * Plural forms: `{n} rows` is the 1/5+ form, `{n} rows|few` the Czech 2–4 form.
+ */
+export const cs: Record<string, string> = {
+  'Load all rows': 'Načíst všechny řádky',
+  'Cancelled': 'Zrušeno',
+  'The limit is in Settings → Max result rows': 'Limit je v Nastavení → Max. počet řádků výsledku',
   'Save changes to the database': 'Uložit změny do databáze',
   'Added the saved password to {n} connection': 'Uložené heslo doplněno k {n} připojení',
   'Added saved passwords to {n} connections': 'Uložená hesla doplněna k {n} připojením',
@@ -15,8 +20,6 @@
   'Forget': 'Zapomenout',
   'The next connection will trust the key the server presents.': 'Další připojení bude důvěřovat klíči, který server předloží.',
   'A different key later means someone may be intercepting the connection, so the app refuses it.': 'Jiný klíč později znamená, že spojení může někdo odposlouchávat, proto ho aplikace odmítne.',
- */
-export const cs: Record<string, string> = {
   'DB Mastermind {version} is available': 'K dispozici je DB Mastermind {version}',
   'Download': 'Stáhnout',
   'Browse, query, diagram and understand your databases. Free & open source, no limits.': 'Procházejte, dotazujte, kreslete diagramy a porozumějte svým databázím. Zdarma, open source, bez omezení.',
@@ -376,7 +379,6 @@ export const cs: Record<string, string> = {
   'runs the statement under the cursor or the selection': 'spustí příkaz pod kurzorem nebo výběr',
   'runs the whole script': 'spustí celý skript',
   'Messages': 'Zprávy',
-  'Raise the limit in Settings → Max result rows': 'Zvyšte limit v Nastavení → Max. počet řádků výsledku',
   'First {n} rows': 'Prvních {n} řádků',
   'Show table': 'Zobrazit tabulku',
   'Show chart': 'Zobrazit graf',
