@@ -190,6 +190,8 @@ export interface StoredConnection extends ConnectionConfig {
   team?: boolean
   /** Team connection whose knowledge base this user pointed to another folder (applies only to them). */
   knowledgeBaseLocal?: boolean
+  /** AI is turned off for it by the managed configuration or the team folder (listings only, never saved). */
+  aiLockedOff?: boolean
 }
 
 /** Where a connection's knowledge base lives, for the knowledge base header and the connection form. */

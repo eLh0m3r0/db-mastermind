@@ -57,7 +57,7 @@ import { listModels, testProvider } from './ai/models'
 import { deleteChat, deleteChatsOf, getChat, listChats, renameChat, saveChat } from './ai/chat-store'
 import { detectImportSources, exportConnections, importConnections } from './importers'
 import { backupDatabase, restoreDatabase } from './backup'
-import { aiAccess } from './ai-access'
+import { aiAccess, turnedOffCentrally } from './ai-access'
 import { managed } from './managed'
 import { checkNow, installUpdate } from './updates'
 import { defaultKnowledgeFolder, inspectKnowledgeFolder, knowledgeLocation, setKnowledgeLocation } from './kb-location'
@@ -176,7 +176,7 @@ export const api: MastermindApi = {
   },
 
   async listConnections() {
-    return connections.listConnections()
+    return connections.listConnections().map((c) => (turnedOffCentrally(c.id) ? { ...c, aiLockedOff: true } : c))
   },
   async saveConnection(config) {
     const saved = connections.saveConnection(config)

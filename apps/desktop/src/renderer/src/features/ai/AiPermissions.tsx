@@ -45,15 +45,35 @@ function useAccessOptions(): { value: AiAccess; label: string; hint: string }[] 
 const GRID = 'grid grid-cols-[minmax(110px,1fr)_148px_52px_88px_44px_24px] items-center gap-x-2'
 
 /** Access level plus the agent and knowledge base switches, for one connection or the defaults. */
-export function AiPermissionControls({ value, onChange, readOnlyConnection, compact }: { value: AiPermissions; onChange: (p: AiPermissions) => void; readOnlyConnection?: boolean; compact?: boolean }) {
+export function AiPermissionControls({
+  value,
+  onChange,
+  readOnlyConnection,
+  compact,
+  lockedOff,
+}: {
+  value: AiPermissions
+  onChange: (p: AiPermissions) => void
+  readOnlyConnection?: boolean
+  compact?: boolean
+  /** AI is turned off for this connection by the organization or the team folder: shown, not changeable. */
+  lockedOff?: boolean
+}) {
   const t = useT()
   const options = useAccessOptions()
   const policies = useSettings((s) => s.info?.managed?.policies)
   const set = (patch: Partial<AiPermissions>) => onChange({ ...value, ...patch })
-  const access = readOnlyConnection && value.access === 'write' ? 'read' : value.access
+  const access = lockedOff ? 'off' : readOnlyConnection && value.access === 'write' ? 'read' : value.access
   return (
     <div className={cn(compact ? 'contents' : 'flex flex-col gap-1.5')}>
-      <Select inputSize="sm" className={compact ? 'w-full' : 'w-60'} value={access} onChange={(e) => set({ access: e.target.value as AiAccess })} title={options.find((o) => o.value === value.access)?.hint}>
+      <Select
+        inputSize="sm"
+        className={compact ? 'w-full' : 'w-60'}
+        value={access}
+        disabled={lockedOff}
+        onChange={(e) => set({ access: e.target.value as AiAccess })}
+        title={lockedOff ? t('Turned off for this connection by your organization or team') : options.find((o) => o.value === value.access)?.hint}
+      >
         {options.map((o) => (
           <option key={o.value} value={o.value} disabled={o.value === 'write' && readOnlyConnection}>
             {o.label}
@@ -123,6 +143,7 @@ export function AiPermissionsSection() {
           <span />
         </div>
         {connections.map((c) => {
+          const lockedOff = !!c.aiLockedOff
           const own = !!c.ai || c.aiEnabled === false
           const value = c.ai ?? (c.aiEnabled === false ? { ...defaults, access: 'off' as const } : defaults)
           return (
@@ -134,9 +155,9 @@ export function AiPermissionsSection() {
                   {!own && <span className="text-[11px] text-fg-faint">{t('default')}</span>}
                 </span>
               </span>
-              <AiPermissionControls compact value={value} readOnlyConnection={c.readOnly} onChange={(p) => void save(c, p)} />
+              <AiPermissionControls compact value={value} readOnlyConnection={c.readOnly} lockedOff={lockedOff} onChange={(p) => void save(c, p)} />
               <div className="flex items-center justify-end">
-                {own && (
+                {own && !lockedOff && (
                   <IconButton label={t('Use the default')} onClick={() => void save(c, undefined)}>
                     <RotateCcw size={12} />
                   </IconButton>

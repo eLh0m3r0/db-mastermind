@@ -603,6 +603,7 @@ export function ConnectionForm() {
                   <AiPermissionControls
                     value={config.ai ?? (config.aiEnabled === false ? { ...aiDefaultsOf(settings!), access: 'off' } : aiDefaultsOf(settings!))}
                     readOnlyConnection={config.readOnly}
+                    lockedOff={!!existing?.aiLockedOff}
                     onChange={(ai) => set({ ai, aiEnabled: undefined })}
                   />
                 </Field>

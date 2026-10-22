@@ -1093,6 +1093,7 @@ export const cs: Record<string, string> = {
   'What AI may do on each connection, in the app and for external agents over MCP. Read-only connections are never written.': 'Co smí AI u každého připojení, v aplikaci i pro externí agenty přes MCP. Do připojení jen pro čtení se nikdy nezapisuje.',
   'Your organization limits these permissions (managed configuration); stricter rules win.': 'Vaše organizace tato oprávnění omezuje (spravovaná konfigurace); platí přísnější pravidla.',
   'Use the default': 'Použít výchozí',
+  'Turned off for this connection by your organization or team': 'Vypnuto pro toto připojení vaší organizací nebo týmem',
   'Changes (INSERT, UPDATE, DELETE, DDL) always need your confirmation in the app.': 'Změny (INSERT, UPDATE, DELETE, DDL) v aplikaci vždy potřebují vaše potvrzení.',
   'Which connections agents see and whether they may change data is set per connection in Settings → AI permissions.': 'Která připojení agenti vidí a zda smí měnit data, se nastavuje u každého připojení v Nastavení → Oprávnění AI.',
   'AI permissions': 'Oprávnění AI',

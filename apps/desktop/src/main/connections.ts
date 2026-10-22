@@ -67,7 +67,8 @@ export function getConnection(id: string): StoredConnection {
   return c
 }
 
-export function saveConnection(config: ConnectionConfig): StoredConnection {
+export function saveConnection(input: ConnectionConfig): StoredConnection {
+  const { aiLockedOff: _listingOnly, ...config } = input as StoredConnection
   const all = listConnections()
   const now = new Date().toISOString()
   const id = config.id || randomUUID()
