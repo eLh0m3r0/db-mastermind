@@ -34,6 +34,7 @@ const CS: Record<string, string> = {
   Roadmap: 'Plán vývoje',
   'Report an Issue': 'Nahlásit problém',
   'Check for Updates…': 'Zkontrolovat aktualizace…',
+  'Support DB Mastermind (Ko-fi)': 'Podpořit DB Mastermind (Ko-fi)',
   'Keyboard Shortcuts': 'Klávesové zkratky',
 }
 
@@ -130,6 +131,7 @@ export function buildMenu(): void {
         { label: m('Roadmap'), click: () => void shell.openExternal('https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md') },
         { label: m('Report an Issue'), click: () => void shell.openExternal('https://github.com/eLh0m3r0/db-mastermind/issues/new') },
         cmd(m('Check for Updates…'), 'check-updates'),
+        { label: m('Support DB Mastermind (Ko-fi)'), click: () => void shell.openExternal('https://ko-fi.com/vaclavmudra') },
         { type: 'separator' },
         cmd(m('Keyboard Shortcuts'), 'shortcuts'),
       ],

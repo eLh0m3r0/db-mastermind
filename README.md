@@ -181,6 +181,11 @@ npm run test:integration   # every driver and migration against real databases
 See [CLAUDE.md](CLAUDE.md) for architecture and conventions, [docs/STRATEGY.md](docs/STRATEGY.md) for product
 direction.
 
+## Support
+
+DB Mastermind is free, open source and has no paid tier. If it saves you time, you can
+[buy me a coffee on Ko-fi](https://ko-fi.com/vaclavmudra) or [sponsor it on GitHub](https://github.com/sponsors/eLh0m3r0).
+
 ## License
 
 [MIT](LICENSE). Free for personal and commercial use.
