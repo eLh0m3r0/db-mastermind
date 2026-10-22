@@ -839,4 +839,7 @@ export const cs: Record<string, string> = {
   'Read tables from a SQL script (pg_dump, mysqldump, SSMS…)': 'Načíst tabulky ze SQL skriptu (pg_dump, mysqldump, SSMS…)',
   'Import SQL…': 'Import SQL…',
   'SQL DDL': 'SQL DDL',
+  'Pasted {n} row as pending changes': 'Vložen {n} řádek jako neuložená změna',
+  'Pasted {n} rows as pending changes': 'Vloženo {n} řádků jako neuložené změny',
+  'Pasted {n} rows as pending changes|few': 'Vloženy {n} řádky jako neuložené změny',
 }

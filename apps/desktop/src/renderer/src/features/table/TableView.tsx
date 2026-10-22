@@ -62,6 +62,37 @@ interface PendingChanges {
   deleted: Set<number>
 }
 
+/** Tab-separated text as copied from Excel / Google Sheets (quoted cells may contain tabs and newlines). */
+function parseTsv(text: string): string[][] {
+  const rows: string[][] = []
+  let row: string[] = []
+  let cell = ''
+  let quoted = false
+  const src = text.replace(/\r\n?/g, '\n').replace(/\n$/, '')
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i]!
+    if (quoted) {
+      if (ch === '"' && src[i + 1] === '"') {
+        cell += '"'
+        i++
+      } else if (ch === '"') quoted = false
+      else cell += ch
+    } else if (ch === '"' && cell === '') quoted = true
+    else if (ch === '\t') {
+      row.push(cell)
+      cell = ''
+    } else if (ch === '\n') {
+      row.push(cell)
+      rows.push(row)
+      row = []
+      cell = ''
+    } else cell += ch
+  }
+  row.push(cell)
+  rows.push(row)
+  return rows
+}
+
 const emptyPending = (): PendingChanges => ({ edits: new Map(), inserted: [], deleted: new Set() })
 
 function rootGroup(filter: TableTab['filter']): FilterGroup {
@@ -260,24 +291,59 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
 
   const baseCount = result?.rows.length ?? 0
 
-  const onEdit = (row: number, col: number, value: string | null) => {
+  /** Applies one cell edit to pending changes (rows past the loaded ones are inserted rows). */
+  const applyEdit = (next: PendingChanges, row: number, col: number, value: string | null) => {
     const name = fields[col]?.name
     if (!name) return
+    if (row >= baseCount) {
+      next.inserted[row - baseCount] = { ...next.inserted[row - baseCount], [name]: value }
+      return
+    }
+    const original = result!.rows[row]![col] ?? null
+    const originalText = original === null ? null : cellToText(original)
+    const edits = { ...next.edits.get(row) }
+    if (value === originalText) delete edits[name]
+    else edits[name] = value
+    if (Object.keys(edits).length) next.edits.set(row, edits)
+    else next.edits.delete(row)
+  }
+
+  const onEdit = (row: number, col: number, value: string | null) => {
     setPending((p) => {
       const next: PendingChanges = { edits: new Map(p.edits), inserted: [...p.inserted], deleted: new Set(p.deleted) }
-      if (row >= baseCount) {
-        next.inserted[row - baseCount] = { ...next.inserted[row - baseCount], [name]: value }
-        return next
-      }
-      const original = result!.rows[row]![col] ?? null
-      const originalText = original === null ? null : cellToText(original)
-      const edits = { ...next.edits.get(row) }
-      if (value === originalText) delete edits[name]
-      else edits[name] = value
-      if (Object.keys(edits).length) next.edits.set(row, edits)
-      else next.edits.delete(row)
+      applyEdit(next, row, col, value)
       return next
     })
+  }
+
+  /** Paste from a spreadsheet: a block lands at the focused cell, one value fills the selection; extra rows are inserted. */
+  const onGridPaste = (e: React.ClipboardEvent) => {
+    if (!editable || !selection) return
+    const target = e.target as HTMLElement
+    if (target.closest('input, textarea, [contenteditable="true"]')) return
+    const text = e.clipboardData.getData('text/plain')
+    if (!text) return
+    e.preventDefault()
+    const block = parseTsv(text)
+    const { r0, r1, c0, c1 } = selectionBounds(selection)
+    const cell = (v: string, col: number) => (v === '' && columnMeta[col]?.nullable !== false ? null : v)
+    setPending((p) => {
+      const next: PendingChanges = { edits: new Map(p.edits), inserted: [...p.inserted], deleted: new Set(p.deleted) }
+      if (block.length === 1 && block[0]!.length === 1) {
+        for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) applyEdit(next, r, c, cell(block[0]![0]!, c))
+      } else {
+        block.forEach((values, i) => {
+          const row = r0 + i
+          // Rows past the end of the page (and past already inserted rows) become new rows.
+          while (row >= baseCount + next.inserted.length) next.inserted.push({})
+          values.forEach((v, j) => {
+            if (c0 + j < fields.length) applyEdit(next, row, c0 + j, cell(v, c0 + j))
+          })
+        })
+      }
+      return next
+    })
+    toast({ kind: 'info', message: tp(block.length, { one: 'Pasted {n} row as pending changes', many: 'Pasted {n} rows as pending changes' }) })
   }
 
   const isCellEdited = useCallback(
@@ -683,7 +749,7 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
       )}
 
       <div className="flex min-h-0 flex-1">
-        <div className="relative min-w-0 flex-1" onKeyDown={onGridKeyDown}>
+        <div className="relative min-w-0 flex-1" onKeyDown={onGridKeyDown} onPaste={onGridPaste}>
           {error ? (
             <div className="m-3 rounded-md border border-danger/30 bg-danger-soft p-3 font-mono text-[12px] whitespace-pre-wrap text-danger select-text">
               {error}
