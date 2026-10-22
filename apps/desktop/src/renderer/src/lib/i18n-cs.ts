@@ -842,4 +842,9 @@ export const cs: Record<string, string> = {
   'Pasted {n} row as pending changes': 'Vložen {n} řádek jako neuložená změna',
   'Pasted {n} rows as pending changes': 'Vloženo {n} řádků jako neuložené změny',
   'Pasted {n} rows as pending changes|few': 'Vloženy {n} řádky jako neuložené změny',
+  'Hide column': 'Skrýt sloupec',
+  'Move left': 'Posunout doleva',
+  'Move right': 'Posunout doprava',
+  'Columns ({n} hidden)': 'Sloupce ({n} skryto)',
+  'Reset columns': 'Obnovit sloupce',
 }

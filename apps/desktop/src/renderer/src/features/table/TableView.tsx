@@ -4,9 +4,11 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Columns3,
   Copy,
   Download,
   Eye,
+  EyeOff,
   Filter,
   KeyRound,
   Network,
@@ -43,6 +45,7 @@ import { Badge, Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Spinner } from '@/components/ui/Spinner'
 import { api } from '@/lib/api'
+import { columnView, loadColumnPrefs, saveColumnPrefs, type ColumnPrefs } from '@/lib/columnPrefs'
 import { copyText, errorMessage, formatCount, formatDuration, uid } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
@@ -257,6 +260,27 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
   // Rows as displayed: originals with edits applied, then inserted rows.
   const fields = result?.fields ?? []
   const fieldIndex = useMemo(() => new Map(fields.map((f, i) => [f.name, i])), [fields])
+
+  // Column layout (order, hidden, widths): the grid shows a view of the fields; positions map back with toField.
+  const prefsId = `${tab.connectionId}:${tab.table.schema ?? ''}.${tab.table.name}`
+  const [columnPrefs, setColumnPrefs] = useState<ColumnPrefs>(() => loadColumnPrefs(prefsId))
+  const updateColumnPrefs = (patch: Partial<ColumnPrefs>) =>
+    setColumnPrefs((p) => {
+      const next = { ...p, ...patch }
+      saveColumnPrefs(prefsId, next)
+      return next
+    })
+  // Widths don't change the view; only order and hidden do.
+  const view = useMemo(() => columnView(fields, { order: columnPrefs.order, hidden: columnPrefs.hidden }), [fields, columnPrefs.order, columnPrefs.hidden])
+  const toField = (c: number) => view[c] ?? c
+  const moveColumn = (name: string, delta: number) => {
+    const names = view.map((i) => fields[i]!.name)
+    const at = names.indexOf(name)
+    const to = at + delta
+    if (at < 0 || to < 0 || to >= names.length) return
+    names.splice(to, 0, names.splice(at, 1)[0]!)
+    updateColumnPrefs({ order: names })
+  }
   const displayRows = useMemo(() => {
     if (!result) return []
     const rows = result.rows.map((row, r) => {
@@ -290,6 +314,9 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
   )
 
   const baseCount = result?.rows.length ?? 0
+  const viewFields = useMemo(() => view.map((i) => fields[i]!), [view, fields])
+  const viewRows = useMemo(() => (view.length === fields.length && view.every((v, i) => v === i) ? displayRows : displayRows.map((r) => view.map((i) => r[i] ?? null))), [view, fields.length, displayRows])
+  const viewMeta = useMemo(() => view.map((i) => columnMeta[i]), [view, columnMeta])
 
   /** Applies one cell edit to pending changes (rows past the loaded ones are inserted rows). */
   const applyEdit = (next: PendingChanges, row: number, col: number, value: string | null) => {
@@ -330,14 +357,14 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
     setPending((p) => {
       const next: PendingChanges = { edits: new Map(p.edits), inserted: [...p.inserted], deleted: new Set(p.deleted) }
       if (block.length === 1 && block[0]!.length === 1) {
-        for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) applyEdit(next, r, c, cell(block[0]![0]!, c))
+        for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) applyEdit(next, r, toField(c), cell(block[0]![0]!, toField(c)))
       } else {
         block.forEach((values, i) => {
           const row = r0 + i
           // Rows past the end of the page (and past already inserted rows) become new rows.
           while (row >= baseCount + next.inserted.length) next.inserted.push({})
           values.forEach((v, j) => {
-            if (c0 + j < fields.length) applyEdit(next, row, c0 + j, cell(v, c0 + j))
+            if (c0 + j < view.length) applyEdit(next, row, toField(c0 + j), cell(v, toField(c0 + j)))
           })
         })
       }
@@ -513,7 +540,11 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
           setShowFilters(true)
         } },
         { label: t('Copy column name'), icon: <Copy size={13} />, onClick: () => void copyText(name) },
-        { label: t('Copy column values'), onClick: () => sel && void copyText(selectionToTsv(fields, displayRows, sel)) },
+        'separator',
+        { label: t('Hide column'), icon: <EyeOff size={13} />, disabled: view.length <= 1, onClick: () => updateColumnPrefs({ hidden: [...(columnPrefs.hidden ?? []), name] }) },
+        { label: t('Move left'), disabled: view[0] === pos.col, onClick: () => moveColumn(name, -1) },
+        { label: t('Move right'), disabled: view.at(-1) === pos.col, onClick: () => moveColumn(name, 1) },
+        { label: t('Copy column values'), onClick: () => sel && void copyText(selectionToTsv(viewFields, viewRows, sel)) },
       ])
       return
     }
@@ -524,8 +555,8 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
     const incoming = schema && table ? incomingReferences(schema, table) : []
     const items: MenuItem[] = [
       { label: t('View value…'), onClick: () => openCellViewer(value, colName, columnMeta[pos.col]?.dataType) },
-      { label: t('Copy'), shortcut: '⌘C', icon: <Copy size={13} />, onClick: () => sel && void copyText(selectionToTsv(fields, displayRows, sel, false, '')) },
-      { label: t('Copy with headers'), onClick: () => sel && void copyText(selectionToTsv(fields, displayRows, sel, true, '')) },
+      { label: t('Copy'), shortcut: '⌘C', icon: <Copy size={13} />, onClick: () => sel && void copyText(selectionToTsv(viewFields, viewRows, sel, false, '')) },
+      { label: t('Copy with headers'), onClick: () => sel && void copyText(selectionToTsv(viewFields, viewRows, sel, true, '')) },
       {
         label: t('Copy rows as'),
         submenu: (['json', 'csv', 'markdown', 'sql'] as const).map((format) => ({
@@ -728,6 +759,28 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
         >
           <Network size={14} />
         </IconButton>
+        <IconButton
+          label={columnPrefs.hidden?.length ? tp(columnPrefs.hidden.length, { one: 'Columns ({n} hidden)', many: 'Columns ({n} hidden)' }) : t('Columns')}
+          size="md"
+          active={!!columnPrefs.hidden?.length}
+          onClick={(e) =>
+            openMenu(e.currentTarget, [
+              ...fields.map((f) => {
+                const hidden = columnPrefs.hidden?.includes(f.name) ?? false
+                return {
+                  label: f.name,
+                  checked: !hidden,
+                  disabled: !hidden && view.length <= 1,
+                  onClick: () => updateColumnPrefs({ hidden: hidden ? columnPrefs.hidden!.filter((n) => n !== f.name) : [...(columnPrefs.hidden ?? []), f.name] }),
+                }
+              }),
+              'separator',
+              { label: t('Reset columns'), disabled: !columnPrefs.order?.length && !columnPrefs.hidden?.length && !columnPrefs.widths, onClick: () => updateColumnPrefs({ order: undefined, hidden: undefined, widths: undefined }) },
+            ])
+          }
+        >
+          <Columns3 size={14} />
+        </IconButton>
         <IconButton label={t('Row details')} size="md" active={showDetails} onClick={() => setShowDetails((v) => !v)}>
           <PanelRight size={14} />
         </IconButton>
@@ -761,17 +814,19 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
           ) : (
             <DataGrid
               ref={grid}
-              fields={fields}
-              rows={displayRows}
-              columnMeta={columnMeta}
+              fields={viewFields}
+              rows={viewRows}
+              columnMeta={viewMeta}
+              columnWidths={columnPrefs.widths}
+              onColumnWidthsChange={(widths) => updateColumnPrefs({ widths: { ...columnPrefs.widths, ...widths } })}
               rowNumberOffset={offset}
               sort={sort}
               onSortChange={setSort}
-              onEdit={editable ? onEdit : undefined}
-              isCellEdited={isCellEdited}
+              onEdit={editable ? (row, col, value) => onEdit(row, toField(col), value) : undefined}
+              isCellEdited={(row, col) => isCellEdited(row, toField(col))}
               rowState={rowState}
-              onContextMenu={onContextMenu}
-              onForeignKeyClick={(pos) => followForeignKey(pos.row, pos.col)}
+              onContextMenu={(e, pos, sel) => onContextMenu(e, pos ? { ...pos, col: toField(pos.col) } : null, sel)}
+              onForeignKeyClick={(pos) => followForeignKey(pos.row, toField(pos.col))}
               onSelectionChange={setSelection}
               onCellActivate={() => setShowDetails(true)}
               nullDisplay={settings?.nullDisplay}
