@@ -38,6 +38,11 @@ win:
       arch: [x64, arm64]
   # The zip is the portable build: unzip and run, data is stored next to the exe.
   artifactName: DB-Mastermind-${version}-win-${arch}-portable.${ext}
+# For Intune / SCCM / Group Policy: per-machine, silent with msiexec /i … /qn (built from win-unpacked).
+msi:
+  perMachine: true
+  runAfterFinish: false
+  artifactName: DB-Mastermind-${version}-win-${arch}.${ext}
 nsis:
   oneClick: false
   perMachine: false

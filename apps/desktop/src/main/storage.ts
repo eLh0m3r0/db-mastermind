@@ -12,8 +12,11 @@ function detectPortableDir(): string | null {
   const exeDir = process.env.PORTABLE_EXECUTABLE_DIR ?? dirname(app.getPath('exe'))
   const marker = existsSync(join(exeDir, 'portable')) || existsSync(join(exeDir, 'data'))
   const installedByNsis = existsSync(join(exeDir, 'Uninstall DB Mastermind.exe'))
+  // MSI (per-machine) installs live under Program Files; never keep data there, even when running elevated.
+  const programFiles = [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.ProgramW6432].filter((p): p is string => !!p).map((p) => p.toLowerCase())
+  const installedPerMachine = process.platform === 'win32' && programFiles.some((p) => exeDir.toLowerCase().startsWith(p))
   const wantPortable =
-    process.env.DBM_PORTABLE === '1' || marker || (process.platform === 'win32' && !installedByNsis)
+    process.env.DBM_PORTABLE === '1' || marker || (process.platform === 'win32' && !installedByNsis && !installedPerMachine)
   if (!wantPortable) return null
   const dir = join(exeDir, 'data')
   try {

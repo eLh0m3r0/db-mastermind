@@ -225,7 +225,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ Shared team folder (network drive, OneDrive, Git): connections, knowledge bases, saved queries (diagrams ⬜)
   kept in sync automatically
 - ✅ Audit log: every statement (editor, grid edits, imports, the in-app AI and external MCP agents) with its source, exportable to CSV
-- ⬜ MSI package for Intune / SCCM
+- ✅ MSI package for Intune / SCCM (per-machine, silent `msiexec /i … /qn`; CI installs it and runs the smoke test)
 
 ---
 

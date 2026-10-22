@@ -111,6 +111,21 @@ jobs:
       - name: UI smoke test (Linux, virtual display)
         if: runner.os == 'Linux'
         run: xvfb-run -a node e2e/ui-smoke.mjs "${{ matrix.exe }}" ui-shots
+      - name: MSI package, silent install, smoke test from Program Files
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd apps/desktop
+          npx electron-builder --win msi --x64 --prepackaged release/win-unpacked --publish never
+          $msi = Get-ChildItem release/*.msi | Select-Object -First 1
+          $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/i `"$($msi.FullName)`" /qn /l*v `"$env:RUNNER_TEMP\msi.log`""
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\msi.log" -Tail 40; throw "msiexec failed: $($p.ExitCode)" }
+          $exe = Get-ChildItem "$env:ProgramFiles" -Recurse -Depth 2 -Filter "DB Mastermind.exe" | Select-Object -First 1
+          if (-not $exe) { throw "DB Mastermind.exe not found under Program Files" }
+          Write-Host "Installed: $($exe.FullName)"
+          cd ../..
+          node e2e/smoke.mjs "$($exe.FullName)"
+          if (Test-Path (Join-Path $exe.DirectoryName 'data')) { throw "A per-machine install must not use portable mode" }
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
