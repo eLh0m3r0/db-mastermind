@@ -575,8 +575,10 @@ export function ConnectionForm() {
                     />
                   </Field>
                 )}
-                <Field label={t('Knowledge base folder')} hint={t('Markdown notes about this database, used by the AI assistant. Optional.')}>
-                  {existing && kbLocation && (
+                {/* Outside the Field's <label>: a click on the label text must not open the Change… menu. */}
+                {existing && kbLocation && (
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[12px] font-medium text-fg-muted">{t('Knowledge base')}</span>
                     <KnowledgeLocationBar
                       compact
                       connection={existing}
@@ -584,7 +586,9 @@ export function ConnectionForm() {
                       // The change is already saved; keep the form's copy in step so Save doesn't undo it.
                       onChanged={(l) => set({ knowledgeBasePath: l.path, knowledgeBaseLocal: l.personal || undefined } as Partial<ConnectionConfig>)}
                     />
-                  )}
+                  </div>
+                )}
+                <Field label={t('Knowledge base folder')} hint={t('Markdown notes about this database, used by the AI assistant. Optional.')}>
                   <div className="flex gap-2">
                     <Input className="flex-1 font-mono text-[12px]" value={config.knowledgeBasePath ?? ''}
                       // A team connection pointed elsewhere by hand is this user's own (the team's path would win otherwise).

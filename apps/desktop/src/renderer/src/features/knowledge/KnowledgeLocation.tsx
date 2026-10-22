@@ -10,10 +10,10 @@ import { errorMessage } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { toast } from '@/store/ui'
 
-/** The last two parts of a path ("…/projects/crm-notes"); the full path goes in a tooltip. */
+/** The folder's own name ("…/crm-notes"); the full path goes in a tooltip. */
 export function shortPath(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean)
-  return parts.length > 2 ? `…/${parts.slice(-2).join('/')}` : path
+  return parts.length > 1 ? `…/${parts[parts.length - 1]}` : path
 }
 
 export function placeLabel(location: KbLocation): string {
@@ -151,7 +151,15 @@ export function KnowledgeLocationBar({ connection, location, onChanged, compact 
           {placeLabel(location)}
         </span>
         <div className="flex-1" />
-        <Button size="sm" variant="ghost" onClick={(e) => openLocationMenu(e.currentTarget, connection, location, onChanged)}>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={(e) => {
+            const anchor = e.currentTarget
+            // Fresh numbers: notes may have been added since the header loaded (the copy offer depends on them).
+            void api.kbLocation(connection.id).then((fresh) => openLocationMenu(anchor, connection, fresh, onChanged), () => openLocationMenu(anchor, connection, location, onChanged))
+          }}
+        >
           {t('Change…')}
         </Button>
       </div>
