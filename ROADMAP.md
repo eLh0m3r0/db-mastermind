@@ -202,7 +202,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ Server activity: sessions and running queries with auto-refresh, cancel query, end session (PG, MySQL/MariaDB, MSSQL, Oracle)
 - ✅ Server activity: lock waits (who waits for whom), blocking sessions highlighted even when idle
 - ⬜ Users & roles browser
-- ⬜ Snippets with variables
+- ✅ Snippets with fields (built-in, dialect-aware: sel, cnt, dup, orph, cte, tx…; your own in Settings)
 - ⬜ Split editor panes, side-by-side results
 
 ---

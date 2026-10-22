@@ -21,6 +21,8 @@ import {
 } from '@codemirror/view'
 import { tags as t } from '@lezer/highlight'
 import { joinCompletionSource } from './joinCompletion'
+import { allSnippets, snippetSource } from './snippets'
+import { useSettings } from '@/store/settings'
 import { statementAtOffset, type DriverId, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { t as tr } from '@/lib/i18n'
 
@@ -192,10 +194,15 @@ export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunA
   driverRef.current = driver
   const schemaRef = useRef(schema)
   schemaRef.current = schema
+  const userSnippets = useSettings((s) => s.settings?.snippets)
+  const snippetsRef = useRef(allSnippets(driver, userSnippets))
+  snippetsRef.current = allSnippets(driver, userSnippets)
   const langCompartment = useRef(new Compartment())
   const themeCompartment = useRef(new Compartment())
 
   useEffect(() => {
+    const joinSource = joinCompletionSource(() => schemaRef.current, () => driverRef.current)
+    const snippetsSource = snippetSource(() => snippetsRef.current)
     const view = new EditorView({
       parent: host.current!,
       state: EditorState.create({
@@ -218,7 +225,8 @@ export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunA
           placeholderExt(tr('Write SQL…   ⌘↵ runs the statement under the cursor, ⇧⌘↵ runs everything')),
           statementHighlight(() => driverRef.current),
           // Extra completion source next to the SQL language's own (tables, columns, keywords).
-          EditorState.languageData.of(() => [{ autocomplete: joinCompletionSource(() => schemaRef.current, () => driverRef.current) }]),
+          // Sources need a stable identity: autocompletion matches results to sources by reference.
+          EditorState.languageData.of(() => [{ autocomplete: joinSource }, { autocomplete: snippetsSource }]),
           errorField,
           keymap.of([
             { key: 'Mod-Enter', run: () => (handlers.current.onRun(), true), preventDefault: true },

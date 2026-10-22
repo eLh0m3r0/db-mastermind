@@ -55,6 +55,13 @@ export interface McpSettings {
   allowWrites: boolean
 }
 
+/** Editor snippet: typing `trigger` offers `body`, whose `${name}` fields are filled in with Tab. */
+export interface Snippet {
+  trigger: string
+  name: string
+  body: string
+}
+
 export interface AppSettings {
   theme: ThemePreference
   language: 'en' | 'cs'
@@ -67,6 +74,8 @@ export interface AppSettings {
   dateFormat: 'iso' | 'locale'
   ai: AiSettings
   mcp: McpSettings
+  /** User snippets (built-ins are always available unless overridden by trigger). */
+  snippets?: Snippet[]
 }
 
 export interface StoredConnection extends ConnectionConfig {
