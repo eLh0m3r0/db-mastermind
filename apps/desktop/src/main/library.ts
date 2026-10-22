@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto'
-import type { HistoryEntry, SavedQuery, WorkspaceState } from '@shared/api'
+import type { HistoryEntry, SavedDiagram, SavedQuery, WorkspaceState } from '@shared/api'
 import { readJson, writeJson } from './storage'
 
 const HISTORY_FILE = 'history.json'
 const SAVED_FILE = 'saved-queries.json'
 const WORKSPACE_FILE = 'workspace.json'
+const DIAGRAMS_FILE = 'diagrams.json'
 const MAX_HISTORY = 5000
 
 let history: HistoryEntry[] | undefined
@@ -78,6 +79,27 @@ export function deleteSavedQuery(id: string): void {
   writeJson(
     SAVED_FILE,
     listSavedQueries().filter((q) => q.id !== id),
+  )
+}
+
+export function listDiagrams(connectionId?: string): SavedDiagram[] {
+  const all = readJson<SavedDiagram[]>(DIAGRAMS_FILE, [])
+  return connectionId ? all.filter((d) => d.connectionId === connectionId) : all
+}
+
+export function saveDiagram(diagram: Omit<SavedDiagram, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): SavedDiagram {
+  const all = listDiagrams()
+  const now = new Date().toISOString()
+  const existing = diagram.id ? all.find((d) => d.id === diagram.id) : undefined
+  const saved: SavedDiagram = { ...existing, ...diagram, id: existing?.id ?? randomUUID(), createdAt: existing?.createdAt ?? now, updatedAt: now }
+  writeJson(DIAGRAMS_FILE, existing ? all.map((d) => (d.id === saved.id ? saved : d)) : [...all, saved])
+  return saved
+}
+
+export function deleteDiagram(id: string): void {
+  writeJson(
+    DIAGRAMS_FILE,
+    listDiagrams().filter((d) => d.id !== id),
   )
 }
 

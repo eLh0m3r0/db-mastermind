@@ -90,6 +90,18 @@ export interface HistoryEntry {
   error?: string
 }
 
+/** A named subset of tables with its own layout ("Sales", "Billing"…). */
+export interface SavedDiagram {
+  id: string
+  connectionId: string
+  name: string
+  /** Table keys as "schema.table" ("" schema for engines without schemas). */
+  tables: string[]
+  positions?: Record<string, { x: number; y: number }>
+  createdAt: string
+  updatedAt: string
+}
+
 export interface SavedQuery {
   id: string
   name: string
@@ -250,6 +262,9 @@ export interface MastermindApi {
   listSavedQueries(): Promise<SavedQuery[]>
   saveQuery(query: Omit<SavedQuery, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<SavedQuery>
   deleteSavedQuery(id: string): Promise<void>
+  listDiagrams(connectionId: string): Promise<SavedDiagram[]>
+  saveDiagram(diagram: Omit<SavedDiagram, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<SavedDiagram>
+  deleteDiagram(id: string): Promise<void>
 
   exportResult(request: ExportRequest): Promise<string | null>
   exportTable(request: ExportTableRequest): Promise<string | null>
@@ -328,6 +343,9 @@ export const API_METHODS = [
   'listSavedQueries',
   'saveQuery',
   'deleteSavedQuery',
+  'listDiagrams',
+  'saveDiagram',
+  'deleteDiagram',
   'exportResult',
   'exportTable',
   'pickFile',

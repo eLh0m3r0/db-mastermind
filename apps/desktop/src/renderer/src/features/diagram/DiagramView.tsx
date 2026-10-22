@@ -18,7 +18,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { toPng, toSvg } from 'html-to-image'
-import { Copy, Download, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Route, Search, Table2, Undo2 } from 'lucide-react'
+import { Bookmark, Copy, Download, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Route, Search, Table2, Undo2 } from 'lucide-react'
 import {
   designId,
   designToTableInfo,
@@ -35,6 +35,8 @@ import {
   type TableInfo,
 } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
+import { api } from '@/lib/api'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Checkbox, Input, Select } from '@/components/ui/Input'
@@ -44,6 +46,7 @@ import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { toast } from '@/store/ui'
 import { useWorkspace, type DiagramTab } from '@/store/workspace'
+import type { SavedDiagram } from '@shared/api'
 import { MigrationModal } from './MigrationModal'
 import { TableEditor } from './TableEditor'
 import { t, tp, useT } from '@/lib/i18n'
@@ -212,9 +215,13 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
         return schema.tables.filter((t) => keys.has(`${t.schema ?? ''}.${t.name}`))
       }
     }
+    if (tab.tables) {
+      const keys = new Set(tab.tables)
+      return schema.tables.filter((t) => keys.has(`${t.schema ?? ''}.${t.name}`))
+    }
     const all = schemaFilter === '*' ? schema.tables : schema.tables.filter((t) => (t.schema ?? '') === schemaFilter || (!t.schema && !schemaFilter))
     return all.slice(0, 400)
-  }, [schema, focusName, depth, schemaFilter, joinPath])
+  }, [schema, focusName, depth, schemaFilter, joinPath, tab.tables])
 
   const keyOf = (t: { schema?: string; name: string }) => `${t.schema ?? ''}.${t.name}`
   /** What the canvas shows: live tables with drafts applied, plus new tables. */
@@ -354,18 +361,28 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
         edges: edges.map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] })),
       })
       const saved = tab.positions ?? {}
-      setNodes(
-        display.map((d) => {
-          const laid = graph.children?.find((c) => c.id === d.key)
-          return {
-            id: d.key,
-            type: 'table',
-            position: saved[d.key] ?? drafts[d.key]?.position ?? { x: laid?.x ?? 0, y: laid?.y ?? 0 },
-            data: nodeData(d),
+      const placed = display.map((d) => saved[d.key]).filter((p): p is { x: number; y: number } => !!p)
+      // Tables new to an arranged diagram go in a column right of the existing ones instead of on top of them.
+      let nextX = placed.length ? Math.max(...placed.map((p) => p.x)) + WIDTH + 90 : 0
+      let nextY = placed.length ? Math.min(...placed.map((p) => p.y)) : 0
+      const positions: Record<string, { x: number; y: number }> = {}
+      for (const d of display) {
+        const laid = graph.children?.find((c) => c.id === d.key)
+        let position = saved[d.key] ?? drafts[d.key]?.position
+        if (!position && placed.length) {
+          position = { x: nextX, y: nextY }
+          nextY += (laid?.height ?? 200) + 36
+          if (nextY > 2400) {
+            nextX += WIDTH + 90
+            nextY = Math.min(...placed.map((p) => p.y))
           }
-        }),
-      )
+        }
+        positions[d.key] = position ?? { x: Math.round(laid?.x ?? 0), y: Math.round(laid?.y ?? 0) }
+      }
+      setNodes(display.map((d) => ({ id: d.key, type: 'table', position: positions[d.key]!, data: nodeData(d) })))
       requestAnimationFrame(() => flow.fitView({ padding: 0.15, duration: 300, maxZoom: 1 }))
+      // In a custom diagram, pin the layout so adding a table doesn't rearrange the others.
+      if (tab.tables && display.some((d) => !saved[d.key])) updateTab(tab.id, { positions: { ...saved, ...positions } })
     } finally {
       setLayouting(false)
     }
@@ -497,6 +514,44 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
   }
   const selectedDraft = selected ? draftFor(selected) : undefined
 
+  const [naming, setNaming] = useState(false)
+
+  /** Search result: adds the table to a custom diagram, otherwise focuses on it. */
+  const pickTable = (t: TableInfo) => {
+    if (tab.tables && !focusName) {
+      if (!tab.tables.includes(keyOf(t))) updateTab(tab.id, { tables: [...tab.tables, keyOf(t)] })
+    } else setFocusName(t.name)
+    setSearch('')
+  }
+
+  const addRelated = (t: TableInfo) => {
+    if (!schema || !tab.tables) return
+    const keys = neighbourhood(schema, t, 1)
+    updateTab(tab.id, { tables: [...new Set([...tab.tables, ...keys])] })
+  }
+
+  const currentPositions = () => Object.fromEntries(nodes.map((n) => [n.id, { x: Math.round(n.position.x), y: Math.round(n.position.y) }]))
+
+  const saveAs = async (name: string) => {
+    const tables = liveTables.map(keyOf)
+    const d = await api.saveDiagram({ connectionId: tab.connectionId, name, tables, positions: currentPositions() })
+    setFocusName(undefined)
+    setPathTo(undefined)
+    updateTab(tab.id, { savedId: d.id, tables, positions: d.positions, title: name })
+    setNaming(false)
+    toast({ kind: 'success', message: tr('Diagram saved') })
+  }
+
+  // Saved diagrams keep themselves up to date: tables added/removed and nodes moved.
+  useEffect(() => {
+    if (!tab.savedId || !tab.tables || focusName) return
+    const timer = setTimeout(() => {
+      void api.saveDiagram({ id: tab.savedId, connectionId: tab.connectionId, name: tab.title, tables: tab.tables!, positions: { ...currentPositions(), ...tab.positions } })
+    }, 600)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab.savedId, tab.tables, tab.positions])
+
   const matches = useMemo(() => {
     const q = search.trim()
     if (!q || !schema) return []
@@ -524,13 +579,13 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
           <Input
             inputSize="sm"
             className="w-56"
-            placeholder={tr('Focus on table…')}
+            placeholder={tab.tables && !focusName ? tr('Add table…') : tr('Focus on table…')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             leading={<Search size={12} />}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && matches[0]) {
-                setFocusName(matches[0].name)
+                pickTable(matches[0])
                 setSearch('')
               }
             }}
@@ -543,7 +598,7 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
                   type="button"
                   className="flex h-7 w-full items-center gap-2 rounded px-2 text-left text-[12px] hover:bg-hover"
                   onClick={() => {
-                    setFocusName(t.name)
+                    pickTable(t)
                     setSearch('')
                   }}
                 >
@@ -658,6 +713,40 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
         <Button
           size="sm"
           variant="ghost"
+          icon={<Bookmark size={13} />}
+          onClick={async (e) => {
+            const anchor = e.currentTarget
+            const list: SavedDiagram[] = await api.listDiagrams(tab.connectionId)
+            openMenu(anchor, [
+              { label: tr('Save as new diagram…'), icon: <Plus size={13} />, onClick: () => setNaming(true) },
+              ...(tab.savedId
+                ? [
+                    {
+                      label: tr('Delete this diagram'),
+                      danger: true,
+                      onClick: () => {
+                        if (!window.confirm(tr('Delete diagram “{name}”?', { name: tab.title }))) return
+                        void api.deleteDiagram(tab.savedId!).then(() => {
+                          updateTab(tab.id, { savedId: undefined, tables: undefined, title: tr('ER diagram') })
+                        })
+                      },
+                    },
+                  ]
+                : []),
+              ...(list.length ? ['separator' as const] : []),
+              ...list.map((d) => ({
+                label: d.name,
+                icon: <Network size={13} />,
+                onClick: () => openTab({ kind: 'diagram', connectionId: tab.connectionId, title: d.name, tables: d.tables, positions: d.positions, savedId: d.id }, { reuse: false }),
+              })),
+            ])
+          }}
+        >
+          {tab.savedId ? tab.title : tr('Diagrams')}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
           icon={<Download size={13} />}
           onClick={(e) =>
             openMenu(e.currentTarget, [
@@ -758,6 +847,13 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
               { label: tr('Open data'), icon: <Table2 size={13} />, onClick: () => openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name }) },
               { label: tr('Open structure'), onClick: () => openTab({ kind: 'structure', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: tr('{name} · structure', { name: n.data.table.name }) }) },
               { label: tr('Focus here'), icon: <Network size={13} />, onClick: () => setFocusName(n.data.table.name) },
+              ...(tab.tables && !focusName
+                ? [
+                    'separator' as const,
+                    { label: tr('Add related tables'), icon: <Plus size={13} />, onClick: () => addRelated(n.data.table) },
+                    { label: tr('Remove from diagram'), onClick: () => updateTab(tab.id, { tables: tab.tables!.filter((k) => k !== keyOf(n.data.table)) }) },
+                  ]
+                : []),
             ])
           }
           colorMode={dark ? 'dark' : 'light'}
@@ -804,6 +900,7 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
         />
       )}
       </div>
+      <DiagramNameModal open={naming} onClose={() => setNaming(false)} onSave={(name) => void saveAs(name)} />
       {connection && schema && (
         <MigrationModal
           open={reviewOpen}
@@ -827,5 +924,41 @@ export function DiagramView({ tab }: { tab: DiagramTab }) {
     <ReactFlowProvider>
       <DiagramInner tab={tab} />
     </ReactFlowProvider>
+  )
+}
+
+function DiagramNameModal({ open, onClose, onSave }: { open: boolean; onClose: () => void; onSave: (name: string) => void }) {
+  const tr = useT()
+  const [name, setName] = useState('')
+  useEffect(() => {
+    if (open) setName('')
+  }, [open])
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={tr('Save diagram')}
+      width={400}
+      footer={
+        <>
+          <div className="flex-1" />
+          <Button onClick={onClose}>{tr('Cancel')}</Button>
+          <Button variant="primary" disabled={!name.trim()} onClick={() => onSave(name.trim())}>
+            {tr('Save')}
+          </Button>
+        </>
+      }
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (name.trim()) onSave(name.trim())
+        }}
+        className="flex flex-col gap-2"
+      >
+        <Input autoFocus placeholder={tr('e.g. Sales, Billing, Warehouse')} value={name} onChange={(e) => setName(e.target.value)} />
+        <p className="text-[11.5px] text-fg-faint">{tr('The diagram keeps the tables shown now and their positions. Add or remove tables later; changes are saved automatically.')}</p>
+      </form>
+    </Modal>
   )
 }

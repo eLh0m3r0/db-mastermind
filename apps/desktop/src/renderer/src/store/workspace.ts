@@ -32,8 +32,10 @@ export interface StructureTab extends BaseTab {
 
 export interface DiagramTab extends BaseTab {
   kind: 'diagram'
-  /** Tables to show; all when undefined. */
+  /** Tables to show ("schema.table" keys); all when undefined. */
   tables?: string[]
+  /** Saved diagram this tab edits. */
+  savedId?: string
   focus?: string
   /** Node positions the user dragged, by "schema.table". */
   positions?: Record<string, { x: number; y: number }>

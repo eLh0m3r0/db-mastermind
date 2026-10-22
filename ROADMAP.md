@@ -100,7 +100,8 @@ project's (AI) maintainer and updated with every release.
 - ✅ **Interactive ER diagram** of a schema or a selection of tables (auto layout, crow's-foot notation)
 - ✅ "Explore from table": start with one table, expand neighbours by FK hop
 - ✅ Join path between two tables in the diagram, with ready SELECT … JOIN SQL (also the `find_join_path` AI/MCP tool)
-- ⬜ Saved diagrams (named layouts, notes, colors, groups) per connection
+- ✅ Saved diagrams per connection: named subject areas with their own tables and layout, saved automatically
+- ⬜ Diagram notes, colors and groups
 - ✅ Virtual / logical relationships (when the DB has no real FKs) — stored in the knowledge base and
   used by FK navigation, diagrams, autocomplete joins and AI
 - ✅ Export diagram to PNG, SVG, Mermaid, DBML, PlantUML
