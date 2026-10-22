@@ -31,5 +31,7 @@ await app.evaluate(({ app }) => app.quit()).catch(() => {})
 for (let i = 0; i < 90 && version() !== latest; i++) await new Promise((r) => setTimeout(r, 2000))
 console.log('after quitting:', version())
 if (version() !== latest) throw new Error(`Expected ${latest} after quitting, found ${version()}`)
-if (existsSync(`${bundle}.old`)) throw new Error('The old bundle was left behind')
+// The script removes the old bundle right after the swap.
+for (let i = 0; i < 30 && (existsSync(`${bundle}.old`) || existsSync(`${bundle}.new`)); i++) await new Promise((r) => setTimeout(r, 1000))
+if (existsSync(`${bundle}.old`) || existsSync(`${bundle}.new`)) throw new Error('A temporary bundle was left behind')
 console.log(`Updated to ${latest}`)

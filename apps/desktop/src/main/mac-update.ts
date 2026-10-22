@@ -112,8 +112,10 @@ function swapAfterExit(log: Log): void {
   const target = macBundle()
   const script = [
     'while kill -0 "$1" 2>/dev/null; do sleep 0.3; done',
-    'rm -rf "$2.old"',
-    'if mv "$2" "$2.old" && /usr/bin/ditto "$3" "$2"; then rm -rf "$2.old"; else rm -rf "$2"; mv "$2.old" "$2"; fi',
+    // Copy next to the app first, then swap with two renames: the app is never half-copied, and a failed copy leaves
+    // the old one untouched.
+    'rm -rf "$2.old" "$2.new"',
+    'if /usr/bin/ditto "$3" "$2.new" && mv "$2" "$2.old" && mv "$2.new" "$2"; then rm -rf "$2.old"; else [ -d "$2" ] || mv "$2.old" "$2"; rm -rf "$2.new"; fi',
     '/usr/bin/xattr -dr com.apple.quarantine "$2" 2>/dev/null',
     'rm -rf "$4"',
     'if [ "$5" = 1 ]; then /usr/bin/open "$2"; fi',
