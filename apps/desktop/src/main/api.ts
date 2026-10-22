@@ -7,6 +7,7 @@ import {
   buildBatchInserts,
   buildChangeStatements,
   detectDelimiter,
+  explainQuery,
   parseDelimited,
   parseXlsx,
   DatabaseService,
@@ -208,6 +209,10 @@ export const api: MastermindApi = {
       })
     }
     return outcomes
+  },
+  async explainQuery(connectionId, sql, analyze) {
+    await ensureConnected(connectionId)
+    return explainQuery(db, connectionId, sql, analyze)
   },
   async cancelQuery(runId) {
     running.get(runId)?.abort()

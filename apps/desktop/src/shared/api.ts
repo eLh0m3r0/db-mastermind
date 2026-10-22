@@ -1,5 +1,6 @@
 import type {
   ConnectionConfig,
+  ExplainResult,
   FilterNode,
   QueryResult,
   RowChange,
@@ -220,6 +221,7 @@ export interface MastermindApi {
 
   runQuery(request: RunQueryRequest): Promise<StatementOutcome[]>
   cancelQuery(runId: string): Promise<void>
+  explainQuery(connectionId: string, sql: string, analyze?: boolean): Promise<ExplainResult>
   releaseSession(connectionId: string, session: string): Promise<void>
 
   fetchTable(request: FetchTableRequest): Promise<TablePage>
@@ -293,6 +295,7 @@ export const API_METHODS = [
   'listDatabases',
   'runQuery',
   'cancelQuery',
+  'explainQuery',
   'releaseSession',
   'fetchTable',
   'countTable',

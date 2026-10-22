@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { format as formatSql, type SqlLanguage } from 'sql-formatter'
-import { BookmarkPlus, Play, PlayCircle, Sparkles, Square, Wand2 } from 'lucide-react'
-import { isDangerousStatement, splitStatements, type DriverId, type StatementOutcome } from '@dbmastermind/core/browser'
+import { Activity, BookmarkPlus, Play, PlayCircle, Sparkles, Square, Wand2 } from 'lucide-react'
+import { extractParameters, isDangerousStatement, splitStatements, type DriverId, type ExplainResult, type QueryParameter, type StatementOutcome } from '@dbmastermind/core/browser'
+import { openMenu } from '@/components/ui/ContextMenu'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -13,6 +14,8 @@ import { useSettings } from '@/store/settings'
 import { toast, useUi } from '@/store/ui'
 import { useWorkspace, type QueryTab } from '@/store/workspace'
 import { onCommand } from '@/lib/commands'
+import { ParamsModal, type ParamValues } from './ParamsModal'
+import { PlanView } from './PlanView'
 import { ResultsPanel } from './ResultsPanel'
 import { SqlEditor, type SqlEditorHandle } from './SqlEditor'
 import { useT } from '@/lib/i18n'
@@ -39,6 +42,10 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [editorHeight, setEditorHeight] = useState(() => Math.round(window.innerHeight * 0.4))
   const [saveOpen, setSaveOpen] = useState(false)
+  const [paramPrompt, setParamPrompt] = useState<{ mode: 'current' | 'all'; params: QueryParameter[] } | null>(null)
+  const lastParams = useRef<ParamValues>({})
+  const [plan, setPlan] = useState<ExplainResult | null>(null)
+  const [explaining, setExplaining] = useState(false)
   const runId = useRef<string | null>(null)
   const lastFragmentOffset = useRef(0)
   const driver = connection?.driver ?? 'postgres'
@@ -52,11 +59,18 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
   const persistSql = useRef(debounce((id: string, sql: string) => updateTab(id, { sql }), 300)).current
 
   const run = useCallback(
-    async (mode: 'current' | 'all') => {
+    async (mode: 'current' | 'all', parameterValues?: ParamValues) => {
       // A ref, not state: the menu accelerator and the editor keymap can both fire in the same tick.
       if (runId.current) return
       const target = mode === 'all' ? { sql: editor.current?.getValue() ?? '', offset: 0 } : editor.current?.getRunTarget()
       if (!target || !target.sql.trim()) return
+      if (!parameterValues) {
+        const params = extractParameters(target.sql, driver)
+        if (params.length) {
+          setParamPrompt({ mode, params })
+          return
+        }
+      }
       const statements = splitStatements(target.sql, driver)
       const dangerous = statements.filter((s) => isDangerousStatement(s.text))
       const isProd = connection?.environment === 'production'
@@ -74,7 +88,8 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       setStartedAt(Date.now())
       setOutcomes(null)
       try {
-        const result = await api.runQuery({ connectionId: tab.connectionId, sql: target.sql, runId: id, session: tab.id })
+        setPlan(null)
+        const result = await api.runQuery({ connectionId: tab.connectionId, sql: target.sql, runId: id, session: tab.id, parameterValues })
         if (runId.current !== id) return
         setOutcomes(result)
         const failed = result.find((o) => o.error)
@@ -94,6 +109,22 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       }
     },
     [driver, connection?.environment, settings?.confirmDangerousStatements, tab.connectionId, tab.id, loadSchema],
+  )
+
+  const explain = useCallback(
+    async (analyze: boolean) => {
+      const target = editor.current?.getRunTarget()
+      if (!target?.sql.trim()) return
+      setExplaining(true)
+      try {
+        setPlan(await api.explainQuery(tab.connectionId, target.sql, analyze))
+      } catch (err) {
+        toast({ kind: 'error', message: t('Could not explain the query'), detail: errorMessage(err) })
+      } finally {
+        setExplaining(false)
+      }
+    },
+    [tab.connectionId, t],
   )
 
   const cancel = useCallback(() => {
@@ -173,6 +204,23 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
         <Button size="sm" variant="ghost" icon={<BookmarkPlus size={14} />} onClick={() => void save()} title={`${t('Save query')} (${modKey}S)`}>
           {t('Save')}
         </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<Activity size={14} />}
+          loading={explaining}
+          onClick={(e) =>
+            driver === 'postgres'
+              ? openMenu(e.currentTarget, [
+                  { label: t('Explain (estimate)'), onClick: () => void explain(false) },
+                  { label: t('Explain analyze (runs the query)'), onClick: () => void explain(true) },
+                ])
+              : void explain(false)
+          }
+          title={t('Show the execution plan of the statement under the cursor')}
+        >
+          {t('Explain')}
+        </Button>
         <Button size="sm" variant="ghost" icon={<Sparkles size={14} />} onClick={askAi} title={`${t('Ask AI')} (${modKey}I)`}>
           {t('Ask AI')}
         </Button>
@@ -196,6 +244,9 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       </div>
       <Splitter direction="vertical" size={editorHeight} onResize={setEditorHeight} min={80} max={window.innerHeight - 200} />
       <div className="min-h-0 flex-1 border-t border-line">
+        {plan ? (
+          <PlanView plan={plan} onClose={() => setPlan(null)} />
+        ) : (
         <ResultsPanel
           outcomes={outcomes}
           running={running}
@@ -210,7 +261,19 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
             view.focus()
           }}
         />
+        )}
       </div>
+      <ParamsModal
+        params={paramPrompt?.params ?? null}
+        initial={lastParams.current}
+        onCancel={() => setParamPrompt(null)}
+        onRun={(values) => {
+          const mode = paramPrompt?.mode ?? 'current'
+          lastParams.current = { ...lastParams.current, ...values }
+          setParamPrompt(null)
+          void run(mode, values)
+        }}
+      />
       <SaveQueryModal
         open={saveOpen}
         initialName={/^(Query|Dotaz) \d+$/.test(tab.title) ? '' : tab.title}

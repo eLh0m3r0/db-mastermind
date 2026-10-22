@@ -4,7 +4,7 @@ import type { ConnectionConfig, DriverId, Environment, SslMode } from '@dbmaster
 import { Button } from '@/components/ui/Button'
 import { Checkbox, Field, Input, Segmented, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
-import { api } from '@/lib/api'
+import { api, bridge } from '@/lib/api'
 import { cn, errorMessage } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { toast, useUi } from '@/store/ui'
@@ -98,6 +98,8 @@ export function ConnectionForm() {
   }
 
   const isSqlite = config.driver === 'sqlite'
+  const windowsAuth = config.driver === 'mssql' && config.options?.authentication === 'windows'
+  const isWindows = bridge.platform === 'win32'
   const ssl = config.ssl ?? { mode: (config.driver === 'mssql' ? 'prefer' : 'disable') as SslMode }
   const ssh = config.ssh ?? { enabled: false, host: '', port: 22, user: '', authMethod: 'privateKey' as const }
 
@@ -249,14 +251,34 @@ export function ConnectionForm() {
                         />
                       </Field>
                     </div>
-                    <div className="flex gap-2">
-                      <Field label={t('User')} className="flex-1">
-                        <Input value={config.user ?? ''} onChange={(e) => set({ user: e.target.value })} autoComplete="off" />
+                    {config.driver === 'mssql' && (
+                      <Field label={t('Authentication')}>
+                        <Segmented
+                          value={windowsAuth ? 'windows' : 'sql'}
+                          onChange={(v) => setOption('authentication', v === 'windows' ? 'windows' : undefined)}
+                          options={[
+                            { value: 'sql', label: t('SQL Server login') },
+                            { value: 'windows', label: t('Windows authentication') },
+                          ]}
+                        />
                       </Field>
-                      <Field label={t('Password')} className="flex-1">
-                        <Input type="password" value={config.password ?? ''} onChange={(e) => set({ password: e.target.value })} autoComplete="new-password" />
-                      </Field>
-                    </div>
+                    )}
+                    {windowsAuth ? (
+                      <div className={cn('rounded-md px-2.5 py-2 text-[12px]', isWindows ? 'bg-subtle text-fg-muted' : 'bg-warning-soft text-warning')}>
+                        {isWindows
+                          ? t('Signs in as your Windows account, no password needed. Requires the Microsoft ODBC Driver 17 or 18 for SQL Server (installed with SSMS).')
+                          : t('Windows authentication works only when DB Mastermind runs on Windows.')}
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Field label={t('User')} className="flex-1">
+                          <Input value={config.user ?? ''} onChange={(e) => set({ user: e.target.value })} autoComplete="off" />
+                        </Field>
+                        <Field label={t('Password')} className="flex-1">
+                          <Input type="password" value={config.password ?? ''} onChange={(e) => set({ password: e.target.value })} autoComplete="new-password" />
+                        </Field>
+                      </div>
+                    )}
                     <Field label={t('Database')} hint={config.driver === 'postgres' ? t('Defaults to "postgres"') : undefined}>
                       <Input value={config.database ?? ''} onChange={(e) => set({ database: e.target.value })} />
                     </Field>
@@ -265,9 +287,11 @@ export function ConnectionForm() {
                         <Field label={t('Instance name (optional)')} className="flex-1">
                           <Input value={String(config.options?.instanceName ?? '')} onChange={(e) => setOption('instanceName', e.target.value || undefined)} placeholder="SQLEXPRESS" />
                         </Field>
-                        <Field label={t('Windows domain (NTLM, optional)')} className="flex-1">
-                          <Input value={String(config.options?.domain ?? '')} onChange={(e) => setOption('domain', e.target.value || undefined)} placeholder="CORP" />
-                        </Field>
+                        {!windowsAuth && (
+                          <Field label={t('Windows domain (NTLM, optional)')} className="flex-1">
+                            <Input value={String(config.options?.domain ?? '')} onChange={(e) => setOption('domain', e.target.value || undefined)} placeholder="CORP" />
+                          </Field>
+                        )}
                       </div>
                     )}
                   </>
