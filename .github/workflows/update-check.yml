@@ -49,7 +49,8 @@ jobs:
         run: |
           $latest = '${{ steps.v.outputs.latest }}'
           $exe = "$env:LOCALAPPDATA\Programs\DB Mastermind\DB Mastermind.exe"
-          $app = Start-Process $exe -PassThru
+          $env:ELECTRON_ENABLE_LOGGING = '1'
+          $app = Start-Process $exe -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\app-out.log" -RedirectStandardError "$env:RUNNER_TEMP\app-err.log"
           $deadline = (Get-Date).AddMinutes(8)
           $found = $null
           while ((Get-Date) -lt $deadline -and -not $found) {
@@ -58,6 +59,11 @@ jobs:
           }
           if (-not $found) {
             Get-ChildItem "$env:LOCALAPPDATA" -Directory -Filter '*-updater' | ForEach-Object { Get-ChildItem $_.FullName -Recurse | Format-Table FullName, Length }
+            Write-Host '--- app stdout ---'; Get-Content "$env:RUNNER_TEMP\app-out.log" -Tail 80 -ErrorAction SilentlyContinue
+            Write-Host '--- app stderr ---'; Get-Content "$env:RUNNER_TEMP\app-err.log" -Tail 80 -ErrorAction SilentlyContinue
+            Get-ChildItem "$env:LOCALAPPDATA\Programs\DB Mastermind" | Format-Table Name
+            Get-ChildItem "$env:LOCALAPPDATA\Programs\DB Mastermind\resources" | Format-Table Name
+            Get-Content "$env:LOCALAPPDATA\Programs\DB Mastermind\resources\app-update.yml" -ErrorAction SilentlyContinue
             throw "The update to $latest was not downloaded"
           }
           Write-Host "Downloaded: $($found.FullName)"
