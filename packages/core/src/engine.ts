@@ -71,10 +71,12 @@ export interface FetchTableOptions {
 /** Describes an error from any driver in a uniform, serializable way. */
 export function describeError(err: unknown): { message: string; code?: string; position?: number } {
   if (err instanceof Error) {
-    const e = err as Error & { code?: string | number; position?: string; number?: number; originalError?: Error }
+    const e = err as Error & { code?: string | number; position?: string; number?: number; originalError?: Error; errors?: unknown[] }
     const code = e.code ?? (e.number !== undefined ? String(e.number) : undefined)
+    // Node reports a refused "localhost" (tried on ::1 and 127.0.0.1) as an AggregateError with an empty message.
+    const inner = Array.isArray(e.errors) ? [...new Set(e.errors.map((x) => (x instanceof Error ? x.message : String(x))).filter(Boolean))].join('; ') : ''
     return {
-      message: e.message || e.originalError?.message || String(err),
+      message: e.message || inner || e.originalError?.message || String(err),
       code: code === undefined ? undefined : String(code),
       position: e.position ? Number(e.position) : undefined,
     }

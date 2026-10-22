@@ -202,7 +202,7 @@ export const cs: Record<string, string> = {
   'User': 'Uživatel',
   'When off, the assistant and MCP server can\'t see this connection.': 'Když je vypnuto, asistent ani MCP server toto připojení neuvidí.',
   'Windows domain (NTLM, optional)': 'Doména Windows (NTLM, volitelné)',
-  'Paste a URL: postgres://user:pass@host:5432/db, JDBC or ADO.NET string': 'Vložte URL: postgres://user:pass@host:5432/db, řetězec JDBC nebo ADO.NET',
+  'Paste a connection URL (postgres://…, JDBC, ADO.NET)': 'Vložte URL připojení (postgres://…, JDBC, ADO.NET)',
   'e.g. Customer A': 'např. Zákazník A',
   'Discard {n} pending change?': 'Zahodit {n} neuloženou změnu?',
   'Discard {n} pending changes?': 'Zahodit {n} neuložených změn?',

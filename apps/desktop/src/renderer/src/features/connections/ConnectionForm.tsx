@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Building2, CheckCircle2, ClipboardPaste, FolderOpen, XCircle } from 'lucide-react'
 import { isFileDriver, type ConnectionConfig, type DriverId, type Environment, type SslMode } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
@@ -7,6 +7,7 @@ import { Modal } from '@/components/ui/Modal'
 import { api, bridge } from '@/lib/api'
 import { cn, errorMessage } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
+import { useWorkspace } from '@/store/workspace'
 import { toast, useUi } from '@/store/ui'
 import { DriverIcon, DRIVERS } from './drivers'
 import { useSettings } from '@/store/settings'
@@ -74,13 +75,16 @@ export function ConnectionForm() {
   const [test, setTest] = useState<{ state: 'idle' | 'running' | 'ok' | 'error'; message?: string }>({ state: 'idle' })
   const [busy, setBusy] = useState(false)
   const [urlText, setUrlText] = useState('')
+  /** Why "Save & connect" failed, shown once the form reopens on the saved connection. */
+  const failedConnect = useRef<{ state: 'error'; message?: string }>(undefined)
   const t = useT()
 
   useEffect(() => {
     if (!open) return
     setConfig(existing ? structuredClone(existing) : { ...blank(), ...(modal.draft as Partial<ConnectionConfig>) })
     setSection('general')
-    setTest({ state: 'idle' })
+    setTest(failedConnect.current ?? { state: 'idle' })
+    failedConnect.current = undefined
     setUrlText('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editingId])
@@ -124,12 +128,24 @@ export function ConnectionForm() {
     setBusy(true)
     try {
       const saved = await save(config)
-      close()
-      if (andConnect) {
-        const ok = await connect(saved.id)
-        if (ok) useUi.getState().set({ selectedConnectionId: saved.id })
-        else if (useConnections.getState().runtime[saved.id]?.status === 'error') toast({ kind: 'error', message: t('Could not connect to {name}', { name: saved.name }), detail: useConnections.getState().runtime[saved.id]?.error })
-      }
+      if (!andConnect) return close()
+      setTest({ state: 'running' })
+      const ok = await connect(saved.id)
+      const runtime = useConnections.getState().runtime[saved.id]
+      if (ok) {
+        close()
+        useUi.getState().set({ selectedConnectionId: saved.id })
+        // Like opening it from the sidebar: its tab, or a query tab to start with.
+        const ws = useWorkspace.getState()
+        const existingTab = ws.tabs.find((tab) => tab.connectionId === saved.id)
+        if (existingTab) ws.activate(existingTab.id)
+        else ws.newQuery(saved.id)
+      } else if (runtime?.status === 'error') {
+        // Saved, but it doesn't connect: keep the form open on the saved connection, with the reason, to fix it.
+        failedConnect.current = { state: 'error', message: runtime.error }
+        if (editingId === saved.id) setTest(failedConnect.current)
+        else setUi({ modal: { kind: 'connection', connectionId: saved.id } })
+      } else setTest({ state: 'idle' })
     } catch (err) {
       toast({ kind: 'error', message: t('Could not save connection'), detail: errorMessage(err) })
     } finally {
@@ -244,7 +260,7 @@ export function ConnectionForm() {
                   <div className="flex gap-2">
                     <Input
                       className="flex-1 font-mono text-[12px]"
-                      placeholder={t('Paste a URL: postgres://user:pass@host:5432/db, JDBC or ADO.NET string')}
+                      placeholder={t('Paste a connection URL (postgres://…, JDBC, ADO.NET)')}
                       value={urlText}
                       onChange={(e) => setUrlText(e.target.value)}
                       onPaste={(e) => {

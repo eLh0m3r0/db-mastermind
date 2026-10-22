@@ -16,8 +16,8 @@ const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
 
 try {
   await win.getByRole('button', { name: 'New connection' }).first().click()
-  await win.getByPlaceholder(/Paste a URL/).fill('postgres://postgres:mastermind@127.0.0.1:54329/mastermind')
-  await win.getByPlaceholder(/Paste a URL/).press('Enter')
+  await win.getByPlaceholder(/Paste a connection URL/).fill('postgres://postgres:mastermind@127.0.0.1:54329/mastermind')
+  await win.getByPlaceholder(/Paste a connection URL/).press('Enter')
   await win.getByPlaceholder('Production CRM').fill('Shop (Postgres)')
   await shot('01-connection-form')
   await win.getByRole('button', { name: 'Save & connect' }).click()
