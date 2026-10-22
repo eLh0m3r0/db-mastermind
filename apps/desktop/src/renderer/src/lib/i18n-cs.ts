@@ -1004,4 +1004,7 @@ export const cs: Record<string, string> = {
   'Load (replaces the current changes)': 'Načíst (nahradí aktuální změny)',
   'Replace the current design changes with “{name}”?': 'Nahradit aktuální změny návrhu sadou „{name}“?',
   'Change sets': 'Sady změn',
+  'DB Mastermind {version} is ready': 'DB Mastermind {version} je připraven',
+  'It installs when you quit, or restart now.': 'Nainstaluje se při ukončení, nebo restartujte hned.',
+  'Restart now': 'Restartovat',
 }

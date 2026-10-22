@@ -149,9 +149,19 @@ export function App() {
       }),
     )
     const offTeam = bridge.on('team:changed', () => void useConnections.getState().load())
+    const offReady = bridge.on('update:ready', (info) =>
+      toast({
+        kind: 'success',
+        message: t('DB Mastermind {version} is ready', { version: info.version }),
+        detail: t('It installs when you quit, or restart now.'),
+        duration: 0,
+        action: { label: t('Restart now'), run: () => void window.mastermind.api.installUpdate() },
+      }),
+    )
     const uninstall = installKeymap()
     return () => {
       offTeam()
+      offReady()
       off()
       uninstall()
     }

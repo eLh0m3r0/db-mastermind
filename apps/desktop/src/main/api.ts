@@ -47,6 +47,7 @@ import { listModels, testProvider } from './ai/models'
 import { exportConnections, importConnections } from './importers'
 import { backupDatabase, restoreDatabase } from './backup'
 import { managed } from './managed'
+import { installUpdate } from './updates'
 import { reloadTeam, setTeamFolder, teamDir, teamStatus } from './team'
 import { removeTeamConnection, writeTeamConnection } from './team-folder'
 import { addToMcpClient, mcpClientStatuses, type McpLaunch } from './mcp-clients'
@@ -208,6 +209,9 @@ export const api: MastermindApi = {
   },
   async restoreDatabase(connectionId) {
     return restoreDatabase(connectionId)
+  },
+  async installUpdate() {
+    await installUpdate()
   },
   async teamStatus() {
     return teamStatus()

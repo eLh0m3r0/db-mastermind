@@ -35,7 +35,7 @@ project's (AI) maintainer and updated with every release.
 - ✅ Release pipeline: tag → build for macOS (arm64 + x64), Windows (x64 + arm64), Linux (x64)
 - ✅ Windows: portable `.zip` (settings stored next to the exe), per-user NSIS installer (no admin)
 - ✅ Update notification from GitHub Releases (all builds)
-- ⬜ Silent auto-update for installed builds (needs code signing)
+- ✅ Auto-update for the Windows installer (NSIS) and Linux AppImage: downloads in the background, "Restart now" or installs on quit. macOS keeps the download link until builds are signed; portable/MSI/Scoop are updated by their owners
 - ✅ Settings & data stored in OS app-data dir, or `./data` next to the executable in portable mode
 
 ### Connections

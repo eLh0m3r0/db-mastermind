@@ -110,7 +110,10 @@ function startApp() {
     buildMenu()
     createWindow()
     void applyMcpHttp()
-    void checkForUpdates((info) => mainWindow?.webContents.send('update:available', info))
+    void checkForUpdates(
+      (info) => mainWindow?.webContents.send('update:available', info),
+      (info) => mainWindow?.webContents.send('update:ready', info),
+    )
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })

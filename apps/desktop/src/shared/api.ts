@@ -369,6 +369,8 @@ export interface MastermindApi {
   backupDatabase(connectionId: string): Promise<BackupResult | null>
   /** Restores a backup file into the database (replaces its contents); SQL Server returns the RESTORE statement. */
   restoreDatabase(connectionId: string): Promise<BackupResult | null>
+  /** Restarts the app into a downloaded update. */
+  installUpdate(): Promise<void>
   /** The team folder in use and what it shares. */
   teamStatus(): Promise<TeamStatus>
   /** Picks a team folder (dialog when `path` is undefined; null clears it). */
@@ -473,6 +475,8 @@ export interface MastermindApi {
 export interface MainEvents {
   'menu:command': string
   'update:available': { version: string; url: string }
+  /** A self-updating install downloaded a new version; it installs on restart. */
+  'update:ready': { version: string }
   'connection:lost': { connectionId: string; message: string }
   'ai:event': AiEvent
   /** Files in the team folder changed: reload connections and saved queries. */
@@ -503,6 +507,7 @@ export const API_METHODS = [
   'mcpClients',
   'backupDatabase',
   'restoreDatabase',
+  'installUpdate',
   'teamStatus',
   'setTeamFolder',
   'addConnectionToTeam',
