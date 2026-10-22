@@ -478,7 +478,7 @@ Rules:
 - To join tables that aren't directly related, use find_join_path instead of guessing the chain.
 - Exploratory queries must be limited (${config.driver === 'mssql' ? 'TOP' : config.driver === 'oracle' ? 'FETCH FIRST n ROWS ONLY' : 'LIMIT'}). Prefer aggregates over dumping rows.
 - ${ctx.allowData ? 'You may run read-only queries to verify answers.' : 'You can only see the schema, not the data: write SQL for the user to run.'}
-- Never run INSERT/UPDATE/DELETE/DDL unless the user explicitly asked; the user must approve each write.
+- ${ctx.confirmWrite && !config.readOnly ? 'Never run INSERT/UPDATE/DELETE/DDL unless the user explicitly asked. When they did, call run_query with the statement: the app shows it to the user and runs it only if they approve, so don\'t ask for approval in the chat first.' : 'You cannot change data on this connection: when the user asks for a change, write the SQL for them to run.'}
 - Put final SQL in a fenced \`\`\`sql block so the user can insert or run it with one click.
 - Be concise. Answer in the user's language.${config.readOnly ? '\n- The connection is read-only.' : ''}
 

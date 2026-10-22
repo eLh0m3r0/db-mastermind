@@ -12,7 +12,6 @@ win.setDefaultTimeout(60000)
 await app.evaluate(({ BrowserWindow, screen }) => { const w = BrowserWindow.getAllWindows()[0]; const a = screen.getPrimaryDisplay().workArea; w.setBounds({ x: a.x + a.width - 24, y: a.y + 40, width: 1440, height: 900 }); w.blur() })
 const api = (fn, ...args) => win.evaluate(([fn, args]) => window.mastermind.api[fn](...args), [fn, args])
 const value = async (id, sql) => Number((await api('runQuery', { connectionId: id, sql, runId: `q${Math.random()}` }))[0].results[0].rows[0][0])
-const panel = () => win.locator('aside').filter({ has: win.getByRole('button', { name: 'New chat' }) }).last()
 /** Sends a message and waits for the answer (or for an approval card when `untilCard`). */
 async function ask(text, { untilCard = false } = {}) {
   const input = win.getByPlaceholder(/^Ask about /)
@@ -23,7 +22,11 @@ async function ask(text, { untilCard = false } = {}) {
   await win.getByRole('button', { name: 'Stop' }).waitFor({ timeout: 10000 }).catch(() => {})
   await win.getByRole('button', { name: 'Stop' }).waitFor({ state: 'hidden', timeout: 180000 })
 }
-const lastAnswer = async () => (await panel().innerText()).split('\n').filter(Boolean).slice(-8).join(' | ')
+/** The assistant panel's text (it follows the "AI assistant" header). */
+const lastAnswer = async () => {
+  const text = await win.locator('body').innerText()
+  return text.slice(text.lastIndexOf('AI assistant')).split('\n').filter(Boolean).slice(-10).join(' | ')
+}
 const newChat = async () => win.getByRole('button', { name: 'New chat' }).click()
 try {
   await win.waitForTimeout(800)
@@ -43,7 +46,7 @@ try {
 
   await ask('How many customers are there? Look it up in the database and answer with the number.')
   const a1 = await lastAnswer()
-  console.log('count answer has', customers, ':', a1.includes(String(customers)))
+  console.log('count answer has', customers, ':', a1.includes(String(customers)), '|', a1.slice(-200))
 
   await newChat()
   await ask('Kolik je v databázi produktů? Odpověz česky jednou větou.')
@@ -58,7 +61,8 @@ try {
   await newChat()
   await api('runQuery', { connectionId: demo.id, sql: "INSERT INTO customers (first_name, last_name, email, country, newsletter, created_at) VALUES ('Del', 'Me', 'delme@example.com', 'CZ', 0, '2025-01-01')", runId: 'seed' })
   await ask("Delete the customer whose email is delme@example.com.", { untilCard: true })
-  await win.getByRole('button', { name: 'Run', exact: true }).click()
+  // The card's Run (the editor toolbar has one too).
+  await win.getByRole('button', { name: 'Run', exact: true }).last().click()
   await win.getByRole('button', { name: 'Stop' }).waitFor({ state: 'hidden', timeout: 180000 })
   console.log('after Run, delme removed:', (await value(demo.id, "SELECT count(*) FROM customers WHERE email = 'delme@example.com'")) === 0)
 
