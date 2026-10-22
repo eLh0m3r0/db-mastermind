@@ -224,9 +224,10 @@ export class PostgresDriver implements DatabaseDriver {
         `SELECT n.nspname FROM pg_namespace n WHERE ${SYSTEM_SCHEMA_FILTER}${schemaFilter} ORDER BY n.nspname`,
         params,
       ),
-      pool.query<{ schema: string; name: string; relkind: string; comment: string | null; estimate: string }>(
+      pool.query<{ schema: string; name: string; relkind: string; comment: string | null; estimate: string; definition: string | null }>(
         `SELECT n.nspname AS schema, c.relname AS name, c.relkind::text AS relkind,
-                obj_description(c.oid, 'pg_class') AS comment, c.reltuples::bigint AS estimate
+                obj_description(c.oid, 'pg_class') AS comment, c.reltuples::bigint AS estimate,
+                CASE WHEN c.relkind IN ('v','m') THEN pg_get_viewdef(c.oid, true) END AS definition
            FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
           WHERE c.relkind IN ('r','p','v','m','f') AND NOT c.relispartition AND ${SYSTEM_SCHEMA_FILTER}${schemaFilter}
           ORDER BY n.nspname, c.relname`,
@@ -327,6 +328,7 @@ export class PostgresDriver implements DatabaseDriver {
         type: kinds[t.relkind] ?? 'table',
         comment: t.comment,
         rowEstimate: Number(t.estimate) >= 0 ? Number(t.estimate) : null,
+        definition: t.definition,
         columns: [],
         primaryKey: [],
         foreignKeys: [],

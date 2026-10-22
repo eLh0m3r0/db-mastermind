@@ -237,7 +237,8 @@ export class MssqlDriver implements DatabaseDriver {
       ),
       this.rows(
         `SELECT s.name AS s, o.name AS t, RTRIM(o.type) AS type, CAST(ep.value AS NVARCHAR(MAX)) AS comment,
-                (SELECT SUM(p.rows) FROM sys.partitions p WHERE p.object_id = o.object_id AND p.index_id IN (0, 1)) AS est
+                (SELECT SUM(p.rows) FROM sys.partitions p WHERE p.object_id = o.object_id AND p.index_id IN (0, 1)) AS est,
+                CASE WHEN o.type = 'V' THEN OBJECT_DEFINITION(o.object_id) END AS definition
            FROM sys.objects o
            JOIN sys.schemas s ON s.schema_id = o.schema_id
            LEFT JOIN sys.extended_properties ep
@@ -305,6 +306,7 @@ export class MssqlDriver implements DatabaseDriver {
         type: t.type === 'V' ? 'view' : 'table',
         comment: t.comment ? String(t.comment) : null,
         rowEstimate: t.est === null || t.est === undefined ? null : Number(t.est),
+        definition: t.definition ? String(t.definition) : null,
         columns: [],
         primaryKey: [],
         foreignKeys: [],

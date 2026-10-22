@@ -236,7 +236,7 @@ export class SqliteDriver implements DatabaseDriver {
     for (const schema of schemas) {
       const q = sqliteDialect.quoteIdent(schema)
       const objects = await this.rows(
-        `SELECT name, type FROM ${q}.sqlite_schema WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name`,
+        `SELECT name, type, sql FROM ${q}.sqlite_schema WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name`,
       )
       for (const o of objects) {
         const name = String(o.name)
@@ -255,6 +255,7 @@ export class SqliteDriver implements DatabaseDriver {
           schema,
           name,
           type: o.type === 'view' ? 'view' : 'table',
+          definition: o.type === 'view' ? String(o.sql ?? '') : null,
           columns: cols
             .filter((c) => Number(c.hidden) !== 1)
             .map((c, i) => {

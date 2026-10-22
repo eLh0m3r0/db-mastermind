@@ -130,6 +130,8 @@ export interface TableInfo {
   type: ObjectType
   comment?: string | null
   rowEstimate?: number | null
+  /** View body (SELECT …) for views; SQLite stores the whole CREATE VIEW statement. */
+  definition?: string | null
   columns: ColumnInfo[]
   primaryKey: string[]
   foreignKeys: ForeignKeyInfo[]

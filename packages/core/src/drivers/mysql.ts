@@ -276,8 +276,11 @@ export class MysqlDriver implements DatabaseDriver {
 
     const [tables, columns, fks, stats, routines] = await Promise.all([
       this.rows(
-        `SELECT TABLE_SCHEMA AS s, TABLE_NAME AS t, TABLE_TYPE AS type, TABLE_COMMENT AS comment, TABLE_ROWS AS est
-           FROM information_schema.TABLES WHERE TABLE_SCHEMA IN (${inList}) ORDER BY TABLE_SCHEMA, TABLE_NAME`,
+        `SELECT t.TABLE_SCHEMA AS s, t.TABLE_NAME AS t, t.TABLE_TYPE AS type, t.TABLE_COMMENT AS comment, t.TABLE_ROWS AS est,
+                v.VIEW_DEFINITION AS definition
+           FROM information_schema.TABLES t
+           LEFT JOIN information_schema.VIEWS v ON v.TABLE_SCHEMA = t.TABLE_SCHEMA AND v.TABLE_NAME = t.TABLE_NAME
+          WHERE t.TABLE_SCHEMA IN (${inList}) ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME`,
         schemas,
       ),
       this.rows(
@@ -323,6 +326,7 @@ export class MysqlDriver implements DatabaseDriver {
         type: type === 'VIEW' || type === 'SYSTEM VIEW' ? 'view' : 'table',
         comment: t.comment ? String(t.comment) : null,
         rowEstimate: t.est === null || t.est === undefined ? null : Number(t.est),
+        definition: t.definition ? String(t.definition) : null,
         columns: [],
         primaryKey: [],
         foreignKeys: [],
