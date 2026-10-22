@@ -2,7 +2,7 @@ import { addHistory } from '../library'
 import { randomUUID } from 'node:crypto'
 import { app, BrowserWindow } from 'electron'
 import { jsonSchema, stepCountIs, streamText, tool, type ModelMessage, type ToolSet } from 'ai'
-import { buildSystemPrompt, classifyStatement, DB_TOOLS, describeError, KnowledgeBase, type ToolContext } from '@dbmastermind/core'
+import { buildSystemPrompt, classifyStatement, DB_TOOLS, describeError, KnowledgeBase, loadSqlTools, type ToolContext } from '@dbmastermind/core'
 import type { AiChatRequest, AiEvent } from '@shared/api'
 import { db } from '../api'
 import { getConnection } from '../connections'
@@ -147,6 +147,22 @@ async function runChat(request: AiChatRequest): Promise<void> {
               const ok = await askApproval(chatId, 'sql', sql, signal)
               if (!ok) return 'The user declined to run this query.'
             }
+          }
+          return def.run(ctx, input)
+        },
+      })
+    }
+
+    // Team tools from the knowledge base (tools/*.sql): read-only, parameters bound.
+    const { tools: teamTools } = await loadSqlTools(ctx.knowledge, Object.keys(tools))
+    for (const def of teamTools) {
+      tools[def.name] = tool({
+        description: def.description,
+        inputSchema: jsonSchema<Record<string, unknown>>(def.inputSchema),
+        execute: async (input: Record<string, unknown>) => {
+          if (!settings.autoRunReadQueries) {
+            const ok = await askApproval(chatId, 'sql', `${def.name}(${JSON.stringify(input)})`, signal)
+            if (!ok) return 'The user declined to run this tool.'
           }
           return def.run(ctx, input)
         },

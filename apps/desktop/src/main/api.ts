@@ -37,6 +37,9 @@ import {
   parseConnectionString,
   qualify,
   type ConnectionConfig,
+  DB_TOOLS,
+  loadSqlTools,
+  TOOLS_FOLDER,
 } from '@dbmastermind/core'
 import type { ExportFormat, MastermindApi } from '@shared/api'
 import * as connections from './connections'
@@ -214,6 +217,27 @@ export const api: MastermindApi = {
     return checkNow((info) => {
       for (const w of BrowserWindow.getAllWindows()) w.webContents.send('update:ready', info)
     })
+  },
+  async listTeamTools(connectionId) {
+    const config = connections.getConnection(connectionId)
+    if (!config.knowledgeBasePath) return { tools: [], errors: [] }
+    const { tools, errors } = await loadSqlTools(new KnowledgeBase(config.knowledgeBasePath), DB_TOOLS.map((t) => t.name))
+    return { tools: tools.map((t) => ({ name: t.name, description: t.description, params: Object.keys(t.inputSchema.properties) })), errors }
+  },
+  async createTeamTool(connectionId) {
+    const config = connections.getConnection(connectionId)
+    if (!config.knowledgeBasePath) throw new Error('Set a knowledge base folder for this connection first')
+    const dir = join(config.knowledgeBasePath, TOOLS_FOLDER)
+    await mkdir(dir, { recursive: true })
+    let path = join(dir, 'new_tool.sql')
+    for (let n = 2; existsSync(path); n++) path = join(dir, `new_tool_${n}.sql`)
+    const name = path.replace(/^.*[\\/]/, '').replace(/\.sql$/, '')
+    await writeFile(
+      path,
+      `-- tool: ${name}\n-- description: What this answers, so the AI knows when to use it (e.g. "Open invoices of one customer")\n-- param: customer_id (number, required): customers.id\n-- Read-only: SELECT / WITH only. Parameters are bound, never pasted into the SQL.\nSELECT *\nFROM customers\nWHERE id = :customer_id\n`,
+      'utf8',
+    )
+    return path
   },
   async installUpdate() {
     await installUpdate()

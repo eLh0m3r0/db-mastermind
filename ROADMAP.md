@@ -237,7 +237,9 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 
 - ✅ Website on GitHub Pages (docs/index.html) with a download button for your OS; Czech quick guide (docs/navod.md), team-folder and managed-config docs
 - ✅ High-contrast theme (light and dark, WCAG AA text; follows the OS "increase contrast" setting), Windows forced-colors support, visible focus rings
-- ⬜ Plugin API for drivers and AI tools
+- ✅ AI tool plugins: `tools/*.sql` in the knowledge base become read-only, parameter-bound tools for the assistant and MCP
+  agents (docs/ai-tools.md; verified end to end with Claude Code over MCP)
+- 💡 Driver plugins (third-party code in the app needs a sandbox and signing story first)
 - ⬜ Mac App Store and Microsoft Store editions
 - ⬜ Code signing (macOS notarization, Windows signing) once sponsored
 - ✅ Scoop manifest and Homebrew cask (this repo is the tap) updated with every release · winget ⬜

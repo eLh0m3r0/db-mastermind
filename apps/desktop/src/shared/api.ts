@@ -373,6 +373,10 @@ export interface MastermindApi {
   checkForUpdatesNow(): Promise<
     { state: 'up-to-date' | 'downloading'; version: string } | { state: 'available'; version: string; url: string } | { state: 'disabled' | 'development' | 'offline' }
   >
+  /** AI tools defined in the connection's knowledge base (tools/*.sql) and files that aren't valid tools. */
+  listTeamTools(connectionId: string): Promise<{ tools: { name: string; description: string; params: string[] }[]; errors: string[] }>
+  /** Writes a commented tools/*.sql template into the knowledge base; returns its path. */
+  createTeamTool(connectionId: string): Promise<string>
   /** Restarts the app into a downloaded update. */
   installUpdate(): Promise<void>
   /** The team folder in use and what it shares. */
@@ -512,6 +516,8 @@ export const API_METHODS = [
   'backupDatabase',
   'restoreDatabase',
   'installUpdate',
+  'listTeamTools',
+  'createTeamTool',
   'checkForUpdatesNow',
   'teamStatus',
   'setTeamFolder',

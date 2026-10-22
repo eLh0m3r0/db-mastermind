@@ -1014,4 +1014,9 @@ export const cs: Record<string, string> = {
   'Updates are checked in installed builds only': 'Aktualizace se kontrolují jen v nainstalované aplikaci',
   'Could not check for updates (offline?)': 'Aktualizace nejde zkontrolovat (offline?)',
   'Check for updates…': 'Zkontrolovat aktualizace…',
+  'AI tools (tools/*.sql)': 'AI nástroje (tools/*.sql)',
+  'New AI tool…': 'Nový AI nástroj…',
+  'Tool template created': 'Šablona nástroje vytvořena',
+  'Edit {path}: the AI assistant and MCP agents get it as a tool.': 'Upravte {path}: AI asistent i MCP agenti ho dostanou jako nástroj.',
+  'Could not create the tool': 'Nástroj nejde vytvořit',
 }

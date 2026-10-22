@@ -113,6 +113,9 @@ New to the app? Click **Try the demo database** on the start screen.
 
 Czech quick guide for colleagues: [docs/navod.md](docs/navod.md).
 
+**Team AI tools:** SQL files in the knowledge base (`tools/*.sql`) become tools the AI assistant and MCP agents
+can call: read-only, with bound parameters. See [docs/ai-tools.md](docs/ai-tools.md).
+
 Deploy with Intune, SCCM or Group Policy using the per-machine `DB-Mastermind-<version>-win-x64.msi`
 (`msiexec /i DB-Mastermind-….msi /qn`).
 Drop a `dbmastermind-managed.json` next to the portable app (or in `%ProgramData%\DB Mastermind\`) to give everyone

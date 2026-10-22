@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -23,6 +23,12 @@ describe('dbmastermind-mcp (stdio)', () => {
       join(kb, 'orders.md'),
       `---\ntables: [orders]\nrelations:\n  - orders.status -> order_status.code\n---\n# Orders\nAn order is placed by a customer. Status "paid" means the invoice was settled.\n`,
     )
+    mkdirSync(join(kb, 'tools'))
+    writeFileSync(
+      join(kb, 'tools', 'orders_of_customer.sql'),
+      `-- tool: orders_of_customer\n-- description: Number of orders of one customer\n-- param: customer_id (number, required): customers.id\nSELECT count(*) AS orders FROM shop.orders WHERE customer_id = :customer_id\n`,
+    )
+    writeFileSync(join(kb, 'tools', 'wipe.sql'), `-- tool: wipe\n-- description: Not allowed\nDELETE FROM shop.orders\n`)
     client = new Client({ name: 'test', version: '1.0.0' })
     await client.connect(
       new StdioClientTransport({
@@ -69,5 +75,18 @@ describe('dbmastermind-mcp (stdio)', () => {
     const result = await client.callTool({ name: 'describe_table', arguments: { table: 'nope' } })
     expect(result.isError).toBe(true)
     expect(text(result)).toMatch(/not found/)
+  })
+
+  it('exposes team tools from the knowledge base and binds their parameters', async () => {
+    const { tools } = await client.listTools()
+    const tool = tools.find((t) => t.name === 'orders_of_customer')
+    expect(tool?.inputSchema.required).toEqual(['customer_id'])
+    expect(tool?.annotations?.readOnlyHint).toBe(true)
+    const out = text(await client.callTool({ name: 'orders_of_customer', arguments: { customer_id: 1 } }))
+    expect(out).toMatch(/^orders\n\d+/)
+    // Values are bound, so this is just a value that matches nothing.
+    const injected = text(await client.callTool({ name: 'orders_of_customer', arguments: { customer_id: '1 OR 1=1' } }))
+    expect(injected).toMatch(/ERROR|^orders\n0/)
+    expect(text(await client.callTool({ name: 'wipe', arguments: {} }))).toMatch(/Refused: tool files may only read data/)
   })
 })

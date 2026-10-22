@@ -3,9 +3,10 @@ import { markdown } from '@codemirror/lang-markdown'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { EditorState } from '@codemirror/state'
 import { EditorView, keymap, placeholder } from '@codemirror/view'
-import { AlertTriangle, BookOpen, Eye, FilePlus2, FileText, FolderOpen, Pencil, RefreshCw, Save, Search, Sparkles, Trash2 } from 'lucide-react'
+import { AlertTriangle, BookOpen, Eye, FilePlus2, FileText, FolderOpen, Pencil, RefreshCw, Save, Search, Sparkles, Trash2, Wrench } from 'lucide-react'
 import type { KnowledgeFileInfo } from '@shared/api'
 import { Button, IconButton } from '@/components/ui/Button'
+import { openMenu } from '@/components/ui/ContextMenu'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Input } from '@/components/ui/Input'
 import { api, modKey } from '@/lib/api'
@@ -203,6 +204,32 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
           <div className="flex-1" />
           <IconButton label={t('New file')} onClick={() => void create()}>
             <FilePlus2 size={14} />
+          </IconButton>
+          <IconButton
+            label={t('AI tools (tools/*.sql)')}
+            onClick={async (e) => {
+              const anchor = e.currentTarget
+              const { tools, errors } = await api.listTeamTools(tab.connectionId)
+              openMenu(anchor, [
+                ...tools.map((x) => ({ label: `${x.name}(${x.params.join(', ')})`, icon: <Wrench size={13} />, onClick: () => void api.showItemInFolder(`${folder}/tools`) })),
+                ...errors.map((err) => ({ label: err, danger: true, disabled: true })),
+                ...(tools.length || errors.length ? ['separator' as const] : []),
+                {
+                  label: t('New AI tool…'),
+                  icon: <FilePlus2 size={13} />,
+                  onClick: () =>
+                    void api.createTeamTool(tab.connectionId).then(
+                      (path) => {
+                        void api.showItemInFolder(path)
+                        toast({ kind: 'success', message: t('Tool template created'), detail: t('Edit {path}: the AI assistant and MCP agents get it as a tool.', { path }) })
+                      },
+                      (err: unknown) => toast({ kind: 'error', message: t('Could not create the tool'), detail: errorMessage(err) }),
+                    ),
+                },
+              ])
+            }}
+          >
+            <Wrench size={13} />
           </IconButton>
           <IconButton label={t('Refresh')} onClick={() => void refresh()}>
             <RefreshCw size={13} />

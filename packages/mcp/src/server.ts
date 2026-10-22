@@ -12,7 +12,9 @@ import {
   DB_TOOLS,
   describeError,
   KnowledgeBase,
+  loadSqlTools,
   schemaOverview,
+  type DbTool,
   type ConnectionConfig,
   type DatabaseService,
   type StatementOutcome,
@@ -77,8 +79,34 @@ export function createMcpServer(options: McpServerOptions): Server {
     description: single ? 'Optional, there is only one connection' : `Connection name: ${connections.map((c) => c.name).join(', ')}`,
   }
 
+  const reserved = ['list_connections', ...DB_TOOLS.map((t) => t.name)]
+  /** Team tools (knowledge base tools/*.sql) by name, with the connections that define them. */
+  const teamTools = async () => {
+    const byName = new Map<string, { tool: DbTool; connections: string[] }>()
+    for (const c of connections) {
+      if (!c.knowledgeBasePath) continue
+      const { tools } = await loadSqlTools(new KnowledgeBase(c.knowledgeBasePath), reserved)
+      for (const t of tools) {
+        const entry = byName.get(t.name) ?? { tool: t, connections: [] }
+        entry.connections.push(c.name)
+        byName.set(t.name, entry)
+      }
+    }
+    return byName
+  }
+
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
+      ...[...(await teamTools()).values()].map(({ tool, connections: names }) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: {
+          ...tool.inputSchema,
+          properties: { connection: { type: 'string', description: `Connection: ${names.join(', ')}` }, ...tool.inputSchema.properties },
+          required: single ? tool.inputSchema.required : ['connection', ...(tool.inputSchema.required ?? [])],
+        },
+        annotations: { readOnlyHint: true },
+      })),
       {
         name: 'list_connections',
         description: 'List the databases available through DB Mastermind.',
@@ -108,10 +136,10 @@ export function createMcpServer(options: McpServerOptions): Server {
         )
         return { content: [{ type: 'text', text: lines.join('\n') || 'No connections are shared with agents.' }] }
       }
-      const tool = DB_TOOLS.find((t) => t.name === name)
-      if (!tool) throw new Error(`Unknown tool ${name}`)
       const config = findConnection((args as Record<string, unknown>).connection)
       const ctx = await contextFor(config)
+      const tool = DB_TOOLS.find((t) => t.name === name) ?? (await loadSqlTools(ctx.knowledge, reserved)).tools.find((t) => t.name === name)
+      if (!tool) throw new Error(`Unknown tool ${name}${reserved.includes(name) ? '' : ` for ${config.name}`}`)
       const text = await tool.run(ctx, args as Record<string, unknown>)
       return { content: [{ type: 'text', text }] }
     } catch (err) {
