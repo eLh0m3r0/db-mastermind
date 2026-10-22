@@ -82,7 +82,7 @@ export function HomeScreen() {
             >
               <Database size={28} />
               <span className="text-[14px] font-medium">{t('Add your first connection')}</span>
-              <span className="text-[12px] text-fg-faint">PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB · ClickHouse · CockroachDB</span>
+              <span className="text-[12px] text-fg-faint">PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB · ClickHouse · CockroachDB · BigQuery</span>
             </button>
           )}
         </section>

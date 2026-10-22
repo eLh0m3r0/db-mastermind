@@ -17,6 +17,7 @@
   "dependencies": {
     "@clickhouse/client": "1.23.1",
     "@duckdb/node-api": "1.4.5-r.1",
+    "@google-cloud/bigquery": "9.1.0",
     "fflate": "^0.8.2",
     "mssql": "^12.7.10",
     "mysql2": "^3.24.6",

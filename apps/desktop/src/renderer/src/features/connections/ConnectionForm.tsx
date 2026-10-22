@@ -102,6 +102,7 @@ export function ConnectionForm() {
 
   const isFile = isFileDriver(config.driver)
   const isDuck = config.driver === 'duckdb'
+  const isBigQuery = config.driver === 'bigquery'
   const windowsAuth = config.driver === 'mssql' && config.options?.authentication === 'windows'
   const isWindows = bridge.platform === 'win32'
   const ssl = config.ssl ?? { mode: (config.driver === 'mssql' ? 'prefer' : 'disable') as SslMode }
@@ -175,7 +176,7 @@ export function ConnectionForm() {
         <div className="flex min-w-0 flex-1 flex-col">
           {!isFile && (
             <div className="flex gap-1 border-b border-line px-4 pt-3">
-              {(['general', 'ssl', 'ssh', 'advanced'] as Section[]).map((s) => (
+              {((isBigQuery ? ['general', 'advanced'] : ['general', 'ssl', 'ssh', 'advanced']) as Section[]).map((s) => (
                 <button
                   key={s}
                   type="button"
@@ -202,7 +203,7 @@ export function ConnectionForm() {
           >
             {(section === 'general' || isFile) && (
               <>
-                {!isFile && (
+                {!isFile && !isBigQuery && (
                   <div className="flex gap-2">
                     <Input
                       className="flex-1 font-mono text-[12px]"
@@ -251,6 +252,54 @@ export function ConnectionForm() {
                       </Button>
                     </div>
                   </Field>
+                ) : isBigQuery ? (
+                  <>
+                    <div className="flex gap-2">
+                      <Field label={t('Project ID')} className="flex-1">
+                        <Input value={config.database ?? ''} onChange={(e) => set({ database: e.target.value.trim() })} placeholder="my-project-123" />
+                      </Field>
+                      <Field label={t('Location (optional)')} className="w-36">
+                        <Input value={String(config.options?.location ?? '')} onChange={(e) => setOption('location', e.target.value || undefined)} placeholder="EU" />
+                      </Field>
+                    </div>
+                    <Field
+                      label={t('Service account key (JSON)')}
+                      hint={t('Stored encrypted on this computer. Leave empty to use your gcloud sign-in (gcloud auth application-default login).')}
+                    >
+                      <Textarea
+                        rows={4}
+                        className="font-mono text-[11.5px]"
+                        value={config.password ?? ''}
+                        onChange={(e) => set({ password: e.target.value })}
+                        placeholder='{ "type": "service_account", "project_id": … }'
+                        spellCheck={false}
+                      />
+                      <div className="mt-1.5">
+                        <Button
+                          size="sm"
+                          icon={<FolderOpen size={14} />}
+                          onClick={() =>
+                            void pickFile(
+                              t('Choose service account key'),
+                              async (p) => {
+                                const key = await api.readTextFile(p)
+                                let project = ''
+                                try {
+                                  project = String((JSON.parse(key) as { project_id?: string }).project_id ?? '')
+                                } catch {
+                                  // Not JSON: connecting reports it.
+                                }
+                                set({ password: key, database: config.database || project || undefined })
+                              },
+                              [{ name: 'JSON', extensions: ['json'] }],
+                            )
+                          }
+                        >
+                          {t('Load key file…')}
+                        </Button>
+                      </div>
+                    </Field>
+                  </>
                 ) : (
                   <>
                     <div className="flex gap-2">
@@ -450,6 +499,11 @@ export function ConnectionForm() {
 
             {section === 'advanced' && !isFile && (
               <>
+                {isBigQuery && (
+                  <Field label={t('API endpoint (optional)')} hint={t('Only for emulators or private endpoints, e.g. http://localhost:9050')}>
+                    <Input value={config.host ?? ''} onChange={(e) => set({ host: e.target.value.trim() || undefined })} placeholder="https://bigquery.googleapis.com" />
+                  </Field>
+                )}
                 {config.driver === 'mssql' && (
                   <Field label={t('Query timeout (seconds, 0 = none)')}>
                     <Input

@@ -20,6 +20,13 @@ export interface Dialect {
   falseLiteral: string
   /** Regex match, or null when unsupported. */
   regex(expr: string, param: string, negate: boolean): string | null
+  /**
+   * Strictly typed databases (BigQuery) don't compare a text parameter with a number or date column: wraps the
+   * placeholder so it has the column's type. Filter values are text.
+   */
+  typedParam?(placeholder: string, dataType: string): string
+  /** LIKE escape character; `escapeClause: false` when the database has no ESCAPE clause (the default is '!'). */
+  likeEscape?: { char: string; escapeClause: boolean }
   /** Wraps a DML batch so it is atomic. */
   begin: string
   commit: string
@@ -155,6 +162,45 @@ export const clickhouseDialect: Dialect = {
   rollback: '',
 }
 
+const BIGQUERY_CASTS: [RegExp, string][] = [
+  [/^(INT64|INTEGER|INT|SMALLINT|BIGINT|TINYINT|BYTEINT)$/, 'INT64'],
+  [/^(FLOAT64|FLOAT)$/, 'FLOAT64'],
+  [/^(NUMERIC|DECIMAL)\b/, 'NUMERIC'],
+  [/^(BIGNUMERIC|BIGDECIMAL)\b/, 'BIGNUMERIC'],
+  [/^(BOOL|BOOLEAN)$/, 'BOOL'],
+  [/^(DATE|DATETIME|TIMESTAMP|TIME)$/, ''],
+]
+
+/**
+ * BigQuery (GoogleSQL): named parameters `@p1`, strictly typed, so filter values are cast to the column type.
+ * LIKE has no ESCAPE clause (backslash escapes) and no ILIKE. No multi-statement transactions from the app.
+ */
+export const bigqueryDialect: Dialect = {
+  id: 'bigquery',
+  sqlFlavor: 'mysql',
+  quoteIdent: (name) => `\`${name.replaceAll('\\', '\\\\').replaceAll('`', '\\`')}\``,
+  placeholder: (i) => `@p${i}`,
+  paginate: (sql, limit, offset) => limitOffset(sql, limit, offset),
+  castToText: (expr) => `CAST(${expr} AS STRING)`,
+  ilike: 'LIKE',
+  likeExpr: (text, param, negate) => `LOWER(${text}) ${negate ? 'NOT ' : ''}LIKE LOWER(${param})`,
+  likeEscape: { char: '\\', escapeClause: false },
+  trueLiteral: 'TRUE',
+  falseLiteral: 'FALSE',
+  regex: (expr, param, negate) => `${negate ? 'NOT ' : ''}REGEXP_CONTAINS(CAST(${expr} AS STRING), CONCAT('(?i)', ${param}))`,
+  typedParam: (placeholder, dataType) => {
+    const t = dataType.trim().toUpperCase()
+    for (const [re, cast] of BIGQUERY_CASTS) {
+      const m = re.exec(t)
+      if (m) return `CAST(${placeholder} AS ${cast || m[0]})`
+    }
+    return placeholder
+  },
+  begin: '',
+  commit: '',
+  rollback: '',
+}
+
 export const dialects: Record<DriverId, Dialect> = {
   postgres: postgresDialect,
   mysql: mysqlDialect,
@@ -164,6 +210,7 @@ export const dialects: Record<DriverId, Dialect> = {
   oracle: oracleDialect,
   duckdb: duckdbDialect,
   clickhouse: clickhouseDialect,
+  bigquery: bigqueryDialect,
 }
 
 export function getDialect(id: DriverId): Dialect {

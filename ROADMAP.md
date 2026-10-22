@@ -218,7 +218,10 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
   work as PostgreSQL
 - ✅ ClickHouse over HTTP: schema (sorting keys, engines, views), filters, SQL, streaming exports, EXPLAIN; read-only
   grid (no row-level UPDATE); integration-tested in CI
-- ⬜ Redshift, Snowflake, BigQuery, Cassandra (need cloud accounts to test)
+- ✅ BigQuery: datasets as schemas, typed filters (text values cast to the column type), SQL with named parameters,
+  streaming exports, arrays/structs/exact NUMERIC and INT64; service account key (encrypted) or gcloud sign-in;
+  read-only grid (keys aren't enforced); integration-tested in CI against the BigQuery emulator
+- ⬜ Redshift, Snowflake, Cassandra (need cloud accounts to test)
 - 💡 MongoDB, Redis (document/key-value browsers)
 - ✅ SQL Server Windows (integrated) authentication (msnodesqlv8 + ODBC, tested on Windows CI)
 

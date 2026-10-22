@@ -1,5 +1,6 @@
 import { qualify } from './dialect.js'
 import { ReadOnlyViolationError, type DatabaseDriver, type StreamBatch, type StreamOptions } from './driver.js'
+import { BigQueryDriver } from './drivers/bigquery.js'
 import { ClickHouseDriver } from './drivers/clickhouse.js'
 import { DuckDBDriver } from './drivers/duckdb.js'
 import { MssqlDriver } from './drivers/mssql.js'
@@ -32,6 +33,8 @@ export function createDriver(config: ConnectionConfig): DatabaseDriver {
       return new DuckDBDriver(config)
     case 'clickhouse':
       return new ClickHouseDriver(config)
+    case 'bigquery':
+      return new BigQueryDriver(config)
   }
 }
 
@@ -261,6 +264,7 @@ export class DatabaseService {
         limit: options.limit,
         offset: options.offset,
         knownColumns: table?.columns.map((c) => c.name),
+        columnTypes: table && Object.fromEntries(table.columns.map((c) => [c.name, c.dataType])),
       },
       entry.driver.dialect,
     )
@@ -273,7 +277,7 @@ export class DatabaseService {
     const entry = this.get(id)
     const table = await this.findTable(id, options.table)
     const built = buildCount(
-      { table: options.table, filter: options.filter, knownColumns: table?.columns.map((c) => c.name) },
+      { table: options.table, filter: options.filter, knownColumns: table?.columns.map((c) => c.name), columnTypes: table && Object.fromEntries(table.columns.map((c) => [c.name, c.dataType])) },
       entry.driver.dialect,
     )
     const [result] = await entry.driver.execute(built.sql, { params: built.params, signal: options.signal })

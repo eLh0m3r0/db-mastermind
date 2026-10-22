@@ -128,7 +128,8 @@ export class ParamCollector {
 const LIKE_ESCAPE = '!'
 
 function escapeLike(value: string, dialect: Dialect): string {
-  let escaped = value.replace(/[!%_]/g, (ch) => LIKE_ESCAPE + ch)
+  const esc = dialect.likeEscape?.char ?? LIKE_ESCAPE
+  let escaped = value.replace(/[!%_\\]/g, (ch) => (ch === esc || ch === '%' || ch === '_' ? esc + ch : ch))
   // T-SQL also treats [ as a pattern character.
   if (dialect.id === 'mssql') escaped = escaped.replace(/\[/g, LIKE_ESCAPE + '[')
   return escaped
@@ -176,6 +177,8 @@ export class FilterError extends Error {
 export interface RenderFilterOptions {
   /** Restrict conditions to known columns (prevents typos from becoming SQL errors). */
   columns?: string[]
+  /** Column data types, for dialects that type the compared values (`Dialect.typedParam`). */
+  columnTypes?: Record<string, string>
   now?: Date
 }
 
@@ -188,24 +191,28 @@ function renderCondition(
   if (opts.columns && !opts.columns.includes(c.column)) throw new FilterError(`Unknown column "${c.column}"`)
   const col = dialect.quoteIdent(c.column)
   const value = c.value ?? ''
+  const escape = dialect.likeEscape?.escapeClause === false ? '' : ` ESCAPE '${dialect.likeEscape?.char ?? LIKE_ESCAPE}'`
   const like = (pattern: string, negate: boolean) =>
     dialect.likeExpr
-      ? `${dialect.likeExpr(dialect.castToText(col), params.add(pattern), negate)} ESCAPE '${LIKE_ESCAPE}'`
-      : `${dialect.castToText(col)} ${negate ? 'NOT ' : ''}${dialect.ilike} ${params.add(pattern)} ESCAPE '${LIKE_ESCAPE}'`
+      ? `${dialect.likeExpr(dialect.castToText(col), params.add(pattern), negate)}${escape}`
+      : `${dialect.castToText(col)} ${negate ? 'NOT ' : ''}${dialect.ilike} ${params.add(pattern)}${escape}`
+  const type = opts.columnTypes?.[c.column]
+  // A value compared with the column, typed like it where the database needs that.
+  const v = (x: unknown) => (dialect.typedParam && type ? dialect.typedParam(params.add(x), type) : params.add(x))
 
   switch (c.operator) {
     case 'eq':
-      return `${col} = ${params.add(value)}`
+      return `${col} = ${v(value)}`
     case 'neq':
-      return `(${col} <> ${params.add(value)} OR ${col} IS NULL)`
+      return `(${col} <> ${v(value)} OR ${col} IS NULL)`
     case 'gt':
-      return `${col} > ${params.add(value)}`
+      return `${col} > ${v(value)}`
     case 'gte':
-      return `${col} >= ${params.add(value)}`
+      return `${col} >= ${v(value)}`
     case 'lt':
-      return `${col} < ${params.add(value)}`
+      return `${col} < ${v(value)}`
     case 'lte':
-      return `${col} <= ${params.add(value)}`
+      return `${col} <= ${v(value)}`
     case 'contains':
       return like(`%${escapeLike(value, dialect)}%`, false)
     case 'not_contains':
@@ -216,12 +223,12 @@ function renderCondition(
       return like(`%${escapeLike(value, dialect)}`, false)
     case 'between':
     case 'not_between':
-      return `${col} ${c.operator === 'not_between' ? 'NOT ' : ''}BETWEEN ${params.add(value)} AND ${params.add(c.value2 ?? '')}`
+      return `${col} ${c.operator === 'not_between' ? 'NOT ' : ''}BETWEEN ${v(value)} AND ${v(c.value2 ?? '')}`
     case 'in':
     case 'not_in': {
       const values = (c.values ?? []).map((v) => v.trim()).filter((v) => v !== '')
       if (values.length === 0) return c.operator === 'in' ? '1 = 0' : null
-      const list = values.map((v) => params.add(v)).join(', ')
+      const list = values.map((x) => v(x)).join(', ')
       return c.operator === 'in' ? `${col} IN (${list})` : `(${col} NOT IN (${list}) OR ${col} IS NULL)`
     }
     case 'is_null':
@@ -249,7 +256,7 @@ function renderCondition(
     case 'this_month':
     case 'this_year': {
       const range = dateRange(c.operator, c.value, opts.now ?? new Date())!
-      return `(${col} >= ${params.add(range[0])} AND ${col} < ${params.add(range[1])})`
+      return `(${col} >= ${v(range[0])} AND ${col} < ${v(range[1])})`
     }
   }
 }
@@ -295,6 +302,8 @@ export interface SelectSpec {
   offset?: number
   /** Known column names, used to validate filters and sorts. */
   knownColumns?: string[]
+  /** Column data types by name (typed comparisons, see `Dialect.typedParam`). */
+  columnTypes?: Record<string, string>
   now?: Date
 }
 
@@ -307,7 +316,7 @@ export function buildSelect(spec: SelectSpec, dialect: Dialect): BuiltQuery {
   const params = new ParamCollector(dialect)
   const cols = spec.columns?.length ? spec.columns.map((c) => dialect.quoteIdent(c)).join(', ') : '*'
   let sql = `SELECT ${cols} FROM ${qualify(dialect, spec.table)}`
-  const where = renderFilter(spec.filter, dialect, params, { columns: spec.knownColumns, now: spec.now })
+  const where = renderFilter(spec.filter, dialect, params, { columns: spec.knownColumns, columnTypes: spec.columnTypes, now: spec.now })
   if (where) sql += ` WHERE ${where}`
   const sort = spec.sort ?? []
   for (const s of sort) {
@@ -322,12 +331,12 @@ export function buildSelect(spec: SelectSpec, dialect: Dialect): BuiltQuery {
 }
 
 export function buildCount(
-  spec: Pick<SelectSpec, 'table' | 'filter' | 'knownColumns' | 'now'>,
+  spec: Pick<SelectSpec, 'table' | 'filter' | 'knownColumns' | 'columnTypes' | 'now'>,
   dialect: Dialect,
 ): BuiltQuery {
   const params = new ParamCollector(dialect)
   let sql = `SELECT COUNT(*) AS count FROM ${qualify(dialect, spec.table)}`
-  const where = renderFilter(spec.filter, dialect, params, { columns: spec.knownColumns, now: spec.now })
+  const where = renderFilter(spec.filter, dialect, params, { columns: spec.knownColumns, columnTypes: spec.columnTypes, now: spec.now })
   if (where) sql += ` WHERE ${where}`
   return { sql, params: params.values }
 }

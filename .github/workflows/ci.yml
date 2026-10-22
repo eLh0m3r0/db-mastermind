@@ -69,6 +69,10 @@ jobs:
         run: |
           docker run -d --name clickhouse -p 18123:8123 -e CLICKHOUSE_USER=default -e CLICKHOUSE_PASSWORD=mastermind --ulimit nofile=262144:262144 clickhouse/clickhouse-server:24.8
           for i in $(seq 1 60); do curl -sf -u default:mastermind 'http://127.0.0.1:18123/?query=SELECT%201' >/dev/null && break; sleep 2; done
+      - name: Start the BigQuery emulator
+        run: |
+          docker run -d --name bigquery -p 19050:9050 ghcr.io/goccy/bigquery-emulator:0.8.1 --project=dbm-test --dataset=shop
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:19050/bigquery/v2/projects/dbm-test/datasets >/dev/null && break; sleep 2; done
       - name: Start CockroachDB (needs a start command, so not a service container)
         run: |
           docker run -d --name cockroach -p 26257:26257 cockroachdb/cockroach:latest-v24.3 start-single-node --insecure

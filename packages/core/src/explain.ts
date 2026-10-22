@@ -255,6 +255,8 @@ export async function explainQuery(db: DatabaseService, connectionId: string, sq
         const raw = results.map((r) => cellToText(r.rows[0]?.[0] ?? '')).join('\n')
         return { root: mssqlPlan(raw), raw, format: 'xml' }
       }
+      case 'bigquery':
+        throw new Error('BigQuery has no EXPLAIN: run the query and open its execution details in the Google Cloud console')
       case 'oracle': {
         // EXPLAIN PLAN writes to PLAN_TABLE in the session; read it back as a tree.
         const id = `dbm${Date.now().toString(36)}`

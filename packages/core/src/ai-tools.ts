@@ -180,6 +180,7 @@ export const DIALECT_NAMES: Record<DriverId, string> = {
   oracle: 'Oracle',
   duckdb: 'DuckDB',
   clickhouse: 'ClickHouse',
+  bigquery: 'BigQuery (GoogleSQL; tables are `dataset.table`)',
 }
 
 export const DB_TOOLS: DbTool[] = [

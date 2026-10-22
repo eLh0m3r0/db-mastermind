@@ -9,6 +9,7 @@ export const DRIVERS: { id: DriverId; label: string; color: string; mark: string
   { id: 'sqlite', label: 'SQLite', color: '#0f80cc', mark: 'Lt' },
   { id: 'duckdb', label: 'DuckDB', color: '#8a7a00', mark: 'Dk' },
   { id: 'clickhouse', label: 'ClickHouse', color: '#a8781c', mark: 'CH' },
+  { id: 'bigquery', label: 'BigQuery', color: '#3b78e7', mark: 'BQ' },
 ]
 
 export function driverLabel(id: DriverId): string {

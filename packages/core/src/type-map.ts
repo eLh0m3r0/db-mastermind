@@ -11,6 +11,7 @@ const TARGETS: Record<DriverId, Partial<Record<Family, string>>> = {
   oracle: { bool: 'NUMBER(1)', json: 'CLOB', text: 'CLOB', string: 'VARCHAR2(255)', timestamp: 'TIMESTAMP', timestamptz: 'TIMESTAMP WITH TIME ZONE', uuid: 'VARCHAR2(36)', double: 'BINARY_DOUBLE', real: 'BINARY_FLOAT', binary: 'BLOB', tinyint: 'NUMBER(3)', datetime: 'TIMESTAMP' },
   duckdb: { bool: 'BOOLEAN', json: 'JSON', text: 'VARCHAR', string: 'VARCHAR', timestamp: 'TIMESTAMP', timestamptz: 'TIMESTAMPTZ', uuid: 'UUID', double: 'DOUBLE', real: 'REAL', binary: 'BLOB', datetime: 'TIMESTAMP' },
   clickhouse: { bool: 'Bool', json: 'String', text: 'String', string: 'String', timestamp: 'DateTime64(3)', timestamptz: 'DateTime64(3)', uuid: 'UUID', double: 'Float64', real: 'Float32', binary: 'String', tinyint: 'Int8', datetime: 'DateTime' },
+  bigquery: { bool: 'BOOL', json: 'JSON', text: 'STRING', string: 'STRING', timestamp: 'DATETIME', timestamptz: 'TIMESTAMP', uuid: 'STRING', double: 'FLOAT64', real: 'FLOAT64', binary: 'BYTES', tinyint: 'INT64', datetime: 'DATETIME' },
 }
 
 function family(type: string): Family | null {
@@ -43,8 +44,10 @@ export function translateType(type: string, to: DriverId): string {
     if (to === 'oracle') return `VARCHAR2(${n})`
     if (to === 'sqlite') return 'TEXT'
     if (to === 'clickhouse') return 'String'
+    if (to === 'bigquery') return 'STRING'
     return `varchar(${n})`
   }
+  if (to === 'bigquery' && /^(integer|int|bigint|smallint|serial|bigserial)$/i.test(type.trim())) return 'INT64'
   if (to === 'oracle' && /^(integer|int|bigint|smallint)$/i.test(type.trim())) return /^bigint$/i.test(type.trim()) ? 'NUMBER(19)' : 'NUMBER(10)'
   return type
 }

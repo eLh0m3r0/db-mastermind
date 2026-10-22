@@ -9,6 +9,7 @@ export const DEFAULT_PORTS: Record<DriverId, number | undefined> = {
   oracle: 1521,
   duckdb: undefined,
   clickhouse: 8123,
+  bigquery: undefined,
 }
 
 const SCHEMES: Record<string, DriverId> = {
@@ -25,6 +26,7 @@ const SCHEMES: Record<string, DriverId> = {
   duckdb: 'duckdb',
   clickhouse: 'clickhouse',
   ch: 'clickhouse',
+  bigquery: 'bigquery',
 }
 
 export class ConnectionUrlError extends Error {

@@ -58,6 +58,8 @@ export function backupPlan(c: ConnectionConfig, file: string, format: BackupForm
       }
     case 'oracle':
       throw new Error('Oracle backups are made with Data Pump (expdp) on the server')
+    case 'bigquery':
+      throw new Error('BigQuery keeps data in Google Cloud: use table snapshots or EXPORT DATA to Cloud Storage')
     case 'clickhouse':
       return {
         kind: 'server-sql',

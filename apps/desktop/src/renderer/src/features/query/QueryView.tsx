@@ -29,6 +29,7 @@ const FORMATTER_LANGUAGE: Record<DriverId, SqlLanguage> = {
   oracle: 'plsql',
   duckdb: 'duckdb',
   clickhouse: 'clickhouse',
+  bigquery: 'bigquery',
 }
 
 export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {

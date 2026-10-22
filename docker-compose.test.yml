@@ -64,3 +64,7 @@ services:
       CLICKHOUSE_USER: default
       CLICKHOUSE_PASSWORD: mastermind
     ports: ['18123:8123']
+  bigquery:
+    image: ghcr.io/goccy/bigquery-emulator:0.8.1
+    command: --project=dbm-test --dataset=shop
+    ports: ['19050:9050']
