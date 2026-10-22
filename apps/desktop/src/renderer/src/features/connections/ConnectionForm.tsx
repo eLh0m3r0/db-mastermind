@@ -15,6 +15,8 @@ import { AiPermissionControls, aiDefaultsOf } from '../ai/AiPermissions'
 import { useT } from '@/lib/i18n'
 
 export const CONNECTION_COLORS = ['#6d4aff', '#0b72d9', '#0f9f6e', '#d97706', '#dc2626', '#db2777', '#64748b']
+/** Names for screen readers and tooltips, in CONNECTION_COLORS order. */
+const COLOR_NAMES = ['Purple', 'Blue', 'Green', 'Amber', 'Red', 'Pink', 'Slate']
 
 const DEFAULT_PORTS: Partial<Record<DriverId, number>> = { postgres: 5432, mysql: 3306, mariadb: 3306, mssql: 1433, oracle: 1521, clickhouse: 8123, trino: 8080 }
 
@@ -432,11 +434,13 @@ export function ConnectionForm() {
                   </Field>
                   <Field label={t('Color')}>
                     <div className="flex h-7 items-center gap-1.5">
-                      {CONNECTION_COLORS.map((color) => (
+                      {CONNECTION_COLORS.map((color, i) => (
                         <button
                           key={color}
                           type="button"
-                          title={color}
+                          title={t(COLOR_NAMES[i] ?? 'Color')}
+                          aria-label={t(COLOR_NAMES[i] ?? 'Color')}
+                          aria-pressed={config.color === color}
                           onClick={() => set({ color: config.color === color ? undefined : color })}
                           className={cn('h-4.5 w-4.5 rounded-full ring-offset-2 ring-offset-elevated', config.color === color && 'ring-2 ring-fg-muted')}
                           style={{ background: color, width: 18, height: 18 }}

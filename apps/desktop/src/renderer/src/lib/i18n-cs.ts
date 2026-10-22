@@ -3,6 +3,8 @@
  * Plural forms: `{n} rows` is the 1/5+ form, `{n} rows|few` the Czech 2–4 form.
  */
 export const cs: Record<string, string> = {
+  'Amber': 'Oranžová',
+  'Slate': 'Šedá',
   '{n} statement': '{n} příkaz',
   '{n} statements': '{n} příkazů',
   '{n} statements|few': '{n} příkazy',
