@@ -920,4 +920,6 @@ export const cs: Record<string, string> = {
   'Copy as PlantUML': 'Kopírovat jako PlantUML',
   'Pin columns up to here': 'Ukotvit sloupce až sem',
   'Unpin columns': 'Zrušit ukotvení sloupců',
+  'Undo': 'Zpět',
+  'Redo': 'Znovu',
 }

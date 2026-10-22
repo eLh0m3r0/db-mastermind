@@ -159,7 +159,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
   nothing touches the database yet
 - ✅ Edits: create/rename/drop table, add/rename/drop/retype column, nullability, defaults, PK, FK (drag from
   column to column), unique constraints, indexes, comments
-- 🚧 **Change set panel**: pending changes ✅ (persisted with the diagram, revert per table), undo/redo, per-change toggle
+- 🚧 **Change set panel**: pending changes ✅ (persisted with the diagram, revert per table), undo/redo ✅ (⌘Z / ⇧⌘Z), per-change toggle
 - ✅ **Migration script generator** per dialect (PostgreSQL, SQL Server, MySQL/MariaDB, SQLite table-rebuild
   strategy), dependency-ordered (drop FKs → alter → recreate FKs), wrapped in a transaction where DDL is
   transactional

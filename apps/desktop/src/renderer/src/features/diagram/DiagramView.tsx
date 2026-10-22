@@ -18,7 +18,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { toPng, toSvg } from 'html-to-image'
-import { Bookmark, Copy, Download, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Route, Search, Table2, Undo2 } from 'lucide-react'
+import { Bookmark, Copy, Download, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Route, Search, Redo, Table2, Undo, Undo2 } from 'lucide-react'
 import {
   designId,
   designToTableInfo,
@@ -38,7 +38,7 @@ import {
   type SchemaSnapshot,
   type TableInfo,
 } from '@dbmastermind/core/browser'
-import { Button } from '@/components/ui/Button'
+import { Button, IconButton } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { api } from '@/lib/api'
 import { openMenu } from '@/components/ui/ContextMenu'
@@ -197,7 +197,59 @@ function DiagramInner({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot 
   const [selected, setSelected] = useState<string | null>(tab.startDesign ?? null)
   const [reviewOpen, setReviewOpen] = useState(false)
   const drafts = useMemo(() => tab.design ?? {}, [tab.design])
-  const setDrafts = (next: Record<string, DesignTable>) => updateTab(tab.id, { design: next })
+  // Undo/redo of design changes. Quick successive edits (typing a name) count as one step.
+  const history = useRef<{ past: Record<string, DesignTable>[]; future: Record<string, DesignTable>[]; at: number; key?: string }>({ past: [], future: [], at: 0 })
+  const [, setHistoryVersion] = useState(0)
+  const setDrafts = (next: Record<string, DesignTable>, record = true) => {
+    if (record) {
+      const h = history.current
+      const now = Date.now()
+      const changed = [...new Set([...Object.keys(drafts), ...Object.keys(next)])].filter((k) => drafts[k] !== next[k])
+      const key = changed.length === 1 ? changed[0] : undefined
+      // Successive edits of one table within a moment (typing) are one step.
+      if (!(key && key === h.key && drafts[key] && now - h.at < 800)) h.past = [...h.past.slice(-99), drafts]
+      h.at = now
+      h.key = key
+      h.future = []
+      setHistoryVersion((v) => v + 1)
+    }
+    updateTab(tab.id, { design: next })
+  }
+  const undoDesign = () => {
+    const h = history.current
+    const prev = h.past.pop()
+    if (!prev) return
+    h.future.push(drafts)
+    h.at = 0
+    setHistoryVersion((v) => v + 1)
+    updateTab(tab.id, { design: prev })
+  }
+  const redoDesign = () => {
+    const h = history.current
+    const next = h.future.pop()
+    if (!next) return
+    h.past.push(drafts)
+    h.at = 0
+    setHistoryVersion((v) => v + 1)
+    updateTab(tab.id, { design: next })
+  }
+  const undoRef = useRef({ undoDesign, redoDesign })
+  undoRef.current = { undoDesign, redoDesign }
+  useEffect(() => {
+    if (!design) return
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z' && e.key.toLowerCase() !== 'y') return
+      // Text fields keep their own undo.
+      const target = e.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, .cm-editor')) return
+      if (!wrapper.current?.isConnected || wrapper.current.offsetParent === null) return
+      e.preventDefault()
+      if (e.key.toLowerCase() === 'y' || e.shiftKey) undoRef.current.redoDesign()
+      else undoRef.current.undoDesign()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [design])
 
   useEffect(() => {
     if (!schema && !model) void loadSchema(tab.connectionId)
@@ -269,7 +321,7 @@ function DiagramInner({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot 
         return live ? diffTable(live, d).length > 0 : true
       }),
     )
-    if (Object.keys(next).length !== Object.keys(drafts).length) setDrafts(next)
+    if (Object.keys(next).length !== Object.keys(drafts).length) setDrafts(next, false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schema?.capturedAt])
 
@@ -488,7 +540,17 @@ function DiagramInner({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot 
     const live = liveTables.find((t) => keyOf(t) === key)
     return live ? toDesignTable(live) : undefined
   }
-  const updateDraft = (key: string, table: DesignTable) => setDrafts({ ...drafts, [key]: table })
+  const updateDraft = (key: string, table: DesignTable) => {
+    // Dropping a table that doesn't exist yet just discards it.
+    if (table.dropped && !table.originalName) {
+      const next = { ...drafts }
+      delete next[key]
+      setDrafts(next)
+      setSelected(null)
+      return
+    }
+    setDrafts({ ...drafts, [key]: table })
+  }
   const addTable = () => {
     const key = designId('new')
     const pkType = connection?.driver === 'sqlite' ? 'INTEGER' : connection?.driver === 'postgres' ? 'bigint' : 'bigint'
@@ -684,6 +746,12 @@ function DiagramInner({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot 
             <Button size="sm" variant="ghost" icon={<Plus size={13} />} onClick={addTable}>
               {tr('New table')}
             </Button>
+            <IconButton label={`${tr('Undo')} (⌘Z)`} disabled={!history.current.past.length} onClick={undoDesign}>
+              <Undo size={14} />
+            </IconButton>
+            <IconButton label={`${tr('Redo')} (⇧⌘Z)`} disabled={!history.current.future.length} onClick={redoDesign}>
+              <Redo size={14} />
+            </IconButton>
             {Object.keys(drafts).length > 0 && (
               <Button
                 size="sm"
