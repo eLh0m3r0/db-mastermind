@@ -43,6 +43,16 @@ function run(sql, params, maxRows) {
 const cursors = new Map()
 let nextCursor = 1
 
+// Every reply says whether a transaction is open afterwards: the connection is shared by all tabs.
+const inTransaction = () => {
+  try {
+    return db.isTransaction
+  } catch {
+    return false // closed
+  }
+}
+const post = (reply) => parentPort.postMessage({ ...reply, inTx: inTransaction() })
+
 parentPort.on('message', (msg) => {
   try {
     if (msg.type === 'stream-open') {
@@ -51,13 +61,13 @@ parentPort.on('message', (msg) => {
       const columns = stmt.columns()
       if (columns.length === 0) {
         stmt.run(...bind(msg.params ?? []))
-        parentPort.postMessage({ id: msg.id, ok: true, result: { cursor: 0, fields: [] } })
+        post({ id: msg.id, ok: true, result: { cursor: 0, fields: [] } })
         return
       }
       stmt.setReturnArrays(true)
       const cursor = nextCursor++
       cursors.set(cursor, stmt.iterate(...bind(msg.params ?? [])))
-      parentPort.postMessage({ id: msg.id, ok: true, result: { cursor, fields: columns.map((c) => ({ name: c.name, dataType: c.type ?? undefined })) } })
+      post({ id: msg.id, ok: true, result: { cursor, fields: columns.map((c) => ({ name: c.name, dataType: c.type ?? undefined })) } })
     } else if (msg.type === 'stream-next') {
       const it = cursors.get(msg.cursor)
       const rows = []
@@ -71,29 +81,29 @@ parentPort.on('message', (msg) => {
         }
         rows.push(next.value.map(fix))
       }
-      parentPort.postMessage({ id: msg.id, ok: true, result: { rows, done } })
+      post({ id: msg.id, ok: true, result: { rows, done } })
     } else if (msg.type === 'stream-close') {
       cursors.get(msg.cursor)?.return?.()
       cursors.delete(msg.cursor)
-      parentPort.postMessage({ id: msg.id, ok: true })
+      post({ id: msg.id, ok: true })
     } else if (msg.type === 'exec') {
-      parentPort.postMessage({ id: msg.id, ok: true, result: run(msg.sql, msg.params ?? [], msg.maxRows ?? Infinity) })
+      post({ id: msg.id, ok: true, result: run(msg.sql, msg.params ?? [], msg.maxRows ?? Infinity) })
     } else if (msg.type === 'tx') {
       db.exec('BEGIN')
       try {
         const affected = msg.statements.map((s) => Number(db.prepare(s.sql).run(...bind(s.params)).changes))
         db.exec('COMMIT')
-        parentPort.postMessage({ id: msg.id, ok: true, result: affected })
+        post({ id: msg.id, ok: true, result: affected })
       } catch (e) {
         db.exec('ROLLBACK')
         throw e
       }
     } else if (msg.type === 'close') {
       db.close()
-      parentPort.postMessage({ id: msg.id, ok: true })
+      post({ id: msg.id, ok: true })
     }
   } catch (e) {
-    parentPort.postMessage({ id: msg.id, ok: false, error: { message: e.message, code: e.code, errcode: e.errcode } })
+    post({ id: msg.id, ok: false, error: { message: e.message, code: e.code, errcode: e.errcode } })
   }
 })
 `
@@ -101,6 +111,7 @@ parentPort.on('message', (msg) => {
 interface WorkerReply {
   id: number
   ok: boolean
+  inTx?: boolean
   result?: unknown
   error?: { message: string; code?: string }
 }
@@ -118,11 +129,18 @@ export class SqliteDriver implements DatabaseDriver {
   /** Set while the worker is being (re)started; requests wait for it. */
   private starting?: Promise<void>
   private nextId = 1
-  private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
+  private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; session?: string }>()
+  /**
+   * The session (tab) whose statements opened the current transaction. SQLite has one connection, so there is one
+   * transaction for everyone; only its owner may roll it back when it's released.
+   */
+  private txOwner?: string
 
   constructor(readonly config: ConnectionConfig) {}
 
   private spawn(): Promise<void> {
+    // A new worker is a new connection: whatever transaction was open is gone.
+    this.txOwner = undefined
     const path = this.config.filePath
     if (!path) throw new Error('SQLite connection needs a database file')
     const worker = new Worker(WORKER_SOURCE, {
@@ -134,6 +152,8 @@ export class SqliteDriver implements DatabaseDriver {
       const p = this.pending.get(reply.id)
       if (!p) return
       this.pending.delete(reply.id)
+      if (!reply.inTx) this.txOwner = undefined
+      else this.txOwner ??= p.session ?? ''
       if (reply.ok) p.resolve(reply.result)
       else p.reject(Object.assign(new Error(reply.error?.message ?? 'SQLite error'), { code: reply.error?.code }))
     })
@@ -159,17 +179,17 @@ export class SqliteDriver implements DatabaseDriver {
     this.pending.clear()
   }
 
-  private async send(msg: Record<string, unknown>): Promise<unknown> {
+  private async send(msg: Record<string, unknown>, session?: string): Promise<unknown> {
     if (this.starting) await this.starting
-    return this.post(msg)
+    return this.post(msg, session)
   }
 
-  private post(msg: Record<string, unknown>): Promise<unknown> {
+  private post(msg: Record<string, unknown>, session?: string): Promise<unknown> {
     const worker = this.worker
     if (!worker) return Promise.reject(new Error('Not connected'))
     const id = this.nextId++
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject })
+      this.pending.set(id, { resolve, reject, session })
       worker.postMessage({ ...msg, id })
     })
   }
@@ -194,9 +214,11 @@ export class SqliteDriver implements DatabaseDriver {
     this.worker = undefined
   }
 
-  async releaseSession(): Promise<void> {
-    // Single connection: nothing to release, but don't leave a transaction open.
-    await this.send({ type: 'exec', sql: 'ROLLBACK', params: [] }).catch(() => {})
+  async releaseSession(session: string): Promise<void> {
+    // Single connection: nothing to release, but a transaction this session opened mustn't stay open. One another
+    // tab opened is left alone (closing a tab, a script or an AI query must not discard someone else's changes).
+    if (this.txOwner !== session) return
+    await this.send({ type: 'exec', sql: 'ROLLBACK', params: [] }, session).catch(() => {})
   }
 
   async execute(sql: string, options: QueryOptions = {}): Promise<QueryResult[]> {
@@ -220,12 +242,15 @@ export class SqliteDriver implements DatabaseDriver {
     }
     options.signal?.addEventListener('abort', onAbort, { once: true })
     try {
-      const raw = (await this.send({
-        type: 'exec',
-        sql,
-        params: options.params ?? [],
-        maxRows: options.maxRows,
-      })) as RawResult
+      const raw = (await this.send(
+        {
+          type: 'exec',
+          sql,
+          params: options.params ?? [],
+          maxRows: options.maxRows,
+        },
+        options.session,
+      )) as RawResult
       const hasRows = raw.fields.length > 0
       return [
         {
