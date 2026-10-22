@@ -122,6 +122,8 @@ export interface IndexInfo {
   unique: boolean
   primary: boolean
   method?: string
+  /** Backs a UNIQUE constraint: drop it with ALTER TABLE … DROP CONSTRAINT, not DROP INDEX. */
+  constraint?: boolean
 }
 
 export interface TableInfo {
@@ -168,6 +170,8 @@ export interface StatementOutcome {
   results?: QueryResult[]
   error?: { message: string; code?: string; position?: number }
   durationMs: number
+  /** Extra information shown with the outcome (e.g. automatic rollback). */
+  note?: string
 }
 
 export interface TablePage {

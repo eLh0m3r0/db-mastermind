@@ -262,7 +262,7 @@ export class MssqlDriver implements DatabaseDriver {
         params,
       ),
       this.rows(
-        `SELECT s.name AS s, o.name AS t, i.name AS name, i.is_unique, i.is_primary_key, i.type_desc AS method, c.name AS col
+        `SELECT s.name AS s, o.name AS t, i.name AS name, i.is_unique, i.is_primary_key, i.is_unique_constraint, i.type_desc AS method, c.name AS col
            FROM sys.indexes i
            JOIN sys.objects o ON o.object_id = i.object_id
            JOIN sys.schemas s ON s.schema_id = o.schema_id
@@ -325,6 +325,7 @@ export class MssqlDriver implements DatabaseDriver {
           unique: Boolean(ix.is_unique),
           primary: Boolean(ix.is_primary_key),
           method: String(ix.method).toLowerCase(),
+          constraint: Boolean(ix.is_unique_constraint),
         }
         t.indexes.push(entry)
       }

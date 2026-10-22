@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { FilterNode, SortSpec, TableRef } from '@dbmastermind/core/browser'
+import type { DesignTable, FilterNode, SortSpec, TableRef } from '@dbmastermind/core/browser'
 import { api } from '@/lib/api'
 import { debounce, uid } from '@/lib/utils'
 
@@ -36,6 +36,8 @@ export interface DiagramTab extends BaseTab {
   focus?: string
   /** Node positions the user dragged, by "schema.table". */
   positions?: Record<string, { x: number; y: number }>
+  /** Schema designer drafts by node key ("schema.table" of the live table, or draft id for new tables). */
+  design?: Record<string, DesignTable>
 }
 
 export interface KnowledgeTab extends BaseTab {

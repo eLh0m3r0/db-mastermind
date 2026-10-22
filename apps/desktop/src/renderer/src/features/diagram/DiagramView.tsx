@@ -18,8 +18,19 @@ import {
 import '@xyflow/react/dist/style.css'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { toPng, toSvg } from 'html-to-image'
-import { Download, Eye, KeyRound, LayoutGrid, Link2, Network, Search, Table2 } from 'lucide-react'
-import { findTable, incomingReferences, type SchemaSnapshot, type TableInfo } from '@dbmastermind/core/browser'
+import { Download, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Search, Table2, Undo2 } from 'lucide-react'
+import {
+  designId,
+  designToTableInfo,
+  diffTable,
+  diffTables,
+  findTable,
+  incomingReferences,
+  toDesignTable,
+  type DesignTable,
+  type SchemaSnapshot,
+  type TableInfo,
+} from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -30,14 +41,20 @@ import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { toast } from '@/store/ui'
 import { useWorkspace, type DiagramTab } from '@/store/workspace'
+import { MigrationModal } from './MigrationModal'
+import { TableEditor } from './TableEditor'
 
 const elk = new ELK()
 const HEADER = 32
 const ROW = 22
 const WIDTH = 240
 
+type DesignStatus = 'live' | 'modified' | 'new' | 'dropped'
+
 interface TableNodeData extends Record<string, unknown> {
   table: TableInfo
+  status: DesignStatus
+  design: boolean
   keysOnly: boolean
   highlighted: boolean
   dimmed: boolean
@@ -58,7 +75,11 @@ const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData
       className={cn(
         'overflow-hidden rounded-lg border bg-elevated shadow-sm transition-opacity',
         data.focus ? 'border-accent ring-2 ring-accent-soft' : data.highlighted ? 'border-accent/70' : 'border-line-strong',
+        data.status === 'new' && 'border-success ring-2 ring-success-soft',
+        data.status === 'modified' && 'border-warning ring-2 ring-warning-soft',
+        data.status === 'dropped' && 'border-dashed border-danger opacity-60',
         data.dimmed && 'opacity-35',
+        data.design && 'cursor-pointer',
       )}
       style={{ width: WIDTH }}
     >
@@ -69,11 +90,15 @@ const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData
       >
         {table.type === 'table' ? <Table2 size={12} /> : <Eye size={12} />}
         <span className="truncate">{table.name}</span>
-        {table.schema && <span className="ml-auto truncate text-[10px] font-normal opacity-75">{table.schema}</span>}
+        {data.status !== 'live' ? (
+          <span className="ml-auto rounded bg-white/25 px-1 text-[9.5px] font-bold uppercase">{data.status}</span>
+        ) : (
+          table.schema && <span className="ml-auto truncate text-[10px] font-normal opacity-75">{table.schema}</span>
+        )}
       </div>
       {cols.map((c) => (
         <div key={c.name} className="relative flex items-center gap-1.5 border-t border-line px-2.5 text-[11px]" style={{ height: ROW }} title={c.comment ?? undefined}>
-          <Handle type="target" position={Position.Left} id={`t-${c.name}`} className="!h-1.5 !w-1.5 !min-w-0 !border-0 !bg-transparent" />
+          <Handle type="target" position={Position.Left} id={`t-${c.name}`} className={cn('!h-1.5 !w-1.5 !min-w-0 !border-0', data.design ? '!bg-accent/50' : '!bg-transparent')} />
           {c.isPrimaryKey ? (
             <KeyRound size={10} className="shrink-0 text-warning" />
           ) : fkColumns.has(c.name) ? (
@@ -84,7 +109,7 @@ const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData
           <span className={cn('truncate', c.isPrimaryKey && 'font-semibold')}>{c.name}</span>
           <span className="ml-auto max-w-[45%] shrink-0 truncate font-mono text-[10px] text-fg-faint">{c.dataType}</span>
           {!c.nullable && !c.isPrimaryKey && <span className="text-[9px] text-fg-faint">NN</span>}
-          <Handle type="source" position={Position.Right} id={`s-${c.name}`} className="!h-1.5 !w-1.5 !min-w-0 !border-0 !bg-transparent" />
+          <Handle type="source" position={Position.Right} id={`s-${c.name}`} className={cn('!h-1.5 !w-1.5 !min-w-0 !border-0', data.design ? '!h-2.5 !w-2.5 !bg-accent' : '!bg-transparent')} />
         </div>
       ))}
       {keysOnly && cols.length < table.columns.length && (
@@ -145,6 +170,13 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
   const [hovered, setHovered] = useState<string | null>(null)
   const [layouting, setLayouting] = useState(false)
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<TableNodeData>>([])
+  const connection = useConnections((s) => s.list.find((c) => c.id === tab.connectionId))
+  const newQuery = useWorkspace((s) => s.newQuery)
+  const [design, setDesign] = useState(!!tab.design && Object.keys(tab.design).length > 0)
+  const [selected, setSelected] = useState<string | null>(null)
+  const [reviewOpen, setReviewOpen] = useState(false)
+  const drafts = useMemo(() => tab.design ?? {}, [tab.design])
+  const setDrafts = (next: Record<string, DesignTable>) => updateTab(tab.id, { design: next })
 
   useEffect(() => {
     if (!schema) void loadSchema(tab.connectionId)
@@ -158,7 +190,7 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
     setSchemaFilter(preferred ?? '*')
   }, [schema, schemaFilter])
 
-  const tables = useMemo(() => {
+  const liveTables = useMemo(() => {
     if (!schema) return []
     if (focusName) {
       const focus = findTable(schema, { name: focusName })
@@ -170,6 +202,50 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
     const all = schemaFilter === '*' ? schema.tables : schema.tables.filter((t) => (t.schema ?? '') === schemaFilter || (!t.schema && !schemaFilter))
     return all.slice(0, 400)
   }, [schema, focusName, depth, schemaFilter])
+
+  const keyOf = (t: { schema?: string; name: string }) => `${t.schema ?? ''}.${t.name}`
+  /** What the canvas shows: live tables with drafts applied, plus new tables. */
+  const display = useMemo(() => {
+    const out: { key: string; info: TableInfo; status: DesignStatus }[] = liveTables.map((t) => {
+      const draft = drafts[keyOf(t)]
+      if (!draft) return { key: keyOf(t), info: t, status: 'live' }
+      const changed = diffTable(t, draft).length > 0
+      return { key: keyOf(t), info: designToTableInfo(draft), status: draft.dropped ? 'dropped' : changed ? 'modified' : 'live' }
+    })
+    for (const [key, draft] of Object.entries(drafts)) {
+      if (!draft.originalName && !draft.dropped) out.push({ key, info: designToTableInfo(draft), status: 'new' })
+    }
+    return out
+  }, [liveTables, drafts])
+  const tables = useMemo(() => display.map((d) => d.info), [display])
+  const keyByName = useMemo(() => new Map(display.map((d) => [d.info.name, d.key])), [display])
+
+  // After the schema changes (e.g. the migration ran), drop drafts that are now applied and flag stale ones.
+  const staleDesign = useMemo(() => {
+    if (!schema) return false
+    return Object.values(drafts).some((d) => {
+      if (!d.originalName) return false
+      const live = schema.tables.find((t) => t.name === d.originalName && (t.schema ?? '') === (d.schema ?? ''))
+      return !live || d.columns.some((c) => c.originalName && !live.columns.some((x) => x.name === c.originalName))
+    })
+  }, [schema, drafts])
+  useEffect(() => {
+    if (!schema || !Object.keys(drafts).length || staleDesign) return
+    const next = Object.fromEntries(
+      Object.entries(drafts).filter(([, d]) => {
+        if (!d.originalName) return !schema.tables.some((t) => t.name === d.name && (t.schema ?? '') === (d.schema ?? ''))
+        const live = schema.tables.find((t) => t.name === d.originalName && (t.schema ?? '') === (d.schema ?? ''))
+        return live ? diffTable(live, d).length > 0 : true
+      }),
+    )
+    if (Object.keys(next).length !== Object.keys(drafts).length) setDrafts(next)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schema?.capturedAt])
+
+  const changes = useMemo(() => {
+    if (!schema || !Object.keys(drafts).length) return []
+    return diffTables(schema.tables, Object.values(drafts))
+  }, [schema, drafts])
 
   const columnSets = useMemo(() => {
     const fk = new Map<string, Set<string>>()
@@ -191,15 +267,15 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
     for (const t of tables) {
       for (const fk of t.foreignKeys) {
         if (!names.has(fk.refTable)) continue
-        const source = `${t.schema ?? ''}.${t.name}`
-        const target = tables.find((x) => x.name === fk.refTable && (x.schema ?? '') === (fk.refSchema ?? t.schema ?? ''))
-        if (!target) continue
-        const active = hovered === source || hovered === `${target.schema ?? ''}.${target.name}`
+        const source = keyByName.get(t.name)!
+        const targetKey = keyByName.get(fk.refTable)
+        if (!targetKey) continue
+        const active = hovered === source || hovered === targetKey
         const optional = fk.columns.some((c) => t.columns.find((x) => x.name === c)?.nullable)
         out.push({
           id: `${source}:${fk.name}`,
           source,
-          target: `${target.schema ?? ''}.${target.name}`,
+          target: targetKey,
           sourceHandle: `s-${fk.columns[0]}`,
           targetHandle: `t-${fk.refColumns[0]}`,
           type: 'smoothstep',
@@ -218,9 +294,27 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
       }
     }
     return out
-  }, [tables, hovered])
+  }, [tables, hovered, keyByName])
+
+  const latest = useRef({ display, columnSets, edges })
+  latest.current = { display, columnSets, edges }
+  const nodeData = (d: (typeof display)[number]): TableNodeData => ({
+    table: d.info,
+    status: d.status,
+    design,
+    keysOnly,
+    highlighted: false,
+    dimmed: false,
+    focus: d.info.name === focusName,
+    fkColumns: columnSets.fk.get(d.info.name) ?? new Set(),
+    referencedColumns: columnSets.ref.get(d.info.name) ?? new Set(),
+  })
+  // Re-layout only when the set of tables changes, not on every edit.
+  const structure = `${liveTables.map(keyOf).join('|')}#${keysOnly}`
 
   const layout = useCallback(async () => {
+    const { display, columnSets, edges } = latest.current
+    const tables = display.map((d) => d.info)
     if (!tables.length) {
       setNodes([])
       return
@@ -239,8 +333,8 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
           'elk.separateConnectedComponents': 'true',
           'elk.spacing.componentComponent': '70',
         },
-        children: tables.map((t) => ({
-          id: `${t.schema ?? ''}.${t.name}`,
+        children: display.map(({ key, info: t }) => ({
+          id: key,
           width: WIDTH,
           height: nodeHeight(t, keysOnly, columnSets.fk.get(t.name) ?? new Set(), columnSets.ref.get(t.name) ?? new Set()),
         })),
@@ -248,22 +342,13 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
       })
       const saved = tab.positions ?? {}
       setNodes(
-        tables.map((t) => {
-          const id = `${t.schema ?? ''}.${t.name}`
-          const laid = graph.children?.find((c) => c.id === id)
+        display.map((d) => {
+          const laid = graph.children?.find((c) => c.id === d.key)
           return {
-            id,
+            id: d.key,
             type: 'table',
-            position: saved[id] ?? { x: laid?.x ?? 0, y: laid?.y ?? 0 },
-            data: {
-              table: t,
-              keysOnly,
-              highlighted: false,
-              dimmed: false,
-              focus: t.name === focusName,
-              fkColumns: columnSets.fk.get(t.name) ?? new Set(),
-              referencedColumns: columnSets.ref.get(t.name) ?? new Set(),
-            },
+            position: saved[d.key] ?? drafts[d.key]?.position ?? { x: laid?.x ?? 0, y: laid?.y ?? 0 },
+            data: nodeData(d),
           }
         }),
       )
@@ -272,11 +357,26 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
       setLayouting(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tables, keysOnly, columnSets, focusName])
+  }, [structure, focusName])
 
   useEffect(() => {
     void layout()
   }, [layout])
+
+  // Edits update node contents in place; new tables appear without moving the others.
+  useEffect(() => {
+    setNodes((ns) => {
+      const byId = new Map(ns.map((n) => [n.id, n]))
+      const center = flow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
+      return display.map((d, i) => {
+        const existing = byId.get(d.key)
+        return existing
+          ? { ...existing, data: { ...nodeData(d), highlighted: existing.data.highlighted, dimmed: existing.data.dimmed } }
+          : { id: d.key, type: 'table', position: drafts[d.key]?.position ?? { x: center.x + i * 8, y: center.y + i * 8 }, data: nodeData(d) }
+      })
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [display, columnSets, design])
 
   // Hover highlighting without re-running layout.
   useEffect(() => {
@@ -343,6 +443,47 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
     toast({ kind: 'success', message: 'DBML copied to clipboard', detail: 'Paste it into dbdiagram.io or a .dbml file.' })
   }
 
+  /** Draft for a node, creating one from the live table on first edit. */
+  const draftFor = (key: string): DesignTable | undefined => {
+    if (drafts[key]) return drafts[key]
+    const live = liveTables.find((t) => keyOf(t) === key)
+    return live ? toDesignTable(live) : undefined
+  }
+  const updateDraft = (key: string, table: DesignTable) => setDrafts({ ...drafts, [key]: table })
+  const addTable = () => {
+    const key = designId('new')
+    const pkType = connection?.driver === 'sqlite' ? 'INTEGER' : connection?.driver === 'postgres' ? 'bigint' : 'bigint'
+    // Place new tables to the right of the diagram so they never cover existing ones.
+    const right = nodes.reduce((m, n) => Math.max(m, n.position.x + WIDTH), 0)
+    const top = nodes.reduce((m, n) => Math.min(m, n.position.y), Number.POSITIVE_INFINITY)
+    const center = { x: right + 80, y: Number.isFinite(top) ? top : 0 }
+    updateDraft(key, {
+      id: key,
+      schema: schemaFilter && schemaFilter !== '*' ? schemaFilter : schema?.defaultSchema,
+      name: `new_table_${Object.values(drafts).filter((d) => !d.originalName).length + 1}`,
+      columns: [{ id: designId('c'), name: 'id', dataType: pkType, nullable: false, identity: true }],
+      primaryKey: ['id'],
+      foreignKeys: [],
+      indexes: [],
+      position: center,
+    })
+    setSelected(key)
+  }
+  const onConnect = (c: { source: string | null; target: string | null; sourceHandle?: string | null; targetHandle?: string | null }) => {
+    if (!design || !c.source || !c.target) return
+    const from = draftFor(c.source)
+    const to = display.find((d) => d.key === c.target)?.info
+    if (!from || !to) return
+    const column = c.sourceHandle?.replace(/^s-/, '') ?? ''
+    const refColumn = c.targetHandle?.replace(/^t-/, '') ?? to.primaryKey[0] ?? ''
+    updateDraft(c.source, {
+      ...from,
+      foreignKeys: [...from.foreignKeys, { id: designId('f'), columns: [column], refSchema: to.schema, refTable: to.name, refColumns: [refColumn] }],
+    })
+    toast({ kind: 'info', message: `Foreign key ${from.name}.${column} → ${to.name}.${refColumn} added to the design` })
+  }
+  const selectedDraft = selected ? draftFor(selected) : undefined
+
   const matches = useMemo(() => {
     const q = search.trim()
     if (!q || !schema) return []
@@ -365,8 +506,8 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-2">
-        <div className="relative">
+      <div className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-line px-2 whitespace-nowrap [scrollbar-width:none]">
+        <div className="relative shrink-0">
           <Input
             inputSize="sm"
             className="w-56"
@@ -428,11 +569,50 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
           )
         )}
         <Checkbox checked={keysOnly} onChange={setKeysOnly} label="Keys only" />
-        <span className="text-[11.5px] text-fg-faint">
-          {tables.length} tables · {edges.length} relationships
-        </span>
+        {!design && (
+          <span className="shrink-0 text-[11.5px] text-fg-faint">
+            {tables.length} tables · {edges.length} relationships
+          </span>
+        )}
         <div className="flex-1" />
         {layouting && <Spinner size={13} className="text-fg-faint" />}
+        {design && (
+          <>
+            <Button size="sm" variant="ghost" icon={<Plus size={13} />} onClick={addTable}>
+              New table
+            </Button>
+            {Object.keys(drafts).length > 0 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<Undo2 size={13} />}
+                onClick={() => {
+                  if (window.confirm('Discard all design changes?')) {
+                    setDrafts({})
+                    setSelected(null)
+                  }
+                }}
+              >
+                Discard
+              </Button>
+            )}
+            <Button size="sm" variant={changes.length ? 'primary' : 'secondary'} icon={<FileCode2 size={13} />} disabled={!changes.length} onClick={() => setReviewOpen(true)}>
+              Review migration{changes.length ? ` (${changes.length})` : ''}
+            </Button>
+          </>
+        )}
+        <Button
+          size="sm"
+          variant={design ? 'subtle' : 'ghost'}
+          icon={<PencilRuler size={13} />}
+          onClick={() => {
+            setDesign((v) => !v)
+            setSelected(null)
+          }}
+          title="Design changes to the schema on the diagram and generate a migration script"
+        >
+          {design ? 'Designing' : 'Design'}
+        </Button>
         <Button size="sm" variant="ghost" icon={<LayoutGrid size={13} />} onClick={resetLayout}>
           Auto layout
         </Button>
@@ -453,7 +633,25 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
           Export
         </Button>
       </div>
-      <div ref={wrapper} className="min-h-0 flex-1">
+      {staleDesign && (
+        <div className="flex h-9 shrink-0 items-center gap-2 border-b border-line bg-warning-soft px-3 text-[12px] text-warning">
+          The database schema changed since this design was started (maybe the migration already ran).
+          <Button size="xs" onClick={() => setDrafts({})}>
+            Discard design
+          </Button>
+        </div>
+      )}
+      {design && (
+        <div className="flex h-8 shrink-0 items-center gap-2 border-b border-line bg-accent-soft px-3 text-[12px]">
+          <PencilRuler size={13} className="text-accent" />
+          <span>
+            <b>Design mode.</b> Click a table to edit it, drag from a column dot to another table to add a foreign key. Nothing changes in the
+            database until you run the generated migration.
+          </span>
+        </div>
+      )}
+      <div className="flex min-h-0 flex-1">
+      <div ref={wrapper} className="min-h-0 min-w-0 flex-1">
         <svg width="0" height="0" className="absolute">
           <defs>
             {/* At the path start with auto-start-reverse, +x points into the source node: prongs spread at the node edge (x=15). */}
@@ -474,9 +672,17 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
           edges={edges}
           nodeTypes={nodeTypes}
           onNodesChange={onNodesChange}
+          onConnect={onConnect}
+          nodesConnectable={design}
+          onNodeClick={(_, n) => design && setSelected(n.id)}
+          onPaneClick={() => setSelected(null)}
           onNodeMouseEnter={(_, n) => setHovered(n.id)}
           onNodeMouseLeave={() => setHovered(null)}
           onNodeDragStop={(_, node) => {
+            if (drafts[node.id] && !drafts[node.id]!.originalName) {
+              updateDraft(node.id, { ...drafts[node.id]!, position: node.position })
+              return
+            }
             const positions = { ...(tab.positions ?? {}), [node.id]: node.position }
             updateTab(tab.id, { positions })
           }}
@@ -512,6 +718,40 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
           )}
         </ReactFlow>
       </div>
+      {design && selected && selectedDraft && connection && (
+        <TableEditor
+          key={selected}
+          table={selectedDraft}
+          driver={connection.driver}
+          allTables={tables}
+          onChange={(t) => updateDraft(selected, t)}
+          onRevert={
+            drafts[selected]?.originalName
+              ? () => {
+                  const next = { ...drafts }
+                  delete next[selected]
+                  setDrafts(next)
+                }
+              : undefined
+          }
+          onClose={() => setSelected(null)}
+        />
+      )}
+      </div>
+      {connection && schema && (
+        <MigrationModal
+          open={reviewOpen}
+          onClose={() => setReviewOpen(false)}
+          changes={changes}
+          driver={connection.driver}
+          tables={schema.tables}
+          connectionId={tab.connectionId}
+          onOpenInEditor={(sql) => {
+            setReviewOpen(false)
+            newQuery(tab.connectionId, sql, 'Migration')
+          }}
+        />
+      )}
     </div>
   )
 }

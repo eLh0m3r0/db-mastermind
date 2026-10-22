@@ -198,6 +198,7 @@ export function ResultsPanel({
                   </button>
                   <span className="shrink-0 text-fg-faint">{formatDuration(o.durationMs)}</span>
                 </div>
+                {o.note && <div className="mt-1 pl-5 text-fg-muted">{o.note}</div>}
                 {o.error ? (
                   <div className="mt-1.5 pl-5 whitespace-pre-wrap text-danger">
                     {o.error.message}

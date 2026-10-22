@@ -37,6 +37,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   artifactName: DB-Mastermind-${version}-win-${arch}-setup.${ext}
 linux:
+  executableName: db-mastermind
   category: Development
   target:
     - target: AppImage

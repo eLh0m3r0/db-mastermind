@@ -148,23 +148,23 @@ project's (AI) maintainer and updated with every release.
 
 ---
 
-## Milestone 3 — Data Modeling Studio (v0.4)
+## Milestone 3 — Data Modeling Studio (v0.4) 🚧 (live designer shipped in v0.2)
 
 The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working **directly on live databases**.
 
 ### Live schema designer (design on top of the real database)
-- ⬜ Open the ER diagram of a live connection in **design mode**. Every edit becomes a *pending change*;
+- ✅ Open the ER diagram of a live connection in **design mode**. Every edit becomes a *pending change*;
   nothing touches the database yet
-- ⬜ Edits: create/rename/drop table, add/rename/drop/retype column, nullability, defaults, PK, FK (drag from
+- ✅ Edits: create/rename/drop table, add/rename/drop/retype column, nullability, defaults, PK, FK (drag from
   column to column), unique constraints, indexes, comments
-- ⬜ **Change set panel**: ordered list of pending changes, undo/redo, per-change toggle
-- ⬜ **Migration script generator** per dialect (PostgreSQL, SQL Server, MySQL/MariaDB, SQLite table-rebuild
+- 🚧 **Change set panel**: pending changes ✅ (persisted with the diagram, revert per table), undo/redo, per-change toggle
+- ✅ **Migration script generator** per dialect (PostgreSQL, SQL Server, MySQL/MariaDB, SQLite table-rebuild
   strategy), dependency-ordered (drop FKs → alter → recreate FKs), wrapped in a transaction where DDL is
   transactional
-- ⬜ **Impact analysis** before running: data-loss warnings (narrowing types, dropping columns, NOT NULL on
+- ✅ **Impact analysis** before running: data-loss warnings (narrowing types, dropping columns, NOT NULL on
   columns with NULLs; counts are checked live), lock/rewrite warnings for large tables, dependent views
-- ⬜ Rollback script generated alongside the forward script
-- ⬜ Execute in the SQL editor (review first) or save as a migration file (plain SQL, Flyway `V__`,
+- ✅ Rollback script generated alongside the forward script
+- 🚧 Execute in the SQL editor (review first) ✅ or save as a migration file (plain SQL, Flyway `V__`,
   Liquibase SQL, Prisma/Knex-friendly)
 - ⬜ Change sets can be saved, shared and re-applied to another environment (dev → test → prod)
 - ⬜ AI: "add soft delete to all customer tables", "normalize address into its own table". The AI proposes a

@@ -128,12 +128,22 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stri
 const normType = (t: string) => t.toLowerCase().replace(/\s+/g, ' ').trim()
 
 /** Changes needed to turn `original` (live table, or undefined for a new one) into `draft`. */
-export function diffTable(original: TableInfo | undefined, draft: DesignTable): SchemaChange[] {
+export function diffTable(original: TableInfo | undefined, draftIn: DesignTable): SchemaChange[] {
+  let draft = draftIn
   if (!original) return draft.dropped ? [] : [{ kind: 'create_table', table: draft }]
   const ref: TableRef = { schema: original.schema, name: original.name }
   if (draft.dropped) return [{ kind: 'drop_table', table: ref }]
 
   const changes: SchemaChange[] = []
+  // The database renames columns inside keys and indexes by itself: compare using original names.
+  const toOriginal = new Map(draft.columns.filter((c) => c.originalName).map((c) => [c.name, c.originalName!]))
+  const orig = (cols: string[]) => cols.map((c) => toOriginal.get(c) ?? c)
+  draft = {
+    ...draft,
+    foreignKeys: draft.foreignKeys.map((f) => ({ ...f, columns: orig(f.columns) })),
+    indexes: draft.indexes.map((i) => ({ ...i, columns: orig(i.columns) })),
+  }
+  const draftPk = orig(draft.primaryKey)
   // Constraints referencing renamed/dropped columns must go first.
   const draftFkNames = new Set(draft.foreignKeys.map((f) => f.originalName).filter(Boolean))
   for (const fk of original.foreignKeys.filter((f) => !f.virtual)) {
@@ -184,18 +194,18 @@ export function diffTable(original: TableInfo | undefined, draft: DesignTable): 
   }
   changes.push(...renames, ...drops, ...adds, ...alters)
 
-  if (!same(draft.primaryKey, original.primaryKey)) changes.push({ kind: 'set_primary_key', table: current, columns: draft.primaryKey, before: original.primaryKey })
+  if (!same(draftPk, original.primaryKey)) changes.push({ kind: 'set_primary_key', table: current, columns: draftIn.primaryKey, before: original.primaryKey })
   if ((draft.comment ?? null) !== (original.comment ?? null)) changes.push({ kind: 'set_table_comment', table: current, comment: draft.comment ?? null })
 
-  for (const fk of draft.foreignKeys) {
+  draft.foreignKeys.forEach((fk, i) => {
     const before = fk.originalName ? original.foreignKeys.find((f) => f.name === fk.originalName) : undefined
     const unchanged = before && same(fk.columns, before.columns) && fk.refTable === before.refTable && same(fk.refColumns, before.refColumns) && (fk.onDelete ?? '') === (before.onDelete ?? '')
-    if (!unchanged) changes.push({ kind: 'add_foreign_key', table: current, fk })
-  }
-  for (const ix of draft.indexes) {
-    const before = ix.originalName ? original.indexes.find((i) => i.name === ix.originalName) : undefined
-    if (!before || !same(ix.columns, before.columns) || ix.unique !== before.unique) changes.push({ kind: 'add_index', table: current, index: ix })
-  }
+    if (!unchanged) changes.push({ kind: 'add_foreign_key', table: current, fk: draftIn.foreignKeys[i]! })
+  })
+  draft.indexes.forEach((ix, i) => {
+    const before = ix.originalName ? original.indexes.find((x) => x.name === ix.originalName) : undefined
+    if (!before || !same(ix.columns, before.columns) || ix.unique !== before.unique) changes.push({ kind: 'add_index', table: current, index: draftIn.indexes[i]! })
+  })
   return changes
 }
 
@@ -469,7 +479,8 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
         break
       }
       case 'drop_index': {
-        statements.push(dropIndexSql(change.name, change.table, d))
+        if (change.before.constraint && (d.id === 'postgres' || d.id === 'mssql')) statements.push(`ALTER TABLE ${q(change.table)} DROP CONSTRAINT ${id(change.name)}`)
+        else statements.push(dropIndexSql(change.name, change.table, d))
         rollback.unshift(createIndexSql(change.name, change.table, change.before.columns, change.before.unique, d))
         break
       }
@@ -616,8 +627,92 @@ export function migrationScript(migration: Migration, dialect: Dialect): string 
   const separator = dialect.id === 'mssql' ? ';\n' : ';\n'
   const header = migration.warnings.map((w) => `-- ${w.level.toUpperCase()}: ${w.message}`)
   const body = migration.statements.join(separator) + ';'
+  // Without XACT_ABORT, SQL Server continues after an error and would commit a half-applied migration.
+  const prefix = dialect.id === 'mssql' ? 'SET XACT_ABORT ON;\n' : ''
   const wrapped = migration.transactional
-    ? `${dialect.begin};\n${body}\n${dialect.commit};`
+    ? `${prefix}${dialect.begin};\n${body}\n${dialect.commit};`
     : body
   return [...header, ...(header.length ? [''] : []), wrapped].join('\n')
+}
+
+/** Renders a draft like a live table (for diagrams and the editor). */
+export function designToTableInfo(t: DesignTable): TableInfo {
+  return {
+    schema: t.schema,
+    name: t.name,
+    type: 'table',
+    comment: t.comment ?? null,
+    columns: t.columns.map((c, i) => ({
+      name: c.name,
+      ordinal: i + 1,
+      dataType: c.dataType,
+      nullable: c.nullable,
+      defaultValue: c.defaultValue ?? null,
+      isPrimaryKey: t.primaryKey.includes(c.name),
+      isIdentity: !!c.identity,
+      comment: c.comment ?? null,
+    })),
+    primaryKey: [...t.primaryKey],
+    foreignKeys: t.foreignKeys.map((f) => ({
+      name: f.name ?? f.id,
+      columns: f.columns,
+      refSchema: f.refSchema,
+      refTable: f.refTable,
+      refColumns: f.refColumns,
+      onDelete: f.onDelete,
+      onUpdate: f.onUpdate,
+    })),
+    indexes: t.indexes.map((i) => ({ name: i.name ?? i.id, columns: i.columns, unique: i.unique, primary: false })),
+  }
+}
+
+export interface ImpactCheck {
+  label: string
+  /** Returns a single number: rows that would make the change fail (0 = safe). */
+  sql: string
+}
+
+/** Read-only queries that predict whether a migration will fail on the existing data. */
+export function impactChecks(changes: SchemaChange[], dialect: Dialect): ImpactCheck[] {
+  const d = dialect
+  const out: ImpactCheck[] = []
+  const id = (n: string) => d.quoteIdent(n)
+  for (const c of changes) {
+    if (c.kind === 'alter_column' && c.changes.nullable && !c.after.nullable) {
+      out.push({ label: `${c.table.name}.${c.after.name}: rows with NULL`, sql: `SELECT COUNT(*) FROM ${qualify(d, c.table)} WHERE ${id(c.before.name)} IS NULL` })
+    }
+    if (c.kind === 'add_column' && !c.column.nullable && !c.column.defaultValue && !c.column.identity) {
+      out.push({ label: `${c.table.name}: existing rows (new NOT NULL column without default)`, sql: `SELECT COUNT(*) FROM ${qualify(d, c.table)}` })
+    }
+    if (c.kind === 'add_index' && c.index.unique) {
+      const cols = c.index.columns.map(id).join(', ')
+      out.push({
+        label: `${c.table.name}(${c.index.columns.join(', ')}): duplicate values`,
+        sql: `SELECT COUNT(*) FROM (SELECT ${cols} FROM ${qualify(d, c.table)} GROUP BY ${cols} HAVING COUNT(*) > 1) dup`,
+      })
+    }
+    if (c.kind === 'add_foreign_key') {
+      const t = qualify(d, c.table)
+      const r = qualify(d, { schema: c.fk.refSchema, name: c.fk.refTable })
+      const join = c.fk.columns.map((col, i) => `r.${id(c.fk.refColumns[i] ?? '')} = t.${id(col)}`).join(' AND ')
+      const notNull = c.fk.columns.map((col) => `t.${id(col)} IS NOT NULL`).join(' AND ')
+      out.push({
+        label: `${c.table.name}(${c.fk.columns.join(', ')}) → ${c.fk.refTable}: rows without a match`,
+        sql: `SELECT COUNT(*) FROM ${t} t WHERE ${notNull} AND NOT EXISTS (SELECT 1 FROM ${r} r WHERE ${join})`,
+      })
+    }
+    if (c.kind === 'drop_table') out.push({ label: `${c.table.name}: rows that will be deleted`, sql: `SELECT COUNT(*) FROM ${qualify(d, c.table)}` })
+    if (c.kind === 'drop_column') {
+      out.push({ label: `${c.table.name}.${c.column}: non-NULL values that will be lost`, sql: `SELECT COUNT(*) FROM ${qualify(d, c.table)} WHERE ${id(c.column)} IS NOT NULL` })
+    }
+  }
+  return out
+}
+
+export const COMMON_TYPES: Record<DriverId, string[]> = {
+  postgres: ['bigint', 'integer', 'smallint', 'numeric(12,2)', 'boolean', 'text', 'varchar(255)', 'uuid', 'date', 'timestamp', 'timestamptz', 'jsonb', 'bytea', 'double precision'],
+  mssql: ['bigint', 'int', 'smallint', 'decimal(12,2)', 'bit', 'nvarchar(255)', 'nvarchar(max)', 'varchar(255)', 'uniqueidentifier', 'date', 'datetime2', 'datetimeoffset', 'varbinary(max)', 'float'],
+  mysql: ['bigint', 'int', 'smallint', 'decimal(12,2)', 'tinyint(1)', 'varchar(255)', 'text', 'char(36)', 'date', 'datetime', 'timestamp', 'json', 'blob', 'double'],
+  mariadb: ['bigint', 'int', 'smallint', 'decimal(12,2)', 'tinyint(1)', 'varchar(255)', 'text', 'uuid', 'date', 'datetime', 'timestamp', 'json', 'blob', 'double'],
+  sqlite: ['INTEGER', 'TEXT', 'REAL', 'NUMERIC', 'BLOB', 'BOOLEAN', 'DATE', 'DATETIME'],
 }

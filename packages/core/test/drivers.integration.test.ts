@@ -138,6 +138,16 @@ for (const engine of engines) {
       await svc.releaseSession(id, 's1')
     })
 
+    it.skipIf(engine.id === 'mssql')('rolls back the transaction of a failed script', async () => {
+      const t = svc.qualifiedName(id, customers)
+      const outcomes = await svc.runScript(id, `BEGIN; UPDATE ${t} SET name = 'Lost' WHERE id = 3; SELECT * FROM nope;`, { session: 'rb' })
+      expect(outcomes.at(-1)!.note).toMatch(/rolled back/)
+      const [after] = await svc.runScript(id, `SELECT name FROM ${t} WHERE id = 3`, { session: 'rb' })
+      expect(after!.error).toBeUndefined()
+      expect(after!.results![0]!.rows).toEqual([['Čeněk 50%_off']])
+      await svc.releaseSession(id, 'rb')
+    })
+
     it('cancels a running query', async () => {
       const controller = new AbortController()
       const started = Date.now()

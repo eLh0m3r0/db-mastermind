@@ -8,7 +8,7 @@ import { buildCount, buildSelect, type FilterNode, type SortSpec } from './filte
 import { buildChangeStatements, type RowChange } from './mutations.js'
 import { KnowledgeBase, relationToForeignKey } from './knowledge.js'
 import { findTable } from './schema-utils.js'
-import { isReadOnlyScript, splitStatements } from './sql-split.js'
+import { classifyStatement, isReadOnlyScript, splitStatements } from './sql-split.js'
 import type { ConnectionConfig, SchemaSnapshot, ServerInfo, StatementOutcome, TableInfo, TablePage, TableRef } from './types.js'
 
 export function createDriver(config: ConnectionConfig): DatabaseDriver {
@@ -164,6 +164,7 @@ export class DatabaseService {
     // T-SQL batches run as a whole (variables and temp tables span statements); only GO splits them.
     const statements = splitStatements(script, entry.config.driver, { batchesOnly: entry.config.driver === 'mssql' })
     const outcomes: StatementOutcome[] = []
+    let inTransaction = false
     for (const statement of statements) {
       if (!statement.text) continue
       const started = Date.now()
@@ -176,6 +177,9 @@ export class DatabaseService {
           params: statements.length === 1 ? options.params : undefined,
         })
         outcomes.push({ sql: statement.text, start: statement.start, end: statement.end, results, durationMs: Date.now() - started })
+        if (classifyStatement(statement.text) === 'transaction') inTransaction = /^\s*(BEGIN|START)\b/i.test(statement.text)
+        // T-SQL batches contain BEGIN TRAN … COMMIT inside one statement.
+        if (entry.config.driver === 'mssql' && /\bBEGIN\s+TRAN/i.test(statement.text)) inTransaction = !/\b(COMMIT|ROLLBACK)\b/i.test(statement.text.slice(statement.text.search(/\bBEGIN\s+TRAN/i)))
       } catch (err) {
         outcomes.push({
           sql: statement.text,
@@ -184,7 +188,14 @@ export class DatabaseService {
           error: describeError(err),
           durationMs: Date.now() - started,
         })
-        if (!options.continueOnError || options.signal?.aborted) break
+        if (!options.continueOnError || options.signal?.aborted) {
+          // A failed script must not leave its transaction open (PostgreSQL would reject everything after).
+          if (inTransaction && options.session) {
+            await entry.driver.execute(entry.driver.dialect.rollback, { session: options.session }).catch(() => {})
+            outcomes.push({ sql: entry.driver.dialect.rollback, start: statement.end, end: statement.end, results: [], durationMs: 0, note: 'The transaction was rolled back: no changes were saved.' })
+          }
+          break
+        }
       }
     }
     if (/^\s*(CREATE|ALTER|DROP|RENAME)\b/im.test(script)) {

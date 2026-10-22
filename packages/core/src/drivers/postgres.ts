@@ -293,10 +293,12 @@ export class PostgresDriver implements DatabaseDriver {
         unique: boolean
         primary: boolean
         method: string
+        is_constraint: boolean
         columns: string[]
       }>(
         `SELECT n.nspname AS schema, t.relname AS table, i.relname AS name, ix.indisunique AS unique,
                 ix.indisprimary AS primary, am.amname AS method,
+                EXISTS (SELECT 1 FROM pg_constraint pc WHERE pc.conindid = ix.indexrelid AND pc.contype IN ('u','x')) AS is_constraint,
                 ARRAY(SELECT pg_get_indexdef(ix.indexrelid, k, true) FROM generate_series(1, ix.indnkeyatts) k ORDER BY k)::text[] AS columns
            FROM pg_index ix
            JOIN pg_class i ON i.oid = ix.indexrelid
@@ -375,6 +377,7 @@ export class PostgresDriver implements DatabaseDriver {
         unique: ix.unique,
         primary: ix.primary,
         method: ix.method,
+        constraint: ix.is_constraint,
       })
     }
     const routineInfos: RoutineInfo[] = routines.rows.map((r) => ({
