@@ -55,6 +55,8 @@ export interface DataGridProps {
   rowState?: (row: number) => RowState
   onContextMenu?: (event: React.MouseEvent, pos: CellPos | null, selection: GridSelection | null) => void
   onCellActivate?: (pos: CellPos) => void
+  /** Shift+Enter: open the cell in the value viewer/editor. */
+  onCellOpen?: (pos: CellPos) => void
   onForeignKeyClick?: (pos: CellPos) => void
   onSelectionChange?: (selection: GridSelection | null) => void
   nullDisplay?: string
@@ -197,6 +199,7 @@ export function DataGrid({
   rowState,
   onContextMenu,
   onCellActivate,
+  onCellOpen,
   onForeignKeyClick,
   onSelectionChange,
   nullDisplay = 'NULL',
@@ -380,6 +383,11 @@ export function DataGrid({
       return
     }
     if (!selection) return
+    if (e.key === 'Enter' && e.shiftKey && onCellOpen) {
+      e.preventDefault()
+      onCellOpen(selection.focus)
+      return
+    }
     if (e.key === 'Enter' || e.key === 'F2') {
       e.preventDefault()
       if (onEdit) startEdit(selection.focus)

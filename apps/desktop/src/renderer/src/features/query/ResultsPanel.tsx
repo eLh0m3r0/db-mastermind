@@ -328,6 +328,7 @@ export function ResultsPanel({
             key={current.key}
             fields={current.result.fields}
             rows={sortedRows}
+            onCellOpen={(pos) => openCellViewer(sortedRows[pos.row]?.[pos.col] ?? null, current.result.fields[pos.col]?.name ?? '', current.result.fields[pos.col]?.dataType)}
             sort={sorts[current.key]}
             onSortChange={(s) => setSorts((prev) => ({ ...prev, [current.key]: s }))}
             nullDisplay={settings?.nullDisplay}

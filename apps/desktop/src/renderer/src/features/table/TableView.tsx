@@ -523,6 +523,13 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
     applyFilter(group)
   }
 
+  /** The value viewer, editing the cell when the table is editable (binary stays read-only). */
+  const openValue = (row: number, col: number) => {
+    const meta = columnMeta[col]
+    const canEdit = editable && !pending.deleted.has(row) && !/binary|blob|bytea|image|raw/i.test(meta?.dataType ?? '')
+    openCellViewer(displayRows[row]?.[col] ?? null, fields[col]?.name ?? '', meta?.dataType, canEdit ? (value) => onEdit(row, col, value) : undefined)
+  }
+
   const onContextMenu = (e: React.MouseEvent, pos: { row: number; col: number } | null, sel: GridSelection | null) => {
     if (!pos) {
       openMenu(e, [{ label: t('Add row'), icon: <Plus size={13} />, disabled: !editable, onClick: () => addRow() }])
@@ -554,7 +561,11 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
     const fk = table?.foreignKeys.find((k) => k.columns.includes(colName))
     const incoming = schema && table ? incomingReferences(schema, table) : []
     const items: MenuItem[] = [
-      { label: t('View value…'), onClick: () => openCellViewer(value, colName, columnMeta[pos.col]?.dataType) },
+      {
+        label: editable && !pending.deleted.has(pos.row) ? t('Edit value…') : t('View value…'),
+        shortcut: '⇧↵',
+        onClick: () => openValue(pos.row, pos.col),
+      },
       { label: t('Copy'), shortcut: '⌘C', icon: <Copy size={13} />, onClick: () => sel && void copyText(selectionToTsv(viewFields, viewRows, sel, false, '')) },
       { label: t('Copy with headers'), onClick: () => sel && void copyText(selectionToTsv(viewFields, viewRows, sel, true, '')) },
       {
@@ -829,6 +840,7 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
               onForeignKeyClick={(pos) => followForeignKey(pos.row, toField(pos.col))}
               onSelectionChange={setSelection}
               onCellActivate={() => setShowDetails(true)}
+              onCellOpen={(pos) => openValue(pos.row, toField(pos.col))}
               nullDisplay={settings?.nullDisplay}
               emptyMessage={activeFilters ? t('No rows match the filter') : t('Table is empty')}
             />

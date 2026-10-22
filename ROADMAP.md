@@ -69,7 +69,7 @@ project's (AI) maintainer and updated with every release.
 - ✅ Inline editing with pending-changes panel, review generated SQL, commit/discard
 - ✅ Insert / clone / delete rows, set NULL / DEFAULT
 - ✅ Foreign key navigation: click an FK value → open referenced row; "referenced by" panel
-- 🚧 Cell viewer/editor for JSON, long text, binary (hex), with formatting (row details panel ✅)
+- ✅ Cell viewer/editor (⇧↵ or right-click): JSON format/minify with validation, long text, binary as hex with image preview; row details panel
 - ✅ Copy as TSV / CSV / JSON / Markdown / SQL INSERT; paste blocks from Excel / Sheets (edits and new rows, as pending changes)
 - ✅ Exact or estimated row counts
 

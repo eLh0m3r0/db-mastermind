@@ -913,4 +913,7 @@ export const cs: Record<string, string> = {
   'Already added. Click to update the path in {path}': 'Už je přidáno. Kliknutím aktualizujete cestu v {path}',
   'Not found on this computer; the config file will be created: {path}': 'Na tomto počítači nenalezeno; vytvoří se konfigurační soubor: {path}',
   '{path}. Restart the app to load it.': '{path}. Restartujte aplikaci, aby se načetla.',
+  'Invalid JSON: {error}': 'Neplatný JSON: {error}',
+  'Minify': 'Zhustit',
+  'Edit value…': 'Upravit hodnotu…',
 }
