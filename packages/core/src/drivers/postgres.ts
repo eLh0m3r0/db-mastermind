@@ -2,7 +2,8 @@
 import pg from 'pg'
 import Cursor from 'pg-cursor'
 import { postgresDialect } from '../dialect.js'
-import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
+import { classifyStatement } from '../sql-split.js'
+import { ConnectionLostError, elapsed, QueryCancelledError, SessionTransactions, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import { openSshTunnel, type SshTunnel } from '../ssh.js'
 import type {
@@ -102,27 +103,57 @@ export class PostgresDriver implements DatabaseDriver {
   }
 
   private sessions = new Map<string, pg.PoolClient>()
+  private transactions = new SessionTransactions()
+
+  /**
+   * A checked-out client has no pool listener: when the server drops it (restart, VPN, idle kill) its 'error'
+   * event would crash the app. Errors surface through the failing query instead.
+   */
+  private async checkout(): Promise<pg.PoolClient> {
+    const client = await this.activePool.connect()
+    if (!(client as { dbmGuarded?: boolean }).dbmGuarded) {
+      client.on('error', () => {})
+      ;(client as { dbmGuarded?: boolean }).dbmGuarded = true
+    }
+    return client
+  }
 
   /** Sticky client per editor session so BEGIN … COMMIT across executions works. */
-  private async acquire(session?: string): Promise<{ client: pg.PoolClient; release: () => void }> {
+  private async acquire(session?: string): Promise<{ client: pg.PoolClient; release: (err?: unknown) => void }> {
     if (!session) {
-      const client = await this.activePool.connect()
-      return { client, release: () => client.release() }
+      const client = await this.checkout()
+      // A dead connection goes away instead of back to the pool.
+      return { client, release: (err) => client.release(isConnectionLost(err) ? true : undefined) }
     }
+    this.transactions.check(session)
     let client = this.sessions.get(session)
     if (!client) {
-      client = await this.activePool.connect()
+      client = await this.checkout()
       const c = client
       c.on('error', () => {
+        if (this.sessions.get(session) !== c) return
         this.sessions.delete(session)
+        this.transactions.dropped(session)
         c.release(true)
       })
       this.sessions.set(session, client)
     }
-    return { client, release: () => {} }
+    const c = client
+    return {
+      client,
+      release: (err) => {
+        // The session's transaction is gone with its connection; the next statement starts on a new one.
+        if (isConnectionLost(err) && this.sessions.get(session) === c) {
+          this.sessions.delete(session)
+          c.release(true)
+        }
+
+      },
+    }
   }
 
   async releaseSession(session: string): Promise<void> {
+    this.transactions.released(session)
     const client = this.sessions.get(session)
     this.sessions.delete(session)
     if (!client) return
@@ -131,7 +162,31 @@ export class PostgresDriver implements DatabaseDriver {
   }
 
   async execute(sql: string, options: QueryOptions = {}): Promise<QueryResult[]> {
+    try {
+      const results = await this.executeOnce(sql, options)
+      if (options.session) this.transactions.ran(options.session, sql)
+      return results
+    } catch (err) {
+      if (!isConnectionLost(err) || !safeToRetry(err, sql) || options.signal?.aborted) {
+        if (options.session) this.transactions.ran(options.session, sql)
+        throw err
+      }
+      // A connection the server dropped while idle fails before the statement runs: retry once on a fresh one,
+      // unless a transaction was open in it (that would silently continue in autocommit).
+      if (options.session) {
+        const open = this.transactions.isOpen(options.session)
+        this.transactions.released(options.session)
+        if (open) throw new ConnectionLostError()
+      }
+      const results = await this.executeOnce(sql, options)
+      if (options.session) this.transactions.ran(options.session, sql)
+      return results
+    }
+  }
+
+  private async executeOnce(sql: string, options: QueryOptions): Promise<QueryResult[]> {
     const { client, release } = await this.acquire(options.session)
+    let failure: unknown
     const pid = (client as unknown as { processID: number }).processID
     let cancelled = false
     const onAbort = () => {
@@ -156,17 +211,18 @@ export class PostgresDriver implements DatabaseDriver {
       const truncated = rows.length > options.maxRows
       return [this.toResult(result, truncated ? rows.slice(0, options.maxRows) : rows, truncated, elapsed(start))]
     } catch (err) {
+      failure = err
       if (cancelled) throw new QueryCancelledError()
       throw err
     } finally {
       options.signal?.removeEventListener('abort', onAbort)
-      release()
+      release(failure)
     }
   }
 
   async *stream(sql: string, options: StreamOptions = {}): AsyncGenerator<StreamBatch> {
     if (options.signal?.aborted) throw new QueryCancelledError()
-    const client = await this.activePool.connect()
+    const client = await this.checkout()
     const pid = (client as unknown as { processID: number }).processID
     let cancelled = false
     const onAbort = () => {
@@ -208,7 +264,8 @@ export class PostgresDriver implements DatabaseDriver {
   }
 
   async transaction(statements: BuiltQuery[]): Promise<number[]> {
-    const client = await this.activePool.connect()
+    const client = await this.checkout()
+    let failure: unknown
     try {
       await client.query('BEGIN')
       const affected: number[] = []
@@ -219,10 +276,11 @@ export class PostgresDriver implements DatabaseDriver {
       await client.query('COMMIT')
       return affected
     } catch (err) {
+      failure = err
       await client.query('ROLLBACK').catch(() => {})
       throw err
     } finally {
-      client.release()
+      client.release(isConnectionLost(failure) ? true : undefined)
     }
   }
 
@@ -432,4 +490,23 @@ export class PostgresDriver implements DatabaseDriver {
       capturedAt: new Date().toISOString(),
     }
   }
+}
+
+/** The connection itself is gone (server restart, admin kill, network): the client can't be reused. */
+export function isConnectionLost(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { code?: string; message?: string }
+  if (e.code && ['57P01', '57P02', '57P03', 'ECONNRESET', 'EPIPE', 'ETIMEDOUT', 'ECONNREFUSED'].includes(e.code)) return true
+  return /Connection terminated|terminating connection|Client has encountered a connection error|Connection is closed|not queryable/i.test(e.message ?? '')
+}
+
+/**
+ * Whether running `sql` again can't apply it twice: the client was dead before sending it, the server terminated the
+ * statement (and rolled it back), or it only reads. A connection that drops mid-write may have committed.
+ */
+function safeToRetry(err: unknown, sql: string): boolean {
+  const e = err as { code?: string; message?: string }
+  if (e.code && ['57P01', '57P02', '57P03'].includes(e.code)) return true
+  if (/not queryable|Client has encountered a connection error/i.test(e.message ?? '')) return true
+  return classifyStatement(sql) === 'read'
 }

@@ -308,3 +308,21 @@ export function isDangerousStatement(sql: string): boolean {
   if ((first === 'DELETE' || first === 'UPDATE') && !/\bWHERE\b/i.test(body)) return true
   return false
 }
+
+/**
+ * Whether a transaction is open after running `sql`, given whether one was open before. Explicit BEGIN / START
+ * TRANSACTION / BEGIN TRAN open one and COMMIT / ROLLBACK close it; with `implicitDml` (Oracle) a data change opens
+ * one too and DDL commits.
+ */
+export function nextTransactionState(open: boolean, sql: string, implicitDml = false): boolean {
+  const body = stripLiterals(sql)
+  const re = /\b(START\s+TRANSACTION|BEGIN\s+(?:TRAN|TRANSACTION|WORK)|BEGIN\s+(?:TRY|CATCH|DISTRIBUTED)|COMMIT|ROLLBACK(?:\s+(?:WORK\s+)?TO)?|INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE)\b|^\s*BEGIN\b/gim
+  for (const m of body.matchAll(re)) {
+    const word = m[0].trim().toUpperCase().replace(/\s+/g, ' ')
+    if (word === 'BEGIN' || /^(START TRANSACTION|BEGIN (TRAN|TRANSACTION|WORK))$/.test(word)) open = true
+    else if (word === 'COMMIT' || word === 'ROLLBACK') open = false
+    else if (implicitDml && /^(INSERT|UPDATE|DELETE|MERGE)$/.test(word)) open = true
+    else if (implicitDml && /^(CREATE|ALTER|DROP|TRUNCATE)$/.test(word)) open = false
+  }
+  return open
+}

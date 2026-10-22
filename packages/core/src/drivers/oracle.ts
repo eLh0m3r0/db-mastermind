@@ -1,7 +1,8 @@
 /// <reference path="../oracledb.d.ts" />
 import oracledb, { type Connection, type Metadata, type Pool } from 'oracledb'
 import { oracleDialect } from '../dialect.js'
-import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
+import { classifyStatement } from '../sql-split.js'
+import { ConnectionLostError, elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import { openSshTunnel, type SshTunnel } from '../ssh.js'
 import type { ConnectionConfig, QueryOptions, QueryResult, SchemaSnapshot, ServerInfo, TableInfo } from '../types.js'
@@ -128,6 +129,26 @@ export class OracleDriver implements DatabaseDriver {
   }
 
   async execute(sql: string, options: QueryOptions = {}): Promise<QueryResult[]> {
+    try {
+      return await this.executeOnce(sql, options)
+    } catch (err) {
+      if (!isConnectionLost(err) || options.signal?.aborted) throw err
+      const session = options.session
+      if (session) {
+        // Without this the session would keep its dead connection and fail every statement until a reconnect.
+        const conn = this.sessions.get(session)
+        this.sessions.delete(session)
+        void conn?.close().catch(() => {})
+        const open = this.manualTx.delete(session)
+        if (open) throw new ConnectionLostError()
+      }
+      // Run again on a fresh connection only when that can't apply a change twice.
+      if (classifyStatement(sql) !== 'read') throw err
+      return this.executeOnce(sql, options)
+    }
+  }
+
+  private async executeOnce(sql: string, options: QueryOptions): Promise<QueryResult[]> {
     if (options.signal?.aborted) throw new QueryCancelledError()
     const { conn, release } = await this.acquire(options.session)
     let cancelled = false
@@ -374,4 +395,9 @@ export class OracleDriver implements DatabaseDriver {
       capturedAt: new Date().toISOString(),
     }
   }
+}
+
+/** The connection is gone (session killed, server restart, network). */
+function isConnectionLost(err: unknown): boolean {
+  return /NJS-500|NJS-521|ORA-00028|ORA-02396|ORA-03113|ORA-03114|ORA-03135|DPI-1010|DPI-1080/.test((err as { message?: string })?.message ?? '')
 }

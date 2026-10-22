@@ -1,5 +1,6 @@
 import type { BuiltQuery } from './filters.js'
 import type { Dialect } from './dialect.js'
+import { nextTransactionState } from './sql-split.js'
 import type { CellValue, ConnectionConfig, QueryOptions, QueryResult, ResultField, SchemaSnapshot, ServerInfo } from './types.js'
 
 export interface IntrospectOptions {
@@ -107,6 +108,43 @@ export async function* batchesFromEvents(source: EventRowSource, batchSize: numb
     }
   } finally {
     if (!done) source.cancel()
+  }
+}
+
+/** A session's connection dropped (server restart, network) while it had uncommitted changes. */
+export class ConnectionLostError extends Error {
+  override name = 'ConnectionLostError'
+  constructor(message = 'The connection to the server was lost, and with it the open transaction: the server rolled back its uncommitted changes. Start the transaction again.') {
+    super(message)
+  }
+}
+
+/**
+ * Per-session transaction bookkeeping, so a session whose connection dropped mid-transaction says so once instead
+ * of silently continuing on a new connection in autocommit mode.
+ */
+export class SessionTransactions {
+  private open = new Map<string, boolean>()
+  private lost = new Set<string>()
+  constructor(private readonly implicitDml = false) {}
+  /** Before a statement: throws once if the session's connection dropped with a transaction open. */
+  check(session: string): void {
+    if (this.lost.delete(session)) throw new ConnectionLostError()
+  }
+  isOpen(session: string): boolean {
+    return this.open.get(session) ?? false
+  }
+  ran(session: string, sql: string): void {
+    this.open.set(session, nextTransactionState(this.isOpen(session), sql, this.implicitDml))
+  }
+  /** The connection went away while idle: the next statement reports it if a transaction was open. */
+  dropped(session: string): void {
+    if (this.isOpen(session)) this.lost.add(session)
+    this.open.delete(session)
+  }
+  released(session: string): void {
+    this.open.delete(session)
+    this.lost.delete(session)
   }
 }
 

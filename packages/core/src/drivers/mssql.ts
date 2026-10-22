@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import sql from 'mssql'
 import { mssqlDialect } from '../dialect.js'
-import { batchesFromEvents, elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
+import { batchesFromEvents, ConnectionLostError, elapsed, QueryCancelledError, SessionTransactions, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import { openSshTunnel, type SshTunnel } from '../ssh.js'
 import type { ConnectionConfig, QueryOptions, QueryResult, ResultField, SchemaSnapshot, ServerInfo, TableInfo } from '../types.js'
@@ -146,10 +146,11 @@ export class MssqlDriver implements DatabaseDriver {
   /** A session is a single-connection pool, so SET options and open transactions persist. */
   private async sessionPool(session?: string): Promise<sql.ConnectionPool> {
     if (!session) return this.activePool
+    this.transactions.check(session)
     let pool = this.sessions.get(session)
     if (!pool) {
       pool = new this.sql.ConnectionPool({ ...this.poolConfig!, pool: { max: 1, min: 0, idleTimeoutMillis: 3_600_000 } })
-      pool.on('error', () => {})
+      pool.on('error', () => this.transactions.dropped(session))
       await pool.connect()
       this.sessions.set(session, pool)
     }
@@ -157,6 +158,7 @@ export class MssqlDriver implements DatabaseDriver {
   }
 
   async releaseSession(session: string): Promise<void> {
+    this.transactions.released(session)
     const pool = this.sessions.get(session)
     this.sessions.delete(session)
     if (!pool) return
@@ -164,7 +166,27 @@ export class MssqlDriver implements DatabaseDriver {
     await pool.close().catch(() => {})
   }
 
+  private transactions = new SessionTransactions()
+
   async execute(text: string, options: QueryOptions = {}): Promise<QueryResult[]> {
+    const session = options.session
+    // A session is a one-connection pool that quietly reconnects when the server or network drops it (and SPIDs are
+    // reused). A transaction open on the old connection is gone then, and the next statements would autocommit
+    // unnoticed: while one should be open, check that the server still has it.
+    if (session && this.transactions.isOpen(session)) {
+      const pool = await this.sessionPool(session)
+      const r = await pool.request().query<{ n: number }>('SELECT @@TRANCOUNT AS n').catch(() => undefined)
+      if (!r || Number(r.recordset[0]?.n) === 0) {
+        this.transactions.released(session)
+        throw new ConnectionLostError('The open transaction is no longer active on the server (the connection was lost, or the server rolled it back). Its uncommitted changes are gone: start the transaction again.')
+      }
+    }
+    const results = await this.executeOnce(text, options)
+    if (session) this.transactions.ran(session, text)
+    return results
+  }
+
+  private async executeOnce(text: string, options: QueryOptions = {}): Promise<QueryResult[]> {
     if (options.signal?.aborted) throw new QueryCancelledError()
     const pool = await this.sessionPool(options.session)
     const request = pool.request()

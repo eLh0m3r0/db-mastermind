@@ -2,7 +2,7 @@ import type { Connection as CallbackConnection } from 'mysql2'
 import mysql from 'mysql2/promise'
 import type { FieldPacket, Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { mariadbDialect, mysqlDialect } from '../dialect.js'
-import { batchesFromEvents, elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
+import { batchesFromEvents, ConnectionLostError, elapsed, QueryCancelledError, SessionTransactions, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import { openSshTunnel, type SshTunnel } from '../ssh.js'
 import type {
@@ -109,12 +109,15 @@ export class MysqlDriver implements DatabaseDriver {
       const conn = await this.activePool.getConnection()
       return { conn, release: () => conn.release() }
     }
+    this.transactions.check(session)
     let conn = this.sessions.get(session)
     if (!conn) {
       conn = await this.activePool.getConnection()
       const c = conn
       ;(c.connection as unknown as CallbackConnection).on('error', () => {
+        if (this.sessions.get(session) !== c) return
         this.sessions.delete(session)
+        this.transactions.dropped(session)
         c.destroy()
       })
       this.sessions.set(session, conn)
@@ -123,6 +126,7 @@ export class MysqlDriver implements DatabaseDriver {
   }
 
   async releaseSession(session: string): Promise<void> {
+    this.transactions.released(session)
     const conn = this.sessions.get(session)
     this.sessions.delete(session)
     if (!conn) return
@@ -134,7 +138,30 @@ export class MysqlDriver implements DatabaseDriver {
     await this.activePool.query(`KILL QUERY ${Number(threadId)}`).catch(() => {})
   }
 
+  private transactions = new SessionTransactions()
+
   async execute(sql: string, options: QueryOptions = {}): Promise<QueryResult[]> {
+    const session = options.session
+    try {
+      const results = await this.executeOnce(sql, options)
+      if (session) this.transactions.ran(session, sql)
+      return results
+    } catch (err) {
+      if (!session) throw err
+      // The connection died under the statement: its transaction is gone; don't let the next one autocommit unnoticed.
+      if ((err as { fatal?: boolean }).fatal) {
+        const conn = this.sessions.get(session)
+        this.sessions.delete(session)
+        conn?.destroy()
+        const open = this.transactions.isOpen(session)
+        this.transactions.released(session)
+        if (open) throw new ConnectionLostError()
+      } else this.transactions.ran(session, sql)
+      throw err
+    }
+  }
+
+  private async executeOnce(sql: string, options: QueryOptions = {}): Promise<QueryResult[]> {
     if (options.signal?.aborted) throw new QueryCancelledError()
     const { conn, release } = await this.acquire(options.session)
     const threadId = conn.threadId
