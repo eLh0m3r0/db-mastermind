@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { markdown } from '@codemirror/lang-markdown'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { EditorState } from '@codemirror/state'
+import { searchKeymap } from '@codemirror/search'
 import { EditorView, keymap, placeholder } from '@codemirror/view'
 import { AlertTriangle, BookOpen, Eye, FilePlus2, FileText, FolderOpen, Pencil, RefreshCw, Save, Search, Sparkles, Trash2, Wrench } from 'lucide-react'
 import type { KnowledgeFileInfo } from '@shared/api'
@@ -51,7 +52,7 @@ function MarkdownEditor({ value, onChange, onSave, dark }: { value: string; onCh
           markdown(),
           EditorView.lineWrapping,
           placeholder(t('Write notes in Markdown…')),
-          keymap.of([{ key: 'Mod-s', run: () => (handlers.current.onSave(), true), preventDefault: true }, ...defaultKeymap, ...historyKeymap]),
+          keymap.of([{ key: 'Mod-s', run: () => (handlers.current.onSave(), true), preventDefault: true }, ...defaultKeymap, ...historyKeymap, ...searchKeymap]),
           EditorView.updateListener.of((u) => u.docChanged && handlers.current.onChange(u.state.doc.toString())),
           EditorView.theme(
             {

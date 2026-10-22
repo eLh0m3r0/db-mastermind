@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { bracketMatching, StreamLanguage } from '@codemirror/language'
 import { Compartment, EditorState } from '@codemirror/state'
+import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
 import { AlertTriangle, Database, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare } from 'lucide-react'
 import { createScript, getDialect, parseDbml, toDbml, type SchemaSnapshot } from '@dbmastermind/core/browser'
@@ -83,7 +84,9 @@ function DbmlEditor({ value, dark, onChange, onSave, jumpTo }: { value: string; 
           highlightActiveLine(),
           bracketMatching(),
           dbmlLanguage,
-          keymap.of([{ key: 'Mod-s', run: () => (handlers.current.onSave(), true), preventDefault: true }, indentWithTab, ...defaultKeymap, ...historyKeymap]),
+          keymap.of([{ key: 'Mod-s', run: () => (handlers.current.onSave(), true), preventDefault: true }, indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+          // Find & replace (⌘F) like the SQL editor; long models are hard to navigate without it.
+          highlightSelectionMatches(),
           theme.current.of(editorTheme(dark)),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) handlers.current.onChange(u.state.doc.toString())
