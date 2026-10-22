@@ -136,7 +136,7 @@ project's (AI) maintainer and updated with every release.
 - ✅ Front-matter conventions (`tables:`, `columns:`, `relations:`) so docs link to schema objects;
   virtual relationships defined in Markdown
 - ✅ Knowledge base used as context by in-app AI and exposed over MCP
-- ⬜ Staleness detection: warn when documented tables/columns no longer exist
+- ✅ Staleness detection: notes about tables, columns or relationships that no longer exist are flagged, AI can fix them
 
 ### MCP server
 - ✅ `npx dbmastermind-mcp` — standalone stdio MCP server using the same connections & knowledge base

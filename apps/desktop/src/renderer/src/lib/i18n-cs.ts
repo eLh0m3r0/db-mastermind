@@ -825,4 +825,9 @@ export const cs: Record<string, string> = {
   'Delete dashboard': 'Smazat dashboard',
   'Delete dashboard “{name}”?': 'Smazat dashboard „{name}“?',
   'This dashboard is empty': 'Dashboard je prázdný',
+  '{n} note is out of date': '{n} poznámka je zastaralá',
+  '{n} notes are out of date': '{n} poznámek je zastaralých',
+  '{n} notes are out of date|few': '{n} poznámky jsou zastaralé',
+  'Ask AI to update them': 'Nechat AI je aktualizovat',
+  'Update the knowledge base: these notes mention things that no longer exist in the database. Check the current schema and fix the notes (front matter tables and relations, and the text).\n\n{issues}': 'Aktualizuj znalostní bázi: tyto poznámky zmiňují věci, které už v databázi nejsou. Zkontroluj aktuální schéma a oprav poznámky (tables a relations ve front matter i text). Odpovídej česky.\n\n{issues}',
 }

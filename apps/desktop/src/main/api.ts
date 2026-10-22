@@ -27,6 +27,7 @@ import {
   getDialect,
   inlineParams,
   KnowledgeBase,
+  staleKnowledge,
   resolveInside,
   SAMPLE_KNOWLEDGE,
   sampleDatabaseSql,
@@ -544,6 +545,10 @@ export const api: MastermindApi = {
     await mkdir(folder, { recursive: true })
     connections.saveConnection({ ...config, knowledgeBasePath: folder })
     return folder
+  },
+  async kbIssues(connectionId) {
+    await ensureConnected(connectionId)
+    return staleKnowledge(knowledge(connectionId), await db.schema(connectionId))
   },
   async kbList(connectionId) {
     return knowledge(connectionId).list()

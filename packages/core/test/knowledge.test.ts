@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { KnowledgeBase, parseFrontMatter, parseRelation, withDocumentedRelations, type SchemaSnapshot } from '../src/index.js'
+import { KnowledgeBase, parseFrontMatter, parseRelation, staleKnowledge, withDocumentedRelations, type SchemaSnapshot } from '../src/index.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'dbm-kb-test-'))
 mkdirSync(join(dir, 'sales'))
@@ -62,4 +62,25 @@ describe('knowledge base', () => {
     expect(orders.foreignKeys).toEqual([expect.objectContaining({ columns: ['customer_code'], refTable: 'customers', refColumns: ['code'], virtual: true, refSchema: 'public' })])
     expect(result.tables.find((t) => t.name === 'invoices')!.foreignKeys[0]).toMatchObject({ refTable: 'orders', refColumns: ['id'] })
   })
+
+  it('reports notes about tables and columns that no longer exist', async () => {
+    const col = (name: string) => ({ name, ordinal: 1, dataType: 'text', nullable: true, isPrimaryKey: false, isIdentity: false })
+    const snapshot: SchemaSnapshot = {
+      schemas: [''],
+      routines: [],
+      capturedAt: '',
+      tables: [
+        { name: 'orders', type: 'table', columns: [col('id'), col('customer_ref')], primaryKey: [], foreignKeys: [], indexes: [] },
+        { name: 'customers', type: 'table', columns: [col('code')], primaryKey: [], foreignKeys: [], indexes: [] },
+      ],
+    }
+    const issues = await staleKnowledge(kb, snapshot)
+    expect(issues.map((i) => i.message).sort()).toEqual([
+      'Relationship invoices → orders: table invoices no longer exists',
+      'Relationship orders → customers: column orders.customer_code no longer exists',
+      'Table invoices no longer exists',
+    ])
+    expect(issues.every((i) => i.path === 'sales/orders.md')).toBe(true)
+  })
 })
+

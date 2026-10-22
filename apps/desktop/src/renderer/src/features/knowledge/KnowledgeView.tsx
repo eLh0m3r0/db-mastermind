@@ -3,7 +3,7 @@ import { markdown } from '@codemirror/lang-markdown'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { EditorState } from '@codemirror/state'
 import { EditorView, keymap, placeholder } from '@codemirror/view'
-import { BookOpen, Eye, FilePlus2, FileText, FolderOpen, Pencil, RefreshCw, Save, Search, Sparkles, Trash2 } from 'lucide-react'
+import { AlertTriangle, BookOpen, Eye, FilePlus2, FileText, FolderOpen, Pencil, RefreshCw, Save, Search, Sparkles, Trash2 } from 'lucide-react'
 import type { KnowledgeFileInfo } from '@shared/api'
 import { Button, IconButton } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -12,7 +12,7 @@ import { api, modKey } from '@/lib/api'
 import { cn, errorMessage, fuzzyScore } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
-import { toast } from '@/store/ui'
+import { askAi, toast } from '@/store/ui'
 import { useWorkspace, type KnowledgeTab } from '@/store/workspace'
 import { Markdown } from '../ai/Markdown'
 import { askAiToDocument } from './generate'
@@ -77,6 +77,7 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
   const updateTab = useWorkspace((s) => s.update)
   const dark = useSettings((s) => s.dark)
   const [files, setFiles] = useState<KnowledgeFileInfo[]>([])
+  const [issues, setIssues] = useState<{ path: string; message: string }[]>([])
   const [search, setSearch] = useState('')
   const [content, setContent] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
@@ -89,6 +90,8 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
     if (!folder) return
     try {
       setFiles(await api.kbList(tab.connectionId))
+      // Staleness needs the live schema; a failed check just shows no warnings.
+      void api.kbIssues(tab.connectionId).then(setIssues, () => setIssues([]))
     } catch (err) {
       toast({ kind: 'error', message: t('Could not read the knowledge base'), detail: errorMessage(err) })
     }
@@ -223,6 +226,11 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
               <span className="flex items-center gap-1.5 text-[12.5px]">
                 <FileText size={12} className="shrink-0 text-fg-faint" />
                 <span className="truncate">{f.title}</span>
+                {issues.some((i) => i.path === f.path) && (
+                  <span title={issues.filter((i) => i.path === f.path).map((i) => i.message).join('\n')} className="ml-auto shrink-0 text-warning">
+                    <AlertTriangle size={12} />
+                  </span>
+                )}
               </span>
               <span className="truncate pl-[18px] text-[10.5px] text-fg-faint">
                 {f.path}
@@ -232,6 +240,24 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
           ))}
           {files.length === 0 && <div className="p-3 text-[12px] text-fg-faint">{t('No notes yet.')}</div>}
         </div>
+        {issues.length > 0 && (
+          <div className="border-t border-line bg-warning-soft px-3 py-2 text-[11.5px] text-warning">
+            <div className="mb-1 font-medium">{tp(new Set(issues.map((i) => i.path)).size, { one: '{n} note is out of date', many: '{n} notes are out of date' })}</div>
+            <button
+              type="button"
+              className="underline"
+              onClick={() =>
+                askAi({
+                  prompt: t('Update the knowledge base: these notes mention things that no longer exist in the database. Check the current schema and fix the notes (front matter tables and relations, and the text).\n\n{issues}', {
+                    issues: issues.map((i) => `- ${i.path}: ${i.message}`).join('\n'),
+                  }),
+                })
+              }
+            >
+              {t('Ask AI to update them')}
+            </button>
+          </div>
+        )}
         <div className="border-t border-line p-2">
           <Button className="w-full" icon={<Sparkles size={13} />} onClick={askAiToDocument}>
             {files.length ? t('Ask AI to extend notes') : t('Generate with AI')}

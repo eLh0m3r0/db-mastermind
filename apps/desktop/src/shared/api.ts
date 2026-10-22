@@ -330,6 +330,8 @@ export interface MastermindApi {
   /** Knowledge base of a connection; creates a default folder in the data dir when asked. */
   kbEnsureFolder(connectionId: string): Promise<string>
   kbList(connectionId: string): Promise<KnowledgeFileInfo[]>
+  /** Notes mentioning tables, columns or relationships the database no longer has. */
+  kbIssues(connectionId: string): Promise<{ path: string; message: string }[]>
   kbRead(connectionId: string, path: string): Promise<string>
   kbWrite(connectionId: string, path: string, content: string): Promise<string>
   kbDelete(connectionId: string, path: string): Promise<void>
@@ -420,6 +422,7 @@ export const API_METHODS = [
   'showItemInFolder',
   'kbEnsureFolder',
   'kbList',
+  'kbIssues',
   'kbRead',
   'kbWrite',
   'kbDelete',

@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve, sep } from 'node:path'
-import type { ForeignKeyInfo } from './types.js'
+import { findTable } from './schema-utils.js'
+import type { ForeignKeyInfo, SchemaSnapshot } from './types.js'
 
 /**
  * A knowledge base is a folder of Markdown files describing a database: business meaning of tables,
@@ -247,4 +248,35 @@ export function relationToForeignKey(r: VirtualRelation): { table: string; fk: F
       virtual: true,
     },
   }
+}
+
+export interface KnowledgeIssue {
+  path: string
+  message: string
+}
+
+/** Notes that mention tables, columns or relationships the database no longer has. */
+export async function staleKnowledge(kb: KnowledgeBase, snapshot: SchemaSnapshot): Promise<KnowledgeIssue[]> {
+  const issues: KnowledgeIssue[] = []
+  const table = (name: string) => {
+    const parts = name.split('.')
+    return findTable(snapshot, parts.length > 1 ? { schema: parts[0], name: parts.slice(1).join('.') } : { name })
+  }
+  for (const file of await kb.list()) {
+    for (const name of file.tables) if (!table(name)) issues.push({ path: file.path, message: `Table ${name} no longer exists` })
+  }
+  for (const r of await kb.relations()) {
+    const from = table(r.fromTable)
+    const to = table(r.toTable)
+    if (!from || !to) {
+      issues.push({ path: r.source, message: `Relationship ${r.fromTable} → ${r.toTable}: table ${!from ? r.fromTable : r.toTable} no longer exists` })
+      continue
+    }
+    const missing = [
+      ...r.fromColumns.filter((c) => !from.columns.some((x) => x.name.toLowerCase() === c.toLowerCase())).map((c) => `${r.fromTable}.${c}`),
+      ...r.toColumns.filter((c) => !to.columns.some((x) => x.name.toLowerCase() === c.toLowerCase())).map((c) => `${r.toTable}.${c}`),
+    ]
+    if (missing.length) issues.push({ path: r.source, message: `Relationship ${r.fromTable} → ${r.toTable}: column ${missing.join(', ')} no longer exists` })
+  }
+  return issues
 }
