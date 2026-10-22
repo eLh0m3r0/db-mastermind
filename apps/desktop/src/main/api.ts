@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { mkdir, open, readFile, rm, writeFile } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 import { basename, extname, join } from 'node:path'
@@ -43,6 +44,7 @@ import {
   forgetHostKey,
   trustedHostKey,
   isPasswordProblem,
+  pgpassLookup,
   describeError,
   PasswordRequiredError,
 } from '@dbmastermind/core'
@@ -197,7 +199,9 @@ export const api: MastermindApi = {
   },
   async connect(id, password) {
     const stored = connections.getConnection(id)
-    const config = password ? { ...stored, password: password.value } : stored
+    // No saved password for PostgreSQL: use ~/.pgpass (PGPASSFILE) like psql and pgAdmin do.
+    const pgpass = !password && !stored.password && stored.driver === 'postgres' ? readPgpassPassword(stored) : undefined
+    const config = password ? { ...stored, password: password.value } : pgpass ? { ...stored, password: pgpass } : stored
     let serverInfo
     try {
       serverInfo = await db.connect(config)
@@ -791,4 +795,14 @@ export const api: MastermindApi = {
   async saveWorkspace(state) {
     library.saveWorkspace(state)
   },
+}
+
+/** The .pgpass password for a PostgreSQL connection, as libpq would find it. */
+function readPgpassPassword(config: ConnectionConfig): string | undefined {
+  const file = process.env.PGPASSFILE ?? (process.platform === 'win32' ? join(app.getPath('appData'), 'postgresql', 'pgpass.conf') : join(homedir(), '.pgpass'))
+  try {
+    return existsSync(file) ? pgpassLookup(readFileSync(file, 'utf8'), config) : undefined
+  } catch {
+    return undefined
+  }
 }

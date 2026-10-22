@@ -195,7 +195,7 @@ function readDbeaver(): Imported[] {
   const sourcesFile = join(dir, 'data-sources.json')
   if (!existsSync(sourcesFile)) throw new Error('DBeaver data was not found on this computer')
   const sources = JSON.parse(readFileSync(sourcesFile, 'utf8')) as {
-    connections?: Record<string, { provider?: string; driver?: string; name?: string; configuration?: Record<string, unknown> }>
+    connections?: Record<string, { provider?: string; driver?: string; name?: string; folder?: string; configuration?: Record<string, unknown> }>
   }
   let credentials: Record<string, { '#connection'?: { user?: string; password?: string } }> = {}
   const credFile = join(dir, 'credentials-config.json')
@@ -229,6 +229,7 @@ function readDbeaver(): Imported[] {
       user: cred?.user ?? str(cfg.user),
       password: cred?.password,
       environment: envMap[String(cfg.type ?? '')],
+      group: str(c.folder),
     })
   }
   return out

@@ -67,6 +67,14 @@ describe('pgpass', () => {
       { name: 'localhost', driver: 'postgres', host: 'localhost', port: 5432, database: undefined, user: 'postgres', password: 'pw' },
     ])
   })
+  it('looks a password up the way libpq does: first matching line, * matches anything', async () => {
+    const { pgpassLookup } = await import('../src/index.js')
+    const file = '# c\ndb.example.com:5433:crm:analyst:s3cr\\:et\ndb.example.com:*:*:analyst:fallback\n*:*:*:postgres:pg\n'
+    expect(pgpassLookup(file, { host: 'db.example.com', port: 5433, database: 'crm', user: 'analyst' })).toBe('s3cr:et')
+    expect(pgpassLookup(file, { host: 'db.example.com', port: 5432, database: 'other', user: 'analyst' })).toBe('fallback')
+    expect(pgpassLookup(file, { host: 'anywhere', database: undefined, user: 'postgres' })).toBe('pg')
+    expect(pgpassLookup(file, { host: 'anywhere', user: 'nobody' })).toBeUndefined()
+  })
 })
 
 

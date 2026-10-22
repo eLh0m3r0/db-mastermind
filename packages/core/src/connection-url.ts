@@ -179,6 +179,24 @@ export function parsePgpass(text: string): Omit<ConnectionConfig, 'id'>[] {
   return out
 }
 
+/**
+ * The password libpq would read from a .pgpass file for this connection: the first line whose host, port, database
+ * and user match (`*` matches anything). Undefined when no line matches.
+ */
+export function pgpassLookup(
+  text: string,
+  target: { host?: string; port?: number; database?: string; user?: string },
+): string | undefined {
+  const want = [target.host || 'localhost', String(target.port ?? 5432), target.database || 'postgres', target.user ?? '']
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim() || line.trimStart().startsWith('#')) continue
+    const fields = line.split(/(?<!\\):/).map((f) => f.replace(/\\([:\\])/g, '$1'))
+    if (fields.length < 5) continue
+    if (want.every((value, i) => fields[i] === '*' || fields[i] === value)) return fields.slice(4).join(':')
+  }
+  return undefined
+}
+
 /** `oracle:thin:@host:1521/service`, `@//host:1521/service`, `@host:1521:SID` or `@(DESCRIPTION=…)`. */
 function parseOracleThin(text: string): Parsed {
   const target = text.replace(/^oracle:thin:/i, '')
