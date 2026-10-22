@@ -111,6 +111,8 @@ New to the app? Click **Try the demo database** on the start screen.
 
 ## For teams and IT
 
+Czech quick guide for colleagues: [docs/navod.md](docs/navod.md).
+
 Deploy with Intune, SCCM or Group Policy using the per-machine `DB-Mastermind-<version>-win-x64.msi`
 (`msiexec /i DB-Mastermind-….msi /qn`).
 Drop a `dbmastermind-managed.json` next to the portable app (or in `%ProgramData%\DB Mastermind\`) to give everyone
