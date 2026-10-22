@@ -86,23 +86,40 @@ function macSecretKey(): Buffer | null {
   const account = createHash('sha256').update(app.getPath('userData')).digest('hex').slice(0, 16)
   const security = (args: string[]) => execFileSync('/usr/bin/security', args, { stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 }).toString().trim()
   try {
-    let hex = ''
-    try {
-      hex = security(['find-generic-password', '-s', service, '-a', account, '-w'])
-    } catch {
-      // Not created yet.
-    }
-    if (!/^[0-9a-f]{64}$/.test(hex)) {
-      hex = randomBytes(32).toString('hex')
-      security(['add-generic-password', '-U', '-s', service, '-a', account, '-l', 'DB Mastermind', '-w', hex])
-      if (security(['find-generic-password', '-s', service, '-a', account, '-w']) !== hex) throw new Error('Key not stored')
-    }
-    macKey = Buffer.from(hex, 'hex')
+    macKey = readOrCreateMacKey(security, service, account)
   } catch (err) {
+    // Secrets this session are encrypted with safeStorage instead; ones under this key are kept, not lost.
     if (process.env.DBM_DEBUG) console.error('macOS secret key unavailable:', err)
     macKey = null
   }
   return macKey
+}
+
+/** `security` exits with this when the keychain has no such item (errSecItemNotFound). */
+const KEYCHAIN_ITEM_NOT_FOUND = 44
+
+/**
+ * Reads the key, creating it only when the keychain says there is none. Any other failure (locked keychain, timeout)
+ * throws instead: a new key would replace the one every saved password is encrypted with.
+ */
+export function readOrCreateMacKey(security: (args: string[]) => string, service: string, account: string): Buffer {
+  const find = ['find-generic-password', '-s', service, '-a', account, '-w']
+  let hex: string
+  try {
+    hex = security(find)
+  } catch (err) {
+    if ((err as { status?: number }).status !== KEYCHAIN_ITEM_NOT_FOUND) throw err
+    const created = randomBytes(32).toString('hex')
+    try {
+      // No -U: never overwrite a key. Adding fails when another process (the MCP server) created one meanwhile.
+      security(['add-generic-password', '-s', service, '-a', account, '-l', 'DB Mastermind', '-w', created])
+    } catch {
+      // Use the one that exists.
+    }
+    hex = security(find)
+  }
+  if (!/^[0-9a-f]{64}$/.test(hex)) throw new Error('The stored key is malformed')
+  return Buffer.from(hex, 'hex')
 }
 
 /** AES-256-GCM: base64(iv | tag | ciphertext). */
@@ -153,9 +170,41 @@ export async function decryptSecret(value: string | undefined): Promise<string |
     }
     if (value.startsWith(PLAIN_PREFIX)) return Buffer.from(value.slice(PLAIN_PREFIX.length), 'base64').toString('utf8')
   } catch (err) {
-    // Encrypted on another machine/user (e.g. portable folder copied): the secret must be re-entered.
+    // Encrypted on another machine/user (e.g. portable folder copied), or the keychain is unavailable right now: the
+    // secret must be re-entered. Callers keep the ciphertext (see UnreadableSecrets), so a passing outage loses nothing.
     if (process.env.DBM_DEBUG) console.error('decryptSecret failed:', err)
     return undefined
   }
   return value
+}
+
+/**
+ * Secrets that couldn't be decrypted when loading, by owner and field. Saving writes their ciphertext back unchanged
+ * until a new value replaces it; otherwise the first save after a keychain hiccup would erase them for good.
+ */
+export class UnreadableSecrets {
+  private kept = new Map<string, string>()
+
+  /** Decrypts, remembering the ciphertext when that fails. */
+  async decrypt(owner: string, field: string, value: string | undefined): Promise<string | undefined> {
+    const plain = await decryptSecret(value)
+    if (value && plain === undefined) this.kept.set(`${owner}\n${field}`, value)
+    return plain
+  }
+
+  /** Encrypts a value, or gives back the kept ciphertext when there's none. A new value replaces the kept one. */
+  async encrypt(owner: string, field: string, value: string | undefined): Promise<string | undefined> {
+    const key = `${owner}\n${field}`
+    if (!value) return this.kept.get(key) ?? value
+    this.kept.delete(key)
+    return encryptSecret(value)
+  }
+
+  has(owner: string, field: string): boolean {
+    return this.kept.has(`${owner}\n${field}`)
+  }
+
+  clear(): void {
+    this.kept.clear()
+  }
 }

@@ -14,3 +14,7 @@ test-results/
 playwright-report/
 e2e-shots/
 packages/mcp/dist/
+
+# Scratch files from local checks and electron-vite
+*.tmp.mts
+electron.vite.config.ts.*.mjs

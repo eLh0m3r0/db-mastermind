@@ -3,7 +3,7 @@ import { app } from 'electron'
 import type { AiProviderSettings, AppSettings } from '@shared/api'
 import { managedConfig } from './managed'
 import { enforceManagedSettings } from './managed-config'
-import { decryptSecret, encryptSecret, readJson, takeLegacySecretsFlag, writeJson } from './storage'
+import { readJson, takeLegacySecretsFlag, UnreadableSecrets, writeJson } from './storage'
 
 const FILE = 'settings.json'
 
@@ -26,8 +26,11 @@ export function defaultSettings(): AppSettings {
 
 let cached: AppSettings | undefined
 
-function mapKeys(providers: AiProviderSettings[], fn: (v: string | undefined) => Promise<string | undefined>) {
-  return Promise.all(providers.map(async (p) => ({ ...p, apiKey: await fn(p.apiKey) })))
+/** API keys that didn't decrypt (keychain unavailable): saving keeps them instead of erasing them. */
+const unreadable = new UnreadableSecrets()
+
+function mapKeys(providers: AiProviderSettings[], fn: (owner: string, field: string, v: string | undefined) => Promise<string | undefined>) {
+  return Promise.all(providers.map(async (p) => ({ ...p, apiKey: await fn(p.id, 'apiKey', p.apiKey) })))
 }
 
 /** Reads settings and decrypts API keys. Must run after app 'ready'. */
@@ -35,10 +38,11 @@ export async function loadSettings(): Promise<void> {
   const defaults = defaultSettings()
   const stored = readJson<Partial<AppSettings>>(FILE, {})
   takeLegacySecretsFlag()
+  unreadable.clear()
   cached = enforceManagedSettings({
     ...defaults,
     ...stored,
-    ai: { ...defaults.ai, ...stored.ai, providers: await mapKeys(stored.ai?.providers ?? [], decryptSecret) },
+    ai: { ...defaults.ai, ...stored.ai, providers: await mapKeys(stored.ai?.providers ?? [], (owner, field, v) => unreadable.decrypt(owner, field, v)) },
     mcp: { ...defaults.mcp, ...stored.mcp, token: stored.mcp?.token && stored.mcp.token.length >= 16 ? stored.mcp.token : defaults.mcp.token },
   }, managedConfig())
   // The first run stores the generated token (also replacing an empty or short one) and the detected language.
@@ -55,7 +59,7 @@ let writes = Promise.resolve()
 
 function persist(settings: AppSettings) {
   writes = writes
-    .then(async () => writeJson(FILE, { ...settings, ai: { ...settings.ai, providers: await mapKeys(settings.ai.providers, encryptSecret) } }))
+    .then(async () => writeJson(FILE, { ...settings, ai: { ...settings.ai, providers: await mapKeys(settings.ai.providers, (owner, field, v) => unreadable.encrypt(owner, field, v)) } }))
     .catch((err: unknown) => console.error('Could not save settings', err))
 }
 

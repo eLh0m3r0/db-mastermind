@@ -4,7 +4,7 @@ import type { ExplorerPrefs, StoredConnection } from '@shared/api'
 import { managedConfig } from './managed'
 import { mergeManagedConnections } from './managed-config'
 import { team } from './team'
-import { decryptSecret, encryptSecret, readJson, takeLegacySecretsFlag, writeJson } from './storage'
+import { readJson, takeLegacySecretsFlag, UnreadableSecrets, writeJson } from './storage'
 
 const FILE = 'connections.json'
 
@@ -12,16 +12,19 @@ const SSH_SECRETS = ['password', 'privateKey', 'passphrase'] as const
 
 async function transformSecrets(
   c: StoredConnection,
-  fn: (v: string | undefined) => Promise<string | undefined>,
+  fn: (v: string | undefined, field: string) => Promise<string | undefined>,
 ): Promise<StoredConnection> {
-  const out: StoredConnection = { ...c, password: await fn(c.password) }
+  const out: StoredConnection = { ...c, password: await fn(c.password, 'password') }
   if (c.ssh) {
     out.ssh = { ...c.ssh }
-    for (const key of SSH_SECRETS) out.ssh[key] = await fn(c.ssh[key])
+    for (const key of SSH_SECRETS) out.ssh[key] = await fn(c.ssh[key], `ssh.${key}`)
   }
-  if (c.ssl?.key) out.ssl = { ...c.ssl, key: await fn(c.ssl.key) }
+  if (c.ssl && (c.ssl.key || unreadable.has(c.id, 'ssl.key'))) out.ssl = { ...c.ssl, key: await fn(c.ssl.key, 'ssl.key') }
   return out
 }
+
+/** Ciphertexts that didn't decrypt (keychain unavailable): saving keeps them instead of erasing the passwords. */
+const unreadable = new UnreadableSecrets()
 
 let cache: StoredConnection[] = []
 
@@ -33,7 +36,8 @@ function mergeAll(stored: StoredConnection[]): StoredConnection[] {
 /** Reads and decrypts saved connections. Must run after app 'ready', before anything uses them. */
 export async function loadConnections(): Promise<void> {
   takeLegacySecretsFlag()
-  const stored = await Promise.all(readJson<StoredConnection[]>(FILE, []).map((c) => transformSecrets(c, decryptSecret)))
+  unreadable.clear()
+  const stored = await Promise.all(readJson<StoredConnection[]>(FILE, []).map((c) => transformSecrets(c, (v, field) => unreadable.decrypt(c.id, field, v))))
   cache = mergeAll(stored)
   // Passwords in an older encryption format are saved again in the current one.
   if (takeLegacySecretsFlag()) persist()
@@ -49,7 +53,7 @@ let writes = Promise.resolve()
 function persist() {
   const snapshot = cache
   writes = writes
-    .then(async () => writeJson(FILE, await Promise.all(snapshot.map((c) => transformSecrets(c, encryptSecret)))))
+    .then(async () => writeJson(FILE, await Promise.all(snapshot.map((c) => transformSecrets(c, (v, field) => unreadable.encrypt(c.id, field, v))))))
     .catch((err: unknown) => console.error('Could not save connections', err))
 }
 
