@@ -300,6 +300,15 @@ export function isReadOnlyScript(script: string, driver: DriverId): boolean {
   return splitStatements(script, driver).every((s) => classifyStatement(s.text) === 'read')
 }
 
+/**
+ * True when SQL that ran may have changed the schema, so the explorer should reload it. Looks past the first word:
+ * a T-SQL batch runs as one statement (`SET XACT_ABORT ON; BEGIN TRANSACTION; CREATE TABLE …`), and so can a
+ * statement after a comment.
+ */
+export function changesSchema(sql: string): boolean {
+  return /\b(CREATE|ALTER|DROP|RENAME|COMMENT\s+ON|SP_RENAME)\b/i.test(stripLiterals(sql))
+}
+
 /** True when a statement can destroy data without a WHERE clause or drops objects. */
 export function isDangerousStatement(sql: string): boolean {
   const body = stripLiterals(sql)

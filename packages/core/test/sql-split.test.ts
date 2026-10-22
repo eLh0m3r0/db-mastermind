@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  changesSchema,
   classifyStatement,
   isDangerousStatement,
   isReadOnlyScript,
@@ -118,5 +119,21 @@ describe('classifyStatement', () => {
     expect(isDangerousStatement('delete from t where id = 1')).toBe(false)
     expect(isDangerousStatement("update t set a = 'where'")).toBe(true)
     expect(isDangerousStatement('drop table x')).toBe(true)
+  })
+})
+
+describe('changesSchema', () => {
+  it('finds DDL anywhere in a batch, not only as the first word', () => {
+    expect(changesSchema('CREATE TABLE t (id int)')).toBe(true)
+    expect(changesSchema('SET XACT_ABORT ON; BEGIN TRANSACTION; CREATE TABLE [dbo].[t] ([id] int); COMMIT TRANSACTION;')).toBe(true)
+    expect(changesSchema('-- migration\nALTER TABLE t ADD c int')).toBe(true)
+    expect(changesSchema("EXEC sp_rename 'dbo.t', 't2'")).toBe(true)
+    expect(changesSchema("COMMENT ON TABLE t IS 'x'")).toBe(true)
+  })
+  it('ignores reads and words inside strings or comments', () => {
+    expect(changesSchema('SELECT * FROM t')).toBe(false)
+    expect(changesSchema("SELECT 'drop table x' AS s")).toBe(false)
+    expect(changesSchema('SELECT 1 -- create later')).toBe(false)
+    expect(changesSchema('UPDATE t SET a = 1 WHERE id = 2')).toBe(false)
   })
 })

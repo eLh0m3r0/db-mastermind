@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { closeCompletion } from '@codemirror/autocomplete'
 import { format as formatSql, type SqlLanguage } from 'sql-formatter'
 import { Activity, BookmarkPlus, Play, PlayCircle, Sparkles, Square, Wand2 } from 'lucide-react'
-import { extractParameters, isDangerousStatement, splitStatements, type DriverId, type ExplainResult, type QueryParameter, type StatementOutcome } from '@dbmastermind/core/browser'
+import { changesSchema, extractParameters, isDangerousStatement, splitStatements, type DriverId, type ExplainResult, type QueryParameter, type StatementOutcome } from '@dbmastermind/core/browser'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -116,7 +116,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
           const pos = failed.error.position
           editor.current?.markError(target.offset + failed.start + (pos ? pos - 1 : 0))
         }
-        if (result.some((o) => /^\s*(create|alter|drop|rename)\b/i.test(o.sql) && !o.error)) void loadSchema(tab.connectionId, true)
+        if (result.some((o) => !o.error && changesSchema(o.sql))) void loadSchema(tab.connectionId, true)
       } catch (err) {
         if (runId.current !== id) return
         setOutcomes([{ sql: target.sql, start: 0, end: target.sql.length, error: { message: errorMessage(err) }, durationMs: 0 }])
