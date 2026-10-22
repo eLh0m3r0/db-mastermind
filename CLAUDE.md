@@ -71,3 +71,9 @@ npm run dev                   # desktop app with HMR
 - New dependencies: pin an exact version published at least two weeks ago.
 - Things that touch the user's machine in tests (MCP client configs, DataGrip, team folders) run against a temp
   `HOME` / `DBM_USER_DATA`; never against the real configuration.
+- electron-updater is CommonJS with a lazy `autoUpdater` export: load it through `loadAutoUpdater()` (falls back to
+  `default.autoUpdater`); a plain `import('electron-updater')` destructure is undefined and silently broke updates
+  in 0.9.0/0.9.1. `update-check.yml` builds the current code as 0.0.1, installs it on Windows and updates it to the
+  latest release; the updater logs to `<data>/logs/updater.log`.
+- Text that ends up in the MSIX manifest (app description) must not contain a bare `&`.
+- AI permissions are enforced in main through `aiAccess(config)` (main/ai-access.ts): never check `aiEnabled` directly.
