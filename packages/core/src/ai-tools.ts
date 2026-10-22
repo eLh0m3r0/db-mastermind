@@ -3,7 +3,7 @@ import { explainQuery, type PlanNode } from './explain.js'
 import { KnowledgeBase } from './knowledge.js'
 import { getDialect } from './dialect.js'
 import { findJoinPath, findTable, incomingReferences, joinPathSql } from './schema-utils.js'
-import { classifyStatement, splitStatements } from './sql-split.js'
+import { isReadOnlyScript, splitStatements } from './sql-split.js'
 import type { DriverId, QueryResult, SchemaSnapshot, StatementOutcome, TableInfo } from './types.js'
 import { cellToText } from './values.js'
 
@@ -147,12 +147,17 @@ async function resolveTable(ctx: ToolContext, name: string, schemaName?: string)
   return { snapshot, table: found }
 }
 
+function summaryWithoutData(r: QueryResult): string {
+  if (r.fields.length) return `${r.rowCount} row(s) returned; not shown, because the user only shares the schema with the assistant.`
+  return `Done, ${r.affectedRows ?? r.rowCount} row(s) affected.`
+}
+
 async function runSql(ctx: ToolContext, sql: string, maxRows: number): Promise<string> {
   const config = ctx.db.config(ctx.connectionId)
   const statements = splitStatements(sql, config.driver)
   if (statements.length === 0) return 'Nothing to run.'
-  const writes = statements.filter((s) => classifyStatement(s.text) !== 'read')
-  if (writes.length) {
+  const writes = !isReadOnlyScript(sql, config.driver)
+  if (writes) {
     if (config.readOnly) return 'Refused: this connection is read-only.'
     if (!ctx.confirmWrite) return 'Refused: write statements are not allowed here. Show the SQL to the user instead.'
     const ok = await ctx.confirmWrite(sql)
@@ -161,12 +166,14 @@ async function runSql(ctx: ToolContext, sql: string, maxRows: number): Promise<s
     return 'Refused: the user only shares the schema with the assistant, not table contents. Write the SQL for the user to run instead.'
   }
   // Statements nobody confirmed run in a read-only transaction: a SELECT can still call a function that writes.
-  const outcomes = await ctx.db.runScript(ctx.connectionId, sql, { maxRows: Math.max(maxRows, 1), readOnly: !writes.length })
+  const outcomes = await ctx.db.runScript(ctx.connectionId, sql, { maxRows: Math.max(maxRows, 1), readOnly: !writes })
   for (const o of outcomes) ctx.onExecuted?.(o)
   return outcomes
     .map((o, i) => {
       const head = outcomes.length > 1 ? `Statement ${i + 1}: ` : ''
       if (o.error) return `${head}ERROR: ${o.error.message}${o.error.code ? ` [${o.error.code}]` : ''}`
+      // Schema only: the user approved a change, not sharing table contents (a SELECT in the script, RETURNING).
+      if (!ctx.allowData) return head + ((o.results ?? []).map(summaryWithoutData).join('\n') || 'Done.')
       return head + (o.results ?? []).map((r) => formatResultForModel(r, maxRows)).join('\n\n')
     })
     .join('\n\n')

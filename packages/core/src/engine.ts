@@ -14,7 +14,7 @@ import { buildChangeStatements, type RowChange } from './mutations.js'
 import { bindParameters, extractParameters } from './parameters.js'
 import { KnowledgeBase, relationToForeignKey } from './knowledge.js'
 import { findTable } from './schema-utils.js'
-import { classifyStatement, fitsReadOnlyTransaction, isReadOnlyScript, splitStatements } from './sql-split.js'
+import { classifyStatement, fitsReadOnlyTransaction, isReadOnlyCondition, isReadOnlyScript, splitStatements } from './sql-split.js'
 import type { ConnectionConfig, SchemaSnapshot, ServerInfo, StatementOutcome, TableInfo, TablePage, TableRef } from './types.js'
 
 export function createDriver(config: ConnectionConfig): DatabaseDriver {
@@ -184,6 +184,15 @@ export class DatabaseService {
     if (entry.config.readOnly && !isReadOnlyScript(sql, entry.config.driver)) throw new ReadOnlyViolationError()
   }
 
+  /** Free-form SQL in a filter only reads, on every connection: a filter (also one AI wrote) never changes data. */
+  private assertFilterReads(entry: OpenConnection, node: FilterNode | undefined) {
+    if (!node) return
+    if (node.kind === 'group') return node.children.forEach((child) => this.assertFilterReads(entry, child))
+    if (node.kind === 'raw' && node.sql.trim() && !isReadOnlyCondition(node.sql, entry.config.driver)) {
+      throw new ReadOnlyViolationError('A SQL filter can only be a condition that reads: run changes in the SQL editor.')
+    }
+  }
+
   /** Splits and runs a script statement by statement, collecting per-statement outcomes. */
   async runScript(id: string, script: string, options: RunScriptOptions = {}): Promise<StatementOutcome[]> {
     const entry = this.get(id)
@@ -287,6 +296,7 @@ export class DatabaseService {
 
   async fetchTable(id: string, options: FetchTableOptions): Promise<TablePage> {
     const entry = this.get(id)
+    this.assertFilterReads(entry, options.filter)
     const table = await this.findTable(id, options.table)
     // Without a chosen order, rows come back in storage order: an edited row jumps away after saving, and pages
     // (LIMIT/OFFSET) can overlap or skip rows. The primary key gives a stable order.
@@ -310,6 +320,7 @@ export class DatabaseService {
 
   async countTable(id: string, options: Pick<FetchTableOptions, 'table' | 'filter' | 'signal'>): Promise<number> {
     const entry = this.get(id)
+    this.assertFilterReads(entry, options.filter)
     const table = await this.findTable(id, options.table)
     const built = buildCount(
       { table: options.table, filter: options.filter, knownColumns: table?.columns.map((c) => c.name), columnTypes: table && Object.fromEntries(table.columns.map((c) => [c.name, c.dataType])) },

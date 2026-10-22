@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { formatResultForModel, type DbTool, type JsonSchema } from './ai-tools.js'
 import { describeError } from './engine.js'
 import type { KnowledgeBase } from './knowledge.js'
-import { classifyStatement, splitStatements } from './sql-split.js'
+import { isReadOnlyScript } from './sql-split.js'
 
 /**
  * Tool plugins: `tools/*.sql` in a connection's knowledge base become tools for the AI assistant and MCP agents.
@@ -77,7 +77,7 @@ export function sqlTool(spec: SqlToolSpec): DbTool {
     readOnly: true,
     async run(ctx, input) {
       const driver = ctx.db.config(ctx.connectionId).driver
-      if (splitStatements(spec.sql, driver).some((s) => classifyStatement(s.text) !== 'read')) return `Refused: tool files may only read data (${spec.file}).`
+      if (!isReadOnlyScript(spec.sql, driver)) return `Refused: tool files may only read data (${spec.file}).`
       if (!ctx.allowData) return 'Refused: the user only shares the schema with the assistant, not table contents.'
       const values: Record<string, string | null> = {}
       for (const p of spec.params) {

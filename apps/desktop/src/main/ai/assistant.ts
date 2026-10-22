@@ -2,7 +2,7 @@ import { addHistory } from '../library'
 import { randomUUID } from 'node:crypto'
 import { app, BrowserWindow } from 'electron'
 import { jsonSchema, stepCountIs, streamText, tool, type ModelMessage, type ToolSet } from 'ai'
-import { buildSystemPrompt, classifyStatement, DB_TOOLS, describeError, KnowledgeBase, loadSqlTools, type ToolContext } from '@dbmastermind/core'
+import { buildSystemPrompt, DB_TOOLS, isReadOnlyScript, describeError, KnowledgeBase, loadSqlTools, type ToolContext } from '@dbmastermind/core'
 import type { AiChatRequest, AiEvent } from '@shared/api'
 import { db } from '../api'
 import { aiAccess } from '../ai-access'
@@ -110,7 +110,7 @@ async function runChat(request: AiChatRequest): Promise<void> {
     if ((name === 'run_query' || name === 'sample_rows') && !settings.autoRunReadQueries) {
       const sql = name === 'run_query' ? String(input.sql ?? '') : `sample of ${String(input.table)}`
       // Writes are confirmed inside the tool; only reads need asking here.
-      if (name === 'sample_rows' || classifyStatement(sql) === 'read') {
+      if (name === 'sample_rows' || isReadOnlyScript(sql, config.driver)) {
         const ok = await askApproval(chatId, 'sql', sql, signal)
         if (!ok) return 'The user declined to run this query.'
       }

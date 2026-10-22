@@ -3,6 +3,7 @@ import {
   changesSchema,
   classifyStatement,
   isDangerousStatement,
+  isReadOnlyCondition,
   isReadOnlyScript,
   splitStatements,
   statementAtOffset,
@@ -104,7 +105,19 @@ describe('classifyStatement', () => {
     ['begin try select 1 end try', 'other'],
     ['pragma table_info(t)', 'read'],
     ['pragma journal_mode = wal', 'write'],
+    ['pragma journal_mode', 'read'],
+    ['pragma journal_mode(wal)', 'write'],
+    ['pragma user_version(5)', 'write'],
+    ['PRAGMA main.user_version = 5', 'write'],
+    ['pragma main.table_info("users")', 'read'],
+    ['pragma foreign_key_list(orders)', 'read'],
+    ['pragma integrity_check', 'read'],
+    ['pragma optimize', 'write'],
+    ['pragma incremental_vacuum', 'write'],
+    ['pragma wal_checkpoint(truncate)', 'write'],
     ['declare @x int = 1', 'read'],
+    ['declare cur cursor for select * from t', 'read'],
+    ['DECLARE n NUMBER; BEGIN DELETE FROM t; END;', 'other'],
   ])('%s → %s', (sql, kind) => {
     expect(classifyStatement(sql)).toBe(kind)
   })
@@ -112,6 +125,25 @@ describe('classifyStatement', () => {
   it('read-only scripts must contain only reads', () => {
     expect(isReadOnlyScript('select 1; select 2', 'postgres')).toBe(true)
     expect(isReadOnlyScript('select 1; delete from t', 'postgres')).toBe(false)
+  })
+
+  it('T-SQL: a write or COMMIT after a SELECT without a semicolon is not a read', () => {
+    expect(isReadOnlyScript('SELECT 1 DELETE FROM t', 'mssql')).toBe(false)
+    expect(isReadOnlyScript('select * from t update t set a = 1', 'mssql')).toBe(false)
+    expect(isReadOnlyScript('SELECT 1 COMMIT', 'mssql')).toBe(false)
+    expect(isReadOnlyScript('SELECT 1 EXEC sp_who', 'mssql')).toBe(false)
+    expect(isReadOnlyScript("SELECT REPLACE(name, 'a', 'b'), [update], 'delete' FROM [dbo].[insert] WITH (NOLOCK)", 'mssql')).toBe(true)
+    expect(isReadOnlyScript('SELECT create_date, updated_at FROM sys.objects', 'mssql')).toBe(true)
+    // Elsewhere statements end with semicolons, and column names may be keywords.
+    expect(isReadOnlyScript('SELECT update_count, "delete" FROM t', 'postgres')).toBe(true)
+  })
+
+  it('a filter condition is one condition that reads', () => {
+    expect(isReadOnlyCondition("status = 'open' AND id IN (SELECT order_id FROM items)", 'postgres')).toBe(true)
+    expect(isReadOnlyCondition("name = 'a; delete from t'", 'postgres')).toBe(true)
+    expect(isReadOnlyCondition('1=1); DELETE FROM t; --', 'postgres')).toBe(false)
+    expect(isReadOnlyCondition('1=1) DELETE FROM t --', 'mssql')).toBe(false)
+    expect(isReadOnlyCondition('1=1); PRAGMA user_version = 5; --', 'sqlite')).toBe(false)
   })
 
   it('flags dangerous statements', () => {

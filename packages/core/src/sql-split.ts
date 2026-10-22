@@ -234,7 +234,9 @@ export function classifyStatement(sql: string): StatementKind {
       // SELECT … INTO creates a table; EXPLAIN ANALYZE executes the statement.
       if (first === 'SELECT' && /\bINTO\b/i.test(stripLiterals(sql))) return 'write'
       if (first === 'EXPLAIN' && /\bANALY[SZ]E\b/i.test(sql) && WRITE_WORDS.test(stripLiterals(sql))) return 'write'
-      if (first === 'PRAGMA' && /=/.test(sql)) return 'write'
+      if (first === 'PRAGMA') return isReadPragma(sql) ? 'read' : 'write'
+      // DECLARE … BEGIN … END is a PL/SQL block, which can do anything.
+      if (first === 'DECLARE' && /\bBEGIN\b/i.test(stripLiterals(sql))) return 'other'
       return 'read'
     case 'WITH': {
       const body = stripLiterals(sql)
@@ -274,6 +276,22 @@ export function classifyStatement(sql: string): StatementKind {
   }
 }
 
+/** SQLite pragmas that only report something. Others change the database file or connection (or may, like optimize). */
+const READ_PRAGMAS = new Set(
+  'application_id auto_vacuum automatic_index busy_timeout cache_size cache_spill cell_size_check checkpoint_fullfsync collation_list compile_options data_version database_list defer_foreign_keys encoding foreign_key_check foreign_key_list foreign_keys freelist_count fullfsync function_list hard_heap_limit ignore_check_constraints index_info index_list index_xinfo integrity_check journal_mode journal_size_limit legacy_alter_table locking_mode max_page_count mmap_size module_list page_count page_size pragma_list query_only quick_check read_uncommitted recursive_triggers reverse_unordered_selects schema_version secure_delete soft_heap_limit synchronous table_info table_list table_xinfo temp_store threads trusted_schema user_version wal_autocheckpoint'.split(' '),
+)
+/** Pragmas whose argument names what to report on (`table_info(users)`); for the others an argument sets a value. */
+const READ_PRAGMAS_WITH_ARGUMENT = new Set('foreign_key_check foreign_key_list index_info index_list index_xinfo integrity_check quick_check table_info table_list table_xinfo'.split(' '))
+
+function isReadPragma(sql: string): boolean {
+  const m = /^\s*PRAGMA\s+(?:[\w"]+\s*\.\s*)?["]?(\w+)["]?\s*([=(])?/i.exec(stripLiterals(sql).trim())
+  if (!m) return false
+  const name = m[1]!.toLowerCase()
+  if (m[2] === '=') return false
+  if (m[2] === '(') return READ_PRAGMAS_WITH_ARGUMENT.has(name)
+  return READ_PRAGMAS.has(name)
+}
+
 export function stripLiterals(sql: string): string {
   return sql
     .replace(/'(?:[^']|'')*'/g, "''")
@@ -283,21 +301,39 @@ export function stripLiterals(sql: string): string {
 }
 
 /** Keywords that end, nest or leave a transaction, or run other code: not allowed inside a read-only guard. */
-const ESCAPES_TRANSACTION = /\b(COMMIT|ROLLBACK|SAVEPOINT|RELEASE|EXEC|EXECUTE|CALL|SET\s+TRANSACTION|BEGIN\s+TRAN\w*|START\s+TRANSACTION)\b/i
+const ESCAPES_TRANSACTION = /\b(COMMIT|ROLLBACK|SAVEPOINT|RELEASE|EXEC|EXECUTE|CALL|SET\s+TRANSACTION|BEGIN\s+TRAN\w*|SAVE\s+TRAN\w*|START\s+TRANSACTION)\b/i
+
+/** T-SQL that changes data or runs other code. T-SQL needs no semicolons, so it can follow a SELECT in one statement. */
+const TSQL_WRITES = /\b(INSERT|UPDATE|DELETE|MERGE|TRUNCATE|DROP|ALTER|CREATE|GRANT|REVOKE|DENY|INTO|BULK|DBCC|BACKUP|RESTORE|KILL|SHUTDOWN|RECONFIGURE|WRITETEXT|UPDATETEXT|OPENQUERY|OPENROWSET|OPENDATASOURCE)\b/i
 
 /**
- * True when a script may run inside a read-only transaction: only reads, and nothing that could end the transaction
- * (T-SQL needs no semicolons, so `SELECT 1 COMMIT DELETE …` is one statement that starts with SELECT).
+ * True when a script may run inside a read-only transaction: only reads, and nothing that could end the transaction.
+ * The same as isReadOnlyScript, which already rejects COMMIT, CALL and the like (and their T-SQL forms anywhere).
  */
 export function fitsReadOnlyTransaction(script: string, driver: DriverId): boolean {
-  if (!isReadOnlyScript(script, driver)) return false
-  // Elsewhere every statement ends with a semicolon, so splitting already isolates COMMIT, CALL and the like.
-  return driver !== 'mssql' || !ESCAPES_TRANSACTION.test(stripLiterals(script).replace(/\[[^\]]*\]/g, '[]'))
+  return isReadOnlyScript(script, driver)
 }
 
-/** True when every statement is a pure read. Unknown statements count as writes. */
+/**
+ * True when every statement is a pure read. Unknown statements count as writes. In T-SQL `SELECT 1 DELETE FROM t`
+ * (or `SELECT 1 COMMIT`) is one statement starting with SELECT, so the whole text is checked for writes too.
+ */
 export function isReadOnlyScript(script: string, driver: DriverId): boolean {
-  return splitStatements(script, driver).every((s) => classifyStatement(s.text) === 'read')
+  return splitStatements(script, driver).every((s) => {
+    if (classifyStatement(s.text) !== 'read') return false
+    if (driver !== 'mssql') return true
+    const body = stripLiterals(s.text).replace(/\[[^\]]*\]/g, '[]')
+    return !TSQL_WRITES.test(body) && !ESCAPES_TRANSACTION.test(body)
+  })
+}
+
+/**
+ * True when free-form filter SQL (typed in the grid, or written by AI) is only a condition: no second statement and
+ * nothing that writes, so a filter can't change data even where the connection could.
+ */
+export function isReadOnlyCondition(condition: string, driver: DriverId): boolean {
+  const probe = `SELECT 1 WHERE (${condition})`
+  return splitStatements(probe, driver).length === 1 && isReadOnlyScript(probe, driver)
 }
 
 /**
