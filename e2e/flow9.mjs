@@ -23,6 +23,8 @@ try {
   await open()
   await win.getByText('orders', { exact: true }).first().click({ button: 'right' })
   await win.getByText('Pin to top').click()
+  await win.getByText('public', { exact: true }).first().click({ button: 'right' })
+  await win.getByText('Hide schema').click()
   await win.waitForTimeout(500)
   await win.reload()
   await win.waitForTimeout(1000)

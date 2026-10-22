@@ -5,6 +5,7 @@ import {
   Code2,
   Copy,
   Eye,
+  EyeOff,
   FileText,
   FileCode2,
   Hash,
@@ -31,11 +32,12 @@ import { copyText, cn, formatCount, fuzzyScore } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { askAi } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
-import { useT } from '@/lib/i18n'
+import { tp, useT } from '@/lib/i18n'
 
 type Node =
   | { kind: 'schema'; key: string; name: string; count: number; depth: 0 }
   | { kind: 'group'; key: string; label: string; count: number; depth: number; groupKey: string }
+  | { kind: 'hidden'; key: string; count: number; depth: number }
   | { kind: 'table'; key: string; table: TableInfo; depth: number }
   | { kind: 'column'; key: string; table: TableInfo; column: TableInfo['columns'][number]; depth: number }
   | { kind: 'routine'; key: string; name: string; schema?: string; routineKind: string; depth: number }
@@ -77,6 +79,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
   const runtime = useConnections((s) => s.runtime[connection.id])
   const loadSchema = useConnections((s) => s.loadSchema)
   const togglePin = useConnections((s) => s.togglePin)
+  const setHiddenSchemas = useConnections((s) => s.setHiddenSchemas)
   const openTab = useWorkspace((s) => s.open)
   const newQuery = useWorkspace((s) => s.newQuery)
   const [filter, setFilter] = useState('')
@@ -110,7 +113,10 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
         }
       }
     }
-    const schemaNames = schema.schemas.length ? schema.schemas : [...new Set(schema.tables.map((t) => t.schema ?? ''))]
+    const hidden = new Set(connection.hiddenSchemas ?? [])
+    const allSchemas = schema.schemas.length ? schema.schemas : [...new Set(schema.tables.map((t) => t.schema ?? ''))]
+    const schemaNames = allSchemas.filter((s) => !hidden.has(s))
+    const hiddenCount = allSchemas.length - schemaNames.length
     const multi = schemaNames.length > 1
     const ordered = [...schemaNames].sort((a, b) => (a === schema.defaultSchema ? -1 : b === schema.defaultSchema ? 1 : a.localeCompare(b)))
     for (const s of ordered) {
@@ -155,8 +161,9 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
         }
       }
     }
+    if (hiddenCount) out.push({ kind: 'hidden', key: 'hidden', count: hiddenCount, depth: 0 })
     return out
-  }, [schema, filter, expanded, collapsedSchemas, connection.pinnedTables])
+  }, [schema, filter, expanded, collapsedSchemas, connection.pinnedTables, connection.hiddenSchemas])
 
   const virtualizer = useVirtualizer({
     count: nodes.length,
@@ -258,6 +265,8 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
                   style={style}
                   onContextMenu={(e) =>
                     openMenu(e, [
+                      { label: tr('Hide schema'), icon: <EyeOff size={13} />, onClick: () => setHiddenSchemas(connection.id, [...(connection.hiddenSchemas ?? []), node.name]) },
+                      'separator',
                       { label: tr('Data dictionary (HTML)…'), icon: <FileText size={13} />, onClick: () => void exportDataDictionary(connection.id, 'html', [node.name]) },
                       { label: tr('Data dictionary (Markdown)…'), icon: <FileText size={13} />, onClick: () => void exportDataDictionary(connection.id, 'markdown', [node.name]) },
                     ])
@@ -275,6 +284,15 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
                   <Layers size={13} className="shrink-0 text-fg-muted" />
                   <span className="truncate">{node.name}</span>
                   <span className="ml-auto text-[11px] text-fg-faint">{node.count || ''}</span>
+                </div>
+              )
+            }
+            if (node.kind === 'hidden') {
+              return (
+                <div key={node.key} className={cn(rowClass, 'text-[11.5px] text-fg-faint')} style={style} onClick={() => setHiddenSchemas(connection.id, [])}>
+                  <EyeOff size={12} className="shrink-0" />
+                  <span className="truncate">{tp(node.count, { one: '{n} hidden schema', many: '{n} hidden schemas' })}</span>
+                  <span className="ml-auto text-accent">{tr('Show')}</span>
                 </div>
               )
             }

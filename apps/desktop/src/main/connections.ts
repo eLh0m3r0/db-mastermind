@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { ConnectionConfig } from '@dbmastermind/core'
-import type { StoredConnection } from '@shared/api'
+import type { ExplorerPrefs, StoredConnection } from '@shared/api'
 import { decryptSecret, encryptSecret, readJson, writeJson } from './storage'
 
 const FILE = 'connections.json'
@@ -64,6 +64,7 @@ export function saveConnection(config: ConnectionConfig): StoredConnection {
     updatedAt: now,
     lastUsedAt: existing?.lastUsedAt,
     pinnedTables: (config as StoredConnection).pinnedTables ?? existing?.pinnedTables,
+    hiddenSchemas: (config as StoredConnection).hiddenSchemas ?? existing?.hiddenSchemas,
   }
   cache = existing ? all.map((c) => (c.id === id ? saved : c)) : [...all, saved]
   persist()
@@ -75,8 +76,17 @@ export function touchConnection(id: string): void {
   persist()
 }
 
-export function setPinnedTables(id: string, tables: string[]): void {
-  cache = listConnections().map((c) => (c.id === id ? { ...c, pinnedTables: tables.length ? tables : undefined } : c))
+export function setExplorerPrefs(id: string, prefs: ExplorerPrefs): void {
+  const clean = (list?: string[]) => (list?.length ? list : undefined)
+  cache = listConnections().map((c) =>
+    c.id !== id
+      ? c
+      : {
+          ...c,
+          pinnedTables: 'pinnedTables' in prefs ? clean(prefs.pinnedTables) : c.pinnedTables,
+          hiddenSchemas: 'hiddenSchemas' in prefs ? clean(prefs.hiddenSchemas) : c.hiddenSchemas,
+        },
+  )
   persist()
 }
 

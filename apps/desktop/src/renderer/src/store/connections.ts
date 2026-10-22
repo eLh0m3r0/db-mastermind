@@ -23,6 +23,7 @@ interface ConnectionsState {
   save(config: ConnectionConfig): Promise<StoredConnection>
   remove(id: string): Promise<void>
   togglePin(id: string, table: string): void
+  setHiddenSchemas(id: string, schemas: string[]): void
   duplicate(id: string): Promise<StoredConnection>
   connect(id: string): Promise<boolean>
   disconnect(id: string): Promise<void>
@@ -56,7 +57,11 @@ export const useConnections = create<ConnectionsState>((set, get) => {
       const pins = c.pinnedTables ?? []
       const next = pins.includes(table) ? pins.filter((p) => p !== table) : [...pins, table]
       set((s) => ({ list: s.list.map((x) => (x.id === id ? { ...x, pinnedTables: next } : x)) }))
-      void api.setPinnedTables(id, next)
+      void api.setExplorerPrefs(id, { pinnedTables: next })
+    },
+    setHiddenSchemas(id, schemas) {
+      set((s) => ({ list: s.list.map((x) => (x.id === id ? { ...x, hiddenSchemas: schemas } : x)) }))
+      void api.setExplorerPrefs(id, { hiddenSchemas: schemas })
     },
     async remove(id) {
       await api.deleteConnection(id)

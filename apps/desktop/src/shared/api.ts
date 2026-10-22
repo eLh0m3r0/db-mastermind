@@ -74,7 +74,11 @@ export interface StoredConnection extends ConnectionConfig {
   lastUsedAt?: string
   /** Tables pinned to the top of the explorer, as `schema.table` (or `table`). */
   pinnedTables?: string[]
+  /** Schemas hidden from the explorer. */
+  hiddenSchemas?: string[]
 }
+
+export type ExplorerPrefs = Pick<StoredConnection, 'pinnedTables' | 'hiddenSchemas'>
 
 export interface HistoryEntry {
   id: string
@@ -209,8 +213,8 @@ export interface MastermindApi {
 
   listConnections(): Promise<StoredConnection[]>
   saveConnection(config: ConnectionConfig): Promise<StoredConnection>
-  /** Updates the pinned tables without touching (or reconnecting) the connection. */
-  setPinnedTables(id: string, tables: string[]): Promise<void>
+  /** Updates explorer preferences (pins, hidden schemas) without touching or reconnecting the connection. */
+  setExplorerPrefs(id: string, prefs: ExplorerPrefs): Promise<void>
   deleteConnection(id: string): Promise<void>
   duplicateConnection(id: string): Promise<StoredConnection>
   testConnection(config: ConnectionConfig): Promise<ServerInfo>
@@ -294,7 +298,7 @@ export const API_METHODS = [
   'updateSettings',
   'listConnections',
   'saveConnection',
-  'setPinnedTables',
+  'setExplorerPrefs',
   'deleteConnection',
   'duplicateConnection',
   'testConnection',

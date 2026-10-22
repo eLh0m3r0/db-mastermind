@@ -680,4 +680,8 @@ export const cs: Record<string, string> = {
   '{n} joins': '{n} spojení',
   'Open as query': 'Otevřít jako dotaz',
   'No chain of foreign keys connects {from} and {to}.': 'Tabulky {from} a {to} nespojuje žádný řetězec cizích klíčů.',
+  'Hide schema': 'Skrýt schéma',
+  '{n} hidden schema': '{n} skryté schéma',
+  '{n} hidden schemas': '{n} skrytých schémat',
+  '{n} hidden schemas|few': '{n} skrytá schémata',
 }

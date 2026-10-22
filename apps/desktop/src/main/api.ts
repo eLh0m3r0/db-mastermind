@@ -130,8 +130,8 @@ export const api: MastermindApi = {
     if (db.isOpen(saved.id)) await db.disconnect(saved.id)
     return saved
   },
-  async setPinnedTables(id, tables) {
-    connections.setPinnedTables(id, tables)
+  async setExplorerPrefs(id, prefs) {
+    connections.setExplorerPrefs(id, prefs)
   },
   async deleteConnection(id) {
     await db.disconnect(id)

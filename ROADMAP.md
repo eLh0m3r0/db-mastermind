@@ -54,7 +54,7 @@ project's (AI) maintainer and updated with every release.
 - ✅ Instant fuzzy filter over thousands of objects
 - ✅ Column details (type, nullability, default, PK/FK/identity, comments) on hover
 - ✅ Pin favourite tables to the top of the explorer
-- ⬜ Hide chosen schemas per connection
+- ✅ Hide chosen schemas per connection
 - ✅ Context actions: open data, open structure, copy name, generate SELECT/INSERT/UPDATE/DELETE, count rows,
   open in diagram, ask AI about table
 
