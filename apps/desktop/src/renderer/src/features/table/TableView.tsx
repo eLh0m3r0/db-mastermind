@@ -737,8 +737,9 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
             <Button size="xs" variant="ghost" icon={<Eye size={12} />} onClick={() => void showPreview()}>
               {t('Review')}
             </Button>
-            <Button size="xs" variant="primary" loading={saving} onClick={() => void applyChanges()}>
-              {t('Apply')}
+            {/* "Save", not "Apply": the filter bar right below has its own Apply. */}
+            <Button size="xs" variant="primary" loading={saving} onClick={() => void applyChanges()} title={`${t('Save changes to the database')} (${keys('⌘S')})`}>
+              {t('Save')}
             </Button>
             <IconButton label={t('Discard changes')} onClick={() => setPending(emptyPending())}>
               <Undo2 size={13} />

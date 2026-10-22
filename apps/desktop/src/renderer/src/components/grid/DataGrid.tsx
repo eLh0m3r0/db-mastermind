@@ -600,6 +600,7 @@ export function DataGrid({
   const bodyCell = (row: CellValue[], r: number, c: number) => {
     const selected = !!sel && r >= sel.r0 && r <= sel.r1 && c >= sel.c0 && c <= sel.c1
     const focused = !!selection && selection.focus.row === r && selection.focus.col === c
+    const edited = isCellEdited?.(r, c) ?? false
     return (
       <Cell
         key={c}
@@ -609,9 +610,10 @@ export function DataGrid({
         numeric={numeric[c] ?? false}
         selected={selected && !(sel!.r0 === sel!.r1 && sel!.c0 === sel!.c1)}
         focused={focused}
-        edited={isCellEdited?.(r, c) ?? false}
+        edited={edited}
         fk={!!columnMeta?.[c]?.foreignKey}
-        nullDisplay={nullDisplay}
+        // A new row's untouched cells are left out of the INSERT: the database fills in its default, not NULL.
+        nullDisplay={!edited && rowState?.(r) === 'inserted' ? 'DEFAULT' : nullDisplay}
         onFkClick={onForeignKeyClick ? () => onForeignKeyClick({ row: r, col: c }) : undefined}
       />
     )
