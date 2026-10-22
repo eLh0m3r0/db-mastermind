@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Activity, BookOpen, FileCode2, LayoutDashboard, Rows3, ShieldCheck, GitCompare, Layers, Network, PanelLeft, Plus, Sparkles, Table2, TerminalSquare, X, Columns2 } from 'lucide-react'
 import { IconButton } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
+import { askText } from '@/components/ui/ConfirmDialog'
 import { isMac, modKey } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
@@ -37,9 +38,9 @@ export function TabBar() {
       'separator',
       {
         label: t('Rename…'),
-        onClick: () => {
-          const title = window.prompt(t('Tab name'), tab.title)
-          if (title?.trim()) update(tab.id, { title: title.trim() })
+        onClick: async () => {
+          const title = await askText({ title: t('Rename tab'), value: tab.title, confirmLabel: t('Rename') })
+          if (title) update(tab.id, { title })
         },
       },
       ...(tab.kind === 'query'

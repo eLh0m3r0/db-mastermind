@@ -58,7 +58,7 @@ import type { SavedDiagram, DiagramNote } from '@shared/api'
 import { MigrationModal } from './MigrationModal'
 import { TableEditor } from './TableEditor'
 import { t, tp, useT } from '@/lib/i18n'
-import { confirmAction } from '@/components/ui/ConfirmDialog'
+import { askText, confirmAction } from '@/components/ui/ConfirmDialog'
 
 const elk = new ELK()
 const HEADER = 32
@@ -735,9 +735,14 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
     }
     setDrafts({ ...drafts, [key]: table })
   }
-  const designWithAi = () => {
-    const request = window.prompt(tr('What should change? E.g. "add soft delete to all customer tables" or "move the address into its own table"'))
-    if (!request?.trim() || !connection) return
+  const designWithAi = async () => {
+    const request = await askText({
+      title: tr('Design with AI'),
+      message: tr('What should change? E.g. "add soft delete to all customer tables" or "move the address into its own table"'),
+      multiline: true,
+      confirmLabel: tr('Ask AI'),
+    })
+    if (!request || !connection) return
     const shown = display.filter((d) => d.status !== 'dropped').map((d) => d.info)
     askAi({
       prompt: tr(
@@ -990,7 +995,7 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
                       label: tr('Save these changes as…'),
                       disabled: !Object.keys(drafts).length,
                       onClick: async () => {
-                        const name = window.prompt(tr('Name of the change set'), '')?.trim()
+                        const name = await askText({ title: tr('Save these changes as…'), placeholder: tr('Name of the change set'), confirmLabel: tr('Save') })
                         if (!name) return
                         await api.saveChangeSet({ connectionId: tab.connectionId, name, design: drafts })
                         toast({ kind: 'success', message: tr('Change set “{name}” saved', { name }) })

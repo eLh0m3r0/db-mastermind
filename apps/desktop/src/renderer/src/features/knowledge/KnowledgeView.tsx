@@ -18,7 +18,7 @@ import { useWorkspace, type KnowledgeTab } from '@/store/workspace'
 import { Markdown } from '../ai/Markdown'
 import { askAiToDocument } from './generate'
 import { t, tp, useT } from '@/lib/i18n'
-import { confirmAction } from '@/components/ui/ConfirmDialog'
+import { askText, confirmAction } from '@/components/ui/ConfirmDialog'
 
 const TEMPLATE = (title: string) => `---
 tables: []
@@ -141,7 +141,7 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
   }
 
   const create = async () => {
-    const name = window.prompt(t('File name (e.g. sales/orders.md)'), 'notes.md')?.trim()
+    const name = await askText({ title: t('New file'), message: t('File name (e.g. sales/orders.md)'), value: 'notes.md', confirmLabel: t('Create') })
     if (!name) return
     const title = name.replace(/\.md$/i, '').split('/').pop()!.replace(/[-_]/g, ' ')
     const path = await api.kbWrite(tab.connectionId, name, TEMPLATE(title.charAt(0).toUpperCase() + title.slice(1)))

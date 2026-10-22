@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { ArrowRight, KeyRound, Plus, RotateCcw, Trash2, X } from 'lucide-react'
 import { COMMON_TYPES, designId, type DesignTable, type DriverId, type TableInfo } from '@dbmastermind/core/browser'
 import { Button, IconButton } from '@/components/ui/Button'
@@ -11,7 +12,7 @@ const FK_ACTIONS = ['NO ACTION', 'CASCADE', 'SET NULL', 'RESTRICT', 'SET DEFAULT
 export function TableEditor({
   table,
   driver,
-  allTables,
+  allTables: everything,
   onChange,
   onRevert,
   onClose,
@@ -24,6 +25,14 @@ export function TableEditor({
   onClose: () => void
 }) {
   const tr = useT()
+  // Foreign keys can only point at tables, not views.
+  const allTables = everything.filter((t) => t.type === 'table' || t.type === 'foreign_table')
+  // A new table starts with its name selected, so typing names it.
+  const nameInput = useRef<HTMLInputElement>(null)
+  const isNew = !table.originalName
+  useEffect(() => {
+    if (isNew) nameInput.current?.select()
+  }, [table.id, isNew])
   const set = (patch: Partial<DesignTable>) => onChange({ ...table, ...patch })
   const setColumn = (id: string, patch: Partial<DesignTable['columns'][number]>) => {
     const old = table.columns.find((c) => c.id === id)!
@@ -41,7 +50,11 @@ export function TableEditor({
     set({ primaryKey: on ? [...table.primaryKey, name] : table.primaryKey.filter((c) => c !== name) })
   const types = COMMON_TYPES[driver]
   const textType = types.find((t) => /char|text/i.test(t)) ?? types[0] ?? 'text'
-  const refTable = (name: string) => allTables.find((t) => t.name === name)
+  // Tables are told apart by schema too: "All schemas" can show shop.customers next to xt.customers.
+  const tableKey = (schema: string | null | undefined, name: string) => `${schema ?? ''}.${name}`
+  const refTable = (schema: string | null | undefined, name: string) =>
+    allTables.find((t) => t.name === name && (t.schema ?? '') === (schema ?? '')) ?? allTables.find((t) => t.name === name)
+  const ambiguous = new Set(allTables.filter((t, i) => allTables.some((x, j) => j !== i && x.name === t.name)).map((t) => t.name))
 
   return (
     <div className="flex w-[420px] shrink-0 flex-col border-l border-line bg-subtle">
@@ -67,7 +80,7 @@ export function TableEditor({
         <div className="mb-3 flex gap-2">
           <label className="flex flex-1 flex-col gap-1">
             <span className="text-[11.5px] font-medium text-fg-muted">{tr('Name')}</span>
-            <Input inputSize="sm" value={table.name} onChange={(e) => set({ name: e.target.value })} />
+            <Input ref={nameInput} inputSize="sm" value={table.name} onChange={(e) => set({ name: e.target.value })} />
           </label>
           {table.schema && (
             <label className="flex w-28 flex-col gap-1">
@@ -143,7 +156,7 @@ export function TableEditor({
         >
           {table.foreignKeys.length === 0 && <div className="text-[11.5px] text-fg-faint">{tr("Drag from a column to another table's column in the diagram, or add one here.")}</div>}
           {table.foreignKeys.map((fk) => {
-            const target = refTable(fk.refTable)
+            const target = refTable(fk.refSchema, fk.refTable)
             const update = (patch: Partial<typeof fk>) => set({ foreignKeys: table.foreignKeys.map((f) => (f.id === fk.id ? { ...f, ...patch } : f)) })
             return (
               <div key={fk.id} className="mb-1 flex flex-col gap-1 rounded-md border border-line bg-bg p-1.5">
@@ -157,14 +170,16 @@ export function TableEditor({
                   <Select
                     inputSize="sm"
                     className="h-6 flex-1 text-[12px]"
-                    value={fk.refTable}
+                    value={target ? tableKey(target.schema, target.name) : tableKey(fk.refSchema, fk.refTable)}
                     onChange={(e) => {
-                      const t = refTable(e.target.value)
-                      update({ refTable: e.target.value, refSchema: t?.schema, refColumns: [t?.primaryKey[0] ?? t?.columns[0]?.name ?? ''] })
+                      const t = allTables.find((x) => tableKey(x.schema, x.name) === e.target.value)
+                      if (t) update({ refTable: t.name, refSchema: t.schema, refColumns: [t.primaryKey[0] ?? t.columns[0]?.name ?? ''] })
                     }}
                   >
                     {allTables.map((t) => (
-                      <option key={`${t.schema}.${t.name}`}>{t.name}</option>
+                      <option key={tableKey(t.schema, t.name)} value={tableKey(t.schema, t.name)}>
+                        {ambiguous.has(t.name) && t.schema ? `${t.schema}.${t.name}` : t.name}
+                      </option>
                     ))}
                   </Select>
                   <Select inputSize="sm" className="h-6 w-24 text-[12px]" value={fk.refColumns[0]} onChange={(e) => update({ refColumns: [e.target.value] })}>
