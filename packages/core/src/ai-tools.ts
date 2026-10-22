@@ -4,7 +4,7 @@ import { KnowledgeBase } from './knowledge.js'
 import { getDialect } from './dialect.js'
 import { findJoinPath, findTable, incomingReferences, joinPathSql } from './schema-utils.js'
 import { classifyStatement, splitStatements } from './sql-split.js'
-import type { DriverId, QueryResult, SchemaSnapshot, TableInfo } from './types.js'
+import type { DriverId, QueryResult, SchemaSnapshot, StatementOutcome, TableInfo } from './types.js'
 import { cellToText } from './values.js'
 
 /**
@@ -24,6 +24,8 @@ export interface ToolContext {
   /** Allow writing knowledge base files. */
   allowKnowledgeWrites?: boolean
   maxRows?: number
+  /** Called for every statement the model ran (audit log). */
+  onExecuted?: (outcome: StatementOutcome) => void
 }
 
 export interface JsonSchema {
@@ -159,6 +161,7 @@ async function runSql(ctx: ToolContext, sql: string, maxRows: number): Promise<s
     return 'Refused: the user only shares the schema with the assistant, not table contents. Write the SQL for the user to run instead.'
   }
   const outcomes = await ctx.db.runScript(ctx.connectionId, sql, { maxRows: Math.max(maxRows, 1) })
+  for (const o of outcomes) ctx.onExecuted?.(o)
   return outcomes
     .map((o, i) => {
       const head = outcomes.length > 1 ? `Statement ${i + 1}: ` : ''

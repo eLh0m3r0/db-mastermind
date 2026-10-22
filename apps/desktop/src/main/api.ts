@@ -185,6 +185,21 @@ export const api: MastermindApi = {
   async parseConnectionString(text) {
     return parseConnectionString(text)
   },
+  async exportHistory(connectionId) {
+    const window = BrowserWindow.getFocusedWindow()
+    const options = { title: 'Export history', defaultPath: 'db-mastermind-history.csv', filters: [{ name: 'CSV', extensions: ['csv'] }] }
+    const r = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
+    if (r.canceled || !r.filePath) return null
+    const names = new Map(connections.listConnections().map((c) => [c.id, c.name]))
+    const csv = (v: unknown) => (v === undefined || v === null ? '' : /[",\n\r]/.test(String(v)) ? `"${String(v).replaceAll('"', '""')}"` : String(v))
+    const lines = ['executed_at,connection,source,duration_ms,rows,error,sql']
+    for (const h of library.listHistory(connectionId, undefined, Number.MAX_SAFE_INTEGER).reverse()) {
+      lines.push([h.executedAt, names.get(h.connectionId) ?? h.connectionId, h.source ?? 'editor', h.durationMs, h.rowCount, h.error, h.sql].map(csv).join(','))
+    }
+    // BOM so Excel opens UTF-8 (Czech characters) correctly.
+    await writeFile(r.filePath, `\uFEFF${lines.join('\r\n')}\r\n`, 'utf8')
+    return r.filePath
+  },
   async importConnections(source) {
     return importConnections(source)
   },
@@ -426,6 +441,7 @@ export const api: MastermindApi = {
       executedAt: new Date().toISOString(),
       durationMs: 0,
       rowCount: rows.length,
+      source: 'import',
     })
     return rows.length
   },
@@ -443,6 +459,7 @@ export const api: MastermindApi = {
         sql: inlineParams(q, dialect),
         executedAt: new Date().toISOString(),
         durationMs: 0,
+        source: 'grid',
       })
     }
     return affected

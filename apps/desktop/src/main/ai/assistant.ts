@@ -1,3 +1,4 @@
+import { addHistory } from '../library'
 import { randomUUID } from 'node:crypto'
 import { app, BrowserWindow } from 'electron'
 import { jsonSchema, stepCountIs, streamText, tool, type ModelMessage, type ToolSet } from 'ai'
@@ -85,6 +86,16 @@ async function runChat(request: AiChatRequest): Promise<void> {
     allowKnowledgeWrites: true,
     confirmWrite: (sql) => askApproval(chatId, 'sql', sql, signal),
     maxRows: 50,
+    onExecuted: (o) =>
+      addHistory({
+        connectionId,
+        sql: o.sql,
+        executedAt: new Date().toISOString(),
+        durationMs: o.durationMs,
+        rowCount: o.results?.reduce((n, r) => n + r.rowCount, 0),
+        error: o.error?.message,
+        source: 'ai',
+      }),
   }
 
   const extra = [

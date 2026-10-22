@@ -100,6 +100,8 @@ export interface HistoryEntry {
   durationMs: number
   rowCount?: number
   error?: string
+  /** Where the statement came from; missing = the SQL editor. */
+  source?: 'editor' | 'grid' | 'import' | 'ai'
 }
 
 /** A named subset of tables with its own layout ("Sales", "Billing"…). */
@@ -275,6 +277,8 @@ export interface MastermindApi {
   disconnect(id: string): Promise<void>
   isConnected(id: string): Promise<boolean>
   parseConnectionString(text: string): Promise<Partial<ConnectionConfig>>
+  /** Writes the full statement history of a connection (or all) to CSV; returns the path or null. */
+  exportHistory(connectionId?: string): Promise<string | null>
   importConnections(source: 'beekeeper' | 'dbeaver' | 'pgpass' | 'file'): Promise<number>
   /** Writes connections without passwords or keys to a JSON file for colleagues; all when `ids` is empty. */
   exportConnections(ids?: string[]): Promise<string | null>
@@ -383,6 +387,7 @@ export const API_METHODS = [
   'isConnected',
   'parseConnectionString',
   'importConnections',
+  'exportHistory',
   'exportConnections',
   'createSampleDatabase',
   'getSchema',

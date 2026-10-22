@@ -4,7 +4,8 @@ import type { HistoryEntry, SavedQuery } from '@shared/api'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { Input } from '@/components/ui/Input'
 import { api } from '@/lib/api'
-import { copyText, cn, formatDuration, fuzzyScore } from '@/lib/utils'
+import { copyText, cn, errorMessage, formatDuration, fuzzyScore } from '@/lib/utils'
+import { toast } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
 import { t, tp, useT } from '@/lib/i18n'
 
@@ -21,6 +22,8 @@ export function openSql(connectionId: string, sql: string, title?: string) {
   const ws = useWorkspace.getState()
   ws.newQuery(connectionId, sql, title)
 }
+
+const SOURCE_LABELS = { grid: 'grid', import: 'import', ai: 'AI', editor: 'editor' } as const
 
 export function HistoryPanel({ connectionId }: { connectionId: string }) {
   const [entries, setEntries] = useState<HistoryEntry[]>([])
@@ -55,6 +58,7 @@ export function HistoryPanel({ connectionId }: { connectionId: string }) {
             <span className={cn('line-clamp-2 font-mono text-[11.5px] break-all', h.error ? 'text-danger' : 'text-fg')}>{h.sql}</span>
             <span className="flex items-center gap-1.5 text-[10.5px] text-fg-faint">
               {h.error && <XCircle size={10} className="text-danger" />}
+              {h.source && h.source !== 'editor' && <span className="rounded bg-muted px-1 text-[10px] font-medium text-fg-muted uppercase">{t(SOURCE_LABELS[h.source])}</span>}
               {relativeTime(h.executedAt)}
               {h.durationMs > 0 && <span>· {formatDuration(h.durationMs)}</span>}
               {h.rowCount !== undefined && h.rowCount !== null && <span>· {tp(h.rowCount, { one: '{n} row', many: '{n} rows' })}</span>}
@@ -64,15 +68,30 @@ export function HistoryPanel({ connectionId }: { connectionId: string }) {
         {entries.length === 0 && <div className="p-4 text-center text-[12px] text-fg-faint">{search ? t('No matches') : t('Queries you run appear here.')}</div>}
       </div>
       {entries.length > 0 && (
-        <button
-          type="button"
-          className="m-2 mt-0 h-7 rounded-md text-[12px] text-fg-muted hover:bg-hover hover:text-fg"
-          onClick={() => {
-            if (window.confirm(t('Clear query history for this connection?'))) void api.clearHistory(connectionId).then(load)
-          }}
-        >
-          {t('Clear history')}
-        </button>
+        <div className="m-2 mt-0 flex gap-1">
+          <button
+            type="button"
+            className="h-7 flex-1 rounded-md text-[12px] text-fg-muted hover:bg-hover hover:text-fg"
+            title={t('Every statement run on this connection (editor, grid edits, imports, AI) as CSV')}
+            onClick={() =>
+              void api.exportHistory(connectionId).then(
+                (path) => path && toast({ kind: 'success', message: t('History exported'), detail: path, action: { label: t('Show in folder'), run: () => void api.showItemInFolder(path) } }),
+                (err: unknown) => toast({ kind: 'error', message: t('Export failed'), detail: errorMessage(err) }),
+              )
+            }
+          >
+            {t('Export…')}
+          </button>
+          <button
+            type="button"
+            className="h-7 flex-1 rounded-md text-[12px] text-fg-muted hover:bg-hover hover:text-fg"
+            onClick={() => {
+              if (window.confirm(t('Clear query history for this connection?'))) void api.clearHistory(connectionId).then(load)
+            }}
+          >
+            {t('Clear history')}
+          </button>
+        </div>
       )}
     </div>
   )
