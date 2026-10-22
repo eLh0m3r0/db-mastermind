@@ -44,7 +44,8 @@ function createWindow() {
     icon: join(__dirname, '../../resources/icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      // The preload is one CommonJS bundle that only needs contextBridge/ipcRenderer/webUtils, so it runs sandboxed.
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: false,

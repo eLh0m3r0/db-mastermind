@@ -38,10 +38,10 @@ export async function loadSettings(): Promise<void> {
     ...defaults,
     ...stored,
     ai: { ...defaults.ai, ...stored.ai, providers: await mapKeys(stored.ai?.providers ?? [], decryptSecret) },
-    mcp: { ...defaults.mcp, ...stored.mcp },
+    mcp: { ...defaults.mcp, ...stored.mcp, token: stored.mcp?.token && stored.mcp.token.length >= 16 ? stored.mcp.token : defaults.mcp.token },
   }, managedConfig())
-  // The first run stores the generated token and the detected language.
-  if (!stored.mcp?.token || !stored.language) persist(cached)
+  // The first run stores the generated token (also replacing an empty or short one) and the detected language.
+  if (!stored.mcp?.token || stored.mcp.token.length < 16 || !stored.language) persist(cached)
 }
 
 export function getSettings(): AppSettings {

@@ -19,6 +19,8 @@ export function mcpHttpStatus() {
 }
 
 function authorized(req: IncomingMessage, token: string): boolean {
+  // An empty or short token (a hand-edited settings file) must never mean "no token needed".
+  if (token.length < 16) return false
   const header = req.headers.authorization ?? ''
   const given = Buffer.from(header.replace(/^Bearer\s+/i, ''))
   const expected = Buffer.from(token)
