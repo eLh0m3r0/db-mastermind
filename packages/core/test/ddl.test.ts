@@ -113,3 +113,15 @@ describe('schema diff & migration', () => {
     expect(m.warnings[0]!.level).toBe('danger')
   })
 })
+
+describe('compareSchemas', () => {
+  it('produces the changes that make the target match the source', async () => {
+    const { compareSchemas } = await import('../src/index.js')
+    const target: TableInfo = { ...orders, columns: orders.columns.slice(0, 2) }
+    const extra: TableInfo = { ...orders, name: 'legacy', columns: orders.columns.slice(0, 1), indexes: [] }
+    const changes = compareSchemas([orders], [target, extra])
+    expect(changes.map((c) => c.kind)).toEqual(['drop_table', 'add_column'])
+    expect(compareSchemas([orders], [target, extra], { keepExtra: true }).map((c) => c.kind)).toEqual(['add_column'])
+    expect(compareSchemas([orders], [orders])).toEqual([])
+  })
+})

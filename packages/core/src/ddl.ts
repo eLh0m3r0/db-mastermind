@@ -738,3 +738,73 @@ export const COMMON_TYPES: Record<DriverId, string[]> = {
   sqlite: ['INTEGER', 'TEXT', 'REAL', 'NUMERIC', 'BLOB', 'BOOLEAN', 'DATE', 'DATETIME'],
   oracle: ['NUMBER(19)', 'NUMBER(10)', 'NUMBER(12,2)', 'VARCHAR2(255)', 'NVARCHAR2(255)', 'CHAR(1)', 'CLOB', 'DATE', 'TIMESTAMP', 'BLOB', 'BOOLEAN'],
 }
+
+/**
+ * Changes that make `target` match `source` (schema compare, e.g. dev → prod). Tables and columns are matched by
+ * name (case-insensitively); anything only in the target is dropped unless `keepExtra` is set.
+ */
+export function compareSchemas(source: TableInfo[], target: TableInfo[], options: { keepExtra?: boolean } = {}): SchemaChange[] {
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
+  const drafts: DesignTable[] = []
+  const targetSchema = target[0]?.schema
+  for (const s of source.filter((t) => t.type === 'table')) {
+    const t = target.find((x) => x.type === 'table' && same(x.name, s.name))
+    const draft = toDesignTable(s)
+    if (!t) {
+      // New table: created in the target's schema, referencing the target's tables, with its own identity.
+      draft.schema = targetSchema ?? draft.schema
+      draft.originalName = undefined
+      for (const c of draft.columns) {
+        c.originalName = undefined
+        if (c.identity) c.defaultValue = null
+      }
+      for (const f of draft.foreignKeys) {
+        f.originalName = undefined
+        f.name = undefined
+        f.refSchema = target.find((x) => same(x.name, f.refTable))?.schema ?? targetSchema ?? f.refSchema
+      }
+      for (const i of draft.indexes) {
+        i.originalName = undefined
+        i.name = undefined
+      }
+      drafts.push(draft)
+      continue
+    }
+    draft.schema = t.schema
+    draft.originalName = t.name
+    draft.name = t.name
+    for (const c of draft.columns) {
+      const match = t.columns.find((x) => same(x.name, c.name))
+      c.originalName = match?.name
+      if (match) c.name = match.name
+      // Identity defaults name the database's own sequence (nextval('shop.x_seq')): keep the target's.
+      if (match && match.isIdentity && c.identity) c.defaultValue = match.defaultValue ?? null
+    }
+    // Constraint names differ between databases (fk_orders_customer vs orders_customer_id_fkey): match by structure.
+    const cols = (list: string[]) => list.map((c) => c.toLowerCase()).join(',')
+    for (const f of draft.foreignKeys) {
+      const match = t.foreignKeys.find((x) => !x.virtual && cols(x.columns) === cols(f.columns) && same(x.refTable, f.refTable) && cols(x.refColumns) === cols(f.refColumns))
+      if (match) Object.assign(f, { name: match.name, originalName: match.name, columns: match.columns, refColumns: match.refColumns, onDelete: match.onDelete })
+      // References point into the target's schema, not the source's.
+      f.refSchema = target.find((x) => same(x.name, f.refTable))?.schema ?? t.schema
+    }
+    for (const i of draft.indexes) {
+      const match = t.indexes.find((x) => !x.primary && cols(x.columns) === cols(i.columns) && x.unique === i.unique)
+      if (match) Object.assign(i, { name: match.name, originalName: match.name, columns: match.columns })
+    }
+    // Keep target indexes that support its foreign keys (MySQL creates them and refuses to drop them).
+    for (const ix of t.indexes.filter((x) => !x.primary)) {
+      const supportsFk = t.foreignKeys.some((f) => cols(f.columns) === cols(ix.columns.slice(0, f.columns.length)))
+      if (supportsFk && !draft.indexes.some((i) => i.originalName === ix.name)) {
+        draft.indexes.push({ id: designId('i'), name: ix.name, originalName: ix.name, columns: ix.columns, unique: ix.unique })
+      }
+    }
+    drafts.push(draft)
+  }
+  if (!options.keepExtra) {
+    for (const t of target.filter((x) => x.type === 'table' && !source.some((s) => s.type === 'table' && same(s.name, x.name)))) {
+      drafts.push({ ...toDesignTable(t), dropped: true })
+    }
+  }
+  return diffTables(target, drafts)
+}

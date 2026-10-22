@@ -48,8 +48,16 @@ export interface KnowledgeTab extends BaseTab {
   file?: string
 }
 
-export type Tab = QueryTab | TableTab | StructureTab | DiagramTab | KnowledgeTab
-export type NewTab = Omit<QueryTab, 'id'> | Omit<TableTab, 'id'> | Omit<StructureTab, 'id'> | Omit<DiagramTab, 'id'> | Omit<KnowledgeTab, 'id'>
+/** Schema compare: `connectionId` is the target that receives the migration. */
+export interface CompareTab extends BaseTab {
+  kind: 'compare'
+  sourceId?: string
+  sourceSchema?: string
+  targetSchema?: string
+}
+
+export type Tab = QueryTab | TableTab | StructureTab | DiagramTab | KnowledgeTab | CompareTab
+export type NewTab = Omit<QueryTab, 'id'> | Omit<TableTab, 'id'> | Omit<StructureTab, 'id'> | Omit<DiagramTab, 'id'> | Omit<KnowledgeTab, 'id'> | Omit<CompareTab, 'id'>
 
 interface WorkspaceState {
   tabs: Tab[]

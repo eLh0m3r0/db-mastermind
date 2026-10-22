@@ -193,7 +193,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ CSV / Excel import with column mapping (auto-matched by name), delimiter & Windows-1250 detection, one transaction
 - ✅ Visual EXPLAIN / query plan viewer for all databases (EXPLAIN ANALYZE on PostgreSQL)
 - 🚧 Charts from query results: bar, line, scatter ✅; pinned dashboards ⬜
-- ⬜ Schema compare (two connections / two schemas) → migration script
+- ✅ Schema compare (two connections / two schemas) → migration script (structural matching of keys and indexes)
 - ⬜ Data compare between tables / environments
 - ⬜ Backup / restore helpers (pg_dump, mysqldump wrappers when available)
 - ⬜ Server activity: running queries, locks, kill session

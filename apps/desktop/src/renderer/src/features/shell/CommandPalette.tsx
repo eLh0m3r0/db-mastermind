@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Command } from 'cmdk'
-import { BookOpen, Eye, Moon, Network, Plug, Plus, RefreshCw, Settings, Sparkles, Sun, Table2, TerminalSquare, Unplug } from 'lucide-react'
+import { BookOpen, Eye, GitCompare, Moon, Network, Plug, Plus, RefreshCw, Settings, Sparkles, Sun, Table2, TerminalSquare, Unplug } from 'lucide-react'
 import { Kbd } from '@/components/ui/Input'
 import { modKey } from '@/lib/api'
 import { runCommand } from '@/lib/commands'
@@ -52,6 +52,7 @@ export function CommandPalette() {
     { id: 'new-query', label: t('New query tab'), icon: <TerminalSquare size={14} />, shortcut: `${modKey}T`, run: () => runCommand('new-query'), needsConnection: true },
     { id: 'new-connection', label: t('New connection…'), icon: <Plus size={14} />, run: () => setUi({ modal: { kind: 'connection' } }) },
     { id: 'diagram', label: t('Open ER diagram'), icon: <Network size={14} />, run: () => connectionId && openTab({ kind: 'diagram', connectionId, title: t('ER diagram') }), needsConnection: true },
+    { id: 'compare', label: t('Compare schemas…'), icon: <GitCompare size={14} />, run: () => connectionId && openTab({ kind: 'compare', connectionId, title: t('Schema compare') }, { reuse: false }), needsConnection: true },
     { id: 'knowledge', label: t('Open knowledge base'), icon: <BookOpen size={14} />, run: () => connectionId && openTab({ kind: 'knowledge', connectionId, title: t('Knowledge base') }), needsConnection: true },
     { id: 'refresh', label: t('Refresh schema'), icon: <RefreshCw size={14} />, shortcut: 'F5', run: () => runCommand('refresh-schema'), needsConnection: true },
     { id: 'ai', label: t('Toggle AI assistant'), icon: <Sparkles size={14} />, shortcut: `${modKey}J`, run: () => runCommand('toggle-ai') },

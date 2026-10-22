@@ -11,6 +11,7 @@ import { useSettings } from '@/store/settings'
 import { toast, useUi } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
 import { AiPanel } from './features/ai/AiPanel'
+import { CompareView } from './features/compare/CompareView'
 import { ConnectionForm } from './features/connections/ConnectionForm'
 import { DiagramView } from './features/diagram/DiagramView'
 import { KnowledgeView } from './features/knowledge/KnowledgeView'
@@ -136,6 +137,7 @@ export function App() {
                 {tab.kind === 'structure' && <StructureView tab={tab} />}
                 {tab.kind === 'diagram' && tab.id === activeId && <DiagramView tab={tab} />}
                 {tab.kind === 'knowledge' && <KnowledgeView tab={tab} active={tab.id === activeId} />}
+                {tab.kind === 'compare' && <CompareView tab={tab} />}
               </div>
             ))}
             {!activeTab && <HomeScreen />}
