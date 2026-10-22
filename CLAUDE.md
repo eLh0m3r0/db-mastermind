@@ -77,3 +77,4 @@ npm run dev                   # desktop app with HMR
   latest release; the updater logs to `<data>/logs/updater.log`.
 - Text that ends up in the MSIX manifest (app description) must not contain a bare `&`.
 - AI permissions are enforced in main through `aiAccess(config)` (main/ai-access.ts): never check `aiEnabled` directly.
+- winget: package `eLh0m3r0.DBMastermind`; the release `winget` job runs `komac update` (pinned 2.16.0) with the `WINGET_TOKEN` secret and skips until the package exists in microsoft/winget-pkgs. GitHub's Windows runners can't run the winget client reliably (hangs / AppX errors) — check manifests with `komac analyze` locally instead.

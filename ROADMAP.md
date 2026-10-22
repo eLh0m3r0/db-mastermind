@@ -244,7 +244,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - 💡 Driver plugins (third-party code in the app needs a sandbox and signing story first)
 - 🚧 Microsoft Store (MSIX signed by the Store; packaging ready, waits for the Partner Center identity — docs/microsoft-store.md) · Mac App Store: not planned (sandbox would cut features)
 - ⬜ Code signing (macOS notarization, Windows signing) once sponsored
-- ✅ Scoop manifest and Homebrew cask (this repo is the tap) updated with every release · winget ⬜
+- ✅ Scoop manifest and Homebrew cask (this repo is the tap) updated with every release · winget: first version submitted (microsoft/winget-pkgs#458825, in review); later releases open a PR automatically (release.yml `winget` job, komac, `WINGET_TOKEN` secret) — add the `winget install` line to README/website once merged
 
 ---
 
