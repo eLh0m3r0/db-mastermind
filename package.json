@@ -1,7 +1,7 @@
 {
   "name": "db-mastermind",
   "private": true,
-  "version": "0.9.11",
+  "version": "0.9.12",
   "description": "Free and open-source database client with AI, ER diagrams, knowledge base and MCP server.",
   "license": "MIT",
   "workspaces": [
