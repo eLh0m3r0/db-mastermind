@@ -55,7 +55,8 @@ jobs:
           $found = $null
           while ((Get-Date) -lt $deadline -and -not $found) {
             Start-Sleep -Seconds 10
-            $found = Get-ChildItem "$env:LOCALAPPDATA" -Directory -Filter '*-updater' | ForEach-Object { Get-ChildItem $_.FullName -Recurse -Filter "*$latest*.exe" -ErrorAction SilentlyContinue } | Select-Object -First 1
+            # electron-updater keeps the downloaded installer as installer.exe (or under pending/) in its cache folder.
+            $found = Get-ChildItem "$env:LOCALAPPDATA" -Directory -Filter '*-updater' | ForEach-Object { Get-ChildItem $_.FullName -Recurse -Filter '*.exe' -ErrorAction SilentlyContinue } | Where-Object { $_.Length -gt 50MB } | Select-Object -First 1
           }
           if (-not $found) {
             Get-ChildItem "$env:LOCALAPPDATA" -Directory -Filter '*-updater' | ForEach-Object { Get-ChildItem $_.FullName -Recurse | Format-Table FullName, Length }
