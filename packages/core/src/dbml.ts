@@ -308,6 +308,8 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string } 
   for (const t of tables.filter((x) => x.type === 'table')) {
     out.push(`Table ${tableName(t)} {`)
     const singlePk = t.primaryKey.length === 1
+    // Single-column UNIQUE constraints read best on the column; named and multi-column indexes stay in `indexes`.
+    const uniqueColumns = new Set(t.indexes.filter((ix) => ix.unique && ix.constraint && !ix.primary && ix.columns.length === 1).map((ix) => ix.columns[0]!))
     for (const c of t.columns) {
       const attrs: string[] = []
       if (singlePk && c.isPrimaryKey) attrs.push('pk')
@@ -317,11 +319,12 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string } 
         const d = c.defaultValue
         attrs.push(`default: ${/^-?\d+(\.\d+)?$/.test(d) || /^'.*'$/.test(d) || /^(true|false|null)$/i.test(d) ? d : `\`${d}\``}`)
       }
+      if (uniqueColumns.has(c.name)) attrs.push('unique')
       if (c.comment) attrs.push(`note: ${noteText(c.comment)}`)
       const type = /^[\w$.]+(\(.*\))?(\[\])?$/.test(c.dataType) ? c.dataType : `"${c.dataType}"`
       out.push(`  ${quoteName(c.name)} ${type}${attrs.length ? ` [${attrs.join(', ')}]` : ''}`)
     }
-    const indexes = t.indexes.filter((ix) => !ix.primary)
+    const indexes = t.indexes.filter((ix) => !ix.primary && !(ix.unique && ix.constraint && ix.columns.length === 1 && uniqueColumns.has(ix.columns[0]!)))
     if (t.primaryKey.length > 1 || indexes.length) {
       out.push('', '  indexes {')
       if (t.primaryKey.length > 1) out.push(`    (${t.primaryKey.map(quoteName).join(', ')}) [pk]`)

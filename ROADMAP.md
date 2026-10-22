@@ -181,7 +181,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ⬜ Model versions / snapshots with visual diff between them
 - ✅ Import from DBML and SQL DDL scripts (pg_dump, mysqldump, SSMS) · ⬜ Prisma, Django/Rails migrations (via AI)
 - ⬜ Export: SQL, DBML, Mermaid, PlantUML, PNG, SVG, PDF data dictionary
-- ⬜ AI: "design a schema for…", "normalize this table", "suggest indexes", "review my model"
+- ✅ AI on models: design or extend, review, suggest indexes, normalize, add audit columns — results apply to the model
 - ✅ **Data dictionary** of a live database: self-contained HTML (search, dark mode, print) or Markdown, with knowledge base notes
 - ⬜ Data dictionary for model documents
 - 💡 Logical vs physical model, subject areas (multiple diagrams per model)

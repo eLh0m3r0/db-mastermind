@@ -309,6 +309,8 @@ export class SqliteDriver implements DatabaseDriver {
             columns: ixCols.map((c) => String(c.name ?? '<expr>')),
             unique: Number(ix.unique) === 1,
             primary: ix.origin === 'pk',
+            // UNIQUE in the column or table definition (sqlite_autoindex_…), not CREATE INDEX.
+            constraint: ix.origin === 'u',
           })
         }
         tables.push(info)

@@ -19,6 +19,14 @@ import { useWorkspace, type DiagramTab, type ModelTab } from '@/store/workspace'
 import { DiagramView } from '../diagram/DiagramView'
 import { editorTheme } from '../query/SqlEditor'
 
+/** One-click AI tasks on the model: [menu label, request]. */
+const MODEL_TASKS: [string, string][] = [
+  ['Review the model', 'Review this database model: naming, missing keys and constraints, types, normalization problems and anything that will hurt later.'],
+  ['Suggest indexes', 'Suggest indexes for this model based on its foreign keys and the queries such a schema typically serves. Add them to the model.'],
+  ['Normalize', 'Normalize this model where it clearly helps (repeated groups, multi-valued columns, data that belongs in its own table), keeping it practical.'],
+  ['Add audit columns', 'Add created_at / updated_at audit columns (and created_by / updated_by where it makes sense) to the tables that should have them.'],
+]
+
 /** Minimal DBML highlighting: keywords, settings in brackets, strings, notes and comments. */
 const dbmlLanguage = StreamLanguage.define<{ inSettings: boolean }>({
   startState: () => ({ inSettings: false }),
@@ -235,7 +243,22 @@ export function ModelView({ tab }: { tab: ModelTab }) {
         <Button size="sm" variant="ghost" icon={<TerminalSquare size={13} />} disabled={!model.tables.length} onClick={(e) => ddlMenu(e.currentTarget)}>
           {t('SQL DDL')}
         </Button>
-        <Button size="sm" variant="ghost" icon={<Sparkles size={13} />} onClick={designWithAi}>
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<Sparkles size={13} />}
+          onClick={(e) =>
+            openMenu(e.currentTarget, [
+              { label: t('Design or extend the model…'), onClick: designWithAi },
+              'separator',
+              ...MODEL_TASKS.map(([label, task]) => ({
+                label: t(label),
+                disabled: !text.trim(),
+                onClick: () => askAi({ prompt: t('{task}\n\nReply with a short explanation and the complete updated model in one ```dbml block, so it can be applied. Current model:\n\n{model}', { task: t(task), model: text.trim() }), send: true }),
+              })),
+            ])
+          }
+        >
           {t('Design with AI')}
         </Button>
         <div className="flex-1" />
