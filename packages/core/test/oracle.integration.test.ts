@@ -1,6 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
+  compareSchemas,
+  compareTableData,
+  createScript,
+  dataSyncScript,
   DatabaseService,
+  listGrants,
+  listPrincipals,
+  parseDbml,
+  toDbml,
   designId,
   diffTables,
   explainQuery,
@@ -147,5 +155,45 @@ describe.skipIf(skip)('oracle', () => {
     expect(c.columns.map((x) => x.name)).toEqual(expect.arrayContaining(['EMAIL_ADDRESS', 'PHONE']))
     expect(c.columns.find((x) => x.name === 'EMAIL_ADDRESS')!.dataType).toBe('VARCHAR2(300)')
     expect(findTable(after, { name: 'PAYMENTS' })!.foreignKeys[0]!.refTable).toBe('ORDERS')
+  })
+
+  it('round-trips the schema through DBML', async () => {
+    const snapshot = await svc.schema('ora', true)
+    const live = snapshot.tables.filter((t) => t.type === 'table' && ['CUSTOMERS', 'ORDERS'].includes(t.name))
+    const model = parseDbml(toDbml(live, { defaultSchema: snapshot.defaultSchema }), { defaultSchema: snapshot.defaultSchema })
+    expect(model.errors).toEqual([])
+    expect(compareSchemas(model.tables, live, { keepExtra: false })).toEqual([])
+  })
+
+  it('compares table data and syncs the differences', async () => {
+    await svc.runScript('ora', 'DROP TABLE orders_copy PURGE')
+    await run('CREATE TABLE orders_copy AS SELECT * FROM orders')
+    await run('DELETE FROM orders_copy WHERE id <= 2')
+    await run("UPDATE orders_copy SET status = 'refunded' WHERE id = 10")
+    await run('COMMIT')
+    const compare = () => compareTableData(svc, { source: { connectionId: 'ora', table: { name: 'ORDERS' } }, target: { connectionId: 'ora', table: { name: 'ORDERS_COPY' } }, keyColumns: ['ID'] })
+    const result = await compare()
+    expect(result.counts).toEqual({ missing: 2, extra: 0, changed: 1 })
+    const outcomes = await svc.runScript('ora', dataSyncScript(result, { name: 'ORDERS_COPY' }, getDialect('oracle')))
+    const failed = outcomes.find((o) => o.error)
+    expect(failed?.error?.message, failed?.sql).toBeUndefined()
+    await run('COMMIT')
+    expect((await compare()).counts).toEqual({ missing: 0, extra: 0, changed: 0 })
+    await run('DROP TABLE orders_copy PURGE')
+  })
+
+  it('lists users and the grants it can see', async () => {
+    const principals = await listPrincipals(svc, 'ora')
+    expect(principals.map((p) => p.name)).toContain('SHOP')
+    await expect(listGrants(svc, 'ora', 'SHOP')).resolves.toBeInstanceOf(Array)
+  })
+
+  it('writes a PostgreSQL-flavoured model as Oracle DDL that runs', async () => {
+    const { tables } = parseDbml('Table conv_notes {\n  id bigint [pk, increment]\n  done boolean [default: false]\n  body text\n  created timestamptz [default: `now()`]\n}', {})
+    await svc.runScript('ora', 'DROP TABLE "conv_notes" PURGE')
+    const outcomes = await svc.runScript('ora', createScript(tables, getDialect('oracle'), { translateTypes: true }))
+    const failed = outcomes.find((o) => o.error)
+    expect(failed?.error?.message, failed?.sql).toBeUndefined()
+    await run('DROP TABLE "conv_notes" PURGE')
   })
 })
