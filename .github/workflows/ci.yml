@@ -117,7 +117,7 @@ jobs:
         with:
           name: ui-shots-${{ matrix.os }}
           path: ui-shots
-          if-no-files-found: ignore"
+          if-no-files-found: ignore
 
   # SQL Server Windows (integrated) authentication through msnodesqlv8 + ODBC, against LocalDB.
   windows-auth:
