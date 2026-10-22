@@ -13,6 +13,7 @@ import { useSettings } from '@/store/settings'
 import { toast, useUi } from '@/store/ui'
 import { useActiveTab, useWorkspace } from '@/store/workspace'
 import { useCurrentConnectionId } from '../sidebar/Sidebar'
+import { useAiAccess } from './AiPermissions'
 import { Markdown } from './Markdown'
 import { providerMeta } from './providers'
 import { tp, useT } from '@/lib/i18n'
@@ -119,6 +120,7 @@ export function AiPanel() {
   const connectionId = useCurrentConnectionId()
   const connection = useConnections((s) => s.list.find((c) => c.id === connectionId))
   const status = useConnections((s) => (connectionId ? s.runtime[connectionId]?.status : undefined))
+  const access = useAiAccess(connection)
   const settings = useSettings((s) => s.settings)
   const chat = useChats((s) => (connectionId ? (s.chats[connectionId] ?? null) : null))
   const update = useChats((s) => s.update)
@@ -266,6 +268,13 @@ export function AiPanel() {
         </div>
       ) : !connection ? (
         <div className="flex flex-1 items-center justify-center p-6 text-center text-[12px] text-fg-faint">{t('Connect to a database to chat about it.')}</div>
+      ) : access === 'off' ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+          <Sparkles size={26} className="text-fg-faint" />
+          <div className="text-[13px] font-medium">{t('AI is turned off for {name}', { name: connection.name })}</div>
+          <p className="text-[12px] leading-relaxed text-fg-muted">{t('Nothing from this connection is sent to an AI model. You can allow it in AI permissions.')}</p>
+          <Button onClick={() => setUi({ modal: { kind: 'settings', section: 'permissions' } })}>{t('AI permissions')}</Button>
+        </div>
       ) : (
         <>
           <div ref={listRef} className="min-h-0 flex-1 overflow-auto px-3 py-3">
@@ -273,9 +282,17 @@ export function AiPanel() {
               <div className="flex flex-col gap-2 pt-4">
                 <div className="mb-1 text-[12.5px] text-fg-muted">
                   {t('Ask anything about')} <b className="text-fg">{connection.name}</b>.{' '}
-                  {connection.knowledgeBasePath
-                    ? t('The assistant reads the schema and your knowledge base and can run read-only queries.')
-                    : t('The assistant reads the schema and can run read-only queries.')}
+                  {access === 'schema'
+                    ? connection.knowledgeBasePath
+                      ? t('The assistant reads the schema and your knowledge base, but not the data in tables.')
+                      : t('The assistant reads the schema, but not the data in tables.')
+                    : access === 'write'
+                      ? connection.knowledgeBasePath
+                        ? t('The assistant reads the schema and your knowledge base and runs queries; it asks before changing anything.')
+                        : t('The assistant reads the schema and runs queries; it asks before changing anything.')
+                      : connection.knowledgeBasePath
+                        ? t('The assistant reads the schema and your knowledge base and can run read-only queries.')
+                        : t('The assistant reads the schema and can run read-only queries.')}
                 </div>
                 {SUGGESTIONS.map((s) => (
                   <button key={s} type="button" onClick={() => send(t(s))} className="rounded-md border border-line bg-bg px-2.5 py-2 text-left text-[12px] hover:border-accent/60 hover:bg-hover" disabled={status !== 'connected'}>

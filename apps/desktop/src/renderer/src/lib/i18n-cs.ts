@@ -3,6 +3,12 @@
  * Plural forms: `{n} rows` is the 1/5+ form, `{n} rows|few` the Czech 2–4 form.
  */
 export const cs: Record<string, string> = {
+  'AI is turned off for {name}': 'AI je pro {name} vypnutá',
+  'Nothing from this connection is sent to an AI model. You can allow it in AI permissions.': 'Z tohoto připojení se do AI modelu nic neposílá. Povolit to můžete v oprávněních AI.',
+  'The assistant reads the schema and your knowledge base, but not the data in tables.': 'Asistent čte schéma a vaši knowledge base, ale ne data v tabulkách.',
+  'The assistant reads the schema, but not the data in tables.': 'Asistent čte schéma, ale ne data v tabulkách.',
+  'The assistant reads the schema and your knowledge base and runs queries; it asks before changing anything.': 'Asistent čte schéma a vaši knowledge base a spouští dotazy; před každou změnou se zeptá.',
+  'The assistant reads the schema and runs queries; it asks before changing anything.': 'Asistent čte schéma a spouští dotazy; před každou změnou se zeptá.',
   'Amber': 'Oranžová',
   'Slate': 'Šedá',
   '{n} statement': '{n} příkaz',

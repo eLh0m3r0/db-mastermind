@@ -16,11 +16,20 @@ export function aiDefaultsOf(settings: AppSettings): AiPermissions {
   return settings.ai.defaults ?? { access: settings.ai.dataSharing === 'schema' ? 'schema' : 'write', agents: true, agentWrites: settings.mcp.allowWrites, knowledgeWrites: true }
 }
 
+/** What AI may do on this connection, organization policies included (UI hint; the main process enforces). */
+export function useAiAccess(connection: ConnectionConfig | undefined): AiAccess {
+  const settings = useSettings((s) => s.settings)
+  const policies = useSettings((s) => s.info?.managed?.policies)
+  if (!connection || !settings) return 'off'
+  const access = resolveAiPermissions(connection, aiDefaultsOf(settings)).access
+  if (policies?.allowAi === false) return 'off'
+  if (policies?.maxAiDataSharing === 'schema' && access !== 'off') return 'schema'
+  return access
+}
+
 /** Whether AI features apply to this connection (UI hint; the main process enforces). */
 export function useAiAllowed(connection: ConnectionConfig | undefined): boolean {
-  const settings = useSettings((s) => s.settings)
-  if (!connection || !settings) return false
-  return resolveAiPermissions(connection, aiDefaultsOf(settings)).access !== 'off'
+  return useAiAccess(connection) !== 'off'
 }
 
 function useAccessOptions(): { value: AiAccess; label: string; hint: string }[] {
