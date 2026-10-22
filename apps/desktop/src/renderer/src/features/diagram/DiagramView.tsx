@@ -343,8 +343,11 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
       const now = Date.now()
       const changed = [...new Set([...Object.keys(drafts), ...Object.keys(next)])].filter((k) => drafts[k] !== next[k])
       const key = changed.length === 1 ? changed[0] : undefined
-      // Successive edits of one table within a moment (typing) are one step.
-      if (!(key && key === h.key && drafts[key] && now - h.at < 800)) h.past = [...h.past.slice(-99), drafts]
+      // Successive edits of one table within a moment (typing a name) are one step; adding or removing a table,
+      // column, foreign key or index always starts a new one.
+      const shape = (t: DesignTable | undefined) => (t ? `${t.columns.length}/${t.foreignKeys.length}/${t.indexes.length}/${t.dropped ? 1 : 0}` : '')
+      const typing = key && key === h.key && drafts[key] && next[key] && shape(drafts[key]) === shape(next[key]) && now - h.at < 800
+      if (!typing) h.past = [...h.past.slice(-99), drafts]
       h.at = now
       h.key = key
       h.future = []
@@ -771,6 +774,8 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
       position: center,
     })
     setSelected(key)
+    // It goes to the right of everything, often off-screen: bring it into view.
+    requestAnimationFrame(() => flow.setCenter(center.x + WIDTH / 2, center.y + 120, { zoom: Math.max(flow.getZoom(), 0.8), duration: 300 }))
   }
   const onConnect = (c: { source: string | null; target: string | null; sourceHandle?: string | null; targetHandle?: string | null }) => {
     if (!design || !c.source || !c.target) return
@@ -876,7 +881,7 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-line px-2 whitespace-nowrap [scrollbar-width:none]">
+      <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-2 py-1 whitespace-nowrap">
         <div className="relative shrink-0">
           <Input
             inputSize="sm"
@@ -970,102 +975,9 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
             {tp(tables.length, { one: '{n} table', many: '{n} tables' })} · {tp(edges.length, { one: '{n} relationship', many: '{n} relationships' })}
           </span>
         )}
-        <div className="flex-1" />
+        {/* The view actions wrap as one group when the window is narrow. */}
+        <div className="ml-auto flex shrink-0 items-center gap-2">
         {layouting && <Spinner size={13} className="text-fg-faint" />}
-        {design && (
-          <>
-            <Button size="sm" variant="ghost" icon={<Plus size={13} />} onClick={addTable}>
-              {tr('New table')}
-            </Button>
-            {!model && (
-              <Button size="sm" variant="ghost" icon={<Sparkles size={13} />} onClick={designWithAi} title={tr('Describe a change, e.g. "add soft delete to all customer tables"; the AI proposes it as design changes')}>
-                {tr('Design with AI…')}
-              </Button>
-            )}
-            {!model && (
-              <Button
-                size="sm"
-                variant="ghost"
-                icon={<Layers size={13} />}
-                onClick={async (e) => {
-                  const anchor = e.currentTarget
-                  const sets = await api.listChangeSets(tab.connectionId)
-                  openMenu(anchor, [
-                    {
-                      label: tr('Save these changes as…'),
-                      disabled: !Object.keys(drafts).length,
-                      onClick: async () => {
-                        const name = await askText({ title: tr('Save these changes as…'), placeholder: tr('Name of the change set'), confirmLabel: tr('Save') })
-                        if (!name) return
-                        await api.saveChangeSet({ connectionId: tab.connectionId, name, design: drafts })
-                        toast({ kind: 'success', message: tr('Change set “{name}” saved', { name }) })
-                      },
-                    },
-                    ...(sets.length ? ['separator' as const] : []),
-                    ...sets.map((cs) => ({
-                      label: `${cs.name} · ${new Date(cs.createdAt).toLocaleDateString()}`,
-                      submenu: [
-                        {
-                          label: tr('Load (replaces the current changes)'),
-                          onClick: async () => {
-                            if (Object.keys(drafts).length && !(await confirmAction({ title: tr('Replace the current design changes with “{name}”?', { name: cs.name }), confirmLabel: tr('Replace'), danger: true }))) return
-                            setSelected(null)
-                            setDrafts(cs.design)
-                          },
-                        },
-                        { label: tr('Delete'), danger: true, onClick: () => void api.deleteChangeSet(cs.id) },
-                      ],
-                    })),
-                  ])
-                }}
-              >
-                {tr('Change sets')}
-              </Button>
-            )}
-            <IconButton label={`${tr('Undo')} (${keys('⌘Z')})`} disabled={!history.current.past.length} onClick={undoDesign}>
-              <Undo size={14} />
-            </IconButton>
-            <IconButton label={`${tr('Redo')} (${keys('⇧⌘Z')})`} disabled={!history.current.future.length} onClick={redoDesign}>
-              <Redo size={14} />
-            </IconButton>
-            {Object.keys(drafts).length > 0 && (
-              <Button
-                size="sm"
-                variant="ghost"
-                icon={<Undo2 size={13} />}
-                onClick={async () => {
-                  if (await confirmAction({ title: tr('Discard all design changes?'), confirmLabel: tr('Discard'), danger: true })) {
-                    setDrafts({})
-                    setSelected(null)
-                  }
-                }}
-              >
-                {tr('Discard')}
-              </Button>
-            )}
-            {model && onApplyModel ? (
-              <Button
-                size="sm"
-                variant={changes.length ? 'primary' : 'secondary'}
-                icon={<FileCode2 size={13} />}
-                disabled={!changes.length}
-                title={tr('Write the tables on the canvas to the DBML text')}
-                onClick={() => {
-                  onApplyModel(display.filter((d) => d.status !== 'dropped').map((d) => d.info))
-                  history.current = { past: [], future: [], at: 0 }
-                  setSelected(null)
-                  setDrafts({}, false)
-                }}
-              >
-                {tr('Write to DBML')}{changes.length ? ` (${changes.length})` : ''}
-              </Button>
-            ) : (
-              <Button size="sm" variant={changes.length ? 'primary' : 'secondary'} icon={<FileCode2 size={13} />} disabled={!changes.length} onClick={() => setReviewOpen(true)}>
-                {tr('Review migration')}{changes.length ? ` (${changes.length})` : ''}
-              </Button>
-            )}
-          </>
-        )}
         {(!model || onApplyModel) && (
         <Button
           size="sm"
@@ -1164,6 +1076,7 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
         >
           {tr('Export')}
         </Button>
+        </div>
       </div>
       {staleDesign && (
         <div className="flex h-9 shrink-0 items-center gap-2 border-b border-line bg-warning-soft px-3 text-[12px] text-warning">
@@ -1174,14 +1087,111 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
         </div>
       )}
       {design && (
-        <div className="flex h-8 shrink-0 items-center gap-2 border-b border-line bg-accent-soft px-3 text-[12px]">
-          <PencilRuler size={13} className="text-accent" />
-          <span>
-            <b>{tr('Design mode.')}</b>{' '}
+        // The design actions live in this bar (shown only while designing), so the toolbar above keeps room for the
+        // view controls at any window width.
+        <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-accent-soft px-2 py-1 text-[12px]">
+          <PencilRuler size={13} className="ml-1 shrink-0 text-accent" />
+          <b className="shrink-0">{tr('Design mode.')}</b>
+          <span
+            className="min-w-0 flex-1 truncate text-fg-muted"
+            title={model
+              ? tr('Click a table to edit it, drag from a column dot to another table to add a foreign key. Write to DBML puts the changes into the model text.')
+              : tr('Click a table to edit it, drag from a column dot to another table to add a foreign key. Nothing changes in the database until you run the generated migration.')}
+          >
             {model
               ? tr('Click a table to edit it, drag from a column dot to another table to add a foreign key. Write to DBML puts the changes into the model text.')
               : tr('Click a table to edit it, drag from a column dot to another table to add a foreign key. Nothing changes in the database until you run the generated migration.')}
           </span>
+          <Button size="sm" variant="ghost" icon={<Plus size={13} />} onClick={addTable}>
+            {tr('New table')}
+          </Button>
+          {!model && (
+            <Button size="sm" variant="ghost" icon={<Sparkles size={13} />} onClick={designWithAi} title={tr('Describe a change, e.g. "add soft delete to all customer tables"; the AI proposes it as design changes')}>
+              {tr('Design with AI…')}
+            </Button>
+          )}
+          {!model && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<Layers size={13} />}
+              onClick={async (e) => {
+                const anchor = e.currentTarget
+                const sets = await api.listChangeSets(tab.connectionId)
+                openMenu(anchor, [
+                  {
+                    label: tr('Save these changes as…'),
+                    disabled: !Object.keys(drafts).length,
+                    onClick: async () => {
+                      const name = await askText({ title: tr('Save these changes as…'), placeholder: tr('Name of the change set'), confirmLabel: tr('Save') })
+                      if (!name) return
+                      await api.saveChangeSet({ connectionId: tab.connectionId, name, design: drafts })
+                      toast({ kind: 'success', message: tr('Change set “{name}” saved', { name }) })
+                    },
+                  },
+                  ...(sets.length ? ['separator' as const] : []),
+                  ...sets.map((cs) => ({
+                    label: `${cs.name} · ${new Date(cs.createdAt).toLocaleDateString()}`,
+                    submenu: [
+                      {
+                        label: tr('Load (replaces the current changes)'),
+                        onClick: async () => {
+                          if (Object.keys(drafts).length && !(await confirmAction({ title: tr('Replace the current design changes with “{name}”?', { name: cs.name }), confirmLabel: tr('Replace'), danger: true }))) return
+                          setSelected(null)
+                          setDrafts(cs.design)
+                        },
+                      },
+                      { label: tr('Delete'), danger: true, onClick: () => void api.deleteChangeSet(cs.id) },
+                    ],
+                  })),
+                ])
+              }}
+            >
+              {tr('Change sets')}
+            </Button>
+          )}
+          <IconButton label={`${tr('Undo')} (${keys('⌘Z')})`} disabled={!history.current.past.length} onClick={undoDesign}>
+            <Undo size={14} />
+          </IconButton>
+          <IconButton label={`${tr('Redo')} (${keys('⇧⌘Z')})`} disabled={!history.current.future.length} onClick={redoDesign}>
+            <Redo size={14} />
+          </IconButton>
+          {Object.keys(drafts).length > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<Undo2 size={13} />}
+              onClick={async () => {
+                if (await confirmAction({ title: tr('Discard all design changes?'), confirmLabel: tr('Discard'), danger: true })) {
+                  setDrafts({})
+                  setSelected(null)
+                }
+              }}
+            >
+              {tr('Discard')}
+            </Button>
+          )}
+          {model && onApplyModel ? (
+            <Button
+              size="sm"
+              variant={changes.length ? 'primary' : 'secondary'}
+              icon={<FileCode2 size={13} />}
+              disabled={!changes.length}
+              title={tr('Write the tables on the canvas to the DBML text')}
+              onClick={() => {
+                onApplyModel(display.filter((d) => d.status !== 'dropped').map((d) => d.info))
+                history.current = { past: [], future: [], at: 0 }
+                setSelected(null)
+                setDrafts({}, false)
+              }}
+            >
+              {tr('Write to DBML')}{changes.length ? ` (${changes.length})` : ''}
+            </Button>
+          ) : (
+            <Button size="sm" variant={changes.length ? 'primary' : 'secondary'} icon={<FileCode2 size={13} />} disabled={!changes.length} onClick={() => setReviewOpen(true)}>
+              {tr('Review migration')}{changes.length ? ` (${changes.length})` : ''}
+            </Button>
+          )}
         </div>
       )}
       {focusName && pathTo && schema.tables.some((t) => t.name === pathTo) && (

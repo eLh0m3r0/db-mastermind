@@ -161,7 +161,7 @@ export function TableEditor({
             return (
               <div key={fk.id} className="mb-1 flex flex-col gap-1 rounded-md border border-line bg-bg p-1.5">
                 <div className="flex items-center gap-1">
-                  <Select inputSize="sm" className="h-6 flex-1 text-[12px]" value={fk.columns[0]} onChange={(e) => update({ columns: [e.target.value] })}>
+                  <Select inputSize="sm" className="h-6 min-w-0 flex-1 text-[12px]" title={fk.columns[0]} value={fk.columns[0]} onChange={(e) => update({ columns: [e.target.value] })}>
                     {table.columns.map((c) => (
                       <option key={c.id}>{c.name}</option>
                     ))}
@@ -169,7 +169,8 @@ export function TableEditor({
                   <ArrowRight size={12} className="shrink-0 text-fg-faint" />
                   <Select
                     inputSize="sm"
-                    className="h-6 flex-1 text-[12px]"
+                    className="h-6 min-w-0 flex-1 text-[12px]"
+                    title={fk.refSchema ? `${fk.refSchema}.${fk.refTable}` : fk.refTable}
                     value={target ? tableKey(target.schema, target.name) : tableKey(fk.refSchema, fk.refTable)}
                     onChange={(e) => {
                       const t = allTables.find((x) => tableKey(x.schema, x.name) === e.target.value)
@@ -182,16 +183,17 @@ export function TableEditor({
                       </option>
                     ))}
                   </Select>
-                  <Select inputSize="sm" className="h-6 w-24 text-[12px]" value={fk.refColumns[0]} onChange={(e) => update({ refColumns: [e.target.value] })}>
-                    {(target?.columns ?? []).map((c) => (
-                      <option key={c.name}>{c.name}</option>
-                    ))}
-                  </Select>
                   <IconButton label={tr('Delete foreign key')} onClick={() => set({ foreignKeys: table.foreignKeys.filter((f) => f.id !== fk.id) })}>
                     <Trash2 size={12} />
                   </IconButton>
                 </div>
                 <div className="flex items-center gap-1.5 pl-1 text-[11px] text-fg-muted">
+                  {/* The referenced column has its own line: three selects in one row cut names off. */}
+                  <Select inputSize="sm" className="h-5 min-w-0 flex-1 text-[11px]" title={fk.refColumns[0]} value={fk.refColumns[0]} onChange={(e) => update({ refColumns: [e.target.value] })}>
+                    {(target?.columns ?? []).map((c) => (
+                      <option key={c.name}>{c.name}</option>
+                    ))}
+                  </Select>
                   {tr('on delete')}
                   <Select inputSize="sm" className="h-5 w-28 text-[11px]" value={fk.onDelete ?? 'NO ACTION'} onChange={(e) => update({ onDelete: e.target.value })}>
                     {FK_ACTIONS.map((a) => (
