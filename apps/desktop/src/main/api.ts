@@ -68,6 +68,7 @@ import { applyMcpHttp, mcpHttpStatus } from './mcp-http'
 import { buildMenu } from './menu'
 import * as library from './library'
 import { getSettings, updateSettings } from './settings'
+import { reportIssueUrl } from './report-issue'
 import { isPortable } from './storage'
 
 export const db = new DatabaseService()
@@ -740,6 +741,9 @@ export const api: MastermindApi = {
   },
   async readTextFile(path) {
     return readFile(path, 'utf8')
+  },
+  async reportIssue() {
+    await shell.openExternal(reportIssueUrl())
   },
   async openExternal(url) {
     if (/^https?:\/\//.test(url)) await shell.openExternal(url)

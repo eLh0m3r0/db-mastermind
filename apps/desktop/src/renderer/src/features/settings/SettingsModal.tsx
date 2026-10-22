@@ -169,7 +169,7 @@ export function SettingsModal() {
                   <Button size="xs" onClick={() => void api.openExternal('https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md')}>
                     {t('Roadmap')}
                   </Button>
-                  <Button size="xs" onClick={() => void api.openExternal('https://github.com/eLh0m3r0/db-mastermind/issues/new')}>
+                  <Button size="xs" onClick={() => void api.reportIssue()}>
                     {t('Report issue')}
                   </Button>
                 </div>

@@ -523,6 +523,8 @@ export interface MastermindApi {
   pickFile(options: { title?: string; filters?: FileFilter[]; save?: boolean; defaultPath?: string }): Promise<string | null>
   pickDirectory(title?: string): Promise<string | null>
   readTextFile(path: string): Promise<string>
+  /** GitHub's bug form with the app version and OS filled in. */
+  reportIssue(): Promise<void>
   openExternal(url: string): Promise<void>
   showItemInFolder(path: string): Promise<void>
 
@@ -656,6 +658,7 @@ export const API_METHODS = [
   'pickFile',
   'pickDirectory',
   'readTextFile',
+  'reportIssue',
   'openExternal',
   'showItemInFolder',
   'kbEnsureFolder',

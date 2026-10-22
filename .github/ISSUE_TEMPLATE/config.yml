@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Rychlý návod (česky)
+    url: https://github.com/eLh0m3r0/db-mastermind/blob/main/docs/navod.md
+    about: Jak aplikaci rozběhnout a co v ní najdete.

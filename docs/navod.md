@@ -10,17 +10,21 @@ Krátký průvodce pro kolegy: jak aplikaci rozběhnout a co v ní najdete. Vše
 - **Windows s instalací:** použijte `…-win-x64-setup.exe` (nepotřebuje správce) nebo pro IT `…-win-x64.msi`.
 - **macOS:** stáhněte `.dmg`, nebo použijte Homebrew:
   `brew tap elh0m3r0/db-mastermind https://github.com/eLh0m3r0/db-mastermind && brew install --cask db-mastermind`.
-  Aplikace zatím není notarizovaná, takže při prvním spuštění: pravé tlačítko → Otevřít.
+  Aplikace zatím není notarizovaná, takže při prvním spuštění: pravé tlačítko → Otevřít. Další verze se už
+  stahují a instalují samy (stejně jako instalátor na Windows).
+
+Zkoušíte aplikaci v pilotu? Viz [pilot.md](pilot.md): co vyzkoušet a jak hlásit chyby.
 
 Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění se řídí jazykem systému.
 
 ## 2. Připojení k databázi
 
-- **Nové připojení** (vlevo dole): PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite nebo DuckDB.
+- **Nové připojení** (vlevo dole): PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite, DuckDB, ClickHouse, CockroachDB, BigQuery nebo Trino.
   - Do pole nahoře můžete vložit celý connection string a formulář se vyplní sám.
   - U SQL Serveru na Windows zvolte **Ověření Windows** a heslo nezadáváte.
-- **Import:** tlačítko *Importovat připojení* vedle *Nové připojení* načte připojení z Beekeeper Studio, DBeaver, DataGrip, `.pgpass` nebo ze
-  souboru od kolegy.
+- **Import:** tlačítko *Importovat připojení* vedle *Nové připojení* najde nástroje na počítači (Beekeeper Studio, DBeaver,
+  DataGrip, pgAdmin, SSMS, Azure Data Studio, MySQL Workbench, HeidiSQL a další) nebo načte soubor od kolegy. Z Beekeeper
+  Studia a DBeaveru převezme i uložená hesla; když heslo chybí, aplikace se na něj při připojení zeptá.
 - **Sdílení s kolegy:** pravé tlačítko na připojení → *Sdílet s kolegy (bez hesla)…*. Soubor neobsahuje hesla.
 - **Ochrana produkce:** připojení označte jako *Jen pro čtení* nebo jako produkční prostředí. Aplikace se pak ptá před
   každou nebezpečnou operací.

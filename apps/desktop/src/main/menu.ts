@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, shell, type MenuItemConstructorOptions } from 'electron'
+import { reportIssueUrl } from './report-issue'
 import { getSettings } from './settings'
 
 function sendCommand(command: string) {
@@ -129,7 +130,7 @@ export function buildMenu(): void {
       submenu: [
         { label: m('Documentation'), click: () => void shell.openExternal('https://github.com/eLh0m3r0/db-mastermind#readme') },
         { label: m('Roadmap'), click: () => void shell.openExternal('https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md') },
-        { label: m('Report an Issue'), click: () => void shell.openExternal('https://github.com/eLh0m3r0/db-mastermind/issues/new') },
+        { label: m('Report an Issue'), click: () => void shell.openExternal(reportIssueUrl()) },
         cmd(m('Check for Updates…'), 'check-updates'),
         { label: m('Support DB Mastermind (Ko-fi)'), click: () => void shell.openExternal('https://ko-fi.com/vaclavmudra') },
         { type: 'separator' },

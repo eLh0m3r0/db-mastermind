@@ -1,0 +1,50 @@
+name: Chyba / Bug
+description: Něco nefunguje, jak má. Something doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Díky za nahlášení! Nikdy sem nevkládejte hesla, connection stringy s heslem ani citlivá data — stačí popis a případně snímek obrazovky s rozmazanými údaji.
+        Thanks! Never paste passwords, connection strings with passwords or sensitive data here.
+  - type: textarea
+    id: what
+    attributes:
+      label: Co se stalo / What happened
+      description: Co jste dělali a co aplikace udělala (případně přesný text chyby).
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Jak to zopakovat / Steps to reproduce
+      placeholder: |
+        1. Připojím se k …
+        2. Otevřu tabulku …
+        3. …
+  - type: textarea
+    id: expected
+    attributes:
+      label: Co jste čekali / What you expected
+  - type: dropdown
+    id: database
+    attributes:
+      label: Databáze / Database
+      options: [PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite, DuckDB, ClickHouse, CockroachDB, BigQuery, Trino, Netýká se databáze / not database-specific]
+  - type: input
+    id: version
+    attributes:
+      label: Verze aplikace / App version
+      description: Nastavení → O aplikaci (doplní se samo, když chybu hlásíte z aplikace).
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Systém / OS
+      placeholder: Windows 11, macOS 15…
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Snímky obrazovky, poznámky / Screenshots, notes
+      description: Snímek vložíte přetažením sem. Log aktualizací je v <datová složka>/logs/updater.log.
