@@ -38,6 +38,11 @@ export interface McpServerOptions {
    * a confirmation). External agents can't be asked, so without this they need agentWrites.
    */
   confirmWrite?: (sql: string) => Promise<boolean>
+  /**
+   * Runs before a database tool; a returned message is the tool's answer instead (the app's assistant asks the user
+   * before saving a knowledge base file or, when set so, before a read query).
+   */
+  beforeTool?: (name: string, args: Record<string, unknown>) => Promise<string | undefined>
 }
 
 const INSTRUCTIONS = `DB Mastermind gives you safe access to the user's databases.
@@ -151,6 +156,8 @@ export function createMcpServer(options: McpServerOptions): Server {
       const ctx = await contextFor(config)
       const tool = DB_TOOLS.find((t) => t.name === name) ?? (await loadSqlTools(ctx.knowledge, reserved)).tools.find((t) => t.name === name)
       if (!tool) throw new Error(`Unknown tool ${name}${reserved.includes(name) ? '' : ` for ${config.name}`}`)
+      const stop = await options.beforeTool?.(name, args as Record<string, unknown>)
+      if (stop) return { content: [{ type: 'text', text: stop }] }
       const text = await tool.run(ctx, args as Record<string, unknown>)
       return { content: [{ type: 'text', text }] }
     } catch (err) {

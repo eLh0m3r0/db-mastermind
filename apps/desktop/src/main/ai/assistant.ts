@@ -101,6 +101,23 @@ async function runChat(request: AiChatRequest): Promise<void> {
       }),
   }
 
+  /** Asks the user before a tool when needed; a returned message is the tool's answer instead. Both chat paths use it. */
+  const gate = async (name: string, input: Record<string, unknown>): Promise<string | undefined> => {
+    if (name === 'write_knowledge') {
+      const ok = await askApproval(chatId, 'file', `${String(input.path)}\n\n${String(input.content ?? '').slice(0, 4000)}`, signal)
+      if (!ok) return 'The user declined to save this file.'
+    }
+    if ((name === 'run_query' || name === 'sample_rows') && !settings.autoRunReadQueries) {
+      const sql = name === 'run_query' ? String(input.sql ?? '') : `sample of ${String(input.table)}`
+      // Writes are confirmed inside the tool; only reads need asking here.
+      if (name === 'sample_rows' || classifyStatement(sql) === 'read') {
+        const ok = await askApproval(chatId, 'sql', sql, signal)
+        if (!ok) return 'The user declined to run this query.'
+      }
+    }
+    return undefined
+  }
+
   const extra = [
     request.context?.sql ? `The SQL currently in the user's editor:\n\`\`\`sql\n${request.context.sql}\n\`\`\`` : '',
     request.context?.table ? `The user is looking at table ${request.context.table}.` : '',
@@ -121,6 +138,7 @@ async function runChat(request: AiChatRequest): Promise<void> {
               db,
               connections: [{ ...config, ai: { access: access.access, agents: true, agentWrites: false, knowledgeWrites: access.knowledgeWrites } }],
               confirmWrite: ctx.confirmWrite,
+              beforeTool: gate,
               version: app.getVersion(),
               onExecuted: (_id, o) => ctx.onExecuted?.(o),
             })
@@ -155,18 +173,8 @@ async function runChat(request: AiChatRequest): Promise<void> {
         description: def.description,
         inputSchema: jsonSchema<Record<string, unknown>>(def.inputSchema),
         execute: async (input: Record<string, unknown>) => {
-          if (def.name === 'write_knowledge') {
-            const ok = await askApproval(chatId, 'file', `${String(input.path)}\n\n${String(input.content ?? '').slice(0, 4000)}`, signal)
-            if (!ok) return 'The user declined to save this file.'
-          }
-          if ((def.name === 'run_query' || def.name === 'sample_rows') && !settings.autoRunReadQueries) {
-            const sql = def.name === 'run_query' ? String(input.sql ?? '') : `sample of ${String(input.table)}`
-            // Writes are confirmed inside the tool; only reads need asking here.
-            if (def.name === 'sample_rows' || classifyStatement(sql) === 'read') {
-              const ok = await askApproval(chatId, 'sql', sql, signal)
-              if (!ok) return 'The user declined to run this query.'
-            }
-          }
+          const stop = await gate(def.name, input)
+          if (stop) return stop
           return def.run(ctx, input)
         },
       })

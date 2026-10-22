@@ -1,4 +1,7 @@
 import { execFile, spawn } from 'node:child_process'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { promisify } from 'node:util'
 
@@ -83,15 +86,28 @@ export async function runCli(options: CliRunOptions): Promise<void> {
   // A write waits in the app for the user's answer; Claude Code would give up on the tool call after its default timeout.
   const env = { ...process.env, PATH: await resolvedPath(), MCP_TOOL_TIMEOUT: process.env.MCP_TOOL_TIMEOUT ?? '900000' }
   let args: string[]
+  let stdin: string | undefined
+  // Long texts (prompt, system prompt, MCP config with its token) never go on the command line: on Windows the CLI
+  // runs through cmd.exe, which splits unquoted arguments and can't take newlines at all.
+  const scratch = mkdtempSync(join(tmpdir(), 'dbm-agent-'))
+  const file = (name: string, text: string) => {
+    const path = join(scratch, name)
+    writeFileSync(path, text, { mode: 0o600 })
+    return path
+  }
   if (options.provider === 'claude-code') {
-    args = ['-p', options.prompt, '--output-format', 'stream-json', '--verbose', '--append-system-prompt', options.system]
+    stdin = options.prompt
+    args = ['-p', '--output-format', 'stream-json', '--verbose', '--append-system-prompt-file', file('system.md', options.system)]
     if (options.mcp) {
       const server = 'url' in options.mcp ? { type: 'http', url: options.mcp.url, headers: options.mcp.headers } : { command: options.mcp.command, args: options.mcp.args }
-      const mcpConfig = JSON.stringify({ mcpServers: { dbmastermind: server } })
-      args.push('--mcp-config', mcpConfig, '--strict-mcp-config', '--allowedTools', 'mcp__dbmastermind')
+      args.push('--mcp-config', file('mcp.json', JSON.stringify({ mcpServers: { dbmastermind: server } })), '--strict-mcp-config', '--allowedTools', 'mcp__dbmastermind')
     } else {
-      args.push('--strict-mcp-config', '--disallowedTools', 'Bash Edit Write Read Glob Grep WebFetch WebSearch')
+      args.push('--strict-mcp-config')
     }
+    // No built-in tools at all: in print mode Claude Code still allows its read-only ones (Read, Glob, Grep), which
+    // could open a database file directly and get round the connection's AI permissions. DB Mastermind's tools are
+    // the only way to the data.
+    args.push('--tools', '', '--disallowedTools', 'Bash', 'Edit', 'Write', 'Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'NotebookEdit', 'Task', 'Agent')
     if (options.model) args.push('--model', options.model)
   } else {
     const toml = (v: unknown) => JSON.stringify(v)
@@ -107,7 +123,10 @@ export async function runCli(options: CliRunOptions): Promise<void> {
     ]
   }
 
-  const child = spawn(binary(options.provider), args, { env, stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32' })
+  const windows = process.platform === 'win32'
+  const child = spawn(binary(options.provider), windows ? args.map(cmdArg) : args, { env, stdio: ['pipe', 'pipe', 'pipe'], shell: windows })
+  child.stdin.end(stdin ?? '')
+  child.once('close', () => rmSync(scratch, { recursive: true, force: true }))
   const onAbort = () => child.kill()
   options.signal.addEventListener('abort', onAbort, { once: true })
   let stderr = ''
@@ -168,4 +187,10 @@ export async function runCli(options: CliRunOptions): Promise<void> {
     const login = /401|unauthori[sz]ed|log ?in|sign in|expired|credential/i.test(`${detail}\n${stderr}`)
     throw new Error(`${name}: ${detail}${login ? `\nSign in again: run \`${binary(options.provider)} login\` in a terminal.` : ''}`)
   }
+}
+
+/** One argument for cmd.exe (the CLIs are .cmd shims on Windows): quoted when needed, so it stays one argument. */
+export function cmdArg(arg: string): string {
+  if (arg === '') return '""'
+  return /[\s"&|<>^()%!]/.test(arg) ? `"${arg.replace(/"/g, '""')}"` : arg
 }
