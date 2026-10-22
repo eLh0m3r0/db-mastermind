@@ -14,6 +14,7 @@ import {
   Plus,
   RefreshCw,
   Rows3,
+  Sparkles,
   Trash2,
   Undo2,
   Upload,
@@ -38,7 +39,7 @@ import { DataGrid, selectionBounds, selectionToTsv, type DataGridHandle, type Gr
 import { Button, IconButton } from '@/components/ui/Button'
 import { openMenu, type MenuItem } from '@/components/ui/ContextMenu'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { Badge, Select } from '@/components/ui/Input'
+import { Badge, Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Spinner } from '@/components/ui/Spinner'
 import { api } from '@/lib/api'
@@ -94,6 +95,24 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
   const [selection, setSelection] = useState<GridSelection | null>(null)
   const [showDetails, setShowDetails] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [aiFilter, setAiFilter] = useState('')
+  const [aiBusy, setAiBusy] = useState(false)
+  const aiReady = useSettings((st) => !!st.settings?.ai.activeProvider) && connection?.aiEnabled !== false
+
+  const suggestFilter = async () => {
+    if (!aiFilter.trim()) return
+    setAiBusy(true)
+    try {
+      const group = await api.aiSuggestFilter(tab.connectionId, tab.table, aiFilter.trim())
+      setDraft(group)
+      setShowFilters(true)
+      applyFilter(group)
+    } catch (err) {
+      toast({ kind: 'error', message: t('Could not build a filter'), detail: errorMessage(err) })
+    } finally {
+      setAiBusy(false)
+    }
+  }
   const [lastSql, setLastSql] = useState('')
   const [duration, setDuration] = useState<number | null>(null)
   const grid = useRef<DataGridHandle>(null)
@@ -611,6 +630,18 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
           </div>
         )}
         <div className="flex-1" />
+        {aiReady && (
+          <Input
+            inputSize="sm"
+            className="w-[300px]"
+            placeholder={t('Describe a filter, e.g. paid orders over 1000 this month')}
+            value={aiFilter}
+            disabled={aiBusy}
+            onChange={(e) => setAiFilter(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && void suggestFilter()}
+            leading={aiBusy ? <Spinner size={12} /> : <Sparkles size={12} className="text-accent" />}
+          />
+        )}
         <IconButton label={t('Export')} size="md" onClick={(e) => exportMenu(e.currentTarget)}>
           <Download size={14} />
         </IconButton>

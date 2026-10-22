@@ -59,7 +59,8 @@ export interface CliRunOptions {
   prompt: string
   system: string
   model?: string
-  mcp: { command: string; args: string[] }
+  /** DB Mastermind as an MCP server for the agent; omitted for plain text completions. */
+  mcp?: { command: string; args: string[] }
   signal: AbortSignal
   onEvent: (event: CliEvent) => void
 }
@@ -79,21 +80,13 @@ export async function runCli(options: CliRunOptions): Promise<void> {
   const env = { ...process.env, PATH: await resolvedPath() }
   let args: string[]
   if (options.provider === 'claude-code') {
-    const mcpConfig = JSON.stringify({ mcpServers: { dbmastermind: { command: options.mcp.command, args: options.mcp.args } } })
-    args = [
-      '-p',
-      options.prompt,
-      '--output-format',
-      'stream-json',
-      '--verbose',
-      '--mcp-config',
-      mcpConfig,
-      '--strict-mcp-config',
-      '--allowedTools',
-      'mcp__dbmastermind',
-      '--append-system-prompt',
-      options.system,
-    ]
+    args = ['-p', options.prompt, '--output-format', 'stream-json', '--verbose', '--append-system-prompt', options.system]
+    if (options.mcp) {
+      const mcpConfig = JSON.stringify({ mcpServers: { dbmastermind: { command: options.mcp.command, args: options.mcp.args } } })
+      args.push('--mcp-config', mcpConfig, '--strict-mcp-config', '--allowedTools', 'mcp__dbmastermind')
+    } else {
+      args.push('--strict-mcp-config', '--disallowedTools', 'Bash Edit Write Read Glob Grep WebFetch WebSearch')
+    }
     if (options.model) args.push('--model', options.model)
   } else {
     const toml = (v: unknown) => JSON.stringify(v)
@@ -101,10 +94,9 @@ export async function runCli(options: CliRunOptions): Promise<void> {
       'exec',
       '--json',
       '--skip-git-repo-check',
-      '-c',
-      `mcp_servers.dbmastermind.command=${toml(options.mcp.command)}`,
-      '-c',
-      `mcp_servers.dbmastermind.args=${toml(options.mcp.args)}`,
+      ...(options.mcp
+        ? ['-c', `mcp_servers.dbmastermind.command=${toml(options.mcp.command)}`, '-c', `mcp_servers.dbmastermind.args=${toml(options.mcp.args)}`]
+        : []),
       ...(options.model ? ['-m', options.model] : []),
       `${options.system}\n\n---\n\n${options.prompt}`,
     ]

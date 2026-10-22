@@ -8,6 +8,8 @@ import {
   buildChangeStatements,
   detectDelimiter,
   explainQuery,
+  filterPrompt,
+  sanitizeFilter,
   parseDelimited,
   parseXlsx,
   DatabaseService,
@@ -25,6 +27,7 @@ import type { ExportFormat, MastermindApi } from '@shared/api'
 import * as connections from './connections'
 import { createExportWriter, EXPORT_EXTENSIONS } from './export'
 import { cancelChat, respondApproval, startChat } from './ai/assistant'
+import { completeText, extractJson } from './ai/complete'
 import { listModels, testProvider } from './ai/models'
 import { importConnections } from './importers'
 import { buildMenu } from './menu'
@@ -406,6 +409,15 @@ export const api: MastermindApi = {
   async aiChat(request) {
     // Runs in the background; progress arrives as 'ai:event' messages.
     startChat(request)
+  },
+  async aiSuggestFilter(connectionId, table, request) {
+    const config = connections.getConnection(connectionId)
+    if (config.aiEnabled === false) throw new Error('AI is turned off for this connection')
+    await ensureConnected(connectionId)
+    const info = await db.findTable(connectionId, table)
+    if (!info) throw new Error('Table not found')
+    const { system, prompt } = filterPrompt(info, request)
+    return sanitizeFilter(extractJson(await completeText(system, prompt)), info)
   },
   async cancelAiChat(chatId) {
     cancelChat(chatId)

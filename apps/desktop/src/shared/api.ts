@@ -1,6 +1,7 @@
 import type {
   ConnectionConfig,
   ExplainResult,
+  FilterGroup,
   FilterNode,
   QueryResult,
   RowChange,
@@ -256,6 +257,8 @@ export interface MastermindApi {
   testAiProvider(provider: AiProviderSettings): Promise<string>
   /** Streams AiEvents on the 'ai:event' channel; resolves when the run has started. */
   aiChat(request: AiChatRequest): Promise<void>
+  /** Natural language → filter for one table, validated against its columns. */
+  aiSuggestFilter(connectionId: string, table: TableRef, request: string): Promise<FilterGroup>
   cancelAiChat(chatId: string): Promise<void>
   /** `always` approves this and all later requests of the same kind in the chat. */
   respondAiApproval(id: string, answer: boolean | 'always'): Promise<void>
@@ -323,6 +326,7 @@ export const API_METHODS = [
   'listAiModels',
   'testAiProvider',
   'aiChat',
+  'aiSuggestFilter',
   'cancelAiChat',
   'respondAiApproval',
   'loadWorkspace',

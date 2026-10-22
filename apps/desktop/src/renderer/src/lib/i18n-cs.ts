@@ -642,4 +642,6 @@ export const cs: Record<string, string> = {
   'Formatted': 'Formátovaně',
   'Raw': 'Surově',
   'View value…': 'Zobrazit hodnotu…',
+  'Could not build a filter': 'Filtr se nepodařilo sestavit',
+  'Describe a filter, e.g. paid orders over 1000 this month': 'Popište filtr, např. zaplacené objednávky nad 1000 tento měsíc',
 }
