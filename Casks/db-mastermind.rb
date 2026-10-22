@@ -1,9 +1,9 @@
 cask "db-mastermind" do
   arch arm: "arm64", intel: "x64"
 
-  version "0.9.0"
-  sha256 arm:   "da65d867937f6bbff7cb845e698c1d2e8ced8666e94d02d196cdf39d6550c6aa",
-         intel: "e5d0fba7b20c7504a504ceff8e79397d91147a82e2086371932680b53c3cc605"
+  version "0.9.1"
+  sha256 arm:   "d6701d77f6292816ca65187a07b91bbe02c554be5c1e5efb5677e4d9b7f1cda2",
+         intel: "350089ab4117545bbf2f2ccb85a15b6c872298742edd008ed7c74d1077c65c8b"
 
   url "https://github.com/eLh0m3r0/db-mastermind/releases/download/v#{version}/DB-Mastermind-#{version}-mac-#{arch}.dmg"
   name "DB Mastermind"
