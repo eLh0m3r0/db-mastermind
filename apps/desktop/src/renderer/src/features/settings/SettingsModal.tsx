@@ -42,7 +42,9 @@ export function SettingsModal() {
   return (
     <Modal open={open} onClose={() => setUi({ modal: undefined })} title={t('Settings')} width={760} bodyClassName="p-0">
       <div className="flex min-h-[460px]">
-        <nav className="flex w-[180px] shrink-0 flex-col gap-0.5 border-r border-line bg-subtle p-2">
+        <nav className="w-[180px] shrink-0 border-r border-line bg-subtle p-2">
+          {/* Sticky: on long sections (MCP server) the list stays in view while the content scrolls. */}
+          <div className="sticky top-2 flex flex-col gap-0.5">
           {SECTIONS.map(([id, label]) => (
             <button
               key={id}
@@ -56,6 +58,7 @@ export function SettingsModal() {
               {t(label)}
             </button>
           ))}
+          </div>
         </nav>
         <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-auto p-5">
           {current === 'general' && (
@@ -226,7 +229,7 @@ function TeamFolderRow() {
         </div>
         {status?.folder && (
           <span className={status.error ? 'text-danger' : 'text-fg-muted'}>
-            {status.error ?? t('{c} connections · {q} saved queries', { c: status.connections, q: status.queries })}
+            {status.error ?? t('Connections: {c} · saved queries: {q}', { c: status.connections, q: status.queries })}
             {status.locked && ` · ${t('set by your organization')}`}
           </span>
         )}

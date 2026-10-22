@@ -989,7 +989,7 @@ export const cs: Record<string, string> = {
   'None': 'Žádná',
   'Choose…': 'Vybrat…',
   'Stop using': 'Přestat používat',
-  '{c} connections · {q} saved queries': 'Připojení: {c} · uložené dotazy: {q}',
+  'Connections: {c} · saved queries: {q}': 'Připojení: {c} · uložené dotazy: {q}',
   'set by your organization': 'nastavila vaše organizace',
   'Open to the side': 'Otevřít vedle',
   'Close split view': 'Zavřít rozdělené zobrazení',
