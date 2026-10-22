@@ -97,6 +97,7 @@ project's (AI) maintainer and updated with every release.
 
 ## Milestone 1 — Relationships & diagrams (v0.2) ✅
 
+- 🚧 Auto layout without crossing relationship lines (edge-crossing minimization, orthogonal routing)
 - ✅ **Interactive ER diagram** of a schema or a selection of tables (auto layout, crow's-foot notation)
 - ✅ "Explore from table": start with one table, expand neighbours by FK hop
 - ✅ Join path between two tables in the diagram, with ready SELECT … JOIN SQL (also the `find_join_path` AI/MCP tool)
@@ -113,6 +114,7 @@ project's (AI) maintainer and updated with every release.
 ## Milestone 2 — AI (v0.3) ✅
 
 ### Providers (bring your own)
+- ✅ AI permissions in one place (Settings → AI permissions): per connection Off / Schema only / Read data / Read and write, external agents (MCP) on/off, agents may write, AI may edit notes; app-wide default; organization policies cap it
 - ✅ Anthropic (Claude), OpenAI, OpenRouter (any model), Azure OpenAI, Google Gemini,
   any OpenAI-compatible endpoint, **Ollama / LM Studio** (fully local)
 - ✅ **Use your existing subscription**: delegate to a locally installed **Claude Code** or **Codex CLI**

@@ -49,6 +49,7 @@ import { completeText, extractJson } from './ai/complete'
 import { listModels, testProvider } from './ai/models'
 import { exportConnections, importConnections } from './importers'
 import { backupDatabase, restoreDatabase } from './backup'
+import { aiAccess } from './ai-access'
 import { managed } from './managed'
 import { checkNow, installUpdate } from './updates'
 import { reloadTeam, setTeamFolder, teamDir, teamStatus } from './team'
@@ -734,7 +735,7 @@ export const api: MastermindApi = {
   },
   async aiWriteSql(connectionId, request, sql, selection) {
     const config = connections.getConnection(connectionId)
-    if (config.aiEnabled === false) throw new Error('AI is turned off for this connection')
+    if (aiAccess(config).access === 'off') throw new Error('AI is turned off for this connection')
     await ensureConnected(connectionId)
     const snapshot = await db.schema(connectionId)
     let notes: string | undefined
@@ -747,7 +748,7 @@ export const api: MastermindApi = {
   },
   async aiSuggestFilter(connectionId, table, request) {
     const config = connections.getConnection(connectionId)
-    if (config.aiEnabled === false) throw new Error('AI is turned off for this connection')
+    if (aiAccess(config).access === 'off') throw new Error('AI is turned off for this connection')
     await ensureConnected(connectionId)
     const info = await db.findTable(connectionId, table)
     if (!info) throw new Error('Table not found')

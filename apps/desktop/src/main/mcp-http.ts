@@ -1,3 +1,4 @@
+import { agentConnections } from './ai-access'
 import { timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
@@ -43,7 +44,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   // Stateless: a fresh MCP server per request over the app's open connections (passwords stay in this process).
   const server = createMcpServer({
     db,
-    connections: listConnections().filter((c) => c.aiEnabled !== false),
+    connections: agentConnections(listConnections()),
     allowWrites: mcp.allowWrites,
     allowKnowledgeWrites: mcp.allowWrites,
     schemaOnly: ai.dataSharing === 'schema',

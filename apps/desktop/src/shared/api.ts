@@ -1,5 +1,6 @@
 import type {
   ConnectionConfig,
+  AiPermissions,
   DataCompareResult,
   DesignTable,
   Grant,
@@ -85,6 +86,8 @@ export interface AiSettings {
   activeProvider?: AiProviderId
   providers: AiProviderSettings[]
   dataSharing: AiDataSharing
+  /** Permissions of connections that don't set their own (Settings → AI permissions). */
+  defaults?: AiPermissions
   /** Allow the assistant to run read-only queries without asking each time. */
   autoRunReadQueries: boolean
 }

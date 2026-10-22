@@ -4,6 +4,7 @@ import { app } from 'electron'
 import { listConnections, loadConnections } from './connections'
 import type { McpChildConfig } from './mcp-server'
 import { MCP_HISTORY_FILE } from './library'
+import { agentConnections } from './ai-access'
 import { managed } from './managed'
 import { dataPath } from './storage'
 import { getSettings, loadSettings } from './settings'
@@ -40,7 +41,7 @@ export async function runMcpMode(): Promise<void> {
   const only = argValue('--connection')
   const settings = getSettings()
   const config: McpChildConfig = {
-    connections: listConnections().filter((c) => c.aiEnabled !== false && (!only || c.id === only || c.name === only)),
+    connections: agentConnections(listConnections()).filter((c) => !only || c.id === only || c.name === only),
     allowWrites: settings.mcp.allowWrites,
     schemaOnly: settings.ai.dataSharing === 'schema',
     version: app.getVersion(),

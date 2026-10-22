@@ -48,8 +48,24 @@ export interface ConnectionConfig {
   group?: string
   /** Folder with Markdown notes describing this database. */
   knowledgeBasePath?: string
-  /** Whether AI features may see this connection. Defaults to true. */
+  /** Legacy switch (false = no AI); `ai` replaces it. */
   aiEnabled?: boolean
+  /** What AI (the assistant in the app and agents over MCP) may do on this connection; app defaults when unset. */
+  ai?: AiPermissions
+}
+
+/** Access levels, each including the ones before it. */
+export type AiAccess = 'off' | 'schema' | 'read' | 'write'
+
+export interface AiPermissions {
+  /** off: no AI · schema: structure only · read: also query data · write: also change data (the app asks first). */
+  access: AiAccess
+  /** External agents (Claude Code, Codex, Cursor… over MCP) may use this connection. Default: yes. */
+  agents?: boolean
+  /** Agents may run write statements; they can't be asked, so it's explicit. Needs access 'write'. Default: no. */
+  agentWrites?: boolean
+  /** AI may create and edit knowledge base notes (the app shows each change first). Default: yes. */
+  knowledgeWrites?: boolean
 }
 
 /** Values are normalized so they survive structured clone / JSON (IPC, MCP). */

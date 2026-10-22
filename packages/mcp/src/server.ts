@@ -66,9 +66,10 @@ export function createMcpServer(options: McpServerOptions): Server {
       db,
       connectionId: config.id,
       knowledge: config.knowledgeBasePath ? new KnowledgeBase(config.knowledgeBasePath) : undefined,
-      allowData: !options.schemaOnly,
-      allowKnowledgeWrites: options.allowKnowledgeWrites,
-      confirmWrite: options.allowWrites ? async () => true : undefined,
+      // A connection's own permissions (set in the app) win over the server-wide flags.
+      allowData: !options.schemaOnly && (!config.ai || config.ai.access === 'read' || config.ai.access === 'write'),
+      allowKnowledgeWrites: config.ai ? config.ai.knowledgeWrites === true : options.allowKnowledgeWrites,
+      confirmWrite: (config.ai ? config.ai.agentWrites === true && config.ai.access === 'write' : options.allowWrites) ? async () => true : undefined,
       maxRows: 100,
       onExecuted: options.onExecuted ? (o) => options.onExecuted!(config.id, o) : undefined,
     }
@@ -113,7 +114,7 @@ export function createMcpServer(options: McpServerOptions): Server {
         inputSchema: { type: 'object' as const, properties: {} },
         annotations: { readOnlyHint: true },
       },
-      ...DB_TOOLS.filter((t) => t.name !== 'write_knowledge' || options.allowKnowledgeWrites).map((t) => ({
+      ...DB_TOOLS.filter((t) => t.name !== 'write_knowledge' || options.allowKnowledgeWrites || connections.some((c) => c.ai?.knowledgeWrites)).map((t) => ({
         name: t.name,
         description: t.description,
         inputSchema: {
@@ -121,7 +122,7 @@ export function createMcpServer(options: McpServerOptions): Server {
           properties: { connection: connectionProperty, ...t.inputSchema.properties },
           required: single ? t.inputSchema.required : ['connection', ...(t.inputSchema.required ?? [])],
         },
-        annotations: { readOnlyHint: t.readOnly || (t.name === 'run_query' && !options.allowWrites) },
+        annotations: { readOnlyHint: t.readOnly || (t.name === 'run_query' && !options.allowWrites && !connections.some((c) => c.ai?.agentWrites)) },
       })),
     ],
   }))

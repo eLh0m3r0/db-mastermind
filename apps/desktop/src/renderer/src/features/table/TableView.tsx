@@ -57,6 +57,7 @@ import { copyRowsAs, EXPORT_FORMATS } from '../results/copy'
 import { FilterBuilder, newCondition } from './FilterBuilder'
 import { ImportModal } from './ImportModal'
 import { RowDetails } from './RowDetails'
+import { useAiAllowed } from '../ai/AiPermissions'
 import { tp, useT } from '@/lib/i18n'
 
 type EditValue = string | null
@@ -134,7 +135,9 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
   const [importOpen, setImportOpen] = useState(false)
   const [aiFilter, setAiFilter] = useState('')
   const [aiBusy, setAiBusy] = useState(false)
-  const aiReady = useSettings((st) => !!st.settings?.ai.activeProvider) && connection?.aiEnabled !== false
+  const hasProvider = useSettings((st) => !!st.settings?.ai.activeProvider)
+  const aiAllowed = useAiAllowed(connection)
+  const aiReady = hasProvider && aiAllowed
 
   const suggestFilter = async () => {
     if (!aiFilter.trim()) return

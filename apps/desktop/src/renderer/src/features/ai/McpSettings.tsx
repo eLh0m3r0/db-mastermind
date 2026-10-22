@@ -60,12 +60,7 @@ export function McpSettingsSection() {
           ? t('The MCP server lets AI agents (Claude Code, Codex, Cursor, Claude Desktop…) explore your databases through DB Mastermind: list tables, read the schema and knowledge base, and run read-only queries. It uses the connections saved in this app (portable data folder), and only those with AI enabled.')
           : t('The MCP server lets AI agents (Claude Code, Codex, Cursor, Claude Desktop…) explore your databases through DB Mastermind: list tables, read the schema and knowledge base, and run read-only queries. It uses the connections saved in this app, and only those with AI enabled.')}
       </p>
-      <Checkbox
-        checked={mcp.allowWrites}
-        onChange={(allowWrites) => void update({ mcp: { ...mcp, allowWrites } })}
-        label={t('Allow agents to run write statements')}
-        hint={t('Off by default. Read-only connections stay read-only either way.')}
-      />
+      <p className="text-[12px] text-fg-muted">{t('Which connections agents see and whether they may change data is set per connection in Settings → AI permissions.')}</p>
       {clients.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <span className="text-[12px] font-medium">{t('Add to')}</span>

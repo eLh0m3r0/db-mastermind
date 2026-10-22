@@ -149,24 +149,7 @@ export function AiSettingsSection() {
         </div>
       </div>
 
-      <Field label={t('What the assistant may see')}>
-        <Segmented
-          value={ai.dataSharing}
-          onChange={(dataSharing) => void update({ ai: { ...ai, dataSharing } })}
-          options={[
-            { value: 'schema', label: t('Schema only'), title: t('Table and column names, types, relationships, knowledge base') },
-            { value: 'schema-and-samples', label: t('Schema + query results'), title: t('The assistant may run read-only queries and see results') },
-            { value: 'full', label: t('Everything') },
-          ]}
-        />
-      </Field>
-      <Checkbox
-        checked={ai.autoRunReadQueries}
-        onChange={(autoRunReadQueries) => void update({ ai: { ...ai, autoRunReadQueries } })}
-        label={t('Let the assistant run read-only queries without asking')}
-        hint={t('Writes (INSERT, UPDATE, DELETE, DDL) always need your confirmation.')}
-        disabled={ai.dataSharing === 'schema'}
-      />
+      <p className="text-[12px] text-fg-muted">{t('What AI may see and change on each connection: Settings → AI permissions.')}</p>
     </div>
   )
 }

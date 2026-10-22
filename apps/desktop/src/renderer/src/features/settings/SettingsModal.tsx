@@ -10,6 +10,7 @@ import { useSettings } from '@/store/settings'
 import { useUi } from '@/store/ui'
 import { AiSettingsSection } from '../ai/AiSettings'
 import { McpSettingsSection } from '../ai/McpSettings'
+import { AiPermissionsSection } from '../ai/AiPermissions'
 import { SnippetsSection } from './SnippetsSection'
 import { useT } from '@/lib/i18n'
 
@@ -18,6 +19,7 @@ const SECTIONS = [
   ['editor', 'Editor & data'],
   ['snippets', 'Snippets'],
   ['ai', 'AI assistant'],
+  ['permissions', 'AI permissions'],
   ['mcp', 'MCP server'],
   ['about', 'About'],
 ] as const
@@ -121,6 +123,7 @@ export function SettingsModal() {
             </>
           )}
           {current === 'ai' && <AiSettingsSection />}
+          {current === 'permissions' && <AiPermissionsSection />}
           {current === 'mcp' && <McpSettingsSection />}
           {current === 'about' && info && (
             <>

@@ -5,6 +5,7 @@ import { jsonSchema, stepCountIs, streamText, tool, type ModelMessage, type Tool
 import { buildSystemPrompt, classifyStatement, DB_TOOLS, describeError, KnowledgeBase, loadSqlTools, type ToolContext } from '@dbmastermind/core'
 import type { AiChatRequest, AiEvent } from '@shared/api'
 import { db } from '../api'
+import { aiAccess } from '../ai-access'
 import { getConnection } from '../connections'
 import { getSettings } from '../settings'
 import { activeProvider } from './complete'
@@ -70,7 +71,8 @@ async function runChat(request: AiChatRequest): Promise<void> {
   const settings = getSettings().ai
   const provider = activeProvider()
   const config = getConnection(connectionId)
-  if (config.aiEnabled === false) throw new Error('AI is turned off for this connection (connection settings → Advanced)')
+  const access = aiAccess(config)
+  if (access.access === 'off') throw new Error('AI is turned off for this connection (Settings → AI permissions)')
   if (!db.isOpen(connectionId)) await db.connect(config)
 
   const controller = new AbortController()
@@ -82,9 +84,9 @@ async function runChat(request: AiChatRequest): Promise<void> {
     db,
     connectionId,
     knowledge: config.knowledgeBasePath ? new KnowledgeBase(config.knowledgeBasePath) : undefined,
-    allowData: settings.dataSharing !== 'schema',
-    allowKnowledgeWrites: true,
-    confirmWrite: (sql) => askApproval(chatId, 'sql', sql, signal),
+    allowData: access.access === 'read' || access.access === 'write',
+    allowKnowledgeWrites: access.knowledgeWrites,
+    confirmWrite: access.access === 'write' ? (sql) => askApproval(chatId, 'sql', sql, signal) : undefined,
     maxRows: 50,
     onExecuted: (o) =>
       addHistory({

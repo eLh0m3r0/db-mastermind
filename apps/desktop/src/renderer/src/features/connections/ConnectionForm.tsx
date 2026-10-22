@@ -9,6 +9,8 @@ import { cn, errorMessage } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { toast, useUi } from '@/store/ui'
 import { DriverIcon, DRIVERS } from './drivers'
+import { useSettings } from '@/store/settings'
+import { AiPermissionControls, aiDefaultsOf } from '../ai/AiPermissions'
 import { useT } from '@/lib/i18n'
 
 export const CONNECTION_COLORS = ['#6d4aff', '#0b72d9', '#0f9f6e', '#d97706', '#dc2626', '#db2777', '#64748b']
@@ -27,6 +29,7 @@ export function ConnectionForm() {
   const open = modal?.kind === 'connection'
   const editingId = open ? modal.connectionId : undefined
   const existing = useConnections((s) => (editingId ? s.list.find((c) => c.id === editingId) : undefined))
+  const settings = useSettings((s) => s.settings)
   const save = useConnections((s) => s.save)
   const connect = useConnections((s) => s.connect)
   const [config, setConfig] = useState<ConnectionConfig>(blank())
@@ -463,12 +466,13 @@ export function ConnectionForm() {
                     </Button>
                   </div>
                 </Field>
-                <Checkbox
-                  checked={config.aiEnabled !== false}
-                  onChange={(aiEnabled) => set({ aiEnabled })}
-                  label={t('Allow AI features for this connection')}
-                  hint={t("When off, the assistant and MCP server can't see this connection.")}
-                />
+                <Field label={t('AI permissions')} hint={config.ai ? undefined : t('Uses the default from Settings → AI permissions.')}>
+                  <AiPermissionControls
+                    value={config.ai ?? (config.aiEnabled === false ? { ...aiDefaultsOf(settings!), access: 'off' } : aiDefaultsOf(settings!))}
+                    readOnlyConnection={config.readOnly}
+                    onChange={(ai) => set({ ai, aiEnabled: undefined })}
+                  />
+                </Field>
                 <Field label={t('Group')}>
                   <Input value={config.group ?? ''} onChange={(e) => set({ group: e.target.value || undefined })} placeholder={t('e.g. Customer A')} />
                 </Field>
