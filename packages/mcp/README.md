@@ -5,7 +5,7 @@ databases: **PostgreSQL, SQL Server, MySQL, MariaDB, SQLite**.
 
 - Read-only by default: writes only with `--allow-writes`, and read-only connections stay read-only
 - Schema exploration: `list_tables`, `describe_table` (columns, keys, indexes, comments, incoming references),
-  `search_schema`, `get_relationships` (join paths)
+  `search_schema`, `get_relationships`, `find_join_path` (shortest join chain with ready SQL)
 - Data: `sample_rows`, `run_query` (results as compact CSV), `explain_query` (normalized plan tree)
 - **Knowledge base**: point `--knowledge` at a folder of Markdown notes about the database; agents search and
   read them (`search_knowledge`, `read_knowledge`), and relationships declared there

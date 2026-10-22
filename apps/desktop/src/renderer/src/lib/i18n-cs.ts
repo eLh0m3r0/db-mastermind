@@ -675,4 +675,9 @@ export const cs: Record<string, string> = {
   'Pinned': 'Připnuté',
   'Unpin': 'Odepnout',
   'Pin to top': 'Připnout nahoru',
+  'Join path to…': 'Cesta spojení k…',
+  '{n} join': '{n} spojení',
+  '{n} joins': '{n} spojení',
+  'Open as query': 'Otevřít jako dotaz',
+  'No chain of foreign keys connects {from} and {to}.': 'Tabulky {from} a {to} nespojuje žádný řetězec cizích klíčů.',
 }

@@ -18,14 +18,17 @@ import {
 import '@xyflow/react/dist/style.css'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { toPng, toSvg } from 'html-to-image'
-import { Download, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Search, Table2, Undo2 } from 'lucide-react'
+import { Copy, Download, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Route, Search, Table2, Undo2 } from 'lucide-react'
 import {
   designId,
   designToTableInfo,
   diffTable,
   diffTables,
+  findJoinPath,
   findTable,
+  getDialect,
   incomingReferences,
+  joinPathSql,
   toDesignTable,
   type DesignTable,
   type SchemaSnapshot,
@@ -36,7 +39,7 @@ import { openMenu } from '@/components/ui/ContextMenu'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Checkbox, Input, Select } from '@/components/ui/Input'
 import { Spinner } from '@/components/ui/Spinner'
-import { cn, errorMessage, fuzzyScore } from '@/lib/utils'
+import { cn, copyText, errorMessage, fuzzyScore } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { toast } from '@/store/ui'
@@ -167,6 +170,8 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
   const [schemaFilter, setSchemaFilter] = useState<string>('')
   const [focusName, setFocusName] = useState<string | undefined>(tab.focus)
   const [depth, setDepth] = useState(1)
+  /** Second table: show only the join path from the focused table to it. */
+  const [pathTo, setPathTo] = useState<string>()
   const [keysOnly, setKeysOnly] = useState(false)
   const [search, setSearch] = useState('')
   const [hovered, setHovered] = useState<string | null>(null)
@@ -192,8 +197,14 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
     setSchemaFilter(preferred ?? '*')
   }, [schema, schemaFilter])
 
+  const joinPath = useMemo(
+    () => (schema && focusName && pathTo ? findJoinPath(schema, { name: focusName }, { name: pathTo }) : undefined),
+    [schema, focusName, pathTo],
+  )
+
   const liveTables = useMemo(() => {
     if (!schema) return []
+    if (joinPath?.length) return [joinPath[0]!.from, ...joinPath.map((s) => s.to)]
     if (focusName) {
       const focus = findTable(schema, { name: focusName })
       if (focus) {
@@ -203,7 +214,7 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
     }
     const all = schemaFilter === '*' ? schema.tables : schema.tables.filter((t) => (t.schema ?? '') === schemaFilter || (!t.schema && !schemaFilter))
     return all.slice(0, 400)
-  }, [schema, focusName, depth, schemaFilter])
+  }, [schema, focusName, depth, schemaFilter, joinPath])
 
   const keyOf = (t: { schema?: string; name: string }) => `${t.schema ?? ''}.${t.name}`
   /** What the canvas shows: live tables with drafts applied, plus new tables. */
@@ -546,17 +557,43 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
           <>
             <span className="flex items-center gap-1 rounded-md bg-accent-soft px-2 py-0.5 text-[12px] text-accent">
               {focusName}
-              <button type="button" className="ml-1 hover:text-fg" onClick={() => setFocusName(undefined)} aria-label={tr('Show whole schema')}>
+              <button
+                type="button"
+                className="ml-1 hover:text-fg"
+                onClick={() => {
+                  setFocusName(undefined)
+                  setPathTo(undefined)
+                }}
+                aria-label={tr('Show whole schema')}
+              >
                 ×
               </button>
             </span>
-            <Select inputSize="sm" className="h-7 w-28" value={depth} onChange={(e) => setDepth(Number(e.target.value))}>
-              {[1, 2, 3, 4].map((d) => (
-                <option key={d} value={d}>
-                  {tp(d, { one: '{n} hop', many: '{n} hops' })}
-                </option>
-              ))}
-            </Select>
+            {!pathTo && (
+              <Select inputSize="sm" className="h-7 w-28" value={depth} onChange={(e) => setDepth(Number(e.target.value))}>
+                {[1, 2, 3, 4].map((d) => (
+                  <option key={d} value={d}>
+                    {tp(d, { one: '{n} hop', many: '{n} hops' })}
+                  </option>
+                ))}
+              </Select>
+            )}
+            <Input
+              inputSize="sm"
+              className="w-44"
+              list="diagram-path-tables"
+              placeholder={tr('Join path to…')}
+              leading={<Route size={12} />}
+              value={pathTo ?? ''}
+              onChange={(e) => setPathTo(schema.tables.some((t) => t.name === e.target.value) ? e.target.value : e.target.value || undefined)}
+            />
+            <datalist id="diagram-path-tables">
+              {schema.tables
+                .filter((t) => t.name !== focusName)
+                .map((t) => (
+                  <option key={`${t.schema}.${t.name}`} value={t.name} />
+                ))}
+            </datalist>
           </>
         ) : (
           schema.schemas.length > 1 && (
@@ -649,6 +686,34 @@ function DiagramInner({ tab }: { tab: DiagramTab }) {
           <span>
             <b>{tr('Design mode.')}</b> {tr('Click a table to edit it, drag from a column dot to another table to add a foreign key. Nothing changes in the database until you run the generated migration.')}
           </span>
+        </div>
+      )}
+      {focusName && pathTo && schema.tables.some((t) => t.name === pathTo) && (
+        <div className={cn('flex h-8 shrink-0 items-center gap-2 border-b border-line px-3 text-[12px]', joinPath ? 'bg-subtle' : 'bg-warning-soft text-warning')}>
+          <Route size={13} className={joinPath ? 'text-accent' : ''} />
+          {joinPath ? (
+            <>
+              <span className="truncate font-medium">{[joinPath[0]?.from.name ?? focusName, ...joinPath.map((s) => s.to.name)].join(' → ')}</span>
+              <span className="shrink-0 text-fg-faint">{tp(joinPath.length, { one: '{n} join', many: '{n} joins' })}</span>
+              <div className="flex-1" />
+              {connection && joinPath.length > 0 && (
+                <>
+                  <Button size="xs" variant="ghost" icon={<Copy size={12} />} onClick={() => void copyText(joinPathSql(joinPath, getDialect(connection.driver).quoteIdent, schema.defaultSchema))}>
+                    {tr('Copy SQL')}
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="primary"
+                    onClick={() => newQuery(tab.connectionId, `${joinPathSql(joinPath, getDialect(connection.driver).quoteIdent, schema.defaultSchema)};`, `${focusName} → ${pathTo}`)}
+                  >
+                    {tr('Open as query')}
+                  </Button>
+                </>
+              )}
+            </>
+          ) : (
+            <span>{tr('No chain of foreign keys connects {from} and {to}.', { from: focusName, to: pathTo })}</span>
+          )}
         </div>
       )}
       <div className="flex min-h-0 flex-1">

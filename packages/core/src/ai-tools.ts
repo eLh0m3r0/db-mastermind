@@ -1,9 +1,10 @@
 import { describeError, type DatabaseService } from './engine.js'
 import { explainQuery, type PlanNode } from './explain.js'
 import { KnowledgeBase } from './knowledge.js'
-import { findTable, incomingReferences } from './schema-utils.js'
+import { getDialect } from './dialect.js'
+import { findJoinPath, findTable, incomingReferences, joinPathSql } from './schema-utils.js'
 import { classifyStatement, splitStatements } from './sql-split.js'
-import type { QueryResult, SchemaSnapshot, TableInfo } from './types.js'
+import type { DriverId, QueryResult, SchemaSnapshot, TableInfo } from './types.js'
 import { cellToText } from './values.js'
 
 /**
@@ -167,6 +168,15 @@ async function runSql(ctx: ToolContext, sql: string, maxRows: number): Promise<s
     .join('\n\n')
 }
 
+const DIALECT_NAMES: Record<DriverId, string> = {
+  postgres: 'PostgreSQL',
+  mssql: 'T-SQL (SQL Server)',
+  mysql: 'MySQL',
+  mariadb: 'MariaDB',
+  sqlite: 'SQLite',
+  oracle: 'Oracle',
+}
+
 export const DB_TOOLS: DbTool[] = [
   {
     name: 'list_tables',
@@ -287,6 +297,30 @@ export const DB_TOOLS: DbTool[] = [
         frontier = next
       }
       return lines.length ? [...new Set(lines)].join('\n') : `${table.name} has no foreign-key relationships.`
+    },
+  },
+  {
+    name: 'find_join_path',
+    description: 'Shortest chain of foreign keys connecting two tables, with a ready-to-use SELECT … JOIN statement. Use it whenever you need to join tables that are not directly related.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        from: { type: 'string', description: 'Start table, optionally schema.table' },
+        to: { type: 'string', description: 'Target table, optionally schema.table' },
+      },
+      required: ['from', 'to'],
+      additionalProperties: false,
+    },
+    readOnly: true,
+    async run(ctx, input) {
+      const { snapshot, table: from } = await resolveTable(ctx, str(input, 'from') ?? '')
+      const { table: to } = await resolveTable(ctx, str(input, 'to') ?? '')
+      const path = findJoinPath(snapshot, from, to)
+      if (!path) return `No chain of foreign keys connects ${from.name} and ${to.name} (within 6 hops). Look for matching columns with search_schema.`
+      if (!path.length) return 'Same table.'
+      const steps = path.map((s) => `${s.from.name} → ${s.to.name} ON ${s.on.map(([a, b]) => `${s.from.name}.${a} = ${s.to.name}.${b}`).join(' AND ')}${s.virtual ? ' (documented in knowledge base)' : ''}`)
+      const sql = joinPathSql(path, getDialect(ctx.db.config(ctx.connectionId).driver).quoteIdent, snapshot.defaultSchema)
+      return `${steps.join('\n')}\n\n${sql}`
     },
   },
   {
@@ -431,9 +465,10 @@ export async function buildSystemPrompt(ctx: ToolContext, extra = ''): Promise<s
   return `You are the database assistant inside DB Mastermind, a database client. You help an analyst understand and query a ${info?.product ?? config.driver} database${snapshot.database ? ` "${snapshot.database}"` : ''}.
 
 Rules:
-- Write SQL in the ${config.driver === 'mssql' ? 'T-SQL (SQL Server)' : config.driver === 'postgres' ? 'PostgreSQL' : config.driver === 'sqlite' ? 'SQLite' : 'MySQL'} dialect. Quote identifiers only when needed.
+- Write SQL in the ${DIALECT_NAMES[config.driver]} dialect. Quote identifiers only when needed.
 - Use the tools to check table and column names before writing SQL; never guess columns.
-- Exploratory queries must be limited (${config.driver === 'mssql' ? 'TOP' : 'LIMIT'}). Prefer aggregates over dumping rows.
+- To join tables that aren't directly related, use find_join_path instead of guessing the chain.
+- Exploratory queries must be limited (${config.driver === 'mssql' ? 'TOP' : config.driver === 'oracle' ? 'FETCH FIRST n ROWS ONLY' : 'LIMIT'}). Prefer aggregates over dumping rows.
 - ${ctx.allowData ? 'You may run read-only queries to verify answers.' : 'You can only see the schema, not the data: write SQL for the user to run.'}
 - Never run INSERT/UPDATE/DELETE/DDL unless the user explicitly asked; the user must approve each write.
 - Put final SQL in a fenced \`\`\`sql block so the user can insert or run it with one click.
