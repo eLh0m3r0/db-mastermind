@@ -76,6 +76,9 @@ export function generateSql(kind: 'select' | 'insert' | 'update' | 'delete' | 'c
 
 const pinKey = (t: TableInfo) => (t.schema ? `${t.schema}.${t.name}` : t.name)
 
+export const EXPLAIN_COLUMN_PROMPT =
+  'Explain the column {column}: what it means, how its values are distributed (count distinct values, NULLs, the most common values or the range), what codes mean if it holds codes, and what it relates to. Use the knowledge base if it documents it.'
+
 export const EXPLAIN_TABLE_PROMPT =
   'Explain the table {table}: what it stores, what its columns mean (look at a few sample rows to decode statuses and codes), how it relates to other tables, and two or three typical queries. Use the knowledge base if it documents this table.'
 
@@ -405,6 +408,11 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
                       ...(fk
                         ? [{ label: tr('Open {table}', { table: fk.refTable }), icon: <Link2 size={13} />, onClick: () => openTab({ kind: 'table', connectionId: connection.id, table: { schema: fk.refSchema, name: fk.refTable }, title: fk.refTable }) }]
                         : []),
+                      {
+                        label: tr('Explain with AI'),
+                        icon: <Sparkles size={13} />,
+                        onClick: () => askAi({ prompt: tr(EXPLAIN_COLUMN_PROMPT, { column: `${node.table.schema ? `${node.table.schema}.` : ''}${node.table.name}.${c.name}` }), send: true }),
+                      },
                     ])
                   }
                 >

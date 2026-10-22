@@ -865,4 +865,5 @@ export const cs: Record<string, string> = {
   'Yellow': 'Žlutá',
   'Red': 'Červená',
   'From .pgpass (PostgreSQL)': 'Ze souboru .pgpass (PostgreSQL)',
+  'Explain the column {column}: what it means, how its values are distributed (count distinct values, NULLs, the most common values or the range), what codes mean if it holds codes, and what it relates to. Use the knowledge base if it documents it.': 'Vysvětli sloupec {column}: co znamená, jak jsou rozložené jeho hodnoty (počet různých hodnot, NULL, nejčastější hodnoty nebo rozsah), co znamenají kódy, pokud obsahuje kódy, a s čím souvisí. Pokud ho popisuje znalostní báze, vycházej z ní. Odpovídej česky.',
 }
