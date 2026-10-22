@@ -4,7 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { listConnections } from './connections'
 import { dataPath, readJson, writeJson } from './storage'
 import { invalidateTeam, team, teamDir } from './team'
-import { deleteTeamQuery, isTeamQuery, TEAM_QUERY_PREFIX, writeTeamQuery } from './team-folder'
+import { deleteTeamDiagram, deleteTeamQuery, isTeamQuery, TEAM_QUERY_PREFIX, writeTeamDiagram, writeTeamQuery } from './team-folder'
 
 const HISTORY_FILE = 'history.json'
 const SAVED_FILE = 'saved-queries.json'
@@ -144,13 +144,30 @@ export function deleteSavedQuery(id: string): void {
   )
 }
 
+function localDiagrams(): SavedDiagram[] {
+  return readJson<SavedDiagram[]>(DIAGRAMS_FILE, [])
+}
+
+/** This computer's diagrams plus the team folder's (their connection may be named instead of identified). */
 export function listDiagrams(connectionId?: string): SavedDiagram[] {
-  const all = readJson<SavedDiagram[]>(DIAGRAMS_FILE, [])
+  const connections = listConnections()
+  const shared = (team()?.diagrams ?? []).map((d) =>
+    connections.some((c) => c.id === d.connectionId) ? d : { ...d, connectionId: connections.find((c) => c.name === d.connectionId)?.id ?? d.connectionId },
+  )
+  const all = [...localDiagrams(), ...shared]
   return connectionId ? all.filter((d) => d.connectionId === connectionId) : all
 }
 
 export function saveDiagram(diagram: Omit<SavedDiagram, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): SavedDiagram {
-  const all = listDiagrams()
+  const dir = teamDir()
+  if (diagram.team || diagram.id?.startsWith(TEAM_QUERY_PREFIX)) {
+    if (!dir) throw new Error('Choose a team folder first (Settings → General)')
+    const connection = listConnections().find((c) => c.id === diagram.connectionId)
+    const id = writeTeamDiagram(dir, diagram, connection?.team ? connection.id : (connection?.name ?? diagram.connectionId))
+    invalidateTeam()
+    return listDiagrams().find((d) => d.id === id)!
+  }
+  const all = localDiagrams()
   const now = new Date().toISOString()
   const existing = diagram.id ? all.find((d) => d.id === diagram.id) : undefined
   const saved: SavedDiagram = { ...existing, ...diagram, id: existing?.id ?? randomUUID(), createdAt: existing?.createdAt ?? now, updatedAt: now }
@@ -159,9 +176,15 @@ export function saveDiagram(diagram: Omit<SavedDiagram, 'id' | 'createdAt' | 'up
 }
 
 export function deleteDiagram(id: string): void {
+  if (id.startsWith(TEAM_QUERY_PREFIX)) {
+    const dir = teamDir()
+    if (dir) deleteTeamDiagram(dir, id)
+    invalidateTeam()
+    return
+  }
   writeJson(
     DIAGRAMS_FILE,
-    listDiagrams().filter((d) => d.id !== id),
+    localDiagrams().filter((d) => d.id !== id),
   )
 }
 

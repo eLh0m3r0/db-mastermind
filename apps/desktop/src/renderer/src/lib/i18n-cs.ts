@@ -993,4 +993,8 @@ export const cs: Record<string, string> = {
   'Note…': 'Poznámka…',
   'Delete note': 'Smazat poznámku',
   'Add a note': 'Přidat poznámku',
+  'Share with the team folder': 'Sdílet do týmové složky',
+  'Shared with the team folder': 'Sdíleno do týmové složky',
+  'Could not share the diagram': 'Diagram nejde sdílet',
+  'Team': 'Tým',
 }

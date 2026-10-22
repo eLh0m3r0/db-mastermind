@@ -14,6 +14,8 @@ team-folder/
   queries/
     Reports/Top customers.sql   saved queries, shown under "Team/Reports"
     ping.sql                    shown under "Team"
+  diagrams/
+    Sales.json                  saved ER diagrams (tables, layout, colors, notes)
   knowledge/
     team-erp/                   knowledge base (Markdown notes) of the connection with id "team-erp"
 ```
@@ -33,5 +35,8 @@ team-folder/
   ```
 - **knowledge/** holds a folder per connection, named by its id or name. It's used as that connection's knowledge
   base automatically. You can also set `knowledgeBasePath` in connections.json, relative to the team folder.
+
+- **diagrams/**: in the ER diagram, choose **Diagrams → Share with the team folder**. Team diagrams appear in the
+  same menu, marked *Team*. Moving tables or notes there updates the shared file.
 
 Changes made by colleagues show up within a second while the app is running.

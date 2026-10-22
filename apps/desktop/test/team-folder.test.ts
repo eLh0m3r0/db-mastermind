@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { deleteTeamQuery, isTeamQuery, readTeamFolder, removeTeamConnection, writeTeamConnection, writeTeamQuery } from '../src/main/team-folder'
+import { deleteTeamDiagram, deleteTeamQuery, isTeamQuery, readTeamFolder, removeTeamConnection, writeTeamConnection, writeTeamDiagram, writeTeamQuery } from '../src/main/team-folder'
 
 function folder() {
   const dir = mkdtempSync(join(tmpdir(), 'dbm-team-'))
@@ -58,5 +58,19 @@ describe('writing to the team folder', () => {
     expect(raw.connections.at(-1)).toEqual({ id: 'mine', name: 'Mine', driver: 'mysql', knowledgeBasePath: 'knowledge/mine' })
     removeTeamConnection(dir, 'team-ucetnictvi-db')
     expect(readTeamFolder(dir).connections.map((c) => c.id)).toEqual(['dwh', 'mine'])
+  })
+})
+
+describe('team diagrams', () => {
+  it('writes, reads (connection by name) and deletes diagram files', () => {
+    const dir = folder()
+    const id = writeTeamDiagram(dir, { name: 'Sales', tables: ['public.orders'], positions: { 'public.orders': { x: 1, y: 2 } }, notes: [{ id: 'n1', text: 'hi', x: 0, y: 0 }] }, 'DWH')
+    expect(id).toBe('team:diagrams/Sales.json')
+    const d = readTeamFolder(dir).diagrams[0]!
+    expect(d).toMatchObject({ id, name: 'Sales', connectionId: 'dwh', tables: ['public.orders'], team: true, notes: [{ text: 'hi' }] })
+    const renamed = writeTeamDiagram(dir, { id, name: 'Sales 2025', tables: [] }, 'DWH')
+    expect(readTeamFolder(dir).diagrams.map((x) => x.id)).toEqual([renamed])
+    deleteTeamDiagram(dir, renamed)
+    expect(readTeamFolder(dir).diagrams).toEqual([])
   })
 })

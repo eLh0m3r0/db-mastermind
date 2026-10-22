@@ -21,7 +21,7 @@ export function team(): TeamContents | null {
     try {
       cache = { dir, contents: readTeamFolder(dir) }
     } catch (err) {
-      cache = { dir, contents: { connections: [], queries: [], error: (err as Error).message } }
+      cache = { dir, contents: { connections: [], queries: [], diagrams: [], error: (err as Error).message } }
     }
   }
   return cache.contents

@@ -185,6 +185,8 @@ export interface SavedDiagram {
   /** Table header colors (series palette index 1–8) by table key. */
   colors?: Record<string, number>
   notes?: DiagramNote[]
+  /** Stored in the team folder (`diagrams/*.json`); when saving, writes it there. */
+  team?: boolean
   createdAt: string
   updatedAt: string
 }

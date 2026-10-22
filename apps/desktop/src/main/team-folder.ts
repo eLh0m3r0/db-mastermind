@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import type { ConnectionConfig } from '@dbmastermind/core'
-import type { SavedQuery } from '../shared/api'
+import type { SavedDiagram, SavedQuery } from '../shared/api'
 import type { ManagedConfig } from './managed-config'
 
 /**
@@ -13,6 +13,7 @@ import type { ManagedConfig } from './managed-config'
 export const TEAM_CONNECTIONS = 'connections.json'
 export const TEAM_QUERIES = 'queries'
 export const TEAM_KNOWLEDGE = 'knowledge'
+export const TEAM_DIAGRAMS = 'diagrams'
 export const TEAM_QUERY_PREFIX = 'team:'
 /** Saved-query folder that maps to the team folder. */
 export const TEAM_FOLDER_NAME = 'Team'
@@ -22,6 +23,7 @@ export type TeamConnection = NonNullable<ManagedConfig['connections']>[number]
 export interface TeamContents {
   connections: TeamConnection[]
   queries: SavedQuery[]
+  diagrams: SavedDiagram[]
   error?: string
 }
 
@@ -105,7 +107,49 @@ export function readTeamFolder(dir: string): TeamContents {
       updatedAt: time,
     }
   })
-  return { connections, queries, error }
+  const diagrams: SavedDiagram[] = []
+  const diagramDir = join(dir, TEAM_DIAGRAMS)
+  if (existsSync(diagramDir)) {
+    for (const file of readdirSync(diagramDir).filter((f) => f.toLowerCase().endsWith('.json'))) {
+      try {
+        const d = JSON.parse(readFileSync(join(diagramDir, file), 'utf8')) as Partial<SavedDiagram> & { connection?: string }
+        const target = d.connection ? connections.find((c) => c.id === d.connection || c.name === d.connection) : undefined
+        const time = statSync(join(diagramDir, file)).mtime.toISOString()
+        diagrams.push({
+          id: `${TEAM_QUERY_PREFIX}${TEAM_DIAGRAMS}/${file}`,
+          connectionId: target?.id ?? d.connection ?? '',
+          name: d.name ?? file.replace(/\.json$/i, ''),
+          tables: d.tables ?? [],
+          positions: d.positions,
+          colors: d.colors,
+          notes: d.notes,
+          team: true,
+          createdAt: time,
+          updatedAt: time,
+        })
+      } catch {
+        // A broken diagram file is skipped; the others still load.
+      }
+    }
+  }
+  return { connections, queries, diagrams, error }
+}
+
+/** Writes a diagram to diagrams/<name>.json; renaming removes the old file. Returns its id. */
+export function writeTeamDiagram(dir: string, d: Pick<SavedDiagram, 'name' | 'tables' | 'positions' | 'colors' | 'notes'> & { id?: string }, connection: string): string {
+  const file = `${safe(d.name)}.json`
+  mkdirSync(join(dir, TEAM_DIAGRAMS), { recursive: true })
+  const body = { name: d.name, connection, tables: d.tables, positions: d.positions, colors: d.colors, notes: d.notes }
+  writeFileSync(join(dir, TEAM_DIAGRAMS, file), `${JSON.stringify(body, null, 2)}\n`, 'utf8')
+  const id = `${TEAM_QUERY_PREFIX}${TEAM_DIAGRAMS}/${file}`
+  if (d.id?.startsWith(TEAM_QUERY_PREFIX) && d.id !== id) deleteTeamDiagram(dir, d.id)
+  return id
+}
+
+export function deleteTeamDiagram(dir: string, id: string): void {
+  const file = id.slice(`${TEAM_QUERY_PREFIX}${TEAM_DIAGRAMS}/`.length)
+  if (!file || file.includes('/') || file.includes('..')) return
+  rmSync(join(dir, TEAM_DIAGRAMS, file), { force: true })
 }
 
 /** Is this saved query (or folder) stored in the team folder? */

@@ -18,7 +18,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { toPng, toSvg } from 'html-to-image'
-import { Bookmark, Copy, Download, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Route, Search, Redo, Sparkles, StickyNote, Table2, Undo, Undo2, X } from 'lucide-react'
+import { Bookmark, Copy, Download, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Route, Search, Redo, Sparkles, StickyNote, Table2, Undo, Undo2, Users, X } from 'lucide-react'
 import {
   designId,
   designToTableInfo,
@@ -903,6 +903,21 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
             const list: SavedDiagram[] = await api.listDiagrams(tab.connectionId)
             openMenu(anchor, [
               { label: tr('Save as new diagram…'), icon: <Plus size={13} />, onClick: () => setNaming(true) },
+              ...(useSettings.getState().settings?.teamFolder && tab.savedId && !tab.savedId.startsWith('team:')
+                ? [
+                    {
+                      label: tr('Share with the team folder'),
+                      icon: <Users size={13} />,
+                      onClick: () =>
+                        void api
+                          .saveDiagram({ connectionId: tab.connectionId, name: tab.title, tables: tab.tables ?? liveTables.map(keyOf), positions: { ...currentPositions(), ...tab.positions }, colors: tab.colors, notes: tab.notes, team: true })
+                          .then(
+                            () => toast({ kind: 'success', message: tr('Shared with the team folder') }),
+                            (err: unknown) => toast({ kind: 'error', message: tr('Could not share the diagram'), detail: errorMessage(err) }),
+                          ),
+                    },
+                  ]
+                : []),
               ...(tab.savedId
                 ? [
                     {
@@ -919,8 +934,8 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
                 : []),
               ...(list.length ? ['separator' as const] : []),
               ...list.map((d) => ({
-                label: d.name,
-                icon: <Network size={13} />,
+                label: d.team ? `${d.name} · ${tr('Team')}` : d.name,
+                icon: d.team ? <Users size={13} /> : <Network size={13} />,
                 onClick: () => openTab({ kind: 'diagram', connectionId: tab.connectionId, title: d.name, tables: d.tables, positions: d.positions, colors: d.colors, notes: d.notes, savedId: d.id }, { reuse: false }),
               })),
             ])
