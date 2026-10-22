@@ -23,6 +23,7 @@ const KEYMAP: Record<string, string> = {
   'Mod+i': 'ask-ai',
   'Mod+y': 'history',
   'Mod+,': 'settings',
+  'Mod+\\': 'split-view',
 }
 
 function signature(e: KeyboardEvent): string {

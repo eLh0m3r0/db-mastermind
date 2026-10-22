@@ -1,4 +1,5 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { cn } from '@/lib/utils'
 import { CellViewer } from '@/components/grid/CellViewer'
 import { ContextMenuHost } from '@/components/ui/ContextMenu'
 import { Splitter } from '@/components/ui/Splitter'
@@ -53,6 +54,11 @@ function useGlobalCommands() {
             break
           case 'reopen-tab':
             ws.reopen()
+            break
+          case 'split-view':
+            // Toggles: split the current tab off to the right, or go back to one pane.
+            if (ws.split) ws.unsplit()
+            else if (ws.activeTabId) ws.splitRight(ws.activeTabId)
             break
           case 'toggle-sidebar':
             ui.set({ sidebarVisible: !ui.sidebarVisible })
@@ -123,6 +129,10 @@ function useFileDrop() {
 export function App() {
   const tabs = useWorkspace((s) => s.tabs)
   const activeId = useWorkspace((s) => s.activeTabId)
+  const split = useWorkspace((s) => s.split)
+  const activate = useWorkspace((s) => s.activate)
+  const [splitRatio, setSplitRatio] = useState(0.5)
+  const panesRef = useRef<HTMLDivElement>(null)
   const { sidebarVisible, sidebarWidth, aiPanelVisible, aiPanelWidth, set } = useUi()
   useGlobalCommands()
   useFileDrop()
@@ -167,14 +177,28 @@ export function App() {
         )}
         <div className="flex min-w-0 flex-1 flex-col">
           <TabBar />
-          <div className="relative min-h-0 flex-1">
-            {tabs.map((tab) => (
-              <div key={tab.id} className="absolute inset-0" style={{ display: tab.id === activeId ? 'block' : 'none' }}>
-                {tab.kind === 'query' && <QueryView tab={tab} active={tab.id === activeId} />}
-                {tab.kind === 'table' && <TableView tab={tab} active={tab.id === activeId} />}
+          <div ref={panesRef} className="relative min-h-0 flex-1">
+            {tabs.map((tab) => {
+              // In a split both panes are visible; only the focused one gets keyboard shortcuts.
+              const side = split?.left === tab.id ? 'left' : split?.right === tab.id ? 'right' : null
+              const visible = split ? side !== null : tab.id === activeId
+              const focused = tab.id === activeId
+              return (
+              <div
+                key={tab.id}
+                className={cn('absolute inset-y-0', split && focused && 'shadow-[inset_0_2px_0_var(--accent)]')}
+                style={{
+                  display: visible ? 'block' : 'none',
+                  left: side === 'right' ? `calc(${splitRatio * 100}% + 3px)` : 0,
+                  right: side === 'left' ? `calc(${(1 - splitRatio) * 100}% + 3px)` : 0,
+                }}
+                onMouseDownCapture={() => split && !focused && activate(tab.id)}
+              >
+                {tab.kind === 'query' && <QueryView tab={tab} active={focused} />}
+                {tab.kind === 'table' && <TableView tab={tab} active={visible} focused={focused} />}
                 {tab.kind === 'structure' && <StructureView tab={tab} />}
-                {tab.kind === 'diagram' && tab.id === activeId && <DiagramView tab={tab} />}
-                {tab.kind === 'knowledge' && <KnowledgeView tab={tab} active={tab.id === activeId} />}
+                {tab.kind === 'diagram' && visible && <DiagramView tab={tab} />}
+                {tab.kind === 'knowledge' && <KnowledgeView tab={tab} active={visible} />}
                 {tab.kind === 'compare' && <CompareView tab={tab} />}
                 {tab.kind === 'activity' && <ActivityView tab={tab} />}
                 {tab.kind === 'datacompare' && <DataCompareView tab={tab} />}
@@ -182,7 +206,27 @@ export function App() {
                 {tab.kind === 'model' && <ModelView tab={tab} />}
                 {tab.kind === 'dashboard' && <DashboardView tab={tab} />}
               </div>
-            ))}
+              )
+            })}
+            {split && (
+              <div
+                className="absolute inset-y-0 z-10 w-[6px] cursor-col-resize border-x border-line bg-subtle hover:bg-accent-soft"
+                style={{ left: `calc(${splitRatio * 100}% - 3px)` }}
+                onPointerDown={(e) => {
+                  const box = panesRef.current?.getBoundingClientRect()
+                  if (!box) return
+                  e.currentTarget.setPointerCapture(e.pointerId)
+                  const move = (ev: PointerEvent) => setSplitRatio(Math.min(0.85, Math.max(0.15, (ev.clientX - box.left) / box.width)))
+                  const up = () => {
+                    window.removeEventListener('pointermove', move)
+                    window.removeEventListener('pointerup', up)
+                  }
+                  window.addEventListener('pointermove', move)
+                  window.addEventListener('pointerup', up)
+                }}
+                onDoubleClick={() => setSplitRatio(0.5)}
+              />
+            )}
             {!activeTab && <HomeScreen />}
           </div>
         </div>

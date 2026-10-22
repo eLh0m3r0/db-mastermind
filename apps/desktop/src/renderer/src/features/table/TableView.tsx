@@ -105,7 +105,8 @@ function rootGroup(filter: TableTab['filter']): FilterGroup {
   return { kind: 'group', id: newFilterId(), combinator: 'and', children: filter ? [filter] : [] }
 }
 
-export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
+/** `active`: visible (loads data); `focused`: gets keyboard shortcuts (differs in a split view). */
+export function TableView({ tab, active, focused = active }: { tab: TableTab; active: boolean; focused?: boolean }) {
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const connection = useConnections((s) => s.list.find((c) => c.id === tab.connectionId))
   const loadSchema = useConnections((s) => s.loadSchema)
@@ -644,7 +645,7 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
   }
 
   useEffect(() => {
-    if (!active) return
+    if (!focused) return
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey
       if (mod && e.key.toLowerCase() === 's' && pendingCount > 0) {

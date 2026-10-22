@@ -112,9 +112,19 @@ export type NewTab =
   | Omit<ModelTab, 'id'>
   | Omit<DashboardTab, 'id'>
 
+/** Two tabs side by side; `activeTabId` is the focused one. */
+export interface SplitView {
+  left: string
+  right: string
+}
+
 interface WorkspaceState {
   tabs: Tab[]
   activeTabId?: string
+  split?: SplitView
+  /** Shows `id` in a second pane next to the current tab. */
+  splitRight(id: string): void
+  unsplit(): void
   closed: Tab[]
   restored: boolean
   restore(): Promise<void>
@@ -143,9 +153,22 @@ function sameTarget(a: Tab, b: NewTab): boolean {
   return false
 }
 
+/**
+ * The split after the focus moves from `prev` to `next`: a visible tab just takes focus, any other tab replaces
+ * the focused pane. A closed pane ends the split.
+ */
+export function nextSplit(split: SplitView | undefined, prev: string | undefined, next: string | undefined, tabs: { id: string }[]): SplitView | undefined {
+  if (!split || !next) return undefined
+  const has = (id: string) => tabs.some((t) => t.id === id)
+  if (!has(split.left) || !has(split.right)) return undefined
+  if (next === split.left || next === split.right) return split
+  const out = prev === split.right ? { ...split, right: next } : { ...split, left: next }
+  return out.left === out.right ? undefined : out
+}
+
 export const useWorkspace = create<WorkspaceState>((set, get) => {
   const commit = (tabs: Tab[], activeTabId: string | undefined, extra: Partial<WorkspaceState> = {}) => {
-    set({ tabs, activeTabId, ...extra })
+    set({ tabs, activeTabId, split: nextSplit(get().split, get().activeTabId, activeTabId, tabs), ...extra })
     persist(tabs, activeTabId)
   }
 
@@ -181,13 +204,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       return id
     },
     close(id) {
-      const { tabs, activeTabId, closed } = get()
+      const { tabs, activeTabId, closed, split } = get()
       const index = tabs.findIndex((t) => t.id === id)
       if (index === -1) return
       const tab = tabs[index]!
       const next = tabs.filter((t) => t.id !== id)
       let active = activeTabId
-      if (activeTabId === id) active = (next[index] ?? next[index - 1])?.id
+      // Closing one side of a split leaves the other side.
+      if (split && (split.left === id || split.right === id)) active = split.left === id ? split.right : split.left
+      else if (activeTabId === id) active = (next[index] ?? next[index - 1])?.id
       if (tab.kind === 'query') void api.releaseSession(tab.connectionId, tab.id).catch(() => {})
       commit(next, active, { closed: [tab, ...closed].slice(0, 20) })
     },
@@ -211,6 +236,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     },
     activate(id) {
       commit(get().tabs, id)
+    },
+    splitRight(id) {
+      const { tabs, activeTabId } = get()
+      // Splitting the current tab keeps another one on the left.
+      const left = activeTabId && activeTabId !== id ? activeTabId : tabs.find((t) => t.id !== id)?.id
+      if (!left) return
+      set({ split: { left, right: id }, activeTabId: id })
+      persist(tabs, id)
+    },
+    unsplit() {
+      set({ split: undefined })
     },
     update(id, patch) {
       commit(

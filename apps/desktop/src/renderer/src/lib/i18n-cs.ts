@@ -951,4 +951,9 @@ export const cs: Record<string, string> = {
   'Stop using': 'Přestat používat',
   '{c} connections · {q} saved queries': 'Připojení: {c} · uložené dotazy: {q}',
   'set by your organization': 'nastavila vaše organizace',
+  'Open to the side': 'Otevřít vedle',
+  'Close split view': 'Zavřít rozdělené zobrazení',
+  'Left pane': 'Levý panel',
+  'Right pane': 'Pravý panel',
+  'Split view: open the current tab to the side': 'Rozdělit: otevřít aktuální kartu vedle',
 }

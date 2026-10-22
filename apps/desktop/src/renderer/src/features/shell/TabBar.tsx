@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Activity, BookOpen, FileCode2, LayoutDashboard, Rows3, ShieldCheck, GitCompare, Layers, Network, PanelLeft, Plus, Sparkles, Table2, TerminalSquare, X } from 'lucide-react'
+import { Activity, BookOpen, FileCode2, LayoutDashboard, Rows3, ShieldCheck, GitCompare, Layers, Network, PanelLeft, Plus, Sparkles, Table2, TerminalSquare, X, Columns2 } from 'lucide-react'
 import { IconButton } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { isMac, modKey } from '@/lib/api'
@@ -15,7 +15,8 @@ const ICONS = { query: TerminalSquare, table: Table2, structure: Layers, diagram
 export function TabBar() {
   const tabs = useWorkspace((s) => s.tabs)
   const activeId = useWorkspace((s) => s.activeTabId)
-  const { activate, close, closeOthers, move, newQuery, update } = useWorkspace()
+  const { activate, close, closeOthers, move, newQuery, update, splitRight, unsplit } = useWorkspace()
+  const split = useWorkspace((s) => s.split)
   const connections = useConnections((s) => s.list)
   const currentConnection = useCurrentConnectionId()
   const sidebarVisible = useUi((s) => s.sidebarVisible)
@@ -30,6 +31,9 @@ export function TabBar() {
     openMenu(e, [
       { label: t('Close'), shortcut: `${modKey}W`, onClick: () => close(tab.id) },
       { label: t('Close others'), onClick: () => closeOthers(tab.id) },
+      'separator',
+      { label: t('Open to the side'), icon: <Columns2 size={13} />, disabled: tabs.length < 2 || split?.right === tab.id, onClick: () => splitRight(tab.id) },
+      ...(split ? [{ label: t('Close split view'), onClick: () => unsplit() }] : []),
       'separator',
       {
         label: t('Rename…'),
@@ -93,6 +97,11 @@ export function TabBar() {
                 {tab.title}
                 {multipleConnections && conn && <span className="ml-1 text-[11px] text-fg-faint">· {conn.name}</span>}
               </span>
+              {split && (split.left === tab.id || split.right === tab.id) && (
+                <span title={split.left === tab.id ? t('Left pane') : t('Right pane')}>
+                  <Columns2 size={11} className={cn('shrink-0', active ? 'text-accent' : 'text-fg-faint')} />
+                </span>
+              )}
               {dirty && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-fg-muted group-hover:hidden" />}
               <button
                 type="button"
