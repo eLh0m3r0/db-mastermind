@@ -847,4 +847,13 @@ export const cs: Record<string, string> = {
   'Move right': 'Posunout doprava',
   'Columns ({n} hidden)': 'Sloupce ({n} skryto)',
   'Reset columns': 'Obnovit sloupce',
+  'Empty table…': 'Vyprázdnit tabulku…',
+  'Drop table…': 'Smazat tabulku…',
+  'Rename {name}': 'Přejmenovat {name}',
+  'Empty {name}': 'Vyprázdnit {name}',
+  'Drop {name}': 'Smazat {name}',
+  '-- ⚠ {table} has about {n} rows.': '-- ⚠ {table} má přibližně {n} řádků.',
+  '-- ⚠ Referenced by: {tables}': '-- ⚠ Odkazují na ni: {tables}',
+  '-- Change {name} to the new name, then run.': '-- Změňte {name} na nový název a spusťte.',
+  'New table…': 'Nová tabulka…',
 }

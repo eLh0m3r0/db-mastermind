@@ -15,14 +15,16 @@ import {
   Network,
   Pin,
   PinOff,
+  Plus,
   RefreshCw,
   Rows3,
   Search,
   Sparkles,
   Table2,
   TerminalSquare,
+  Trash2,
 } from 'lucide-react'
-import { getDialect, qualify, type SchemaSnapshot, type TableInfo } from '@dbmastermind/core/browser'
+import { generateMigration, getDialect, incomingReferences, migrationScript, qualify, toDesignTable, type SchemaSnapshot, type TableInfo } from '@dbmastermind/core/browser'
 import type { StoredConnection } from '@shared/api'
 import { IconButton } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
@@ -31,6 +33,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import { exportDataDictionary } from '@/lib/dictionary'
 import { copyText, cn, formatCount, fuzzyScore } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
+import { newTable } from '@/lib/newTable'
 import { askAi } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
 import { tp, useT } from '@/lib/i18n'
@@ -213,7 +216,36 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
       { label: tr('Copy name'), icon: <Copy size={13} />, onClick: () => void copyText(t.name) },
       { label: tr('Copy qualified name'), onClick: () => void copyText(qualify(d, { schema: t.schema, name: t.name })) },
       { label: tr('Copy column list'), onClick: () => void copyText(t.columns.map((c) => d.quoteIdent(c.name)).join(', ')) },
+      ...(t.type === 'table' && !connection.readOnly
+        ? [
+            'separator' as const,
+            { label: tr('Rename…'), onClick: () => newQuery(connection.id, tableActionSql('rename', t), tr('Rename {name}', { name: t.name })) },
+            { label: tr('Empty table…'), onClick: () => newQuery(connection.id, tableActionSql('truncate', t), tr('Empty {name}', { name: t.name })) },
+            { label: tr('Drop table…'), icon: <Trash2 size={13} />, danger: true, onClick: () => newQuery(connection.id, tableActionSql('drop', t), tr('Drop {name}', { name: t.name })) },
+          ]
+        : []),
     ])
+  }
+
+  /** Rename / empty / drop are never run directly: the SQL opens in the editor with what it will affect. */
+  const tableActionSql = (action: 'rename' | 'truncate' | 'drop', t: TableInfo): string => {
+    const d = getDialect(connection.driver)
+    const ref = { schema: t.schema, name: t.name }
+    const referencing = schema ? incomingReferences(schema, ref).map((r) => r.table.name) : []
+    const notes: string[] = []
+    if (t.rowEstimate != null && t.rowEstimate > 0 && action !== 'rename') notes.push(tr('-- ⚠ {table} has about {n} rows.', { table: t.name, n: formatCount(t.rowEstimate) }))
+    if (referencing.length) notes.push(tr('-- ⚠ Referenced by: {tables}', { tables: [...new Set(referencing)].join(', ') }))
+    let sql: string
+    if (action === 'truncate') {
+      // SQLite has no TRUNCATE; SQL Server refuses it on tables other tables reference.
+      sql = connection.driver === 'sqlite' || (connection.driver === 'mssql' && referencing.length) ? `DELETE FROM ${qualify(d, ref)};` : `TRUNCATE TABLE ${qualify(d, ref)};`
+    } else {
+      const design = toDesignTable(t)
+      const change = action === 'rename' ? ({ kind: 'rename_table', table: design, newName: `${t.name}_new` } as const) : ({ kind: 'drop_table', table: design } as const)
+      sql = migrationScript(generateMigration([change], d, schema?.tables ?? []), d)
+      if (action === 'rename') notes.push(tr('-- Change {name} to the new name, then run.', { name: `${t.name}_new` }))
+    }
+    return `${notes.join('\n')}${notes.length ? '\n' : ''}${sql}\n`
   }
 
   if (!schema) {
@@ -309,7 +341,15 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
             if (node.kind === 'group') {
               const collapsed = expanded.has(`${node.groupKey}:collapsed`) && !filter
               return (
-                <div key={node.key} className={cn(rowClass, 'text-[11px] font-semibold tracking-wide text-fg-faint uppercase')} style={style} onClick={() => toggle(`${node.groupKey}:collapsed`)}>
+                <div
+                  key={node.key}
+                  className={cn(rowClass, 'text-[11px] font-semibold tracking-wide text-fg-faint uppercase')}
+                  style={style}
+                  onClick={() => toggle(`${node.groupKey}:collapsed`)}
+                  onContextMenu={(e) =>
+                    node.label === 'Tables' && !connection.readOnly && openMenu(e, [{ label: tr('New table…'), icon: <Plus size={13} />, onClick: () => newTable(connection, node.groupKey.split(':')[1] || schema?.defaultSchema) }])
+                  }
+                >
                   <ChevronRight size={11} className={cn('shrink-0 transition-transform', !collapsed && 'rotate-90')} />
                   <span>{tr(node.label)}</span>
                   <span className="ml-auto font-normal">{node.count}</span>

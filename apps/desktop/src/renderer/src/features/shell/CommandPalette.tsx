@@ -8,6 +8,7 @@ import { runCommand } from '@/lib/commands'
 import { exportDataDictionary } from '@/lib/dictionary'
 import { queryFile } from '@/lib/files'
 import { openDashboard } from '@/lib/dashboards'
+import { newTable } from '@/lib/newTable'
 import { fuzzyScore } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
@@ -75,6 +76,16 @@ export function CommandPalette() {
       needsConnection: true,
     },
     { id: 'dashboards', label: t('Dashboards'), icon: <LayoutDashboard size={14} />, run: () => connectionId && openDashboard(connectionId), needsConnection: true },
+    {
+      id: 'new-table',
+      label: t('New table…'),
+      icon: <Plus size={14} />,
+      run: () => {
+        const c = useConnections.getState().list.find((x) => x.id === connectionId)
+        if (c) newTable(c, useConnections.getState().runtime[c.id]?.schema?.defaultSchema)
+      },
+      needsConnection: true,
+    },
     { id: 'knowledge', label: t('Open knowledge base'), icon: <BookOpen size={14} />, run: () => connectionId && openTab({ kind: 'knowledge', connectionId, title: t('Knowledge base') }), needsConnection: true },
     { id: 'refresh', label: t('Refresh schema'), icon: <RefreshCw size={14} />, shortcut: 'F5', run: () => runCommand('refresh-schema'), needsConnection: true },
     { id: 'ai', label: t('Toggle AI assistant'), icon: <Sparkles size={14} />, shortcut: `${modKey}J`, run: () => runCommand('toggle-ai') },
