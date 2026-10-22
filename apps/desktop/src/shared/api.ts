@@ -104,6 +104,8 @@ export interface Snippet {
 
 export interface AppSettings {
   theme: ThemePreference
+  /** Stronger text and border colors; 'system' follows the OS "increase contrast" setting. */
+  contrast?: 'system' | 'normal' | 'high'
   language: 'en' | 'cs'
   pageSize: number
   maxResultRows: number

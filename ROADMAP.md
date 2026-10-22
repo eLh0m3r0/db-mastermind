@@ -232,7 +232,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 ## Milestone 7 — v1.0
 
 - ✅ Website on GitHub Pages (docs/index.html) with a download button for your OS; deeper docs ⬜
-- ⬜ Accessibility pass, high-contrast theme
+- ✅ High-contrast theme (light and dark, WCAG AA text; follows the OS "increase contrast" setting), Windows forced-colors support, visible focus rings
 - ⬜ Plugin API for drivers and AI tools
 - ⬜ Mac App Store and Microsoft Store editions
 - ⬜ Code signing (macOS notarization, Windows signing) once sponsored

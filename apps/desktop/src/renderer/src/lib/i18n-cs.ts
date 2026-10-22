@@ -987,4 +987,7 @@ export const cs: Record<string, string> = {
   'Restore failed': 'Obnovení selhalo',
   'From DataGrip / IntelliJ': 'Z DataGrip / IntelliJ',
   'Passwords stay in {app}, so enter them when you first connect.': 'Hesla zůstávají v {app}, zadejte je při prvním připojení.',
+  'Contrast': 'Kontrast',
+  'Normal': 'Normální',
+  'High': 'Vysoký',
 }

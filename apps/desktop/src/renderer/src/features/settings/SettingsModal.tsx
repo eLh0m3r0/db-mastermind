@@ -70,6 +70,17 @@ export function SettingsModal() {
                   ]}
                 />
               </Row>
+              <Row label={t('Contrast')}>
+                <Segmented
+                  value={settings.contrast ?? 'system'}
+                  onChange={(contrast) => set({ contrast })}
+                  options={[
+                    { value: 'system', label: t('System') },
+                    { value: 'normal', label: t('Normal') },
+                    { value: 'high', label: t('High') },
+                  ]}
+                />
+              </Row>
               <Row label={t('Language')}>
                 <Select className="w-48" value={settings.language} onChange={(e) => set({ language: e.target.value as 'en' | 'cs' })}>
                   <option value="en">English</option>
