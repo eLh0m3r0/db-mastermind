@@ -18,7 +18,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { toPng, toSvg } from 'html-to-image'
-import { Bookmark, Copy, Download, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Route, Search, Redo, Sparkles, Table2, Undo, Undo2 } from 'lucide-react'
+import { Bookmark, Copy, Download, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Route, Search, Redo, Sparkles, StickyNote, Table2, Undo, Undo2, X } from 'lucide-react'
 import {
   designId,
   designToTableInfo,
@@ -45,13 +45,13 @@ import { openMenu } from '@/components/ui/ContextMenu'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Checkbox, Input, Select } from '@/components/ui/Input'
 import { Spinner } from '@/components/ui/Spinner'
-import { cn, copyText, errorMessage, fuzzyScore } from '@/lib/utils'
+import { cn, copyText, errorMessage, fuzzyScore, uid } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { askAi, toast } from '@/store/ui'
 import { driverLabel } from '../connections/drivers'
 import { useWorkspace, type DiagramTab } from '@/store/workspace'
-import type { SavedDiagram } from '@shared/api'
+import type { SavedDiagram, DiagramNote } from '@shared/api'
 import { MigrationModal } from './MigrationModal'
 import { TableEditor } from './TableEditor'
 import { t, tp, useT } from '@/lib/i18n'
@@ -136,7 +136,41 @@ const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData
   )
 })
 
-const nodeTypes = { table: TableNode }
+interface NoteNodeData extends Record<string, unknown> {
+  text: string
+  onChange: (text: string) => void
+  onDelete: () => void
+}
+
+/** A sticky note: free text on the canvas, saved with the diagram. */
+const NoteNode = memo(function NoteNode({ data }: NodeProps<Node<NoteNodeData>>) {
+  const tr = useT()
+  const [text, setText] = useState(data.text)
+  useEffect(() => setText(data.text), [data.text])
+  return (
+    <div className="group relative w-[220px] rounded-md border border-warning/50 bg-[color-mix(in_srgb,var(--warning)_14%,var(--bg))] p-2 shadow-sm">
+      <textarea
+        value={text}
+        placeholder={tr('Note…')}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => text !== data.text && data.onChange(text)}
+        // Grows with the text, wrapped lines included.
+        className="nodrag nowheel min-h-[2.6em] w-full resize-none overflow-hidden bg-transparent text-[12px] leading-snug text-fg outline-none [field-sizing:content] placeholder:text-fg-faint"
+      />
+      <button
+        type="button"
+        aria-label={tr('Delete note')}
+        onClick={data.onDelete}
+        className="absolute -top-2 -right-2 hidden h-5 w-5 items-center justify-center rounded-full border border-line bg-elevated text-fg-muted group-hover:flex hover:text-danger"
+      >
+        <X size={11} />
+      </button>
+    </div>
+  )
+})
+
+const nodeTypes = { table: TableNode, note: NoteNode }
+const isNote = (id: string) => id.startsWith('note:')
 
 /** Names for the series palette colors, in palette order. */
 const COLOR_NAMES = ['Blue', 'Orange', 'Teal', 'Yellow', 'Pink', 'Green', 'Purple', 'Red']
@@ -622,9 +656,34 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
 
   const currentPositions = () => Object.fromEntries(nodes.map((n) => [n.id, { x: Math.round(n.position.x), y: Math.round(n.position.y) }]))
 
+  // Sticky notes live in their own node list so table re-layouts never drop them.
+  const [noteNodes, setNoteNodes, onNoteNodesChange] = useNodesState<Node<NoteNodeData>>([])
+  const latestNotes = useRef(tab.notes)
+  latestNotes.current = tab.notes
+  const setNotes = (notes: DiagramNote[]) => updateTab(tab.id, { notes: notes.length ? notes : undefined })
+  useEffect(() => {
+    setNoteNodes(
+      (tab.notes ?? []).map((note) => ({
+        id: `note:${note.id}`,
+        type: 'note',
+        position: { x: note.x, y: note.y },
+        data: {
+          text: note.text,
+          onChange: (text: string) => setNotes((latestNotes.current ?? []).map((x) => (x.id === note.id ? { ...x, text } : x))),
+          onDelete: () => setNotes((latestNotes.current ?? []).filter((x) => x.id !== note.id)),
+        },
+      })),
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab.notes])
+  const addNote = () => {
+    const center = flow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
+    setNotes([...(tab.notes ?? []), { id: uid('n'), text: '', x: Math.round(center.x), y: Math.round(center.y) }])
+  }
+
   const saveAs = async (name: string) => {
     const tables = liveTables.map(keyOf)
-    const d = await api.saveDiagram({ connectionId: tab.connectionId, name, tables, positions: currentPositions(), colors: tab.colors })
+    const d = await api.saveDiagram({ connectionId: tab.connectionId, name, tables, positions: currentPositions(), colors: tab.colors, notes: tab.notes })
     setFocusName(undefined)
     setPathTo(undefined)
     updateTab(tab.id, { savedId: d.id, tables, positions: d.positions, title: name })
@@ -636,11 +695,11 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
   useEffect(() => {
     if (!tab.savedId || !tab.tables || focusName) return
     const timer = setTimeout(() => {
-      void api.saveDiagram({ id: tab.savedId, connectionId: tab.connectionId, name: tab.title, tables: tab.tables!, positions: { ...currentPositions(), ...tab.positions }, colors: tab.colors })
+      void api.saveDiagram({ id: tab.savedId, connectionId: tab.connectionId, name: tab.title, tables: tab.tables!, positions: { ...currentPositions(), ...tab.positions }, colors: tab.colors, notes: tab.notes })
     }, 600)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab.savedId, tab.tables, tab.positions, tab.colors])
+  }, [tab.savedId, tab.tables, tab.positions, tab.colors, tab.notes])
 
   const matches = useMemo(() => {
     const q = search.trim()
@@ -828,6 +887,9 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
           {design ? tr('Designing') : tr('Design')}
         </Button>
         )}
+        <IconButton label={tr('Add a note')} onClick={addNote}>
+          <StickyNote size={14} />
+        </IconButton>
         <Button size="sm" variant="ghost" icon={<LayoutGrid size={13} />} onClick={resetLayout}>
           {tr('Auto layout')}
         </Button>
@@ -859,7 +921,7 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
               ...list.map((d) => ({
                 label: d.name,
                 icon: <Network size={13} />,
-                onClick: () => openTab({ kind: 'diagram', connectionId: tab.connectionId, title: d.name, tables: d.tables, positions: d.positions, colors: d.colors, savedId: d.id }, { reuse: false }),
+                onClick: () => openTab({ kind: 'diagram', connectionId: tab.connectionId, title: d.name, tables: d.tables, positions: d.positions, colors: d.colors, notes: d.notes, savedId: d.id }, { reuse: false }),
               })),
             ])
           }}
@@ -960,17 +1022,25 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
           </defs>
         </svg>
         <ReactFlow
-          nodes={nodes}
+          nodes={[...nodes, ...(noteNodes as unknown as typeof nodes)]}
           edges={edges}
           nodeTypes={nodeTypes}
-          onNodesChange={onNodesChange}
+          onNodesChange={(changes) => {
+            const forNote = (c: (typeof changes)[number]) => 'id' in c && isNote(c.id)
+            onNodesChange(changes.filter((c) => !forNote(c)) as Parameters<typeof onNodesChange>[0])
+            onNoteNodesChange(changes.filter(forNote) as Parameters<typeof onNoteNodesChange>[0])
+          }}
           onConnect={onConnect}
           nodesConnectable={design}
-          onNodeClick={(_, n) => design && setSelected(n.id)}
+          onNodeClick={(_, n) => design && !isNote(n.id) && setSelected(n.id)}
           onPaneClick={() => setSelected(null)}
-          onNodeMouseEnter={(_, n) => setHovered(n.id)}
+          onNodeMouseEnter={(_, n) => !isNote(n.id) && setHovered(n.id)}
           onNodeMouseLeave={() => setHovered(null)}
           onNodeDragStop={(_, node) => {
+            if (isNote(node.id)) {
+              setNotes((tab.notes ?? []).map((x) => (`note:${x.id}` === node.id ? { ...x, x: Math.round(node.position.x), y: Math.round(node.position.y) } : x)))
+              return
+            }
             if (drafts[node.id] && !drafts[node.id]!.originalName) {
               updateDraft(node.id, { ...drafts[node.id]!, position: node.position })
               return
@@ -978,8 +1048,9 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
             const positions = { ...(tab.positions ?? {}), [node.id]: node.position }
             updateTab(tab.id, { positions })
           }}
-          onNodeDoubleClick={(_, n) => openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name })}
+          onNodeDoubleClick={(_, n) => !isNote(n.id) && openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name })}
           onNodeContextMenu={(e, n) =>
+            !isNote(n.id) &&
             openMenu(e, [
               { label: tr('Open data'), icon: <Table2 size={13} />, onClick: () => openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name }) },
               { label: tr('Open structure'), onClick: () => openTab({ kind: 'structure', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: tr('{name} · structure', { name: n.data.table.name }) }) },

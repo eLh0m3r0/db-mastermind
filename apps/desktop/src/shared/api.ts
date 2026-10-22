@@ -167,6 +167,14 @@ export interface HistoryEntry {
 }
 
 /** A named subset of tables with its own layout ("Sales", "Billing"…). */
+/** A sticky note on an ER diagram. */
+export interface DiagramNote {
+  id: string
+  text: string
+  x: number
+  y: number
+}
+
 export interface SavedDiagram {
   id: string
   connectionId: string
@@ -176,6 +184,7 @@ export interface SavedDiagram {
   positions?: Record<string, { x: number; y: number }>
   /** Table header colors (series palette index 1–8) by table key. */
   colors?: Record<string, number>
+  notes?: DiagramNote[]
   createdAt: string
   updatedAt: string
 }

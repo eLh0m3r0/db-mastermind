@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { DesignTable, FilterNode, SortSpec, TableRef } from '@dbmastermind/core/browser'
+import type { DiagramNote } from '@shared/api'
 import { api } from '@/lib/api'
 import { debounce, uid } from '@/lib/utils'
 import { t } from '@/lib/i18n'
@@ -45,6 +46,8 @@ export interface DiagramTab extends BaseTab {
   startDesign?: string
   /** Schema designer drafts by node key ("schema.table" of the live table, or draft id for new tables). */
   design?: Record<string, DesignTable>
+  /** Sticky notes on the canvas. */
+  notes?: DiagramNote[]
 }
 
 export interface KnowledgeTab extends BaseTab {

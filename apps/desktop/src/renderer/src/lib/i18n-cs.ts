@@ -990,4 +990,7 @@ export const cs: Record<string, string> = {
   'Contrast': 'Kontrast',
   'Normal': 'Normální',
   'High': 'Vysoký',
+  'Note…': 'Poznámka…',
+  'Delete note': 'Smazat poznámku',
+  'Add a note': 'Přidat poznámku',
 }
