@@ -192,6 +192,17 @@ export function AiPanel() {
     } else ws.newQuery(connectionId, sql)
   }
 
+  const applyModel = (dbml: string) => {
+    if (!connectionId) return
+    const ws = useWorkspace.getState()
+    const active = ws.tabs.find((x) => x.id === ws.activeTabId)
+    const target = active?.kind === 'model' ? active : ws.tabs.find((x) => x.kind === 'model' && x.connectionId === connectionId)
+    if (target) {
+      ws.update(target.id, { text: dbml, dirty: true })
+      ws.activate(target.id)
+    } else ws.open({ kind: 'model', connectionId, title: t('Model'), text: dbml }, { reuse: false })
+  }
+
   const runSql = (sql: string) => {
     if (!connectionId) return
     useWorkspace.getState().newQuery(connectionId, sql, t('AI query'))
@@ -271,7 +282,7 @@ export function AiPanel() {
                 <div key={m.id} className="mb-3">
                   {m.parts.map((p, i) =>
                     p.type === 'text' ? (
-                      <Markdown key={i} text={p.text} actions={{ onInsert: insertSql, onRun: runSql }} />
+                      <Markdown key={i} text={p.text} actions={{ onInsert: insertSql, onRun: runSql, onApplyModel: applyModel }} />
                     ) : p.type === 'tool' ? (
                       <ToolCall key={p.id || i} part={p} />
                     ) : (

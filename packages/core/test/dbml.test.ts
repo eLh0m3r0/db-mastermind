@@ -71,3 +71,10 @@ describe('DBML', () => {
     expect(errors.map((e) => e.line)).toEqual([2, 4])
   })
 })
+
+describe('DBML enums', () => {
+  it('maps enum columns to a plain type and keeps the values in the comment', () => {
+    const { tables } = parseDbml('Enum status { new paid }\nTable t {\n  s status [note: \'State\']\n}', { enumType: 'varchar(50)' })
+    expect(tables[0]!.columns[0]).toMatchObject({ dataType: 'varchar(50)', comment: 'State. One of: new, paid' })
+  })
+})

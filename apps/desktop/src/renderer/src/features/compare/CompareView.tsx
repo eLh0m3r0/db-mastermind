@@ -73,7 +73,7 @@ export function CompareView({ tab }: { tab: CompareTab }) {
         await connect(tab.connectionId)
         const targetSnap = await loadSchema(tab.connectionId, true)
         if (!targetSnap) throw new Error(t('Could not read both schemas'))
-        const model = parseDbml(tab.sourceModel, { defaultSchema: targetSnap.defaultSchema })
+        const model = parseDbml(tab.sourceModel, { defaultSchema: targetSnap.defaultSchema, enumType: target?.driver === 'mssql' ? 'nvarchar(50)' : target?.driver === 'oracle' ? 'VARCHAR2(50)' : 'varchar(50)' })
         if (model.errors.length) throw new Error(model.errors.map((e) => `${t('line {n}', { n: String(e.line) })}: ${e.message}`).join('\n'))
         const schemas = [...new Set(model.tables.map((x) => x.schema ?? ''))]
         setSnapshots({ source: { tables: model.tables, schemas, routines: [], defaultSchema: targetSnap.defaultSchema, capturedAt: '' }, target: targetSnap })

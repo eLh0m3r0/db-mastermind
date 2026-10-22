@@ -100,7 +100,7 @@ function parseRefTarget(s: string, defaultSchema?: string): { schema?: string; t
 
 const ACTION = /(delete|update)\s*:\s*(cascade|restrict|set null|set default|no action)/gi
 
-export function parseDbml(text: string, options: { defaultSchema?: string } = {}): DbmlModel {
+export function parseDbml(text: string, options: { defaultSchema?: string; /** Database type for columns typed with a DBML Enum. */ enumType?: string } = {}): DbmlModel {
   const lines = stripComments(text).split('\n')
   const tables: TableInfo[] = []
   const enums: Record<string, string[]> = {}
@@ -240,6 +240,18 @@ export function parseDbml(text: string, options: { defaultSchema?: string } = {}
     }
     errors.push({ line: lineNo, message: `Unexpected: ${line}` })
     i++
+  }
+
+  if (options.enumType) {
+    // Enums become plain columns; the allowed values go to the comment so they aren't lost.
+    for (const t of tables) {
+      for (const c of t.columns) {
+        const values = enums[c.dataType]
+        if (!values) continue
+        c.dataType = options.enumType
+        c.comment = [c.comment, `One of: ${values.join(', ')}`].filter(Boolean).join('. ')
+      }
+    }
   }
 
   const resolve = (ref: { schema?: string; table: string }) =>

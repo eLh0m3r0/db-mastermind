@@ -7,6 +7,8 @@ import { useT } from '@/lib/i18n'
 export interface CodeActions {
   onInsert?: (code: string) => void
   onRun?: (code: string) => void
+  /** DBML blocks: replace the open model with this one. */
+  onApplyModel?: (code: string) => void
 }
 
 /** Inline markdown: **bold**, *italic*, `code`, [links](url). Produces React nodes, never HTML. */
@@ -44,6 +46,11 @@ function CodeBlock({ code, lang, actions }: { code: string; lang: string; action
     <div className="my-2 overflow-hidden rounded-md border border-line bg-subtle">
       <div className="flex h-7 items-center gap-1 border-b border-line px-2 text-[11px] text-fg-faint">
         <span className="flex-1">{lang || t('code')}</span>
+        {/^dbml$/i.test(lang) && actions.onApplyModel && (
+          <button type="button" className="flex items-center gap-1 rounded px-1.5 py-0.5 text-accent hover:bg-accent-soft" onClick={() => actions.onApplyModel!(code)}>
+            <CornerDownLeft size={11} /> {t('Apply to model')}
+          </button>
+        )}
         {isSql && actions.onInsert && (
           <button type="button" className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-hover hover:text-fg" onClick={() => actions.onInsert!(code)}>
             <CornerDownLeft size={11} /> {t('Insert')}

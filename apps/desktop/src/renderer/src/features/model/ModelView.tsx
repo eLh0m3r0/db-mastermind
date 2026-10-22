@@ -119,6 +119,10 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const liveSchema = useConnections((s) => s.runtime[tab.connectionId]?.schema)
   const loadSchema = useConnections((s) => s.loadSchema)
   const [text, setText] = useState(tab.text)
+  // The model can be replaced from outside (AI "Apply to model").
+  useEffect(() => {
+    setText((current) => (current === tab.text ? current : tab.text))
+  }, [tab.text])
   const [width, setWidth] = useState(Math.round(window.innerWidth * 0.36))
   const [jumpTo, setJumpTo] = useState<{ line: number; n: number } | null>(null)
 

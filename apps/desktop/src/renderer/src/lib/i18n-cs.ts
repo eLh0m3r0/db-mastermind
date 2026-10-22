@@ -806,4 +806,5 @@ export const cs: Record<string, string> = {
   'New model (DBML)': 'Nový model (DBML)',
   'Open model (.dbml)…': 'Otevřít model (.dbml)…',
   'Edit as model (DBML)…': 'Upravit jako model (DBML)…',
+  'Apply to model': 'Použít jako model',
 }
