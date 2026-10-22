@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/Button'
-import { AlertTriangle, BarChart3, CheckCircle2, Copy, Download, LayoutDashboard, Sparkles, TerminalSquare, XCircle } from 'lucide-react'
+import { AlertTriangle, BarChart3, CheckCircle2, Copy, Download, LayoutDashboard, Pin, Sparkles, TerminalSquare, X, XCircle } from 'lucide-react'
 import { cellToText, type CellValue, type QueryResult, type SortSpec, type StatementOutcome } from '@dbmastermind/core/browser'
 import { defaultChartConfig, ResultChart, type ChartConfig } from '@/components/chart/ResultChart'
 import { openCellViewer } from '@/components/grid/CellViewer'
@@ -71,8 +71,10 @@ export function ResultsPanel({
   const tr = useT()
   const language = useSettings((s) => s.settings?.language)
 
+  // Pinned results stay when the next query runs, to compare side by side as tabs.
+  const [pinned, setPinned] = useState<ResultTab[]>([])
   const tabs = useMemo<ResultTab[]>(() => {
-    const out: ResultTab[] = []
+    const out: ResultTab[] = [...pinned]
     let n = 0
     outcomes?.forEach((o, si) => {
       o.results?.forEach((r, ri) => {
@@ -84,7 +86,7 @@ export function ResultsPanel({
     })
     return out
     // Labels are translated, so recompute when the language changes.
-  }, [outcomes, language, tr])
+  }, [outcomes, language, tr, pinned])
 
   const hasError = outcomes?.some((o) => o.error)
   const activeKey =
@@ -93,6 +95,7 @@ export function ResultsPanel({
       : hasError || tabs.length === 0
         ? 'messages'
         : tabs[tabs.length - 1]!.key
+  const isPinned = (key: string) => key.startsWith('pin:')
   const current = tabs.find((t) => t.key === activeKey)
 
   const sortedRows = useMemo(() => {
@@ -164,8 +167,23 @@ export function ResultsPanel({
               activeKey === t.key ? 'bg-elevated font-medium text-fg shadow-sm' : 'text-fg-muted hover:text-fg',
             )}
           >
+            {isPinned(t.key) && <Pin size={10} className="mr-1 inline text-accent" />}
             {t.label}
             <span className="ml-1.5 text-fg-faint">{formatCount(t.result.rowCount)}</span>
+            {isPinned(t.key) && (
+              <span
+                role="button"
+                tabIndex={-1}
+                title={tr('Unpin')}
+                className="ml-1 inline-flex rounded text-fg-faint hover:bg-hover hover:text-fg"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setPinned((p) => p.filter((x) => x.key !== t.key))
+                }}
+              >
+                <X size={11} />
+              </span>
+            )}
           </button>
         ))}
         <button
@@ -207,6 +225,16 @@ export function ResultsPanel({
                 </IconButton>
               )
             })()}
+            {!isPinned(current.key) && (
+              <IconButton
+                label={tr('Keep this result (pin)')}
+                onClick={() =>
+                  setPinned((p) => [...p, { ...current, key: `pin:${Date.now()}`, label: tr('Pinned {n}', { n: String(p.length + 1) }) }])
+                }
+              >
+                <Pin size={13} />
+              </IconButton>
+            )}
             {/^\s*(select|with|values|show|table)\b/i.test(current.statement.sql) && (
               <IconButton
                 label={tr('Pin to dashboard')}

@@ -202,7 +202,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ Server activity: lock waits (who waits for whom), blocking sessions highlighted even when idle
 - ✅ Users & roles browser: memberships, members and object privileges (PostgreSQL incl. column grants, MySQL/MariaDB, SQL Server, Oracle)
 - ✅ Snippets with fields (built-in, dialect-aware: sel, cnt, dup, orph, cte, tx…; your own in Settings)
-- ⬜ Split editor panes, side-by-side results
+- ✅ Pin a result to keep it next to the next query's results · split editor panes ⬜
 
 ---
 

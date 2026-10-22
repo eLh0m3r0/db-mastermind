@@ -899,4 +899,6 @@ export const cs: Record<string, string> = {
   'Normalize this model where it clearly helps (repeated groups, multi-valued columns, data that belongs in its own table), keeping it practical.': 'Normalizuj tento model tam, kde to jasně pomůže (opakující se skupiny, vícehodnotové sloupce, data patřící do vlastní tabulky), ale zůstaň praktický.',
   'Add created_at / updated_at audit columns (and created_by / updated_by where it makes sense) to the tables that should have them.': 'Přidej auditní sloupce created_at / updated_at (a created_by / updated_by tam, kde to dává smysl) do tabulek, které je mají mít.',
   '{task}\n\nReply with a short explanation and the complete updated model in one ```dbml block, so it can be applied. Current model:\n\n{model}': '{task}\n\nOdpověz česky krátkým vysvětlením a celým upraveným modelem v jednom bloku ```dbml, aby šel použít. Současný model:\n\n{model}',
+  'Keep this result (pin)': 'Ponechat tento výsledek (připnout)',
+  'Pinned {n}': 'Připnuto {n}',
 }
