@@ -48,6 +48,7 @@ import { toast } from '@/store/ui'
 import { useWorkspace, type TableTab } from '@/store/workspace'
 import { copyRowsAs, EXPORT_FORMATS } from '../results/copy'
 import { FilterBuilder, newCondition } from './FilterBuilder'
+import { ImportModal } from './ImportModal'
 import { RowDetails } from './RowDetails'
 
 type EditValue = string | null
@@ -90,6 +91,7 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
   const [saving, setSaving] = useState(false)
   const [selection, setSelection] = useState<GridSelection | null>(null)
   const [showDetails, setShowDetails] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [lastSql, setLastSql] = useState('')
   const [duration, setDuration] = useState<number | null>(null)
   const grid = useRef<DataGridHandle>(null)
@@ -608,7 +610,12 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
         <IconButton label="Export" size="md" onClick={(e) => exportMenu(e.currentTarget)}>
           <Download size={14} />
         </IconButton>
-        <IconButton label="Import (coming soon)" size="md" disabled>
+        <IconButton
+          label={readOnly ? 'Import (read-only connection)' : 'Import CSV / Excel'}
+          size="md"
+          disabled={readOnly || table?.type !== 'table'}
+          onClick={() => setImportOpen(true)}
+        >
           <Upload size={14} />
         </IconButton>
         <IconButton
@@ -747,6 +754,22 @@ export function TableView({ tab, active }: { tab: TableTab; active: boolean }) {
         </Select>
       </div>
 
+      {table && (
+        <ImportModal
+          open={importOpen}
+          onClose={() => setImportOpen(false)}
+          connectionId={tab.connectionId}
+          table={tab.table}
+          columns={table.columns}
+          onImported={() => {
+            setPending(emptyPending())
+            loadedKey.current = null
+            countedKey.current = null
+            void load()
+            void count()
+          }}
+        />
+      )}
       <Modal
         open={preview !== null}
         onClose={() => setPreview(null)}

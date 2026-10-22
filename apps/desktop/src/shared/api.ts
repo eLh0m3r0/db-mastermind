@@ -142,6 +142,27 @@ export interface KnowledgeFileInfo {
   tables: string[]
 }
 
+export interface ImportPreview {
+  format: 'csv' | 'xlsx'
+  delimiter?: string
+  encoding?: string
+  rows: string[][]
+  totalRows: number
+}
+
+export interface ImportRequest {
+  connectionId: string
+  table: TableRef
+  path: string
+  delimiter?: string
+  hasHeader: boolean
+  /** Target column for each file column; null skips it. */
+  mapping: (string | null)[]
+  emptyAsNull: boolean
+  /** Delete existing rows first (same transaction). */
+  replace: boolean
+}
+
 export interface AiChatMessage {
   role: 'user' | 'assistant'
   content: string
@@ -201,6 +222,8 @@ export interface MastermindApi {
 
   fetchTable(request: FetchTableRequest): Promise<TablePage>
   countTable(request: Omit<FetchTableRequest, 'limit' | 'offset'>): Promise<number>
+  importPreview(path: string, delimiter?: string): Promise<ImportPreview>
+  importFile(request: ImportRequest): Promise<number>
   previewChanges(connectionId: string, table: TableRef, changes: RowChange[]): Promise<string[]>
   applyChanges(connectionId: string, table: TableRef, changes: RowChange[]): Promise<number[]>
 
@@ -271,6 +294,8 @@ export const API_METHODS = [
   'releaseSession',
   'fetchTable',
   'countTable',
+  'importPreview',
+  'importFile',
   'previewChanges',
   'applyChanges',
   'listHistory',

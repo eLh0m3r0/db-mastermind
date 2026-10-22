@@ -36,6 +36,8 @@ export interface DiagramTab extends BaseTab {
   focus?: string
   /** Node positions the user dragged, by "schema.table". */
   positions?: Record<string, { x: number; y: number }>
+  /** Open in design mode with this table selected (from the structure view). */
+  startDesign?: string
   /** Schema designer drafts by node key ("schema.table" of the live table, or draft id for new tables). */
   design?: Record<string, DesignTable>
 }

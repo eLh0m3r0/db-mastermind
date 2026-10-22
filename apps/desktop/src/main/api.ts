@@ -1,10 +1,14 @@
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { app, BrowserWindow, dialog, shell } from 'electron'
 import {
+  buildBatchInserts,
   buildChangeStatements,
+  detectDelimiter,
+  parseDelimited,
+  parseXlsx,
   DatabaseService,
   getDialect,
   inlineParams,
@@ -35,6 +39,22 @@ function track<T>(runId: string | undefined, fn: (signal?: AbortSignal) => Promi
   const controller = new AbortController()
   running.set(runId, controller)
   return fn(controller.signal).finally(() => running.delete(runId))
+}
+
+/** Reads CSV/TSV (UTF-8, or Windows-1250 as Czech Excel saves it) or the first sheet of an .xlsx file. */
+async function readImportFile(path: string, delimiter?: string) {
+  const buffer = await readFile(path)
+  if (/\.xlsx$/i.test(path)) return { format: 'xlsx' as const, rows: parseXlsx(buffer) }
+  let text: string
+  let encoding = 'utf-8'
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(buffer)
+  } catch {
+    encoding = 'windows-1250'
+    text = new TextDecoder('windows-1250').decode(buffer)
+  }
+  const d = delimiter || detectDelimiter(text.slice(0, 20_000))
+  return { format: 'csv' as const, delimiter: d, encoding, rows: parseDelimited(text, d) }
 }
 
 function knowledge(connectionId: string): KnowledgeBase {
@@ -213,6 +233,35 @@ export const api: MastermindApi = {
     return track(request.runId, (signal) =>
       db.countTable(request.connectionId, { table: request.table, filter: request.filter, signal }),
     )
+  },
+  async importPreview(path, delimiter) {
+    const data = await readImportFile(path, delimiter)
+    return { format: data.format, delimiter: data.delimiter, encoding: data.encoding, rows: data.rows.slice(0, 51), totalRows: data.rows.length }
+  },
+  async importFile(request) {
+    await ensureConnected(request.connectionId)
+    const data = await readImportFile(request.path, request.delimiter)
+    const rows = request.hasHeader ? data.rows.slice(1) : data.rows
+    const used = request.mapping.map((target, i) => ({ target, i })).filter((m): m is { target: string; i: number } => !!m.target)
+    if (!used.length) throw new Error('Map at least one column')
+    const dialect = db.driver(request.connectionId).dialect
+    const statements = buildBatchInserts(
+      request.table,
+      used.map((m) => m.target),
+      rows.map((r) => used.map((m) => r[m.i] ?? null)),
+      dialect,
+      { emptyAsNull: request.emptyAsNull },
+    )
+    if (request.replace) statements.unshift({ sql: `DELETE FROM ${qualify(dialect, request.table)}`, params: [] })
+    await db.transactionRaw(request.connectionId, statements)
+    library.addHistory({
+      connectionId: request.connectionId,
+      sql: `-- Imported ${rows.length} rows from ${basename(request.path)} into ${qualify(dialect, request.table)}`,
+      executedAt: new Date().toISOString(),
+      durationMs: 0,
+      rowCount: rows.length,
+    })
+    return rows.length
   },
   async previewChanges(connectionId, table, changes) {
     const dialect = getDialect(connections.getConnection(connectionId).driver)

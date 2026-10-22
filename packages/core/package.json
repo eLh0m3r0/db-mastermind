@@ -15,6 +15,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "fflate": "^0.8.2",
     "mssql": "^12.7.10",
     "mysql2": "^3.24.6",
     "pg": "^8.23.1",

@@ -4,7 +4,7 @@ import { MssqlDriver } from './drivers/mssql.js'
 import { MysqlDriver } from './drivers/mysql.js'
 import { PostgresDriver } from './drivers/postgres.js'
 import { SqliteDriver } from './drivers/sqlite.js'
-import { buildCount, buildSelect, type FilterNode, type SortSpec } from './filters.js'
+import { buildCount, buildSelect, type BuiltQuery, type FilterNode, type SortSpec } from './filters.js'
 import { buildChangeStatements, type RowChange } from './mutations.js'
 import { KnowledgeBase, relationToForeignKey } from './knowledge.js'
 import { findTable } from './schema-utils.js'
@@ -243,6 +243,13 @@ export class DatabaseService {
     const entry = this.get(id)
     if (entry.config.readOnly) throw new ReadOnlyViolationError()
     const statements = buildChangeStatements(table, changes, entry.driver.dialect)
+    return entry.driver.transaction(statements)
+  }
+
+  /** Runs prepared statements atomically (imports). Read-only connections refuse. */
+  async transactionRaw(id: string, statements: BuiltQuery[]): Promise<number[]> {
+    const entry = this.get(id)
+    if (entry.config.readOnly) throw new ReadOnlyViolationError()
     return entry.driver.transaction(statements)
   }
 

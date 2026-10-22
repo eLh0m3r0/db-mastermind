@@ -188,9 +188,9 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 
 ## Milestone 4 — Power tools (v0.5)
 
-- ⬜ Table structure editor (columns, indexes, constraints, FKs) with DDL preview
+- ✅ Table structure editor (columns, indexes, constraints, FKs) with DDL preview: "Edit structure" opens the live designer
 - ⬜ Create table wizard; drop/rename/truncate with safety confirmations
-- ⬜ CSV / Excel / JSON import with column mapping and type detection
+- ✅ CSV / Excel import with column mapping (auto-matched by name), delimiter & Windows-1250 detection, one transaction
 - ⬜ Visual EXPLAIN / query plan viewer (PostgreSQL, SQL Server, MySQL)
 - ⬜ Charts from query results (bar, line, pie, scatter), pinned to dashboards
 - ⬜ Schema compare (two connections / two schemas) → migration script

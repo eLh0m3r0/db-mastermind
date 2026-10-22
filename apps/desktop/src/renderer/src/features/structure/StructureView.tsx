@@ -29,6 +29,23 @@ export function StructureView({ tab }: { tab: StructureTab }) {
           <div className="flex-1" />
           <Badge>{table.type.replace('_', ' ')}</Badge>
           {table.rowEstimate != null && table.rowEstimate >= 0 && <Badge>≈ {table.rowEstimate.toLocaleString()} rows</Badge>}
+          <Button
+            size="sm"
+            onClick={() =>
+              openTab(
+                {
+                  kind: 'diagram',
+                  connectionId: tab.connectionId,
+                  title: `Design: ${table.name}`,
+                  focus: table.name,
+                  startDesign: `${table.schema ?? ''}.${table.name}`,
+                },
+                { reuse: false },
+              )
+            }
+          >
+            Edit structure
+          </Button>
           <Button size="sm" onClick={() => openTab({ kind: 'table', connectionId: tab.connectionId, table: tab.table, title: table.name })}>
             Open data
           </Button>
