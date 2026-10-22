@@ -120,6 +120,13 @@ export interface AppSettings {
   teamFolder?: string
 }
 
+/** A backup or restore: the file, or (SQL Server) the statement to run on the server. */
+export interface BackupResult {
+  path?: string
+  bytes?: number
+  sql?: string
+}
+
 export interface TeamStatus {
   folder?: string
   /** Set by the managed configuration: users can't change it. */
@@ -334,6 +341,10 @@ export interface MastermindApi {
   exportHistory(connectionId?: string): Promise<string | null>
   /** State of the local HTTP MCP endpoint (Settings → MCP server). */
   mcpHttpStatus(): Promise<{ running: boolean; error?: string; url: string }>
+  /** Backs the database up to a file (pg_dump, mysqldump, SQLite/DuckDB copy); SQL Server returns the BACKUP statement. */
+  backupDatabase(connectionId: string): Promise<BackupResult | null>
+  /** Restores a backup file into the database (replaces its contents); SQL Server returns the RESTORE statement. */
+  restoreDatabase(connectionId: string): Promise<BackupResult | null>
   /** The team folder in use and what it shares. */
   teamStatus(): Promise<TeamStatus>
   /** Picks a team folder (dialog when `path` is undefined; null clears it). */
@@ -463,6 +474,8 @@ export const API_METHODS = [
   'exportHistory',
   'mcpHttpStatus',
   'mcpClients',
+  'backupDatabase',
+  'restoreDatabase',
   'teamStatus',
   'setTeamFolder',
   'addConnectionToTeam',

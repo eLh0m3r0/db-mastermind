@@ -12,6 +12,8 @@ export interface Toast {
   message: string
   detail?: string
   action?: { label: string; run: () => void }
+  /** Milliseconds on screen; 0 keeps it until dismissed (progress of a long task). */
+  duration?: number
 }
 
 interface UiState {
@@ -28,7 +30,7 @@ interface UiState {
   /** Pending request for the AI panel; consumed once the panel is mounted. */
   aiRequest?: { prompt?: string; send?: boolean; nonce: number }
   set(patch: Partial<Omit<UiState, 'set' | 'toast' | 'dismissToast'>>): void
-  toast(toast: Omit<Toast, 'id'>): void
+  toast(toast: Omit<Toast, 'id'>): number
   dismissToast(id: number): void
 }
 
@@ -61,7 +63,8 @@ export const useUi = create<UiState>((set, get) => ({
   toast(toast) {
     const id = ++toastId
     set((s) => ({ toasts: [...s.toasts, { ...toast, id }] }))
-    setTimeout(() => get().dismissToast(id), toast.kind === 'error' ? 9000 : 4500)
+    if (toast.duration !== 0) setTimeout(() => get().dismissToast(id), toast.duration ?? (toast.kind === 'error' ? 9000 : 4500))
+    return id
   },
   dismissToast(id) {
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))
@@ -69,6 +72,7 @@ export const useUi = create<UiState>((set, get) => ({
 }))
 
 export const toast = (t: Omit<Toast, 'id'>) => useUi.getState().toast(t)
+export const dismissToast = (id: number) => useUi.getState().dismissToast(id)
 
 let aiNonce = 0
 

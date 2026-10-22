@@ -44,6 +44,7 @@ import { cancelChat, respondApproval, startChat } from './ai/assistant'
 import { completeText, extractJson } from './ai/complete'
 import { listModels, testProvider } from './ai/models'
 import { exportConnections, importConnections } from './importers'
+import { backupDatabase, restoreDatabase } from './backup'
 import { managed } from './managed'
 import { reloadTeam, setTeamFolder, teamDir, teamStatus } from './team'
 import { removeTeamConnection, writeTeamConnection } from './team-folder'
@@ -102,7 +103,7 @@ async function csvOptions(path: string): Promise<string> {
   }
 }
 
-async function ensureConnected(id: string) {
+export async function ensureConnected(id: string) {
   if (!db.isOpen(id)) await db.connect(connections.getConnection(id))
 }
 
@@ -199,6 +200,12 @@ export const api: MastermindApi = {
   },
   async mcpHttpStatus() {
     return mcpHttpStatus()
+  },
+  async backupDatabase(connectionId) {
+    return backupDatabase(connectionId)
+  },
+  async restoreDatabase(connectionId) {
+    return restoreDatabase(connectionId)
   },
   async teamStatus() {
     return teamStatus()

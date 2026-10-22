@@ -197,7 +197,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ Charts from query results (bar, line, scatter) and pinned dashboards with auto-refresh (charts, big numbers, tables)
 - ✅ Schema compare (two connections / two schemas) → migration script (structural matching of keys and indexes)
 - ✅ Data compare between tables / environments (any two connections, even different engines) with a sync script
-- ⬜ Backup / restore helpers (pg_dump, mysqldump wrappers when available)
+- ✅ Backup / restore from the connection menu: pg_dump/pg_restore/psql, mysqldump/mysql (found on PATH or in the usual install folders), SQLite and DuckDB copies without tools, SQL Server BACKUP/RESTORE statements
 - ✅ Server activity: sessions and running queries with auto-refresh, cancel query, end session (PG, MySQL/MariaDB, MSSQL, Oracle)
 - ✅ Server activity: lock waits (who waits for whom), blocking sessions highlighted even when idle
 - ✅ Users & roles browser: memberships, members and object privileges (PostgreSQL incl. column grants, MySQL/MariaDB, SQL Server, Oracle)

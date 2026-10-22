@@ -21,6 +21,8 @@ import {
   Unplug,
   Building2,
   Users,
+  HardDriveDownload,
+  HardDriveUpload,
 } from 'lucide-react'
 import { isFileDriver } from '@dbmastermind/core/browser'
 import type { StoredConnection } from '@shared/api'
@@ -30,10 +32,10 @@ import { Input } from '@/components/ui/Input'
 import { Spinner } from '@/components/ui/Spinner'
 import { api, isMac } from '@/lib/api'
 import { exportDataDictionary } from '@/lib/dictionary'
-import { cn, errorMessage, fuzzyScore } from '@/lib/utils'
+import { cn, errorMessage, formatBytes, fuzzyScore } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
-import { toast, useUi } from '@/store/ui'
+import { dismissToast, toast, useUi } from '@/store/ui'
 import { useActiveTab, useWorkspace } from '@/store/workspace'
 import { DriverIcon, driverLabel } from '../connections/drivers'
 import { HistoryPanel, SavedQueriesPanel } from './LibraryPanels'
@@ -62,6 +64,40 @@ export async function connectAndSelect(id: string): Promise<boolean> {
   return ok
 }
 
+async function backup(c: StoredConnection) {
+  const pending = toast({ kind: 'info', message: t('Backing up {name}…', { name: c.name }), duration: 0 })
+  try {
+    const r = await api.backupDatabase(c.id)
+    if (r?.sql) useWorkspace.getState().newQuery(c.id, r.sql, t('Backup'))
+    else if (r?.path) toast({ kind: 'success', message: t('Backup saved ({size})', { size: formatBytes(r.bytes ?? 0) }), detail: r.path, action: { label: t('Show in folder'), run: () => void api.showItemInFolder(r.path!) } })
+  } catch (err) {
+    toast({ kind: 'error', message: t('Backup failed'), detail: errorMessage(err) })
+  } finally {
+    dismissToast(pending)
+  }
+}
+
+async function restore(c: StoredConnection) {
+  const production = c.environment === 'production'
+  const question = production
+    ? t('{name} is a PRODUCTION database. Restoring replaces its tables with the backup. Continue?', { name: c.name })
+    : t('Restoring replaces the tables of {name} with the backup. Continue?', { name: c.name })
+  if (!window.confirm(question)) return
+  const pending = toast({ kind: 'info', message: t('Restoring {name}…', { name: c.name }), duration: 0 })
+  try {
+    const r = await api.restoreDatabase(c.id)
+    if (r?.sql) useWorkspace.getState().newQuery(c.id, r.sql, t('Restore'))
+    else if (r?.path) {
+      await useConnections.getState().loadSchema(c.id, true)
+      toast({ kind: 'success', message: t('Restored from backup'), detail: r.path })
+    }
+  } catch (err) {
+    toast({ kind: 'error', message: t('Restore failed'), detail: errorMessage(err) })
+  } finally {
+    dismissToast(pending)
+  }
+}
+
 async function teamAction(run: () => Promise<void>, message: string) {
   try {
     await run()
@@ -86,6 +122,12 @@ export function connectionMenu(c: StoredConnection): Parameters<typeof openMenu>
       ? []
       : [{ label: t('Users & roles'), icon: <ShieldCheck size={13} />, onClick: () => useWorkspace.getState().open({ kind: 'roles', connectionId: c.id, title: t('Users & roles') }) }]),
     { label: t('Share with colleagues (without password)…'), icon: <Share2 size={13} />, onClick: () => void shareConnections([c.id]) },
+    ...(c.driver === 'oracle'
+      ? []
+      : [
+          { label: t('Back up…'), icon: <HardDriveDownload size={13} />, onClick: () => void backup(c) },
+          ...(isFileDriver(c.driver) ? [] : [{ label: t('Restore from backup…'), icon: <HardDriveUpload size={13} />, disabled: !!c.readOnly, onClick: () => void restore(c) }]),
+        ]),
     c.team
       ? { label: t('Remove from team folder'), icon: <Users size={13} />, onClick: () => void teamAction(() => api.removeConnectionFromTeam(c.id), t('Removed from the team folder')) }
       : {
