@@ -8,6 +8,7 @@ import { createScript, getDialect, parseDbml, toDbml, type SchemaSnapshot } from
 import { Button } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { DRIVERS } from '../connections/drivers'
+import { Select } from '@/components/ui/Input'
 import { Splitter } from '@/components/ui/Splitter'
 import { api } from '@/lib/api'
 import { tp, useT } from '@/lib/i18n'
@@ -226,6 +227,11 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     })
     return out
   }, [model])
+  // Subject areas: a model's TableGroups can each be shown on their own.
+  const [area, setArea] = useState('')
+  const areaNames = Object.keys(model.groups)
+  const inArea = (name: string) => !area || (model.groups[area] ?? []).includes(name)
+  const shown = useMemo<SchemaSnapshot>(() => (area && model.groups[area] ? { ...snapshot, tables: snapshot.tables.filter((x) => model.groups[area]!.includes(x.name)) } : snapshot), [area, snapshot, model.groups])
   const diagramTab = { ...tab, kind: 'diagram', colors: groupColors } as unknown as DiagramTab
 
   return (
@@ -274,6 +280,16 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           {t('Design with AI')}
         </Button>
         <div className="flex-1" />
+        {areaNames.length > 0 && (
+          <Select inputSize="sm" className="w-40" value={area} onChange={(e) => setArea(e.target.value)} title={t('Subject areas come from the model’s TableGroups')}>
+            <option value="">{t('All areas')}</option>
+            {areaNames.map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))}
+          </Select>
+        )}
         <span className="text-[11.5px] text-fg-faint">{tp(model.tables.length, { one: '{n} table', many: '{n} tables' })}</span>
         <Button
           size="sm"
@@ -326,8 +342,14 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           {model.tables.length ? (
             <DiagramView
               tab={diagramTab}
-              model={snapshot}
-              onApplyModel={(tables) => replaceText(toDbml(tables, { defaultSchema: snapshot.defaultSchema, enums: model.enums, groups: model.groups }), { dirty: true })}
+              key={area}
+              model={shown}
+              onApplyModel={(tables) => {
+                // Editing one area keeps the model's other tables; tables added there join the area.
+                const others = model.tables.filter((x) => !inArea(x.name))
+                const groups = area ? { ...model.groups, [area]: [...new Set([...(model.groups[area] ?? []), ...tables.map((x) => x.name)])] } : model.groups
+                replaceText(toDbml([...others, ...tables], { defaultSchema: snapshot.defaultSchema, enums: model.enums, groups }), { dirty: true })
+              }}
             />
           ) : (
             <div className="flex h-full items-center justify-center p-8 text-center text-[12.5px] text-fg-muted">

@@ -1050,4 +1050,6 @@ export const cs: Record<string, string> = {
   'From Beekeeper, DBeaver, DataGrip, pgAdmin, SSMS, Workbench, HeidiSQL…': 'Z Beekeeperu, DBeaveru, DataGripu, pgAdminu, SSMS, Workbench, HeidiSQL…',
   'Support the project': 'Podpořit projekt',
   'DB Mastermind is free and stays free. If it saves you time, you can buy the author a coffee.': 'DB Mastermind je zdarma a zdarma zůstane. Pokud vám šetří čas, můžete autorovi koupit kafe.',
+  'Subject areas come from the model’s TableGroups': 'Oblasti vycházejí z TableGroup v modelu',
+  'All areas': 'Všechny oblasti',
 }

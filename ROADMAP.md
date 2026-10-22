@@ -107,7 +107,7 @@ project's (AI) maintainer and updated with every release.
   used by FK navigation, diagrams, autocomplete joins and AI
 - ✅ Export diagram to PNG, SVG, Mermaid, DBML, PlantUML
 - ✅ Join autocomplete in SQL editor based on FKs + virtual relationships
-- 💡 dbdiagram-style DBML editing for designing new schemas, generate migration DDL
+- ✅ dbdiagram-style DBML editing for designing new schemas, generate migration DDL (Model tab)
 
 ---
 
@@ -186,7 +186,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ AI on models: design or extend, review, suggest indexes, normalize, add audit columns — results apply to the model
 - ✅ **Data dictionary** of a live database: self-contained HTML (search, dark mode, print) or Markdown, with knowledge base notes
 - ✅ Data dictionary for model documents (HTML)
-- 💡 Logical vs physical model, subject areas (multiple diagrams per model)
+- ✅ Subject areas in a model: TableGroups shown one at a time, edits stay in the area · logical vs physical model 💡
 
 ---
 
