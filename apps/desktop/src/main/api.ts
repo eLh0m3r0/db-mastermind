@@ -44,6 +44,7 @@ import { cancelChat, respondApproval, startChat } from './ai/assistant'
 import { completeText, extractJson } from './ai/complete'
 import { listModels, testProvider } from './ai/models'
 import { exportConnections, importConnections } from './importers'
+import { addToMcpClient, mcpClientStatuses, type McpLaunch } from './mcp-clients'
 import { applyMcpHttp, mcpHttpStatus } from './mcp-http'
 import { buildMenu } from './menu'
 import * as library from './library'
@@ -124,6 +125,14 @@ async function askSavePath(format: ExportFormat, defaultName: string): Promise<s
   return result.canceled || !result.filePath ? null : result.filePath
 }
 
+
+/** How an agent starts this app as a stdio MCP server. */
+function mcpLaunch(): McpLaunch {
+  return {
+    command: process.execPath,
+    args: [...(app.isPackaged ? [] : [app.getAppPath()]), ...(process.platform === 'linux' ? ['--no-sandbox'] : []), '--mcp'],
+  }
+}
 export const api: MastermindApi = {
   async getAppInfo() {
     return {
@@ -132,10 +141,7 @@ export const api: MastermindApi = {
       portable: isPortable,
       dataDir: app.getPath('userData'),
       // Linux: Chromium's SUID sandbox check runs before any app code; headless MCP mode doesn't need it.
-      mcpCommand: {
-        command: process.execPath,
-        args: [...(app.isPackaged ? [] : [app.getAppPath()]), ...(process.platform === 'linux' ? ['--no-sandbox'] : []), '--mcp'],
-      },
+      mcpCommand: mcpLaunch(),
     }
   },
   async getSettings() {
@@ -189,6 +195,12 @@ export const api: MastermindApi = {
   },
   async mcpHttpStatus() {
     return mcpHttpStatus()
+  },
+  async mcpClients() {
+    return mcpClientStatuses()
+  },
+  async addToMcpClient(id) {
+    return addToMcpClient(id, mcpLaunch())
   },
   async exportHistory(connectionId) {
     const window = BrowserWindow.getFocusedWindow()

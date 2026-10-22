@@ -28,6 +28,18 @@ export interface AppInfo {
   mcpCommand: { command: string; args: string[] }
 }
 
+export type McpClientId = 'claude-code' | 'claude-desktop' | 'codex' | 'cursor' | 'vscode'
+
+export interface McpClientStatus {
+  id: McpClientId
+  label: string
+  /** The config file DB Mastermind edits for this client. */
+  path: string
+  installed: boolean
+  /** The config already has a `dbmastermind` server. */
+  configured: boolean
+}
+
 export type AiProviderId = 'anthropic' | 'openai' | 'openrouter' | 'azure' | 'gemini' | 'ollama' | 'openai-compatible' | 'claude-code' | 'codex'
 
 export interface AiProviderSettings {
@@ -281,6 +293,10 @@ export interface MastermindApi {
   exportHistory(connectionId?: string): Promise<string | null>
   /** State of the local HTTP MCP endpoint (Settings → MCP server). */
   mcpHttpStatus(): Promise<{ running: boolean; error?: string; url: string }>
+  /** Which agent apps are installed and already know about DB Mastermind. */
+  mcpClients(): Promise<McpClientStatus[]>
+  /** Adds DB Mastermind to an agent app's MCP config (keeping a `.bak` copy); returns the changed file. */
+  addToMcpClient(id: McpClientId): Promise<{ path: string; via: 'cli' | 'file'; backup: boolean }>
   importConnections(source: 'beekeeper' | 'dbeaver' | 'pgpass' | 'file'): Promise<number>
   /** Writes connections without passwords or keys to a JSON file for colleagues; all when `ids` is empty. */
   exportConnections(ids?: string[]): Promise<string | null>
@@ -395,6 +411,8 @@ export const API_METHODS = [
   'importConnections',
   'exportHistory',
   'mcpHttpStatus',
+  'mcpClients',
+  'addToMcpClient',
   'exportConnections',
   'createSampleDatabase',
   'getSchema',

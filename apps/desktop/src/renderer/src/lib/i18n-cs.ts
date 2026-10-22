@@ -906,4 +906,11 @@ export const cs: Record<string, string> = {
   'Exported {n} rows|few': 'Exportovány {n} řádky',
   'All rows (runs the query again)': 'Všechny řádky (dotaz se spustí znovu)',
   'Shown rows ({n})': 'Zobrazené řádky ({n})',
+  'Added to {app}': 'Přidáno do {app}',
+  '{path} (previous version saved as .bak). Restart the app to load it.': '{path} (předchozí verze uložena jako .bak). Restartujte aplikaci, aby se načetla.',
+  'Could not add to {app}': 'Nepodařilo se přidat do {app}',
+  'Add to': 'Přidat do',
+  'Already added. Click to update the path in {path}': 'Už je přidáno. Kliknutím aktualizujete cestu v {path}',
+  'Not found on this computer; the config file will be created: {path}': 'Na tomto počítači nenalezeno; vytvoří se konfigurační soubor: {path}',
+  '{path}. Restart the app to load it.': '{path}. Restartujte aplikaci, aby se načetla.',
 }
