@@ -80,17 +80,22 @@ function MenuList({ items, x, y, onDone, level = 0 }: { items: MenuItem[]; x: nu
   return (
     <div
       ref={ref}
+      role="menu"
       style={{ left: pos.x, top: pos.y }}
       className="fixed z-[60] min-w-[190px] rounded-lg border border-line bg-elevated p-1 shadow-pop"
       onContextMenu={(e) => e.preventDefault()}
     >
       {items.map((item, i) =>
         item === 'separator' ? (
-          <div key={i} className="my-1 h-px bg-line" />
+          <div key={i} role="separator" className="my-1 h-px bg-line" />
         ) : (
           <button
             key={i}
             type="button"
+            role={item.checked !== undefined ? 'menuitemcheckbox' : 'menuitem'}
+            aria-checked={item.checked}
+            aria-haspopup={item.submenu ? 'menu' : undefined}
+            aria-expanded={item.submenu ? sub?.index === i : undefined}
             disabled={item.disabled}
             onMouseEnter={(e) => {
               setFocus(i)
@@ -99,8 +104,13 @@ function MenuList({ items, x, y, onDone, level = 0 }: { items: MenuItem[]; x: nu
                 setSub({ index: i, x: r.right + 2, y: r.top - 4 })
               } else setSub(null)
             }}
-            onClick={() => {
-              if (item.submenu) return
+            onClick={(e) => {
+              // A click opens a submenu too (touchpads, or when the pointer arrived without a hover).
+              if (item.submenu) {
+                const r = e.currentTarget.getBoundingClientRect()
+                setSub({ index: i, x: r.right + 2, y: r.top - 4 })
+                return
+              }
               onDone()
               item.onClick?.()
             }}
