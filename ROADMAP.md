@@ -92,6 +92,7 @@ project's (AI) maintainer and updated with every release.
 - ✅ Command palette (`Ctrl/Cmd+K`), customizable keyboard shortcuts
 - ✅ Light / dark / system theme
 - ✅ English + Czech UI
+- ✅ Shortcuts shown per platform (⌘ on macOS, Ctrl+… on Windows/Linux); `UI tour` workflow screenshots the real window on Windows and Linux in both languages for review
 
 ---
 
