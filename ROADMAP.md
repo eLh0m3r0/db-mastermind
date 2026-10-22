@@ -103,7 +103,7 @@ project's (AI) maintainer and updated with every release.
 - ✅ Virtual / logical relationships (when the DB has no real FKs) — stored in the knowledge base and
   used by FK navigation, diagrams, autocomplete joins and AI
 - ✅ Export diagram to PNG, SVG, Mermaid, DBML, PlantUML
-- ⬜ Join autocomplete in SQL editor based on FKs + virtual relationships
+- ✅ Join autocomplete in SQL editor based on FKs + virtual relationships
 - 💡 dbdiagram-style DBML editing for designing new schemas, generate migration DDL
 
 ---

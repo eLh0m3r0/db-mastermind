@@ -20,6 +20,7 @@ import {
   type DecorationSet,
 } from '@codemirror/view'
 import { tags as t } from '@lezer/highlight'
+import { joinCompletionSource } from './joinCompletion'
 import { statementAtOffset, type DriverId, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { t as tr } from '@/lib/i18n'
 
@@ -188,6 +189,8 @@ export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunA
   handlers.current = { onChange, onRun, onRunAll, onFormat, onSave, onAskAi }
   const driverRef = useRef(driver)
   driverRef.current = driver
+  const schemaRef = useRef(schema)
+  schemaRef.current = schema
   const langCompartment = useRef(new Compartment())
   const themeCompartment = useRef(new Compartment())
 
@@ -213,6 +216,8 @@ export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunA
           highlightSelectionMatches(),
           placeholderExt(tr('Write SQL…   ⌘↵ runs the statement under the cursor, ⇧⌘↵ runs everything')),
           statementHighlight(() => driverRef.current),
+          // Extra completion source next to the SQL language's own (tables, columns, keywords).
+          EditorState.languageData.of(() => [{ autocomplete: joinCompletionSource(() => schemaRef.current, () => driverRef.current) }]),
           errorField,
           keymap.of([
             { key: 'Mod-Enter', run: () => (handlers.current.onRun(), true), preventDefault: true },
