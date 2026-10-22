@@ -1,6 +1,6 @@
 {
   "name": "dbmastermind-mcp",
-  "version": "0.9.16",
+  "version": "0.9.17",
   "description": "MCP server for databases (PostgreSQL, SQL Server, MySQL, MariaDB, SQLite): schema exploration, read-only queries and a Markdown knowledge base for Claude Code, Codex, Cursor and other agents. Part of DB Mastermind.",
   "license": "MIT",
   "type": "module",

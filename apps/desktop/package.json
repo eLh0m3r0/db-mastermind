@@ -1,7 +1,7 @@
 {
   "name": "@dbmastermind/desktop",
   "productName": "DB Mastermind",
-  "version": "0.9.16",
+  "version": "0.9.17",
   "private": true,
   "description": "Free and open-source database client with AI, ER diagrams and MCP server.",
   "license": "MIT",
