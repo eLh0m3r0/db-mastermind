@@ -1,6 +1,6 @@
 {
   "name": "@dbmastermind/core",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "private": true,
   "description": "Database drivers, introspection, query building and AI tools shared by DB Mastermind apps.",
   "license": "MIT",
