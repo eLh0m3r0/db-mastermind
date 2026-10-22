@@ -7,7 +7,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 const [bundle, latest] = process.argv.slice(2)
 const data = mkdtempSync(join(tmpdir(), 'dbm-macupd-'))
-const version = () => execSync(`defaults read "${bundle}/Contents/Info" CFBundleShortVersionString`).toString().trim()
+// Empty while the bundle is being swapped (it is moved aside for a moment).
+const version = () => {
+  try {
+    return execSync(`defaults read "${bundle}/Contents/Info" CFBundleShortVersionString`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+  } catch {
+    return ''
+  }
+}
 console.log('installed:', version())
 const app = await electron.launch({ executablePath: `${bundle}/Contents/MacOS/DB Mastermind`, env: { ...process.env, DBM_USER_DATA: data, DBM_LANGUAGE: 'en' } })
 const win = await app.firstWindow()
