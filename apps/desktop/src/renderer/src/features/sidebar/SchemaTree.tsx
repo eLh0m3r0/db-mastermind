@@ -5,6 +5,7 @@ import {
   Code2,
   Copy,
   Eye,
+  FileText,
   FileCode2,
   Hash,
   KeyRound,
@@ -22,6 +23,7 @@ import { IconButton } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { Input } from '@/components/ui/Input'
 import { Spinner } from '@/components/ui/Spinner'
+import { exportDataDictionary } from '@/lib/dictionary'
 import { copyText, cn, formatCount, fuzzyScore } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useWorkspace } from '@/store/workspace'
@@ -224,6 +226,12 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
                   key={node.key}
                   className={cn(rowClass, 'font-medium')}
                   style={style}
+                  onContextMenu={(e) =>
+                    openMenu(e, [
+                      { label: tr('Data dictionary (HTML)…'), icon: <FileText size={13} />, onClick: () => void exportDataDictionary(connection.id, 'html', [node.name]) },
+                      { label: tr('Data dictionary (Markdown)…'), icon: <FileText size={13} />, onClick: () => void exportDataDictionary(connection.id, 'markdown', [node.name]) },
+                    ])
+                  }
                   onClick={() =>
                     setCollapsedSchemas((prev) => {
                       const next = new Set(prev)

@@ -227,6 +227,8 @@ export interface MastermindApi {
   releaseSession(connectionId: string, session: string): Promise<void>
   listActivity(connectionId: string): Promise<SessionActivity[]>
   stopSession(connectionId: string, sessionId: string, mode: 'cancel' | 'terminate'): Promise<void>
+  /** Writes HTML/Markdown documentation of the schema (with knowledge base notes); returns the path or null if cancelled. */
+  exportDataDictionary(connectionId: string, format: 'html' | 'markdown', schemas?: string[]): Promise<string | null>
 
   fetchTable(request: FetchTableRequest): Promise<TablePage>
   countTable(request: Omit<FetchTableRequest, 'limit' | 'offset'>): Promise<number>
@@ -305,6 +307,7 @@ export const API_METHODS = [
   'releaseSession',
   'listActivity',
   'stopSession',
+  'exportDataDictionary',
   'fetchTable',
   'countTable',
   'importPreview',

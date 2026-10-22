@@ -664,4 +664,10 @@ export const cs: Record<string, string> = {
   'Session {id}': 'Relace {id}',
   'Cancel query': 'Zrušit dotaz',
   'End session': 'Ukončit relaci',
+  'Data dictionary saved': 'Datový slovník uložen',
+  'Could not create the data dictionary': 'Datový slovník se nepodařilo vytvořit',
+  'Data dictionary (HTML)…': 'Datový slovník (HTML)…',
+  'Data dictionary (Markdown)…': 'Datový slovník (Markdown)…',
+  'Export data dictionary (HTML)…': 'Exportovat datový slovník (HTML)…',
+  'Export data dictionary (Markdown)…': 'Exportovat datový slovník (Markdown)…',
 }

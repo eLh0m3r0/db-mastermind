@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Copy,
   Database,
+  FileText,
   FolderTree,
   History,
   Home,
@@ -23,6 +24,7 @@ import { openMenu } from '@/components/ui/ContextMenu'
 import { Input } from '@/components/ui/Input'
 import { Spinner } from '@/components/ui/Spinner'
 import { api, isMac } from '@/lib/api'
+import { exportDataDictionary } from '@/lib/dictionary'
 import { cn, errorMessage, fuzzyScore } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { toast, useUi } from '@/store/ui'
@@ -63,6 +65,7 @@ export function connectionMenu(c: StoredConnection): Parameters<typeof openMenu>
       : { label: t('Connect'), icon: <Plug size={13} />, onClick: () => void connectAndSelect(c.id) },
     { label: t('Edit…'), icon: <Pencil size={13} />, onClick: () => useUi.getState().set({ modal: { kind: 'connection', connectionId: c.id } }) },
     { label: t('Duplicate'), icon: <Copy size={13} />, onClick: () => void duplicate(c.id) },
+    { label: t('Data dictionary (HTML)…'), icon: <FileText size={13} />, onClick: () => void exportDataDictionary(c.id, 'html') },
     'separator',
     {
       label: t('Delete'),

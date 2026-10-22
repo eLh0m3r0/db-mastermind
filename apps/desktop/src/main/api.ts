@@ -9,6 +9,8 @@ import {
   detectDelimiter,
   explainQuery,
   listActivity,
+  buildDataDictionary,
+  type DictionaryNote,
   stopSession,
   filterPrompt,
   sanitizeFilter,
@@ -230,6 +232,43 @@ export const api: MastermindApi = {
     await ensureConnected(connectionId)
     if (connections.getConnection(connectionId).readOnly) throw new Error('This connection is read-only')
     await stopSession(db, connectionId, sessionId, mode)
+  },
+  async exportDataDictionary(connectionId, format, schemas) {
+    await ensureConnected(connectionId)
+    const config = connections.getConnection(connectionId)
+    const snapshot = await db.schema(connectionId)
+    const notes = new Map<string, DictionaryNote[]>()
+    if (config.knowledgeBasePath) {
+      const kb = knowledge(connectionId)
+      for (const file of await kb.list().catch(() => [])) {
+        if (!file.tables.length) continue
+        const doc = await kb.read(file.path).catch(() => null)
+        if (!doc?.body.trim()) continue
+        for (const table of file.tables) {
+          const key = table.toLowerCase()
+          notes.set(key, [...(notes.get(key) ?? []), { title: doc.title, body: doc.body }])
+        }
+      }
+    }
+    const ext = format === 'html' ? 'html' : 'md'
+    const window = BrowserWindow.getFocusedWindow()
+    const options = {
+      title: 'Data dictionary',
+      defaultPath: `${config.name.replace(/[\\/:*?"<>|]/g, '_')} - data dictionary.${ext}`,
+      filters: [{ name: format === 'html' ? 'HTML' : 'Markdown', extensions: [ext] }],
+    }
+    const result = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return null
+    const info = db.serverInfo(connectionId)
+    const content = buildDataDictionary(snapshot, {
+      format,
+      schemas,
+      notes,
+      title: config.name,
+      subtitle: [info ? `${info.product} ${info.version}`.trim() : config.driver, snapshot.database].filter(Boolean).join(' · '),
+    })
+    await writeFile(result.filePath, content, 'utf8')
+    return result.filePath
   },
   async cancelQuery(runId) {
     running.get(runId)?.abort()
