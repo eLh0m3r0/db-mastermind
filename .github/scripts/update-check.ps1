@@ -27,8 +27,11 @@ if (-not $found) { Show-Diagnostics; throw "The update to $Latest was not downlo
 Write-Host "Downloaded: $($found.FullName)"
 
 $app.CloseMainWindow() | Out-Null
-Start-Sleep -Seconds 5
-if (Get-Process -Id $app.Id -ErrorAction SilentlyContinue) { taskkill /PID $app.Id /T | Out-Null }
+# Quitting starts the downloaded installer, so the app can take a while to exit. Never kill the process tree:
+# that would stop the installer too.
+$exitBy = (Get-Date).AddSeconds(60)
+while ((Get-Process -Id $app.Id -ErrorAction SilentlyContinue) -and (Get-Date) -lt $exitBy) { Start-Sleep -Seconds 2 }
+if (Get-Process -Id $app.Id -ErrorAction SilentlyContinue) { Stop-Process -Id $app.Id -ErrorAction SilentlyContinue }
 $deadline = (Get-Date).AddMinutes(4)
 do {
   Start-Sleep -Seconds 10
@@ -38,3 +41,4 @@ do {
 if (-not ("$v" -like "$Latest*")) { Show-Diagnostics; throw "Expected $Latest after quitting, found $v" }
 Show-Diagnostics
 Write-Host "Updated to $Latest"
+exit 0
