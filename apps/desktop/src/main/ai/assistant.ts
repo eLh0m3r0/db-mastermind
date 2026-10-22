@@ -130,10 +130,10 @@ async function runChat(request: AiChatRequest): Promise<void> {
     const system = await buildSystemPrompt(ctx, extra)
 
     if (provider.id === 'claude-code' || provider.id === 'codex') {
-      // Claude Code gets the tools from this process, so they follow the chat's permissions and a write is confirmed in
-      // the app. (Codex starts the separate `--mcp` server, where writes need "Agents may write".)
+      // Both agent CLIs get the tools from this process, so they follow the chat's permissions and a write is confirmed
+      // in the app.
       const endpoint =
-        provider.id === 'claude-code'
+        provider.id === 'claude-code' || provider.id === 'codex'
           ? await chatMcpEndpoint({
               db,
               connections: [{ ...config, ai: { access: access.access, agents: true, agentWrites: false, knowledgeWrites: access.knowledgeWrites } }],

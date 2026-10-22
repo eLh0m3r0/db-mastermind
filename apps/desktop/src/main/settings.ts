@@ -3,7 +3,7 @@ import { app } from 'electron'
 import type { AiProviderSettings, AppSettings } from '@shared/api'
 import { managedConfig } from './managed'
 import { enforceManagedSettings } from './managed-config'
-import { decryptSecret, encryptSecret, readJson, writeJson } from './storage'
+import { decryptSecret, encryptSecret, readJson, takeLegacySecretsFlag, writeJson } from './storage'
 
 const FILE = 'settings.json'
 
@@ -34,6 +34,7 @@ function mapKeys(providers: AiProviderSettings[], fn: (v: string | undefined) =>
 export async function loadSettings(): Promise<void> {
   const defaults = defaultSettings()
   const stored = readJson<Partial<AppSettings>>(FILE, {})
+  takeLegacySecretsFlag()
   cached = enforceManagedSettings({
     ...defaults,
     ...stored,
@@ -41,7 +42,8 @@ export async function loadSettings(): Promise<void> {
     mcp: { ...defaults.mcp, ...stored.mcp, token: stored.mcp?.token && stored.mcp.token.length >= 16 ? stored.mcp.token : defaults.mcp.token },
   }, managedConfig())
   // The first run stores the generated token (also replacing an empty or short one) and the detected language.
-  if (!stored.mcp?.token || stored.mcp.token.length < 16 || !stored.language) persist(cached)
+  // Also saves API keys read in an older encryption format again in the current one.
+  if (!stored.mcp?.token || stored.mcp.token.length < 16 || !stored.language || takeLegacySecretsFlag()) persist(cached)
 }
 
 export function getSettings(): AppSettings {

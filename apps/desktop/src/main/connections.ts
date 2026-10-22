@@ -4,7 +4,7 @@ import type { ExplorerPrefs, StoredConnection } from '@shared/api'
 import { managedConfig } from './managed'
 import { mergeManagedConnections } from './managed-config'
 import { team } from './team'
-import { decryptSecret, encryptSecret, readJson, writeJson } from './storage'
+import { decryptSecret, encryptSecret, readJson, takeLegacySecretsFlag, writeJson } from './storage'
 
 const FILE = 'connections.json'
 
@@ -32,8 +32,11 @@ function mergeAll(stored: StoredConnection[]): StoredConnection[] {
 
 /** Reads and decrypts saved connections. Must run after app 'ready', before anything uses them. */
 export async function loadConnections(): Promise<void> {
+  takeLegacySecretsFlag()
   const stored = await Promise.all(readJson<StoredConnection[]>(FILE, []).map((c) => transformSecrets(c, decryptSecret)))
   cache = mergeAll(stored)
+  // Passwords in an older encryption format are saved again in the current one.
+  if (takeLegacySecretsFlag()) persist()
 }
 
 export function listConnections(): StoredConnection[] {

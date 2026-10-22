@@ -35,6 +35,9 @@ export function resolvedPath(): Promise<string> {
   return shellPath
 }
 
+/** Codex features that would reach beyond DB Mastermind's tools (files, shell, browser, other apps). */
+export const CODEX_DISABLED_FEATURES = ['shell_tool', 'browser_use', 'browser_use_external', 'in_app_browser', 'computer_use', 'apps', 'plugins', 'remote_plugin']
+
 function binary(provider: 'claude-code' | 'codex'): string {
   return provider === 'codex' ? 'codex' : 'claude'
 }
@@ -84,7 +87,7 @@ function textOf(content: unknown): string {
 /** Runs the agent CLI headless with DB Mastermind attached as an MCP server and streams its events. */
 export async function runCli(options: CliRunOptions): Promise<void> {
   // A write waits in the app for the user's answer; Claude Code would give up on the tool call after its default timeout.
-  const env = { ...process.env, PATH: await resolvedPath(), MCP_TOOL_TIMEOUT: process.env.MCP_TOOL_TIMEOUT ?? '900000' }
+  const env: NodeJS.ProcessEnv = { ...process.env, PATH: await resolvedPath(), MCP_TOOL_TIMEOUT: process.env.MCP_TOOL_TIMEOUT ?? '900000' }
   let args: string[]
   let stdin: string | undefined
   // Long texts (prompt, system prompt, MCP config with its token) never go on the command line: on Windows the CLI
@@ -110,17 +113,14 @@ export async function runCli(options: CliRunOptions): Promise<void> {
     args.push('--tools', '', '--disallowedTools', 'Bash', 'Edit', 'Write', 'Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'NotebookEdit', 'Task', 'Agent')
     if (options.model) args.push('--model', options.model)
   } else {
-    const toml = (v: unknown) => JSON.stringify(v)
-    args = [
-      'exec',
-      '--json',
-      '--skip-git-repo-check',
-      ...(options.mcp && 'command' in options.mcp
-        ? ['-c', `mcp_servers.dbmastermind.command=${toml(options.mcp.command)}`, '-c', `mcp_servers.dbmastermind.args=${toml(options.mcp.args)}`]
-        : []),
-      ...(options.model ? ['-m', options.model] : []),
-      `${options.system}\n\n---\n\n${options.prompt}`,
-    ]
+    // Codex gets the same per-chat endpoint as Claude Code, so tools follow the chat's permissions and writes are
+    // confirmed in the app. Everything else Codex could reach is switched off: its own shell (which could read a
+    // database file and get round the permissions), browser, computer use, web search, apps and plugins, the user's
+    // own config (other MCP servers) and saved sessions. The prompt goes in on stdin.
+    stdin = `${options.system}\n\n---\n\n${options.prompt}`
+    const codex = codexArgs({ mcp: options.mcp, model: options.model, workdir: scratch })
+    args = codex.args
+    Object.assign(env, codex.env)
   }
 
   const windows = process.platform === 'win32'
@@ -187,6 +187,26 @@ export async function runCli(options: CliRunOptions): Promise<void> {
     const login = /401|unauthori[sz]ed|log ?in|sign in|expired|credential/i.test(`${detail}\n${stderr}`)
     throw new Error(`${name}: ${detail}${login ? `\nSign in again: run \`${binary(options.provider)} login\` in a terminal.` : ''}`)
   }
+}
+
+/** `codex exec` arguments (the prompt itself goes in on stdin) and the environment they rely on. */
+export function codexArgs(options: Pick<CliRunOptions, 'mcp' | 'model'> & { workdir: string }): { args: string[]; env: Record<string, string> } {
+  const toml = (v: unknown) => JSON.stringify(v)
+  const env: Record<string, string> = {}
+  const args = ['exec', '--json', '--skip-git-repo-check', '--ephemeral', '--ignore-user-config', '--sandbox', 'read-only', '-C', options.workdir]
+  for (const feature of CODEX_DISABLED_FEATURES) args.push('--disable', feature)
+  args.push('-c', 'web_search="disabled"', '-c', 'approval_policy="never"')
+  if (options.mcp && 'url' in options.mcp) {
+    env.DBM_MCP_TOKEN = (options.mcp.headers.Authorization ?? '').replace(/^Bearer\s+/i, '')
+    args.push('-c', `mcp_servers.dbmastermind.url=${toml(options.mcp.url)}`, '-c', 'mcp_servers.dbmastermind.bearer_token_env_var="DBM_MCP_TOKEN"')
+    // A write waits for the user's answer in the app.
+    args.push('-c', 'mcp_servers.dbmastermind.tool_timeout_sec=900')
+  } else if (options.mcp) {
+    args.push('-c', `mcp_servers.dbmastermind.command=${toml(options.mcp.command)}`, '-c', `mcp_servers.dbmastermind.args=${toml(options.mcp.args)}`)
+  }
+  if (options.model) args.push('-m', options.model)
+  args.push('-')
+  return { args, env }
 }
 
 /** One argument for cmd.exe (the CLIs are .cmd shims on Windows): quoted when needed, so it stays one argument. */
