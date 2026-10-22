@@ -2,7 +2,9 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,
   BackgroundVariant,
+  BaseEdge,
   Controls,
+  getSmoothStepPath,
   Handle,
   MarkerType,
   MiniMap,
@@ -12,6 +14,7 @@ import {
   useNodesState,
   useReactFlow,
   type Edge,
+  type EdgeProps,
   type Node,
   type NodeProps,
 } from '@xyflow/react'
@@ -199,6 +202,56 @@ function neighbourhood(snapshot: SchemaSnapshot, focus: TableInfo, depth: number
   return seen
 }
 
+type Point = { x: number; y: number }
+
+/** Vertical center of a column's row (where its handles sit), from the node's top edge (1px border included). */
+function columnY(t: TableInfo, keysOnly: boolean, fk: Set<string>, ref: Set<string>, column: string): number {
+  const i = Math.max(0, visibleColumns(t, keysOnly, fk, ref).findIndex((c) => c.name === column))
+  return 1 + HEADER + i * ROW + ROW / 2
+}
+
+/** SVG path through orthogonal points with rounded corners. */
+function roundedPath(points: Point[], radius = 6): string {
+  let d = `M ${points[0]!.x} ${points[0]!.y}`
+  for (let i = 1; i < points.length - 1; i++) {
+    const [a, b, c] = [points[i - 1]!, points[i]!, points[i + 1]!]
+    const r = Math.min(radius, Math.hypot(b.x - a.x, b.y - a.y) / 2, Math.hypot(c.x - b.x, c.y - b.y) / 2)
+    const before = { x: b.x - Math.sign(b.x - a.x) * r, y: b.y - Math.sign(b.y - a.y) * r }
+    const after = { x: b.x + Math.sign(c.x - b.x) * r, y: b.y + Math.sign(c.y - b.y) * r }
+    d += ` L ${before.x} ${before.y} Q ${b.x} ${b.y} ${after.x} ${after.y}`
+  }
+  const last = points[points.length - 1]!
+  return `${d} L ${last.x} ${last.y}`
+}
+
+/**
+ * A relationship line along the route the layout computed (no crossings where avoidable); when a table was moved
+ * since, the route no longer fits and the line falls back to a plain step path.
+ */
+const RoutedEdge = memo(function RoutedEdge(props: EdgeProps<Edge<{ route?: Point[] }>>) {
+  const { sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, markerStart, markerEnd, style, label, labelStyle, labelBgStyle } = props
+  const route = data?.route
+  const fits = !!route && route.length >= 2 && Math.abs(route[0]!.x - sourceX) < 6 && Math.abs(route[0]!.y - sourceY) < 6 && Math.abs(route.at(-1)!.x - targetX) < 6 && Math.abs(route.at(-1)!.y - targetY) < 6
+  if (fits) {
+    // Snap the route's ends to the real handle positions (a few pixels from the layout's ports), keeping it orthogonal.
+    const inner = route.slice(1, -1).map((p) => ({ ...p }))
+    if (inner.length) {
+      if (Math.abs(inner[0]!.y - route[0]!.y) < 1) inner[0]!.y = sourceY
+      if (Math.abs(inner.at(-1)!.y - route.at(-1)!.y) < 1) inner.at(-1)!.y = targetY
+    } else if (Math.abs(sourceY - targetY) > 0.5) {
+      const midX = (sourceX + targetX) / 2
+      inner.push({ x: midX, y: sourceY }, { x: midX, y: targetY })
+    }
+    const points = [{ x: sourceX, y: sourceY }, ...inner, { x: targetX, y: targetY }]
+    const mid = points[Math.floor(points.length / 2)]!
+    return <BaseEdge className="dbm-routed" path={roundedPath(points)} markerStart={markerStart} markerEnd={markerEnd} style={style} label={label} labelX={mid.x} labelY={mid.y} labelStyle={labelStyle} labelBgStyle={labelBgStyle} />
+  }
+  const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 6 })
+  return <BaseEdge className="dbm-stepped" path={path} markerStart={markerStart} markerEnd={markerEnd} style={style} label={label} labelX={labelX} labelY={labelY} labelStyle={labelStyle} labelBgStyle={labelBgStyle} />
+})
+
+const edgeTypes = { routed: RoutedEdge }
+
 function nodeHeight(t: TableInfo, keysOnly: boolean, fk: Set<string>, ref: Set<string>): number {
   const visible = visibleColumns(t, keysOnly, fk, ref).length
   return HEADER + visible * ROW + (keysOnly && visible < t.columns.length ? ROW : 0) + 2
@@ -384,6 +437,9 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
     return { fk, ref }
   }, [tables])
 
+  // Orthogonal routes from the last auto layout, by edge id.
+  const [routes, setRoutes] = useState<Record<string, Point[]>>({})
+
   const edges = useMemo<Edge[]>(() => {
     const names = new Set(tables.map((t) => t.name))
     const out: Edge[] = []
@@ -401,7 +457,8 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
           target: targetKey,
           sourceHandle: `s-${fk.columns[0]}`,
           targetHandle: `t-${fk.refColumns[0]}`,
-          type: 'smoothstep',
+          type: 'routed',
+          data: { route: routes[`${source}:${fk.name}`] },
           animated: active,
           markerStart: 'crow-many',
           markerEnd: optional ? 'crow-zero-one' : 'crow-one',
@@ -417,7 +474,7 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
       }
     }
     return out
-  }, [tables, hovered, keyByName])
+  }, [tables, hovered, keyByName, routes])
 
   const latest = useRef({ display, columnSets, edges })
   latest.current = { display, columnSets, edges }
@@ -447,23 +504,47 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
     try {
       const graph = await elk.layout({
         id: 'root',
+        // Ports at the exact rows the lines attach to let the layout untangle them; orthogonal routes are drawn as is.
         layoutOptions: {
           'elk.algorithm': 'layered',
           'elk.direction': 'RIGHT',
-          'elk.layered.spacing.nodeNodeBetweenLayers': '90',
+          'elk.edgeRouting': 'ORTHOGONAL',
+          'elk.layered.spacing.nodeNodeBetweenLayers': '110',
+          'elk.layered.spacing.edgeNodeBetweenLayers': '24',
+          'elk.spacing.edgeEdge': '10',
           'elk.spacing.nodeNode': '36',
+          'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
+          'elk.layered.crossingMinimization.greedySwitch.type': 'TWO_SIDED',
+          'elk.layered.thoroughness': '60',
           'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
-          'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
+          'elk.layered.cycleBreaking.strategy': 'GREEDY',
           'elk.separateConnectedComponents': 'true',
           'elk.spacing.componentComponent': '70',
         },
-        children: display.map(({ key, info: t }) => ({
-          id: key,
-          width: WIDTH,
-          height: nodeHeight(t, keysOnly, columnSets.fk.get(t.name) ?? new Set(), columnSets.ref.get(t.name) ?? new Set()),
-        })),
-        edges: edges.map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] })),
+        children: display.map(({ key, info: t }) => {
+          const fk = columnSets.fk.get(t.name) ?? new Set<string>()
+          const ref = columnSets.ref.get(t.name) ?? new Set<string>()
+          const out = new Set(edges.filter((e) => e.source === key).map((e) => e.sourceHandle!.slice(2)))
+          const inn = new Set(edges.filter((e) => e.target === key).map((e) => e.targetHandle!.slice(2)))
+          return {
+            id: key,
+            width: WIDTH,
+            height: nodeHeight(t, keysOnly, fk, ref),
+            layoutOptions: { 'elk.portConstraints': 'FIXED_POS' },
+            ports: [
+              ...[...out].map((c) => ({ id: `${key}::s-${c}`, x: WIDTH, y: columnY(t, keysOnly, fk, ref, c), width: 0, height: 0, layoutOptions: { 'elk.port.side': 'EAST' } })),
+              ...[...inn].map((c) => ({ id: `${key}::t-${c}`, x: 0, y: columnY(t, keysOnly, fk, ref, c), width: 0, height: 0, layoutOptions: { 'elk.port.side': 'WEST' } })),
+            ],
+          }
+        }),
+        edges: edges.map((e) => ({ id: e.id, sources: [`${e.source}::${e.sourceHandle}`], targets: [`${e.target}::${e.targetHandle}`] })),
       })
+      const nextRoutes: Record<string, Point[]> = {}
+      for (const e of graph.edges ?? []) {
+        const section = (e as { sections?: { startPoint: Point; endPoint: Point; bendPoints?: Point[] }[] }).sections?.[0]
+        if (section) nextRoutes[e.id] = [section.startPoint, ...(section.bendPoints ?? []), section.endPoint]
+      }
+      setRoutes(nextRoutes)
       const saved = tab.positions ?? {}
       const placed = display.map((d) => saved[d.key]).filter((p): p is { x: number; y: number } => !!p)
       // Tables new to an arranged diagram go in a column right of the existing ones instead of on top of them.
@@ -1080,6 +1161,7 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
           nodes={[...nodes, ...(noteNodes as unknown as typeof nodes)]}
           edges={edges}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           onNodesChange={(changes) => {
             const forNote = (c: (typeof changes)[number]) => 'id' in c && isNote(c.id)
             onNodesChange(changes.filter((c) => !forNote(c)) as Parameters<typeof onNodesChange>[0])
