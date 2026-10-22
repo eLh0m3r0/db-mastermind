@@ -998,4 +998,10 @@ export const cs: Record<string, string> = {
   'Could not share the diagram': 'Diagram nejde sdílet',
   'Team': 'Tým',
   'Read tables from a SQL script (pg_dump, mysqldump, SSMS…) or a Prisma schema': 'Načíst tabulky ze SQL skriptu (pg_dump, mysqldump, SSMS…) nebo ze schématu Prisma',
+  'Save these changes as…': 'Uložit tyto změny jako…',
+  'Name of the change set': 'Název sady změn',
+  'Change set “{name}” saved': 'Sada změn „{name}“ uložena',
+  'Load (replaces the current changes)': 'Načíst (nahradí aktuální změny)',
+  'Replace the current design changes with “{name}”?': 'Nahradit aktuální změny návrhu sadou „{name}“?',
+  'Change sets': 'Sady změn',
 }

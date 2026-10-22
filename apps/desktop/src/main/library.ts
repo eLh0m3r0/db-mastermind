@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Dashboard, HistoryEntry, SavedDiagram, SavedQuery, WorkspaceState } from '@shared/api'
+import type { ChangeSet, Dashboard, HistoryEntry, SavedDiagram, SavedQuery, WorkspaceState } from '@shared/api'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { listConnections } from './connections'
 import { dataPath, readJson, writeJson } from './storage'
@@ -11,6 +11,7 @@ const SAVED_FILE = 'saved-queries.json'
 const WORKSPACE_FILE = 'workspace.json'
 const DIAGRAMS_FILE = 'diagrams.json'
 const DASHBOARDS_FILE = 'dashboards.json'
+const CHANGESETS_FILE = 'change-sets.json'
 const MAX_HISTORY = 5000
 /** Statements run by external agents through `--mcp` (a separate process appends here). */
 export const MCP_HISTORY_FILE = 'mcp-history.jsonl'
@@ -185,6 +186,26 @@ export function deleteDiagram(id: string): void {
   writeJson(
     DIAGRAMS_FILE,
     localDiagrams().filter((d) => d.id !== id),
+  )
+}
+
+export function listChangeSets(connectionId?: string): ChangeSet[] {
+  const all = readJson<ChangeSet[]>(CHANGESETS_FILE, [])
+  return connectionId ? all.filter((c) => c.connectionId === connectionId) : all
+}
+
+/** Saves a change set; one with the same name for the connection is replaced. */
+export function saveChangeSet(changeSet: Omit<ChangeSet, 'id' | 'createdAt'>): ChangeSet {
+  const all = listChangeSets()
+  const saved: ChangeSet = { ...changeSet, id: randomUUID(), createdAt: new Date().toISOString() }
+  writeJson(CHANGESETS_FILE, [...all.filter((c) => !(c.connectionId === changeSet.connectionId && c.name === changeSet.name)), saved])
+  return saved
+}
+
+export function deleteChangeSet(id: string): void {
+  writeJson(
+    CHANGESETS_FILE,
+    listChangeSets().filter((c) => c.id !== id),
   )
 }
 

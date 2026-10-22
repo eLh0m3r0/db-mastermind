@@ -18,7 +18,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { toPng, toSvg } from 'html-to-image'
-import { Bookmark, Copy, Download, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Route, Search, Redo, Sparkles, StickyNote, Table2, Undo, Undo2, Users, X } from 'lucide-react'
+import { Bookmark, Copy, Download, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Route, Search, Layers, Redo, Sparkles, StickyNote, Table2, Undo, Undo2, Users, X } from 'lucide-react'
 import {
   designId,
   designToTableInfo,
@@ -827,6 +827,46 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
             {!model && (
               <Button size="sm" variant="ghost" icon={<Sparkles size={13} />} onClick={designWithAi} title={tr('Describe a change, e.g. "add soft delete to all customer tables"; the AI proposes it as design changes')}>
                 {tr('Design with AI…')}
+              </Button>
+            )}
+            {!model && (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<Layers size={13} />}
+                onClick={async (e) => {
+                  const anchor = e.currentTarget
+                  const sets = await api.listChangeSets(tab.connectionId)
+                  openMenu(anchor, [
+                    {
+                      label: tr('Save these changes as…'),
+                      disabled: !Object.keys(drafts).length,
+                      onClick: async () => {
+                        const name = window.prompt(tr('Name of the change set'), '')?.trim()
+                        if (!name) return
+                        await api.saveChangeSet({ connectionId: tab.connectionId, name, design: drafts })
+                        toast({ kind: 'success', message: tr('Change set “{name}” saved', { name }) })
+                      },
+                    },
+                    ...(sets.length ? ['separator' as const] : []),
+                    ...sets.map((cs) => ({
+                      label: `${cs.name} · ${new Date(cs.createdAt).toLocaleDateString()}`,
+                      submenu: [
+                        {
+                          label: tr('Load (replaces the current changes)'),
+                          onClick: () => {
+                            if (Object.keys(drafts).length && !window.confirm(tr('Replace the current design changes with “{name}”?', { name: cs.name }))) return
+                            setSelected(null)
+                            setDrafts(cs.design)
+                          },
+                        },
+                        { label: tr('Delete'), danger: true, onClick: () => void api.deleteChangeSet(cs.id) },
+                      ],
+                    })),
+                  ])
+                }}
+              >
+                {tr('Change sets')}
               </Button>
             )}
             <IconButton label={`${tr('Undo')} (⌘Z)`} disabled={!history.current.past.length} onClick={undoDesign}>

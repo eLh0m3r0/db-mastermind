@@ -150,7 +150,7 @@ project's (AI) maintainer and updated with every release.
 
 ---
 
-## Milestone 3 — Data Modeling Studio (v0.4) 🚧 (live designer shipped in v0.2)
+## Milestone 3 — Data Modeling Studio (v0.4) ✅
 
 The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working **directly on live databases**.
 
@@ -167,7 +167,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
   columns with NULLs; counts are checked live), lock/rewrite warnings for large tables, dependent views
 - ✅ Rollback script generated alongside the forward script
 - ✅ Execute in the SQL editor (review first) or save as a migration file (plain SQL, Flyway `V…__name.sql`)
-- ✅ A migration can be opened for another connection of the same engine (dev → test → prod) · saved change sets ⬜
+- ✅ A migration can be opened for another connection of the same engine (dev → test → prod); named change sets saved and loaded in the designer
 - ✅ AI in the live designer: "add soft delete to all customer tables", "move the address into its own table". The AI
   proposes DBML, *Apply to design* turns it into pending changes (ALTERs, not recreates) reviewed as a migration
 

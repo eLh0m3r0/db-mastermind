@@ -1,6 +1,7 @@
 import type {
   ConnectionConfig,
   DataCompareResult,
+  DesignTable,
   Grant,
   Principal,
   ExplainResult,
@@ -167,6 +168,16 @@ export interface HistoryEntry {
 }
 
 /** A named subset of tables with its own layout ("Sales", "Billing"…). */
+/** Schema designer changes saved under a name, to continue or apply later (e.g. in the next release window). */
+export interface ChangeSet {
+  id: string
+  connectionId: string
+  name: string
+  /** Designer drafts by node key, as in the diagram tab. */
+  design: Record<string, DesignTable>
+  createdAt: string
+}
+
 /** A sticky note on an ER diagram. */
 export interface DiagramNote {
   id: string
@@ -416,6 +427,9 @@ export interface MastermindApi {
   listDiagrams(connectionId: string): Promise<SavedDiagram[]>
   saveDiagram(diagram: Omit<SavedDiagram, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<SavedDiagram>
   deleteDiagram(id: string): Promise<void>
+  listChangeSets(connectionId: string): Promise<ChangeSet[]>
+  saveChangeSet(changeSet: Omit<ChangeSet, 'id' | 'createdAt'>): Promise<ChangeSet>
+  deleteChangeSet(id: string): Promise<void>
   listDashboards(connectionId: string): Promise<Dashboard[]>
   saveDashboard(dashboard: Omit<Dashboard, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<Dashboard>
   deleteDashboard(id: string): Promise<void>
@@ -527,6 +541,9 @@ export const API_METHODS = [
   'listDiagrams',
   'saveDiagram',
   'deleteDiagram',
+  'listChangeSets',
+  'saveChangeSet',
+  'deleteChangeSet',
   'listDashboards',
   'saveDashboard',
   'deleteDashboard',
