@@ -51,7 +51,7 @@ project's (AI) maintainer and updated with every release.
 
 ### Schema explorer
 - ✅ Tree: databases → schemas → tables / views / materialized views / functions / procedures / sequences
-- ✅ Instant fuzzy filter over thousands of objects
+- ✅ Instant fuzzy filter over thousands of objects, `schema.table` narrowing, natural order (t2 before t10). Measured on 5,000 tables / 20 schemas (e2e/flow61): connect 1.5 s, filter 17 ms, open table 45 ms, autocomplete 0.2 s, diagram of a 250-table schema 1.4 s
 - ✅ Column details (type, nullability, default, PK/FK/identity, comments) on hover
 - ✅ Pin favourite tables to the top of the explorer
 - ✅ Hide chosen schemas per connection

@@ -518,6 +518,9 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
           'elk.layered.thoroughness': '60',
           'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
           'elk.layered.cycleBreaking.strategy': 'GREEDY',
+          // Long FK chains would otherwise become one endless row: wrap them into rows close to a screen's shape.
+          'elk.layered.wrapping.strategy': 'MULTI_EDGE',
+          'elk.aspectRatio': '1.6',
           'elk.separateConnectedComponents': 'true',
           'elk.spacing.componentComponent': '70',
         },

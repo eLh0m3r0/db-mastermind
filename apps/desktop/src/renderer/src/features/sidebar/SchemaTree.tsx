@@ -74,6 +74,9 @@ export function generateSql(kind: 'select' | 'insert' | 'update' | 'delete' | 'c
   }
 }
 
+/** t2 before t10. */
+const naturalCompare = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+
 const pinKey = (t: TableInfo) => (t.schema ? `${t.schema}.${t.name}` : t.name)
 
 export const EXPLAIN_COLUMN_PROMPT =
@@ -106,7 +109,17 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
   const nodes = useMemo<Node[]>(() => {
     if (!schema) return []
     const q = filter.trim()
-    const matches = (t: TableInfo) => !q || fuzzyScore(t.name, q) >= 0 || t.columns.some((c) => c.name.toLowerCase() === q.toLowerCase())
+    // "sales.ord" narrows by schema too (many schemas often repeat the same table names).
+    const dot = q.lastIndexOf('.')
+    const schemaQ = dot > 0 ? q.slice(0, dot).toLowerCase() : ''
+    const nameQ = dot > 0 ? q.slice(dot + 1) : q
+    const score = (t: TableInfo) => {
+      if (!q) return 0
+      const direct = fuzzyScore(t.name, q)
+      if (direct >= 0 || !schemaQ || !(t.schema ?? '').toLowerCase().includes(schemaQ)) return direct
+      return nameQ ? fuzzyScore(t.name, nameQ) : 0
+    }
+    const matches = (t: TableInfo) => !q || score(t) >= 0 || t.columns.some((c) => c.name.toLowerCase() === q.toLowerCase())
     const out: Node[] = []
     const pinned = (connection.pinnedTables ?? []).map((p) => schema.tables.find((t) => pinKey(t) === p)).filter((t): t is TableInfo => !!t)
     if (pinned.length && !q) {
@@ -125,7 +138,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
     const schemaNames = allSchemas.filter((s) => !hidden.has(s))
     const hiddenCount = allSchemas.length - schemaNames.length
     const multi = schemaNames.length > 1
-    const ordered = [...schemaNames].sort((a, b) => (a === schema.defaultSchema ? -1 : b === schema.defaultSchema ? 1 : a.localeCompare(b)))
+    const ordered = [...schemaNames].sort((a, b) => (a === schema.defaultSchema ? -1 : b === schema.defaultSchema ? 1 : naturalCompare(a, b)))
     for (const s of ordered) {
       const tables = schema.tables.filter((t) => (t.schema ?? '') === s && matches(t))
       const routines = schema.routines.filter((r) => (r.schema ?? '') === s && (!q || fuzzyScore(r.name, q) >= 0))
@@ -140,7 +153,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
         out.push({ kind: 'schema', key: schemaKey, name: s, count: tables.length, depth: 0 })
         if (collapsedSchemas.has(schemaKey) && !q) continue
       }
-      const sorted = q ? [...tables].sort((a, b) => fuzzyScore(b.name, q) - fuzzyScore(a.name, q)) : tables
+      const sorted = [...tables].sort((a, b) => (q ? score(b) - score(a) : 0) || naturalCompare(a.name, b.name))
       const groups: [string, TableInfo[]][] = [
         ['Tables', sorted.filter((t) => t.type === 'table')],
         ['Views', sorted.filter((t) => t.type !== 'table')],
