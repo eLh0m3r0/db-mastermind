@@ -110,6 +110,8 @@ export async function runCli(options: CliRunOptions): Promise<void> {
 
   // Only our MCP tools are interesting to the user; agents also use internal tools (ToolSearch, TodoWrite…).
   const ours = new Set<string>()
+  /** Failure the CLI reported in its event stream (expired login, quota…). */
+  let failure: string | undefined
   const lines = createInterface({ input: child.stdout })
   lines.on('line', (line) => {
     let msg: Record<string, unknown>
@@ -118,6 +120,8 @@ export async function runCli(options: CliRunOptions): Promise<void> {
     } catch {
       return
     }
+    if (msg.type === 'result' && msg.is_error) failure = String(msg.result ?? 'Claude Code failed')
+    if (msg.type === 'turn.failed') failure = String((msg.error as { message?: string } | undefined)?.message ?? 'Codex failed')
     if (options.provider === 'claude-code') {
       const message = msg.message as { content?: unknown[] } | undefined
       if (msg.type === 'assistant') {
@@ -153,7 +157,10 @@ export async function runCli(options: CliRunOptions): Promise<void> {
   })
   options.signal.removeEventListener('abort', onAbort)
   if (options.signal.aborted) return
-  if (code !== 0) {
-    throw new Error(stderr.trim() || `${binary(options.provider)} exited with code ${code}`)
+  if (failure || code !== 0) {
+    const detail = failure ?? (stderr.trim().split('\n').filter((l) => !/^\S+Z\s+(ERROR|WARN)/.test(l)).join('\n') || stderr.trim() || `exited with code ${code}`)
+    const name = options.provider === 'codex' ? 'Codex' : 'Claude Code'
+    const login = /401|unauthori[sz]ed|log ?in|sign in|expired|credential/i.test(`${detail}\n${stderr}`)
+    throw new Error(`${name}: ${detail}${login ? `\nSign in again: run \`${binary(options.provider)} login\` in a terminal.` : ''}`)
   }
 }
