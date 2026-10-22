@@ -1,13 +1,15 @@
 // Regenerates the README screenshots from the demo database: `node e2e/screenshots.mjs [--ai]`
+// SHOTS_DIR / DBM_LANGUAGE override the output folder and language (the Windows UI tour in CI uses both).
 import { _electron as electron } from '@playwright/test'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const out = 'docs/screenshots'
+const out = process.env.SHOTS_DIR ?? 'docs/screenshots'
+const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
 const withAi = process.argv.includes('--ai')
 const userData = mkdtempSync(join(tmpdir(), 'dbm-shots-'))
-const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, DBM_USER_DATA: userData, DBM_NO_UPDATE_CHECK: '1', DBM_LANGUAGE: 'en' } })
+const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, DBM_USER_DATA: userData, DBM_NO_UPDATE_CHECK: '1', DBM_LANGUAGE: process.env.DBM_LANGUAGE ?? 'en' } })
 const win = await app.firstWindow()
 win.on('dialog', (d) => d.accept())
 await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 900))
@@ -21,7 +23,7 @@ const theme = async (t) => {
   const isDark = await win.evaluate(() => document.documentElement.classList.contains('dark'))
   if (isDark === (t === 'dark')) return
   await win.keyboard.press('Escape')
-  await win.keyboard.press('Meta+k')
+  await win.keyboard.press(`${mod}+k`)
   await win.keyboard.type(t === 'dark' ? 'Switch to dark theme' : 'Switch to light theme')
   await win.keyboard.press('Enter')
   await win.waitForTimeout(300)
@@ -54,14 +56,14 @@ await shot('table-filters')
 
 // SQL editor (light)
 await theme('light')
-await win.keyboard.press('Meta+t')
+await win.keyboard.press(`${mod}+t`)
 await win.locator('.cm-content').last().click()
 await win.keyboard.type(
   "select substr(o.ordered_at, 1, 7) as month, count(distinct o.id) as orders,\n       round(sum(i.quantity * i.unit_price)) as revenue\n  from orders o join order_items i on i.order_id = o.id\n where o.status <> 'cancelled'\n group by month order by month desc",
   { delay: 2 },
 )
 await win.keyboard.press('Escape')
-await win.keyboard.press('Meta+Enter')
+await win.keyboard.press(`${mod}+Enter`)
 await win.waitForTimeout(800)
 await shot('query')
 await win.getByRole('button', { name: 'Show chart' }).click()
@@ -72,7 +74,7 @@ await shot('chart')
 await win.getByRole('button', { name: 'Show table' }).click()
 
 // ER diagram (light) and designer (dark)
-await win.keyboard.press('Meta+k')
+await win.keyboard.press(`${mod}+k`)
 await win.keyboard.type('ER diagram')
 await win.keyboard.press('Enter')
 await win.waitForTimeout(2500)
@@ -108,14 +110,14 @@ writeFileSync(csv, rows.join('\n'))
 await app.evaluate(({ dialog }, path) => {
   dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
 }, csv)
-await win.keyboard.press('Meta+k')
+await win.keyboard.press(`${mod}+k`)
 await win.keyboard.type('Query a CSV')
 await win.keyboard.press('Enter')
 await win.waitForTimeout(2500)
 await win.locator('.cm-content').last().click()
-await win.keyboard.press('Meta+a')
+await win.keyboard.press(`${mod}+a`)
 await win.keyboard.insertText(`SELECT pobočka, produkt, sum(množství * cena) AS tržba\nFROM read_csv('${csv}', decimal_separator = ',')\nGROUP BY ALL\nORDER BY tržba DESC\nLIMIT 10;`)
-await win.keyboard.press('Meta+Enter')
+await win.keyboard.press(`${mod}+Enter`)
 await win.waitForTimeout(1500)
 await shot('query-file')
 
@@ -124,7 +126,7 @@ if (withAi) {
   await win.reload()
   await win.waitForTimeout(1500)
   await theme('light')
-  await win.keyboard.press('Meta+j')
+  await win.keyboard.press(`${mod}+j`)
   await win.getByPlaceholder(/Ask about/).fill('Which product category brings the most revenue? Show the SQL.')
   await win.getByPlaceholder(/Ask about/).press('Enter')
   await win.getByText('Thinking…').waitFor({ state: 'detached', timeout: 240000 })

@@ -1,0 +1,38 @@
+name: UI tour
+
+# Screenshots of the real app window on Windows and Linux (English and Czech), to review what colleagues see.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tour:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - run: npx electron-vite build
+        working-directory: apps/desktop
+      - name: Screenshots
+        shell: bash
+        run: |
+          mkdir -p shots/en shots/cs
+          run() { if [ "$RUNNER_OS" = "Linux" ]; then xvfb-run -a --server-args="-screen 0 1920x1080x24" "$@"; else "$@"; fi; }
+          SHOTS_DIR=shots/en run node e2e/screenshots.mjs
+          DBM_LANGUAGE=cs run node e2e/tour-settings.mjs shots/cs
+          DBM_LANGUAGE=en run node e2e/tour-settings.mjs shots/en
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-tour-${{ matrix.os }}
+          path: shots
