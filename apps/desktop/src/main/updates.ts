@@ -52,9 +52,20 @@ const logger = { info: (...a: unknown[]) => log('INFO', ...a), warn: (...a: unkn
 
 let updater: Promise<typeof import('electron-updater').autoUpdater> | undefined
 
+/**
+ * electron-updater is CommonJS with a lazily defined `autoUpdater` export: a dynamic import exposes it only on
+ * `default` (the named binding is undefined, which silently disabled updates in 0.9.0 and 0.9.1).
+ */
+async function loadAutoUpdater(): Promise<typeof import('electron-updater').autoUpdater> {
+  const mod = (await import('electron-updater')) as typeof import('electron-updater') & { default?: typeof import('electron-updater') }
+  const autoUpdater = mod.autoUpdater ?? mod.default?.autoUpdater
+  if (!autoUpdater) throw new Error('electron-updater did not load')
+  return autoUpdater
+}
+
 /** electron-updater, configured once: downloads in the background and installs on quit. */
 function autoUpdaterFor(ready: (info: { version: string }) => void) {
-  updater ??= import('electron-updater').then(({ autoUpdater }) => {
+  updater ??= loadAutoUpdater().then((autoUpdater) => {
     autoUpdater.logger = logger
     autoUpdater.autoDownload = true
     autoUpdater.autoInstallOnAppQuit = true
@@ -123,6 +134,6 @@ export async function checkNow(ready: (info: { version: string }) => void): Prom
 
 /** Restarts into the downloaded update. */
 export async function installUpdate(): Promise<void> {
-  const { autoUpdater } = await import('electron-updater')
+  const autoUpdater = await loadAutoUpdater()
   autoUpdater.quitAndInstall(false, true)
 }
