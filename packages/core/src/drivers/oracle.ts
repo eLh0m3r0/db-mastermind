@@ -1,7 +1,7 @@
 /// <reference path="../oracledb.d.ts" />
 import oracledb, { type Connection, type Metadata, type Pool } from 'oracledb'
 import { oracleDialect } from '../dialect.js'
-import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions } from '../driver.js'
+import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import { openSshTunnel, type SshTunnel } from '../ssh.js'
 import type { ConnectionConfig, QueryOptions, QueryResult, SchemaSnapshot, ServerInfo, TableInfo } from '../types.js'
@@ -169,6 +169,38 @@ export class OracleDriver implements DatabaseDriver {
     } finally {
       options.signal?.removeEventListener('abort', onAbort)
       await release().catch(() => {})
+    }
+  }
+
+  async *stream(sql: string, options: StreamOptions = {}): AsyncGenerator<StreamBatch> {
+    if (options.signal?.aborted) throw new QueryCancelledError()
+    const conn = await this.activePool.getConnection()
+    let cancelled = false
+    const onAbort = () => {
+      cancelled = true
+      void conn.break().catch(() => {})
+    }
+    options.signal?.addEventListener('abort', onAbort, { once: true })
+    try {
+      const r = await conn.execute<unknown[]>(sql, options.params ?? [], { outFormat: oracledb.OUT_FORMAT_ARRAY, resultSet: true, fetchTypeHandler })
+      const rs = r.resultSet
+      if (!rs) return
+      try {
+        const fields = rs.metaData.map((m) => ({ name: m.name, dataType: m.dbTypeName?.toLowerCase() }))
+        for (;;) {
+          const rows = await rs.getRows(options.batchSize ?? 5000)
+          if (!rows.length) return
+          yield { fields, rows: rows.map((row) => row.map(normalizeValue)) }
+        }
+      } finally {
+        await rs.close().catch(() => {})
+      }
+    } catch (err) {
+      if (cancelled) throw new QueryCancelledError()
+      throw err
+    } finally {
+      options.signal?.removeEventListener('abort', onAbort)
+      await conn.close().catch(() => {})
     }
   }
 

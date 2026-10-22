@@ -2,7 +2,7 @@
 import pg from 'pg'
 import Cursor from 'pg-cursor'
 import { postgresDialect } from '../dialect.js'
-import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions } from '../driver.js'
+import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import { openSshTunnel, type SshTunnel } from '../ssh.js'
 import type {
@@ -161,6 +161,35 @@ export class PostgresDriver implements DatabaseDriver {
     } finally {
       options.signal?.removeEventListener('abort', onAbort)
       release()
+    }
+  }
+
+  async *stream(sql: string, options: StreamOptions = {}): AsyncGenerator<StreamBatch> {
+    if (options.signal?.aborted) throw new QueryCancelledError()
+    const client = await this.activePool.connect()
+    const pid = (client as unknown as { processID: number }).processID
+    let cancelled = false
+    const onAbort = () => {
+      cancelled = true
+      this.activePool.query('SELECT pg_cancel_backend($1)', [pid]).catch(() => {})
+    }
+    options.signal?.addEventListener('abort', onAbort, { once: true })
+    const cursor = client.query(new Cursor(sql, options.params, { rowMode: 'array', types: typeOverrides }))
+    try {
+      for (;;) {
+        const { rows, result } = await new Promise<{ rows: unknown[][]; result: pg.QueryArrayResult }>((resolve, reject) => {
+          cursor.read(options.batchSize ?? 5000, (err, rows, result) => (err ? reject(err) : resolve({ rows, result })))
+        })
+        if (!rows.length) return
+        yield { fields: (result.fields ?? []).map((f) => ({ name: f.name, dataType: this.typeNames.get(f.dataTypeID) })), rows: rows.map((row) => row.map(normalizeValue)) }
+      }
+    } catch (err) {
+      if (cancelled) throw new QueryCancelledError()
+      throw err
+    } finally {
+      options.signal?.removeEventListener('abort', onAbort)
+      await cursor.close().catch(() => {})
+      client.release()
     }
   }
 

@@ -19,15 +19,22 @@ declare module 'oracledb' {
     dbType?: unknown
     dbTypeName?: string
   }
+  export interface ResultSet<T = unknown> {
+    metaData: Metadata[]
+    getRows(count: number): Promise<T[]>
+    close(): Promise<void>
+  }
   export interface Result<T = unknown> {
     rows?: T[]
     metaData?: Metadata[]
     rowsAffected?: number
+    resultSet?: ResultSet<T>
   }
   export interface ExecuteOptions {
     outFormat?: number
     maxRows?: number
     autoCommit?: boolean
+    resultSet?: boolean
     fetchTypeHandler?: (meta: Metadata) => { type?: unknown; converter?: (value: unknown) => unknown } | undefined
   }
   export interface Connection {

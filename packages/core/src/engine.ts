@@ -1,5 +1,5 @@
 import { qualify } from './dialect.js'
-import { ReadOnlyViolationError, type DatabaseDriver } from './driver.js'
+import { ReadOnlyViolationError, type DatabaseDriver, type StreamBatch, type StreamOptions } from './driver.js'
 import { DuckDBDriver } from './drivers/duckdb.js'
 import { MssqlDriver } from './drivers/mssql.js'
 import { MysqlDriver } from './drivers/mysql.js'
@@ -226,6 +226,21 @@ export class DatabaseService {
       entry.schema = undefined
     }
     return outcomes
+  }
+
+  /**
+   * Rows of one statement in batches, holding one batch at a time (exports of any size). Read-only connections
+   * only allow reads; drivers without streaming fall back to a normal execute.
+   */
+  async *streamQuery(id: string, sql: string, options: StreamOptions = {}): AsyncGenerator<StreamBatch> {
+    const entry = this.get(id)
+    this.assertAllowed(entry, sql)
+    if (entry.driver.stream) {
+      yield* entry.driver.stream(sql, options)
+      return
+    }
+    const [r] = await entry.driver.execute(sql, { params: options.params, signal: options.signal })
+    if (r?.fields.length) yield { fields: r.fields, rows: r.rows }
   }
 
   async releaseSession(id: string, session: string): Promise<void> {

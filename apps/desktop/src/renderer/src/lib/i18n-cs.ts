@@ -901,4 +901,9 @@ export const cs: Record<string, string> = {
   '{task}\n\nReply with a short explanation and the complete updated model in one ```dbml block, so it can be applied. Current model:\n\n{model}': '{task}\n\nOdpověz česky krátkým vysvětlením a celým upraveným modelem v jednom bloku ```dbml, aby šel použít. Současný model:\n\n{model}',
   'Keep this result (pin)': 'Ponechat tento výsledek (připnout)',
   'Pinned {n}': 'Připnuto {n}',
+  'Exported {n} row': 'Exportován {n} řádek',
+  'Exported {n} rows': 'Exportováno {n} řádků',
+  'Exported {n} rows|few': 'Exportovány {n} řádky',
+  'All rows (runs the query again)': 'Všechny řádky (dotaz se spustí znovu)',
+  'Shown rows ({n})': 'Zobrazené řádky ({n})',
 }

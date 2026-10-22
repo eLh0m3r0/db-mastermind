@@ -1,6 +1,6 @@
 import type { BuiltQuery } from './filters.js'
 import type { Dialect } from './dialect.js'
-import type { ConnectionConfig, QueryOptions, QueryResult, SchemaSnapshot, ServerInfo } from './types.js'
+import type { CellValue, ConnectionConfig, QueryOptions, QueryResult, ResultField, SchemaSnapshot, ServerInfo } from './types.js'
 
 export interface IntrospectOptions {
   /** Limit to these schemas; all non-system schemas when omitted. */
@@ -24,6 +24,90 @@ export interface DatabaseDriver {
   serverInfo(): Promise<ServerInfo>
   listDatabases(): Promise<string[]>
   introspect(options?: IntrospectOptions): Promise<SchemaSnapshot>
+  /**
+   * Reads the first result set of one statement in batches, holding only one batch in memory (exports of any
+   * size). Stopping the iteration early cancels the statement.
+   */
+  stream?(sql: string, options?: StreamOptions): AsyncGenerator<StreamBatch>
+}
+
+export interface StreamOptions {
+  params?: unknown[]
+  signal?: AbortSignal
+  /** Rows per batch (drivers with their own chunking may differ). */
+  batchSize?: number
+}
+
+export interface StreamBatch {
+  fields: ResultField[]
+  rows: CellValue[][]
+}
+
+/** An event-driven row source (callbacks plus flow control) for `batchesFromEvents`. */
+export interface EventRowSource {
+  start(handlers: { fields(fields: ResultField[]): void; row(row: CellValue[]): void; end(): void; error(err: unknown): void }): void
+  pause(): void
+  resume(): void
+  cancel(): void
+}
+
+/** Pull-based batches from a push-based source, pausing it while the consumer is behind. */
+export async function* batchesFromEvents(source: EventRowSource, batchSize: number): AsyncGenerator<StreamBatch> {
+  let fields: ResultField[] = []
+  const queue: CellValue[][] = []
+  let done = false
+  let failure: unknown
+  let paused = false
+  let wake: (() => void) | undefined
+  const notify = () => {
+    const w = wake
+    wake = undefined
+    w?.()
+  }
+  source.start({
+    fields: (f) => {
+      fields = f
+    },
+    row: (r) => {
+      queue.push(r)
+      if (queue.length >= batchSize * 2 && !paused) {
+        paused = true
+        source.pause()
+      }
+      if (queue.length >= batchSize) notify()
+    },
+    end: () => {
+      done = true
+      notify()
+    },
+    error: (err) => {
+      failure = err
+      done = true
+      notify()
+    },
+  })
+  try {
+    for (;;) {
+      if (failure) throw failure
+      if (queue.length >= batchSize || (done && queue.length)) {
+        const rows = queue.splice(0, batchSize)
+        if (paused && queue.length < batchSize) {
+          paused = false
+          source.resume()
+        }
+        yield { fields, rows }
+        continue
+      }
+      if (done) return
+      if (paused) {
+        paused = false
+        source.resume()
+      }
+      await new Promise<void>((resolve) => (wake = resolve))
+    }
+  } finally {
+    if (!done) source.cancel()
+  }
 }
 
 export class QueryCancelledError extends Error {

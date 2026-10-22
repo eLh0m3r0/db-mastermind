@@ -2,10 +2,10 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import sql from 'mssql'
 import { mssqlDialect } from '../dialect.js'
-import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions } from '../driver.js'
+import { batchesFromEvents, elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import { openSshTunnel, type SshTunnel } from '../ssh.js'
-import type { ConnectionConfig, QueryOptions, QueryResult, SchemaSnapshot, ServerInfo, TableInfo } from '../types.js'
+import type { ConnectionConfig, QueryOptions, QueryResult, ResultField, SchemaSnapshot, ServerInfo, TableInfo } from '../types.js'
 import { normalizeValue } from '../values.js'
 
 type RawRow = Record<string, unknown>
@@ -240,6 +240,54 @@ export class MssqlDriver implements DatabaseDriver {
       if (options.params?.length) void request.query(text)
       else void request.batch(text)
     })
+  }
+
+  async *stream(text: string, options: StreamOptions = {}): AsyncGenerator<StreamBatch> {
+    if (options.signal?.aborted) throw new QueryCancelledError()
+    const request = this.activePool.request()
+    request.stream = true
+    request.arrayRowMode = true
+    options.params?.forEach((value, i) => request.input(`p${i + 1}`, value))
+    let cancelled = false
+    const onAbort = () => {
+      cancelled = true
+      request.cancel()
+    }
+    options.signal?.addEventListener('abort', onAbort, { once: true })
+    try {
+      yield* batchesFromEvents(
+        {
+          start: (h) => {
+            let fields: ResultField[] | undefined
+            let ignore = false
+            request.on('recordset', (columns: unknown) => {
+              // Only the first result set is streamed.
+              if (fields) {
+                ignore = true
+                return
+              }
+              const cols = (Array.isArray(columns) ? columns : Object.values(columns as object)) as { name: string; type?: { declaration?: string } }[]
+              fields = cols.map((c) => ({ name: c.name, dataType: c.type?.declaration ?? undefined }))
+              h.fields(fields)
+            })
+            request.on('row', (row: unknown[]) => {
+              if (ignore || !fields) return
+              h.row(row.map((v, i) => (v instanceof Date && fields![i]?.dataType === 'date' ? String(normalizeValue(v)).slice(0, 10) : normalizeValue(v))))
+            })
+            request.on('error', (err: Error) => h.error(cancelled ? new QueryCancelledError() : err))
+            request.on('done', () => h.end())
+            if (options.params?.length) void request.query(text)
+            else void request.batch(text)
+          },
+          pause: () => request.pause(),
+          resume: () => request.resume(),
+          cancel: () => request.cancel(),
+        },
+        options.batchSize ?? 5000,
+      )
+    } finally {
+      options.signal?.removeEventListener('abort', onAbort)
+    }
   }
 
   async transaction(statements: BuiltQuery[]): Promise<number[]> {

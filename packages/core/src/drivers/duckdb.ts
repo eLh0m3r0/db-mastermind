@@ -1,6 +1,6 @@
 import type { DuckDBConnection, DuckDBInstance, DuckDBResultReader } from '@duckdb/node-api'
 import { duckdbDialect } from '../dialect.js'
-import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions } from '../driver.js'
+import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import type { CellValue, ConnectionConfig, QueryOptions, QueryResult, SchemaSnapshot, ServerInfo, TableInfo } from '../types.js'
 import { normalizeValue } from '../values.js'
@@ -105,6 +105,35 @@ export class DuckDBDriver implements DatabaseDriver {
     } finally {
       options.signal?.removeEventListener('abort', onAbort)
       release()
+    }
+  }
+
+  async *stream(sql: string, options: StreamOptions = {}): AsyncGenerator<StreamBatch> {
+    if (options.signal?.aborted) throw new QueryCancelledError()
+    const duckdb = await loadDuckDB()
+    const conn = await this.db.connect()
+    let cancelled = false
+    const onAbort = () => {
+      cancelled = true
+      conn.interrupt()
+    }
+    options.signal?.addEventListener('abort', onAbort, { once: true })
+    try {
+      const result = await conn.stream(sql, options.params as Parameters<DuckDBConnection['run']>[1])
+      const types = result.columnTypes().map(String)
+      const fields = result.columnNames().map((name, i) => ({ name, dataType: types[i] }))
+      // DuckDB hands out vectors of ~2048 rows; that is the batch.
+      for (;;) {
+        const chunk = await result.fetchChunk()
+        if (!chunk || chunk.rowCount === 0) return
+        yield { fields, rows: chunk.convertRows(duckdb.JsonDuckDBValueConverter).map((r) => r.map((v) => normalizeValue(v) as CellValue)) }
+      }
+    } catch (err) {
+      if (cancelled) throw new QueryCancelledError()
+      throw err
+    } finally {
+      options.signal?.removeEventListener('abort', onAbort)
+      conn.closeSync()
     }
   }
 

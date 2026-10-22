@@ -196,4 +196,16 @@ describe.skipIf(skip)('oracle', () => {
     expect(failed?.error?.message, failed?.sql).toBeUndefined()
     await run('DROP TABLE "conv_notes" PURGE')
   })
+
+  it('streams a query in batches and survives stopping early', async () => {
+    const sizes: number[] = []
+    for await (const b of svc.streamQuery('ora', 'SELECT id, total FROM orders ORDER BY id', { batchSize: 50 })) sizes.push(b.rows.length)
+    expect(sizes).toEqual([50, 50, 20])
+    for await (const b of svc.streamQuery('ora', 'SELECT id FROM orders ORDER BY id', { batchSize: 10 })) {
+      expect(b.rows).toHaveLength(10)
+      break
+    }
+    expect(Number((await run('SELECT COUNT(*) FROM orders')).results![0]!.rows[0]![0])).toBe(120)
+  })
 })
+

@@ -131,27 +131,40 @@ export function ResultsPanel({
     )
   }
 
+  const exportAll = async (format: (typeof EXPORT_FORMATS)[number]['id']) => {
+    if (!current) return
+    try {
+      const r = await api.exportQuery({ format, connectionId, sql: current.statement.sql, defaultName: 'query-result' })
+      if (r) toast({ kind: 'success', message: tp(r.rows, { one: 'Exported {n} row', many: 'Exported {n} rows' }), detail: r.path, action: { label: tr('Show in folder'), run: () => void api.showItemInFolder(r.path) } })
+    } catch (err) {
+      toast({ kind: 'error', message: tr('Export failed'), detail: errorMessage(err) })
+    }
+  }
+
   const exportCurrent = (anchor: HTMLElement) => {
     if (!current) return
-    openMenu(
-      anchor,
+    const formats = (scope: 'shown' | 'all') =>
       EXPORT_FORMATS.map((f) => ({
         label: f.label,
-        onClick: async () => {
-          try {
-            const path = await api.exportResult({
-              format: f.id,
-              defaultName: 'query-result',
-              result: { fields: current.result.fields, rows: sortedRows },
-              connectionId,
-            })
-            if (path) toast({ kind: 'success', message: tr('Export finished'), detail: path, action: { label: tr('Show in folder'), run: () => void api.showItemInFolder(path) } })
-          } catch (err) {
-            toast({ kind: 'error', message: tr('Export failed'), detail: errorMessage(err) })
-          }
-        },
-      })),
-    )
+        onClick: scope === 'all' ? () => void exportAll(f.id) : () => void exportShown(f.id),
+      }))
+    // A query cut off at the row limit can be run again and streamed in full.
+    if (current.result.truncated && !current.key.startsWith('pin:')) {
+      openMenu(anchor, [
+        { label: tr('All rows (runs the query again)'), submenu: formats('all') },
+        { label: tr('Shown rows ({n})', { n: formatCount(sortedRows.length) }), submenu: formats('shown') },
+      ])
+    } else openMenu(anchor, formats('shown'))
+  }
+
+  const exportShown = async (format: (typeof EXPORT_FORMATS)[number]['id']) => {
+    if (!current) return
+    try {
+      const path = await api.exportResult({ format, defaultName: 'query-result', result: { fields: current.result.fields, rows: sortedRows }, connectionId })
+      if (path) toast({ kind: 'success', message: tr('Export finished'), detail: path, action: { label: tr('Show in folder'), run: () => void api.showItemInFolder(path) } })
+    } catch (err) {
+      toast({ kind: 'error', message: tr('Export failed'), detail: errorMessage(err) })
+    }
   }
 
   return (

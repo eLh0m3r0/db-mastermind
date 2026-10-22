@@ -1,8 +1,8 @@
 import { Worker } from 'node:worker_threads'
 import { sqliteDialect } from '../dialect.js'
-import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions } from '../driver.js'
+import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
-import type { ConnectionConfig, QueryOptions, QueryResult, SchemaSnapshot, ServerInfo, TableInfo } from '../types.js'
+import type { ConnectionConfig, QueryOptions, QueryResult, ResultField, SchemaSnapshot, ServerInfo, TableInfo } from '../types.js'
 import { normalizeValue } from '../values.js'
 
 /**
@@ -39,9 +39,44 @@ function run(sql, params, maxRows) {
   return { fields: columns.map((c) => ({ name: c.name, dataType: c.type ?? undefined })), rows, truncated }
 }
 
+// Open cursors for streamed reads: id -> row iterator.
+const cursors = new Map()
+let nextCursor = 1
+
 parentPort.on('message', (msg) => {
   try {
-    if (msg.type === 'exec') {
+    if (msg.type === 'stream-open') {
+      const stmt = db.prepare(msg.sql)
+      stmt.setReadBigInts(true)
+      const columns = stmt.columns()
+      if (columns.length === 0) {
+        stmt.run(...bind(msg.params ?? []))
+        parentPort.postMessage({ id: msg.id, ok: true, result: { cursor: 0, fields: [] } })
+        return
+      }
+      stmt.setReturnArrays(true)
+      const cursor = nextCursor++
+      cursors.set(cursor, stmt.iterate(...bind(msg.params ?? [])))
+      parentPort.postMessage({ id: msg.id, ok: true, result: { cursor, fields: columns.map((c) => ({ name: c.name, dataType: c.type ?? undefined })) } })
+    } else if (msg.type === 'stream-next') {
+      const it = cursors.get(msg.cursor)
+      const rows = []
+      let done = !it
+      while (it && rows.length < msg.size) {
+        const next = it.next()
+        if (next.done) {
+          done = true
+          cursors.delete(msg.cursor)
+          break
+        }
+        rows.push(next.value.map(fix))
+      }
+      parentPort.postMessage({ id: msg.id, ok: true, result: { rows, done } })
+    } else if (msg.type === 'stream-close') {
+      cursors.get(msg.cursor)?.return?.()
+      cursors.delete(msg.cursor)
+      parentPort.postMessage({ id: msg.id, ok: true })
+    } else if (msg.type === 'exec') {
       parentPort.postMessage({ id: msg.id, ok: true, result: run(msg.sql, msg.params ?? [], msg.maxRows ?? Infinity) })
     } else if (msg.type === 'tx') {
       db.exec('BEGIN')
@@ -213,6 +248,23 @@ export class SqliteDriver implements DatabaseDriver {
 
   async transaction(statements: BuiltQuery[]): Promise<number[]> {
     return (await this.send({ type: 'tx', statements })) as number[]
+  }
+
+  async *stream(sql: string, options: StreamOptions = {}): AsyncGenerator<StreamBatch> {
+    const open = (await this.send({ type: 'stream-open', sql, params: options.params ?? [] })) as { cursor: number; fields: ResultField[] }
+    if (!open.cursor) return
+    let done = false
+    try {
+      while (!done) {
+        // Batches are small and quick, so cancelling between them is enough.
+        if (options.signal?.aborted) throw new QueryCancelledError()
+        const next = (await this.send({ type: 'stream-next', cursor: open.cursor, size: options.batchSize ?? 5000 })) as { rows: unknown[][]; done: boolean }
+        done = next.done
+        if (next.rows.length) yield { fields: open.fields, rows: next.rows.map((r) => r.map(normalizeValue)) }
+      }
+    } finally {
+      if (!done) await this.send({ type: 'stream-close', cursor: open.cursor }).catch(() => {})
+    }
   }
 
   private async rows(sql: string, params: unknown[] = []): Promise<Record<string, unknown>[]> {

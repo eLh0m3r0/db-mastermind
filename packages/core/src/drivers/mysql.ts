@@ -2,7 +2,7 @@ import type { Connection as CallbackConnection } from 'mysql2'
 import mysql from 'mysql2/promise'
 import type { FieldPacket, Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 import { mariadbDialect, mysqlDialect } from '../dialect.js'
-import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions } from '../driver.js'
+import { batchesFromEvents, elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import { openSshTunnel, type SshTunnel } from '../ssh.js'
 import type {
@@ -226,6 +226,64 @@ export class MysqlDriver implements DatabaseDriver {
       })
     } finally {
       release()
+    }
+  }
+
+  async *stream(sql: string, options: StreamOptions = {}): AsyncGenerator<StreamBatch> {
+    if (options.signal?.aborted) throw new QueryCancelledError()
+    const conn = await this.activePool.getConnection()
+    const raw = conn.connection as unknown as CallbackConnection
+    const threadId = conn.threadId
+    let killed: Promise<void> = Promise.resolve()
+    let cancelled = false
+    let finished = false
+    const onAbort = () => {
+      cancelled = true
+      killed = this.killQuery(threadId)
+    }
+    options.signal?.addEventListener('abort', onAbort, { once: true })
+    try {
+      yield* batchesFromEvents(
+        {
+          start: (h) => {
+            let seenFields = false
+            let firstDone = false
+            const query = raw.query({ sql, values: options.params, rowsAsArray: true })
+            query.on('fields', (fields: FieldPacket[] | undefined) => {
+              if (!fields) return
+              // Only the first result set is streamed.
+              if (seenFields) firstDone = true
+              seenFields = true
+              if (!firstDone) h.fields(fields.map((f): ResultField => ({ name: f.name, dataType: TYPE_NAMES[f.columnType ?? f.type ?? -1] })))
+            })
+            query.on('result', (row: unknown) => {
+              if (Array.isArray(row) && !firstDone) h.row(row.map(normalizeValue))
+            })
+            query.on('error', (err: Error) => {
+              finished = true
+              h.error(cancelled ? new QueryCancelledError() : err)
+            })
+            query.on('end', () => {
+              finished = true
+              h.end()
+            })
+          },
+          pause: () => raw.pause(),
+          resume: () => raw.resume(),
+          cancel: () => {
+            killed = this.killQuery(threadId)
+          },
+        },
+        options.batchSize ?? 5000,
+      )
+    } finally {
+      options.signal?.removeEventListener('abort', onAbort)
+      if (finished) conn.release()
+      else {
+        // Stopped early: the KILL ends the query server-side; the half-read connection is not reused.
+        await killed
+        conn.destroy()
+      }
     }
   }
 

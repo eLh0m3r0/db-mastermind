@@ -333,6 +333,8 @@ export interface MastermindApi {
 
   exportResult(request: ExportRequest): Promise<string | null>
   exportTable(request: ExportTableRequest): Promise<string | null>
+  /** Runs one statement again and streams every row to a file (no row limit). */
+  exportQuery(request: { format: ExportFormat; connectionId: string; sql: string; defaultName: string }): Promise<{ path: string; rows: number } | null>
   pickFile(options: { title?: string; filters?: FileFilter[]; save?: boolean; defaultPath?: string }): Promise<string | null>
   pickDirectory(title?: string): Promise<string | null>
   readTextFile(path: string): Promise<string>
@@ -431,6 +433,7 @@ export const API_METHODS = [
   'deleteDashboard',
   'exportResult',
   'exportTable',
+  'exportQuery',
   'pickFile',
   'pickDirectory',
   'readTextFile',

@@ -85,8 +85,8 @@ project's (AI) maintainer and updated with every release.
 
 ### Results & export
 - ✅ Result grid with the same capabilities as the data browser (filter/sort client-side)
-- 🚧 Export CSV, TSV, JSON, JSON Lines, Excel (.xlsx), SQL INSERT, Markdown — whole table or query result,
-  streamed (no memory limit)
+- ✅ Export CSV, TSV, JSON, JSON Lines, Excel (.xlsx), SQL INSERT, Markdown — whole table or query result,
+  streamed (no memory limit; query results beyond the row limit are re-run and streamed from the driver)
 
 ### General UX
 - ✅ Command palette (`Ctrl/Cmd+K`), customizable keyboard shortcuts

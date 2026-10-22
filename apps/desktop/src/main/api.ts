@@ -550,6 +550,24 @@ export const api: MastermindApi = {
     await writer?.close()
     return path
   },
+  async exportQuery(request) {
+    const path = await askSavePath(request.format, request.defaultName)
+    if (!path) return null
+    await ensureConnected(request.connectionId)
+    const dialect = db.driver(request.connectionId).dialect
+    let writer: ReturnType<typeof createExportWriter> | undefined
+    let rows = 0
+    try {
+      for await (const batch of db.streamQuery(request.connectionId, request.sql.trim().replace(/;\s*$/, ''))) {
+        writer ??= createExportWriter(path, request.format, batch.fields, { tableName: request.defaultName, dialect })
+        await writer.writeRows(batch.rows)
+        rows += batch.rows.length
+      }
+    } finally {
+      await writer?.close()
+    }
+    return { path, rows }
+  },
   async pickFile(options) {
     const window = BrowserWindow.getFocusedWindow()
     if (options.save) {
