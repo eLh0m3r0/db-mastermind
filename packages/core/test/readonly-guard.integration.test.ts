@@ -64,20 +64,28 @@ for (const engine of ['mysql', 'mariadb'] as const) {
 
 describe.skipIf(skip.has('mssql'))('read-only guard: mssql', () => {
   const id = config('mssql').id
-  it('rolls back a DELETE hidden after a SELECT, and covers read-only connections', async () => {
+  it('refuses a DELETE hidden after a SELECT, also on read-only connections, exports and filters', async () => {
     await svc.connect(config('mssql'))
     await exec(id, "IF OBJECT_ID('dbo.rg_t') IS NOT NULL DROP TABLE dbo.rg_t")
     await exec(id, 'CREATE TABLE dbo.rg_t (v int)')
     await exec(id, 'INSERT INTO dbo.rg_t VALUES (1)')
     // T-SQL needs no semicolon: this is one batch that starts with SELECT.
     const sneaky = 'SELECT 1 AS a DELETE FROM dbo.rg_t'
-    await svc.runScript(id, sneaky, { readOnly: true })
-    expect(await value(id, 'SELECT count(*) FROM dbo.rg_t')).toBe(1)
+    await expect(svc.runScript(id, sneaky, { readOnly: true })).rejects.toThrow(/Only reads/)
     await expect(svc.runScript(id, 'SELECT 1 AS a COMMIT DELETE FROM dbo.rg_t', { readOnly: true })).rejects.toThrow(/Only reads/)
+    // Reads still run inside the rolled-back transaction.
+    const [read] = await svc.runScript(id, 'SELECT count(*) AS n FROM dbo.rg_t', { readOnly: true })
+    expect(read!.results![0]!.rows).toEqual([[1]])
     // A read-only connection (ApplicationIntent=ReadOnly doesn't stop writes on a standalone server).
     const ro = { ...config('mssql'), id: 'ms-ro', readOnly: true }
     await svc.connect(ro)
-    await svc.runScript(ro.id, sneaky)
+    const [refused] = await svc.runScript(ro.id, sneaky)
+    expect(refused!.error?.message).toMatch(/read-only/)
+    const drain = async () => {
+      for await (const batch of svc.streamQuery(ro.id, sneaky)) void batch
+    }
+    await expect(drain()).rejects.toThrow(/read-only/)
+    await expect(svc.fetchTable(ro.id, { table: { schema: 'dbo', name: 'rg_t' }, filter: { kind: 'raw', id: 'r', sql: '1=1 DELETE FROM dbo.rg_t' }, limit: 10, offset: 0 })).rejects.toThrow(/condition that reads/)
     expect(await value(id, 'SELECT count(*) FROM dbo.rg_t')).toBe(1)
     await svc.runScript(id, sneaky)
     expect(await value(id, 'SELECT count(*) FROM dbo.rg_t')).toBe(0)
