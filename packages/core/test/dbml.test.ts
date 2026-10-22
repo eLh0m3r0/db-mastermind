@@ -79,3 +79,38 @@ describe('DBML enums', () => {
     expect(tables[0]!.columns[0]).toMatchObject({ dataType: 'varchar(50)', comment: 'State. One of: new, paid' })
   })
 })
+
+describe('toDbml with enums and groups', () => {
+  it('round-trips enums and table groups', () => {
+    const source = `Enum order_status {
+  new
+  "in progress"
+  done
+}
+
+Table customers {
+  id int [pk]
+}
+
+Table orders {
+  id int [pk]
+  status order_status [not null]
+  customer_id int
+}
+
+Ref: orders.customer_id > customers.id
+
+TableGroup Sales {
+  customers
+  orders
+}
+`
+    const model = parseDbml(source)
+    const text = toDbml(model.tables, { enums: model.enums, groups: model.groups })
+    const again = parseDbml(text)
+    expect(again.errors).toEqual([])
+    expect(again.enums).toEqual({ order_status: ['new', 'in progress', 'done'] })
+    expect(again.groups).toEqual({ Sales: ['customers', 'orders'] })
+    expect(again.tables.find((t) => t.name === 'orders')!.columns.find((c) => c.name === 'status')!.dataType).toBe('order_status')
+  })
+})

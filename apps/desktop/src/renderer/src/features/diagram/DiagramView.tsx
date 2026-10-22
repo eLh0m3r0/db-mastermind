@@ -169,14 +169,14 @@ function nodeHeight(t: TableInfo, keysOnly: boolean, fk: Set<string>, ref: Set<s
   return HEADER + visible * ROW + (keysOnly && visible < t.columns.length ? ROW : 0) + 2
 }
 
-function DiagramInner({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot }) {
+function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: SchemaSnapshot; onApplyModel?: (tables: TableInfo[]) => void }) {
   const tr = useT()
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const loadSchema = useConnections((s) => s.loadSchema)
   const openTab = useWorkspace((s) => s.open)
   const updateTab = useWorkspace((s) => s.update)
   const dark = useSettings((s) => s.dark)
-  // A model (DBML) replaces the live schema: read-only preview, no designer.
+  // A model (DBML) replaces the live schema; designing it writes the result back to the DBML text.
   const schema = model ?? runtime?.schema
   const flow = useReactFlow()
   const wrapper = useRef<HTMLDivElement>(null)
@@ -767,12 +767,30 @@ function DiagramInner({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot 
                 {tr('Discard')}
               </Button>
             )}
-            <Button size="sm" variant={changes.length ? 'primary' : 'secondary'} icon={<FileCode2 size={13} />} disabled={!changes.length} onClick={() => setReviewOpen(true)}>
-              {tr('Review migration')}{changes.length ? ` (${changes.length})` : ''}
-            </Button>
+            {model && onApplyModel ? (
+              <Button
+                size="sm"
+                variant={changes.length ? 'primary' : 'secondary'}
+                icon={<FileCode2 size={13} />}
+                disabled={!changes.length}
+                title={tr('Write the tables on the canvas to the DBML text')}
+                onClick={() => {
+                  onApplyModel(display.filter((d) => d.status !== 'dropped').map((d) => d.info))
+                  history.current = { past: [], future: [], at: 0 }
+                  setSelected(null)
+                  setDrafts({}, false)
+                }}
+              >
+                {tr('Write to DBML')}{changes.length ? ` (${changes.length})` : ''}
+              </Button>
+            ) : (
+              <Button size="sm" variant={changes.length ? 'primary' : 'secondary'} icon={<FileCode2 size={13} />} disabled={!changes.length} onClick={() => setReviewOpen(true)}>
+                {tr('Review migration')}{changes.length ? ` (${changes.length})` : ''}
+              </Button>
+            )}
           </>
         )}
-        {!model && (
+        {(!model || onApplyModel) && (
         <Button
           size="sm"
           variant={design ? 'subtle' : 'ghost'}
@@ -781,7 +799,7 @@ function DiagramInner({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot 
             setDesign((v) => !v)
             setSelected(null)
           }}
-          title={tr('Design changes to the schema on the diagram and generate a migration script')}
+          title={model ? tr('Edit the model visually: tables, columns, keys and indexes') : tr('Design changes to the schema on the diagram and generate a migration script')}
         >
           {design ? tr('Designing') : tr('Design')}
         </Button>
@@ -865,7 +883,10 @@ function DiagramInner({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot 
         <div className="flex h-8 shrink-0 items-center gap-2 border-b border-line bg-accent-soft px-3 text-[12px]">
           <PencilRuler size={13} className="text-accent" />
           <span>
-            <b>{tr('Design mode.')}</b> {tr('Click a table to edit it, drag from a column dot to another table to add a foreign key. Nothing changes in the database until you run the generated migration.')}
+            <b>{tr('Design mode.')}</b>{' '}
+            {model
+              ? tr('Click a table to edit it, drag from a column dot to another table to add a foreign key. Write to DBML puts the changes into the model text.')
+              : tr('Click a table to edit it, drag from a column dot to another table to add a foreign key. Nothing changes in the database until you run the generated migration.')}
           </span>
         </div>
       )}
@@ -1023,10 +1044,10 @@ function DiagramInner({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot 
   )
 }
 
-export function DiagramView({ tab, model }: { tab: DiagramTab; model?: SchemaSnapshot }) {
+export function DiagramView({ tab, model, onApplyModel }: { tab: DiagramTab; model?: SchemaSnapshot; onApplyModel?: (tables: TableInfo[]) => void }) {
   return (
     <ReactFlowProvider>
-      <DiagramInner tab={tab} model={model} />
+      <DiagramInner tab={tab} model={model} onApplyModel={onApplyModel} />
     </ReactFlowProvider>
   )
 }

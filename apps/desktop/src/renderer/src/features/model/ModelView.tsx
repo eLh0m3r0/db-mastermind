@@ -302,7 +302,11 @@ export function ModelView({ tab }: { tab: ModelTab }) {
         <Splitter direction="horizontal" size={width} onResize={setWidth} min={260} max={window.innerWidth - 400} />
         <div className="min-w-0 flex-1 border-l border-line">
           {model.tables.length ? (
-            <DiagramView tab={diagramTab} model={snapshot} />
+            <DiagramView
+              tab={diagramTab}
+              model={snapshot}
+              onApplyModel={(tables) => replaceText(toDbml(tables, { defaultSchema: snapshot.defaultSchema, enums: model.enums, groups: model.groups }), { dirty: true })}
+            />
           ) : (
             <div className="flex h-full items-center justify-center p-8 text-center text-[12.5px] text-fg-muted">
               {t('Write tables in DBML on the left, start from the database, or let AI design it. The diagram follows as you type.')}

@@ -956,4 +956,8 @@ export const cs: Record<string, string> = {
   'Left pane': 'Levý panel',
   'Right pane': 'Pravý panel',
   'Split view: open the current tab to the side': 'Rozdělit: otevřít aktuální kartu vedle',
+  'Write the tables on the canvas to the DBML text': 'Zapsat tabulky z plátna do textu DBML',
+  'Write to DBML': 'Zapsat do DBML',
+  'Edit the model visually: tables, columns, keys and indexes': 'Upravit model vizuálně: tabulky, sloupce, klíče a indexy',
+  'Click a table to edit it, drag from a column dot to another table to add a foreign key. Write to DBML puts the changes into the model text.': 'Kliknutím na tabulku ji upravíte, tažením od tečky sloupce k jiné tabulce přidáte cizí klíč. Zapsat do DBML přenese změny do textu modelu.',
 }

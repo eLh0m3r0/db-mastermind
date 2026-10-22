@@ -301,9 +301,12 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
   return { tables, enums, groups, errors }
 }
 
-/** DBML for tables (round-trips through `parseDbml`). */
-export function toDbml(tables: TableInfo[], options: { defaultSchema?: string } = {}): string {
+/** DBML for tables (round-trips through `parseDbml`), with the model's enums and table groups when given. */
+export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; enums?: Record<string, string[]>; groups?: Record<string, string[]> } = {}): string {
   const out: string[] = []
+  for (const [name, values] of Object.entries(options.enums ?? {})) {
+    out.push(`Enum ${quoteName(name)} {`, ...values.map((v) => `  ${quoteName(v)}`), '}', '')
+  }
   const tableName = (t: { schema?: string; name: string }) => (t.schema && t.schema !== options.defaultSchema ? `${quoteName(t.schema)}.` : '') + quoteName(t.name)
   for (const t of tables.filter((x) => x.type === 'table')) {
     out.push(`Table ${tableName(t)} {`)
@@ -344,6 +347,12 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string } 
       const actions = [fk.onDelete && fk.onDelete !== 'NO ACTION' ? `delete: ${fk.onDelete.toLowerCase()}` : '', fk.onUpdate && fk.onUpdate !== 'NO ACTION' ? `update: ${fk.onUpdate.toLowerCase()}` : ''].filter(Boolean)
       out.push(`Ref: ${tableName(t)}.${cols(fk.columns)} > ${tableName({ schema: fk.refSchema ?? t.schema, name: fk.refTable })}.${cols(fk.refColumns)}${actions.length ? ` [${actions.join(', ')}]` : ''}`)
     }
+  }
+  const names = new Set(tables.map((t) => t.name))
+  for (const [group, members] of Object.entries(options.groups ?? {})) {
+    const kept = members.filter((m) => names.has(m))
+    if (!kept.length) continue
+    out.push('', `TableGroup ${quoteName(group)} {`, ...kept.map((m) => `  ${tableName(tables.find((t) => t.name === m)!)}`), '}')
   }
   return `${out.join('\n').trim()}\n`
 }
