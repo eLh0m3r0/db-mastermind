@@ -55,9 +55,18 @@ const MYSQL_LOCK_WAITS: Record<string, string> = {
 }
 
 /** Sessions on the server, longest-running first. Needs the usual monitoring privileges. */
+/** CockroachDB has no pg_blocking_pids; sessions and their running queries come from crdb_internal. */
+const COCKROACH_ACTIVITY = `SELECT s.session_id AS id, s.user_name AS "user", NULL AS database, s.client_address AS client, s.application_name AS application,
+       CASE WHEN q.query_id IS NULL THEN 'idle' ELSE 'active' END AS state, EXTRACT(EPOCH FROM (now() - q.start)) * 1000 AS duration_ms, q.query,
+       s.session_id = (SELECT session_id FROM [SHOW session_id]) AS own, NULL AS blocked_by
+  FROM crdb_internal.cluster_sessions s LEFT JOIN crdb_internal.cluster_queries q ON q.session_id = s.session_id
+ WHERE s.status = 'ACTIVE'`
+
+const isCockroach = (db: DatabaseService, id: string) => db.serverInfo(id)?.product === 'CockroachDB'
+
 export async function listActivity(db: DatabaseService, connectionId: string): Promise<SessionActivity[]> {
   const driver = db.config(connectionId).driver
-  const sql = QUERIES[MYSQL_LIKE.has(driver) ? 'mysql' : driver]
+  const sql = isCockroach(db, connectionId) ? COCKROACH_ACTIVITY : QUERIES[MYSQL_LIKE.has(driver) ? 'mysql' : driver]
   if (!sql) throw new Error('Server activity is not available for this database')
   const [outcome] = await db.runScript(connectionId, sql, { maxRows: 2000 })
   if (outcome?.error) throw new Error(outcome.error.message)
@@ -93,6 +102,13 @@ export async function listActivity(db: DatabaseService, connectionId: string): P
 /** Cancels the running statement (`cancel`) or ends the whole session (`terminate`). */
 export async function stopSession(db: DatabaseService, connectionId: string, id: string, mode: 'cancel' | 'terminate'): Promise<void> {
   const driver = db.config(connectionId).driver
+  if (isCockroach(db, connectionId)) {
+    if (!/^[0-9a-f]+$/i.test(id)) throw new Error('Invalid session id')
+    const sql = mode === 'cancel' ? `CANCEL QUERIES (SELECT query_id FROM crdb_internal.cluster_queries WHERE session_id = '${id}')` : `CANCEL SESSION '${id}'`
+    const [o] = await db.runScript(connectionId, sql)
+    if (o?.error) throw new Error(o.error.message)
+    return
+  }
   if (!/^[\d,]+$/.test(id)) throw new Error('Invalid session id')
   let sql: string
   if (driver === 'postgres') sql = `SELECT ${mode === 'cancel' ? 'pg_cancel_backend' : 'pg_terminate_backend'}(${id})`

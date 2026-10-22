@@ -159,6 +159,37 @@ function duckNode(n: DuckNode): PlanNode {
   }
 }
 
+/**
+ * CockroachDB's text plan: `• operator` lines nested by the column of the bullet, with `key: value` details below.
+ * Planning summary lines before the first operator are skipped.
+ */
+export function cockroachPlan(lines: string[]): PlanNode {
+  const root: PlanNode = { operation: 'Query', children: [] }
+  const stack: { col: number; node: PlanNode }[] = [{ col: -1, node: root }]
+  let current: PlanNode | undefined
+  for (const line of lines) {
+    const bullet = line.indexOf('•')
+    if (bullet >= 0) {
+      const node: PlanNode = { operation: line.slice(bullet + 1).trim(), children: [] }
+      while (stack.length > 1 && stack.at(-1)!.col >= bullet) stack.pop()
+      stack.at(-1)!.node.children.push(node)
+      stack.push({ col: bullet, node })
+      current = node
+      continue
+    }
+    if (!current) continue
+    const m = /^[\s│]*([\w ]+?):\s*(.+)$/.exec(line)
+    if (!m) continue
+    const [, key, value] = m as unknown as [string, string, string]
+    if (key === 'table') current.object = value
+    else if (key === 'estimated row count') current.rows = num(value.replace(/[^\d.]/g, ''))
+    else if (key === 'actual row count') current.actualRows = num(value.replace(/[^\d.]/g, ''))
+    else if (key === 'execution time') current.actualMs = num(value.replace(/[^\d.]/g, ''))
+    else if (/^(spans|filter|equality|lookup condition|order|group by|estimated max memory allocated)$/.test(key)) current.detail = [current.detail, `${key}: ${value}`].filter(Boolean).join(' · ')
+  }
+  return root.children.length === 1 ? root.children[0]! : root
+}
+
 export async function explainQuery(db: DatabaseService, connectionId: string, sql: string, analyze = false): Promise<ExplainResult> {
   if (classifyStatement(sql) !== 'read') throw new Error('Only SELECT statements can be explained')
   const driver = db.config(connectionId).driver
@@ -173,6 +204,11 @@ export async function explainQuery(db: DatabaseService, connectionId: string, sq
   try {
     switch (driver) {
       case 'postgres': {
+        if (db.serverInfo(connectionId)?.product === 'CockroachDB') {
+          const [r] = await run(`EXPLAIN${analyze ? ' ANALYZE' : ''} ${body}`)
+          const lines = (r?.rows ?? []).map((row) => cellToText(row[0] ?? ''))
+          return { root: cockroachPlan(lines), raw: lines.join('\n'), format: 'text' }
+        }
         const [r] = await run(`EXPLAIN (FORMAT JSON${analyze ? ', ANALYZE, BUFFERS' : ''}) ${body}`)
         const raw = cellToText(r?.rows[0]?.[0] ?? '[]')
         const plan = (JSON.parse(raw) as { Plan: Record<string, unknown> }[])[0]!.Plan

@@ -211,8 +211,10 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ Oracle (thin mode, no Instant Client: PL/SQL blocks, explain plans, migrations)
 - ✅ DuckDB (in process): `.duckdb` files, and SQL straight over CSV / Parquet / JSON / Excel files — "Query a file",
   drag & drop, Czech decimal-comma CSVs detected
-- ⬜ ClickHouse, CockroachDB, Redshift, TimescaleDB,
-  Snowflake, BigQuery, Cassandra
+- ✅ CockroachDB through the PostgreSQL driver (schema, editing, streaming, its own EXPLAIN and session views,
+  designer migrations; integration-tested in CI). TimescaleDB, Supabase, Neon and other PostgreSQL-compatible services
+  work as PostgreSQL
+- ⬜ ClickHouse, Redshift, Snowflake, BigQuery, Cassandra
 - 💡 MongoDB, Redis (document/key-value browsers)
 - ✅ SQL Server Windows (integrated) authentication (msnodesqlv8 + ODBC, tested on Windows CI)
 

@@ -65,6 +65,10 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build -w packages/mcp
+      - name: Start CockroachDB (needs a start command, so not a service container)
+        run: |
+          docker run -d --name cockroach -p 26257:26257 cockroachdb/cockroach:latest-v24.3 start-single-node --insecure
+          for i in $(seq 1 60); do docker exec cockroach ./cockroach sql --insecure -e 'select 1' >/dev/null 2>&1 && break; sleep 2; done
       - run: npm run test:integration
       - name: Build desktop bundles
         run: npx electron-vite build

@@ -229,6 +229,9 @@ export class PostgresDriver implements DatabaseDriver {
   async serverInfo(): Promise<ServerInfo> {
     const r = await this.activePool.query<{ v: string }>('SELECT version() AS v')
     const full = r.rows[0]?.v ?? ''
+    // CockroachDB speaks the PostgreSQL protocol: "CockroachDB CCL v24.3.1 (…)".
+    const crdb = /CockroachDB\s+\w+\s+v([\d.]+\w*)/.exec(full)
+    if (crdb) return { product: 'CockroachDB', version: crdb[1]! }
     const m = /^(\S+)\s+([\d.]+\w*)/.exec(full)
     return { product: m?.[1] ?? 'PostgreSQL', version: m?.[2] ?? full }
   }
@@ -261,7 +264,7 @@ export class PostgresDriver implements DatabaseDriver {
                 obj_description(c.oid, 'pg_class') AS comment, c.reltuples::bigint AS estimate,
                 CASE WHEN c.relkind IN ('v','m') THEN pg_get_viewdef(c.oid, true) END AS definition
            FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-          WHERE c.relkind IN ('r','p','v','m','f') AND NOT c.relispartition AND ${SYSTEM_SCHEMA_FILTER}${schemaFilter}
+          WHERE c.relkind IN ('r','p','v','m','f') AND NOT coalesce(c.relispartition, false) AND ${SYSTEM_SCHEMA_FILTER}${schemaFilter}
           ORDER BY n.nspname, c.relname`,
         params,
       ),
@@ -286,7 +289,7 @@ export class PostgresDriver implements DatabaseDriver {
            JOIN pg_namespace n ON n.oid = c.relnamespace
            LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
           WHERE a.attnum > 0 AND NOT a.attisdropped AND c.relkind IN ('r','p','v','m','f')
-            AND NOT c.relispartition AND ${SYSTEM_SCHEMA_FILTER}${schemaFilter}
+            AND NOT coalesce(c.relispartition, false) AND ${SYSTEM_SCHEMA_FILTER}${schemaFilter}
           ORDER BY n.nspname, c.relname, a.attnum`,
         params,
       ),

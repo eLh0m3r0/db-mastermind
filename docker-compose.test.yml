@@ -54,3 +54,7 @@ services:
       interval: 5s
       retries: 60
       start_period: 20s
+  cockroach:
+    image: cockroachdb/cockroach:latest-v24.3
+    command: start-single-node --insecure
+    ports: ['26257:26257']
