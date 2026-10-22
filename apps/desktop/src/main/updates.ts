@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { app } from 'electron'
 import { managedConfig } from './managed'
@@ -34,15 +34,35 @@ async function latestRelease(): Promise<Release | null> {
   return { version: release.tag_name.replace(/^v/, ''), url: release.html_url ?? 'https://github.com/eLh0m3r0/db-mastermind/releases' }
 }
 
+/** Updater decisions and electron-updater's own messages, in <data>/logs/updater.log (kept under 1 MB). */
+function log(level: string, ...parts: unknown[]): void {
+  try {
+    const dir = join(app.getPath('userData'), 'logs')
+    const file = join(dir, 'updater.log')
+    mkdirSync(dir, { recursive: true })
+    if (existsSync(file) && statSync(file).size > 1_000_000) writeFileSync(file, '')
+    const text = parts.map((p) => (p instanceof Error ? (p.stack ?? p.message) : typeof p === 'string' ? p : JSON.stringify(p))).join(' ')
+    appendFileSync(file, `${new Date().toISOString()} ${level} ${text}\n`)
+  } catch {
+    // Logging must never break the app.
+  }
+}
+
+const logger = { info: (...a: unknown[]) => log('INFO', ...a), warn: (...a: unknown[]) => log('WARN', ...a), error: (...a: unknown[]) => log('ERROR', ...a), debug: (...a: unknown[]) => log('DEBUG', ...a) }
+
 let updater: Promise<typeof import('electron-updater').autoUpdater> | undefined
 
 /** electron-updater, configured once: downloads in the background and installs on quit. */
 function autoUpdaterFor(ready: (info: { version: string }) => void) {
   updater ??= import('electron-updater').then(({ autoUpdater }) => {
+    autoUpdater.logger = logger
     autoUpdater.autoDownload = true
     autoUpdater.autoInstallOnAppQuit = true
-    autoUpdater.on('update-downloaded', (info) => ready({ version: info.version }))
-    autoUpdater.on('error', () => undefined)
+    autoUpdater.on('update-downloaded', (info) => {
+      log('INFO', `Update ${info.version} downloaded; installs on quit or "Restart now"`)
+      ready({ version: info.version })
+    })
+    autoUpdater.on('error', (err) => log('ERROR', 'electron-updater', err))
     return autoUpdater
   })
   return updater
@@ -59,12 +79,14 @@ export async function checkForUpdates(
   ready: (info: { version: string }) => void = () => {},
 ): Promise<void> {
   if (!app.isPackaged || disabled()) return
-  if (canAutoUpdate()) {
+  const auto = canAutoUpdate()
+  log('INFO', `Version ${app.getVersion()} on ${process.platform}/${process.arch}; self-updating install: ${auto}; exe ${app.getPath('exe')}`)
+  if (auto) {
     try {
       await (await autoUpdaterFor(ready)).checkForUpdates()
       return
-    } catch {
-      // Fall back to the download link below.
+    } catch (err) {
+      log('ERROR', 'Self-update check failed, falling back to the release link', err)
     }
   }
   try {
