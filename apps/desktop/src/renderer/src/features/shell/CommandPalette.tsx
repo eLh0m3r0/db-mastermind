@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Command } from 'cmdk'
-import { Activity, BookOpen, FileCode2, FileSpreadsheet, FileText, Rows3, ShieldCheck, Eye, GitCompare, Moon, Network, Plug, Plus, RefreshCw, Settings, Sparkles, Sun, Table2, TerminalSquare, Unplug } from 'lucide-react'
+import { Activity, BookOpen, FileCode2, FileSpreadsheet, LayoutDashboard, FileText, Rows3, ShieldCheck, Eye, GitCompare, Moon, Network, Plug, Plus, RefreshCw, Settings, Sparkles, Sun, Table2, TerminalSquare, Unplug } from 'lucide-react'
 import { Kbd } from '@/components/ui/Input'
 import { api, modKey } from '@/lib/api'
 import { runCommand } from '@/lib/commands'
 import { exportDataDictionary } from '@/lib/dictionary'
 import { queryFile } from '@/lib/files'
+import { openDashboard } from '@/lib/dashboards'
 import { fuzzyScore } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
@@ -73,6 +74,7 @@ export function CommandPalette() {
       },
       needsConnection: true,
     },
+    { id: 'dashboards', label: t('Dashboards'), icon: <LayoutDashboard size={14} />, run: () => connectionId && openDashboard(connectionId), needsConnection: true },
     { id: 'knowledge', label: t('Open knowledge base'), icon: <BookOpen size={14} />, run: () => connectionId && openTab({ kind: 'knowledge', connectionId, title: t('Knowledge base') }), needsConnection: true },
     { id: 'refresh', label: t('Refresh schema'), icon: <RefreshCw size={14} />, shortcut: 'F5', run: () => runCommand('refresh-schema'), needsConnection: true },
     { id: 'ai', label: t('Toggle AI assistant'), icon: <Sparkles size={14} />, shortcut: `${modKey}J`, run: () => runCommand('toggle-ai') },

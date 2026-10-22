@@ -159,6 +159,7 @@ export const api: MastermindApi = {
     await db.disconnect(id)
     connections.deleteConnection(id)
     for (const d of library.listDiagrams(id)) library.deleteDiagram(d.id)
+    for (const d of library.listDashboards(id)) library.deleteDashboard(d.id)
   },
   async duplicateConnection(id) {
     return connections.duplicateConnection(id)
@@ -450,6 +451,15 @@ export const api: MastermindApi = {
   },
   async deleteSavedQuery(id) {
     library.deleteSavedQuery(id)
+  },
+  async listDashboards(connectionId) {
+    return library.listDashboards(connectionId)
+  },
+  async saveDashboard(dashboard) {
+    return library.saveDashboard(dashboard)
+  },
+  async deleteDashboard(id) {
+    library.deleteDashboard(id)
   },
   async listDiagrams(connectionId) {
     return library.listDiagrams(connectionId)

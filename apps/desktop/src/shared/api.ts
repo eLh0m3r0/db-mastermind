@@ -114,6 +114,27 @@ export interface SavedDiagram {
   updatedAt: string
 }
 
+/** A query result pinned to a dashboard, shown as a chart (or a table when `chart` is null). */
+export interface DashboardTile {
+  id: string
+  title: string
+  sql: string
+  chart: { kind: 'bar' | 'line' | 'scatter'; x: number; ys: number[] } | null
+  /** Grid columns the tile spans (1 or 2). */
+  span: 1 | 2
+}
+
+export interface Dashboard {
+  id: string
+  connectionId: string
+  name: string
+  tiles: DashboardTile[]
+  /** Auto-refresh period in seconds; 0 = off. */
+  refreshSeconds: number
+  createdAt: string
+  updatedAt: string
+}
+
 export interface SavedQuery {
   id: string
   name: string
@@ -294,6 +315,9 @@ export interface MastermindApi {
   listDiagrams(connectionId: string): Promise<SavedDiagram[]>
   saveDiagram(diagram: Omit<SavedDiagram, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<SavedDiagram>
   deleteDiagram(id: string): Promise<void>
+  listDashboards(connectionId: string): Promise<Dashboard[]>
+  saveDashboard(dashboard: Omit<Dashboard, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<Dashboard>
+  deleteDashboard(id: string): Promise<void>
 
   exportResult(request: ExportRequest): Promise<string | null>
   exportTable(request: ExportTableRequest): Promise<string | null>
@@ -384,6 +408,9 @@ export const API_METHODS = [
   'listDiagrams',
   'saveDiagram',
   'deleteDiagram',
+  'listDashboards',
+  'saveDashboard',
+  'deleteDashboard',
   'exportResult',
   'exportTable',
   'pickFile',

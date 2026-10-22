@@ -18,6 +18,7 @@ import { CompareView } from './features/compare/CompareView'
 import { DataCompareView } from './features/compare/DataCompareView'
 import { RolesView } from './features/roles/RolesView'
 import { ModelView } from './features/model/ModelView'
+import { DashboardView } from './features/dashboard/DashboardView'
 import { ConnectionForm } from './features/connections/ConnectionForm'
 import { DiagramView } from './features/diagram/DiagramView'
 import { KnowledgeView } from './features/knowledge/KnowledgeView'
@@ -177,6 +178,7 @@ export function App() {
                 {tab.kind === 'datacompare' && <DataCompareView tab={tab} />}
                 {tab.kind === 'roles' && <RolesView tab={tab} />}
                 {tab.kind === 'model' && <ModelView tab={tab} />}
+                {tab.kind === 'dashboard' && <DashboardView tab={tab} />}
               </div>
             ))}
             {!activeTab && <HomeScreen />}

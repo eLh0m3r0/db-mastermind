@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import type { HistoryEntry, SavedDiagram, SavedQuery, WorkspaceState } from '@shared/api'
+import type { Dashboard, HistoryEntry, SavedDiagram, SavedQuery, WorkspaceState } from '@shared/api'
 import { readJson, writeJson } from './storage'
 
 const HISTORY_FILE = 'history.json'
 const SAVED_FILE = 'saved-queries.json'
 const WORKSPACE_FILE = 'workspace.json'
 const DIAGRAMS_FILE = 'diagrams.json'
+const DASHBOARDS_FILE = 'dashboards.json'
 const MAX_HISTORY = 5000
 
 let history: HistoryEntry[] | undefined
@@ -100,6 +101,27 @@ export function deleteDiagram(id: string): void {
   writeJson(
     DIAGRAMS_FILE,
     listDiagrams().filter((d) => d.id !== id),
+  )
+}
+
+export function listDashboards(connectionId?: string): Dashboard[] {
+  const all = readJson<Dashboard[]>(DASHBOARDS_FILE, [])
+  return connectionId ? all.filter((d) => d.connectionId === connectionId) : all
+}
+
+export function saveDashboard(dashboard: Omit<Dashboard, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Dashboard {
+  const all = listDashboards()
+  const now = new Date().toISOString()
+  const existing = dashboard.id ? all.find((d) => d.id === dashboard.id) : undefined
+  const saved: Dashboard = { ...existing, ...dashboard, id: existing?.id ?? randomUUID(), createdAt: existing?.createdAt ?? now, updatedAt: now }
+  writeJson(DASHBOARDS_FILE, existing ? all.map((d) => (d.id === saved.id ? saved : d)) : [...all, saved])
+  return saved
+}
+
+export function deleteDashboard(id: string): void {
+  writeJson(
+    DASHBOARDS_FILE,
+    listDashboards().filter((d) => d.id !== id),
   )
 }
 

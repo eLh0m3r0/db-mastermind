@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/Button'
-import { AlertTriangle, BarChart3, CheckCircle2, Copy, Download, Sparkles, TerminalSquare, XCircle } from 'lucide-react'
+import { AlertTriangle, BarChart3, CheckCircle2, Copy, Download, LayoutDashboard, Sparkles, TerminalSquare, XCircle } from 'lucide-react'
 import { cellToText, type CellValue, type QueryResult, type SortSpec, type StatementOutcome } from '@dbmastermind/core/browser'
 import { defaultChartConfig, ResultChart, type ChartConfig } from '@/components/chart/ResultChart'
 import { openCellViewer } from '@/components/grid/CellViewer'
@@ -10,6 +10,7 @@ import { openMenu } from '@/components/ui/ContextMenu'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Spinner } from '@/components/ui/Spinner'
 import { api } from '@/lib/api'
+import { pinToDashboard } from '@/lib/dashboards'
 import { cn, copyText, errorMessage, formatCount, formatDuration } from '@/lib/utils'
 import { useSettings } from '@/store/settings'
 import { toast } from '@/store/ui'
@@ -35,6 +36,13 @@ function compareCells(a: CellValue, b: CellValue): number {
   const nb = Number(tb)
   if (ta !== '' && tb !== '' && !Number.isNaN(na) && !Number.isNaN(nb)) return na - nb
   return ta.localeCompare(tb, undefined, { numeric: true, sensitivity: 'base' })
+}
+
+/** "revenue by month" for a chart, the column names otherwise. */
+function tileTitle(result: QueryResult, chart: ChartConfig | null): string {
+  const name = (i: number) => result.fields[i]?.name ?? ''
+  if (chart) return `${chart.ys.map(name).join(', ')} by ${name(chart.x)}`
+  return result.fields.slice(0, 3).map((f) => f.name).join(', ')
 }
 
 export function ResultsPanel({
@@ -70,7 +78,8 @@ export function ResultsPanel({
       o.results?.forEach((r, ri) => {
         if (r.fields.length === 0) return
         n++
-        out.push({ key: `${si}:${ri}`, label: tr('Result {n}', { n }), result: r, statement: o })
+        // Keyed by shape too: a chart or sort from a different query must not carry over.
+        out.push({ key: `${si}:${ri}:${r.fields.map((f) => f.name).join('\u0001')}`, label: tr('Result {n}', { n }), result: r, statement: o })
       })
     })
     return out
@@ -198,6 +207,21 @@ export function ResultsPanel({
                 </IconButton>
               )
             })()}
+            {/^\s*(select|with|values|show|table)\b/i.test(current.statement.sql) && (
+              <IconButton
+                label={tr('Pin to dashboard')}
+                onClick={(e) =>
+                  void pinToDashboard(e.currentTarget, connectionId, {
+                    title: tileTitle(current.result, charts[current.key] ?? null),
+                    sql: current.statement.sql,
+                    chart: charts[current.key] ?? null,
+                    span: charts[current.key] ? 2 : 1,
+                  })
+                }
+              >
+                <LayoutDashboard size={13} />
+              </IconButton>
+            )}
             <IconButton label={tr('Copy all as TSV')} onClick={() => void copyText(selectionToTsv(current.result.fields, sortedRows, { anchor: { row: 0, col: 0 }, focus: { row: sortedRows.length - 1, col: current.result.fields.length - 1 } }, true))}>
               <Copy size={13} />
             </IconButton>

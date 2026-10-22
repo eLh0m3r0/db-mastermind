@@ -79,6 +79,12 @@ export interface ModelTab extends BaseTab {
   positions?: Record<string, { x: number; y: number }>
 }
 
+/** Pinned query results; without `dashboardId` it lists the connection's dashboards. */
+export interface DashboardTab extends BaseTab {
+  kind: 'dashboard'
+  dashboardId?: string
+}
+
 /** Users, roles and their privileges. */
 export interface RolesTab extends BaseTab {
   kind: 'roles'
@@ -90,7 +96,7 @@ export interface ActivityTab extends BaseTab {
   kind: 'activity'
 }
 
-export type Tab = QueryTab | TableTab | StructureTab | DiagramTab | KnowledgeTab | CompareTab | ActivityTab | DataCompareTab | RolesTab | ModelTab
+export type Tab = QueryTab | TableTab | StructureTab | DiagramTab | KnowledgeTab | CompareTab | ActivityTab | DataCompareTab | RolesTab | ModelTab | DashboardTab
 export type NewTab =
   | Omit<QueryTab, 'id'>
   | Omit<TableTab, 'id'>
@@ -102,6 +108,7 @@ export type NewTab =
   | Omit<DataCompareTab, 'id'>
   | Omit<RolesTab, 'id'>
   | Omit<ModelTab, 'id'>
+  | Omit<DashboardTab, 'id'>
 
 interface WorkspaceState {
   tabs: Tab[]
