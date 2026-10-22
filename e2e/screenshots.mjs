@@ -1,6 +1,6 @@
 // Regenerates the README screenshots from the demo database: `node e2e/screenshots.mjs [--ai]`
 import { _electron as electron } from '@playwright/test'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -77,6 +77,14 @@ await win.keyboard.type('ER diagram')
 await win.keyboard.press('Enter')
 await win.waitForTimeout(2500)
 await shot('diagram')
+await win.getByPlaceholder('Focus on table…').fill('customers')
+await win.getByPlaceholder('Focus on table…').press('Enter')
+await win.waitForTimeout(800)
+await win.getByPlaceholder('Join path to…').fill('categories')
+await win.waitForTimeout(2000)
+await shot('join-path')
+await win.getByRole('button', { name: 'Show whole schema' }).click()
+await win.waitForTimeout(2000)
 await theme('dark')
 await win.getByRole('button', { name: 'Design' }).click()
 await win.locator('.react-flow__node', { hasText: 'customers' }).first().click()
@@ -88,6 +96,28 @@ await win.getByRole('button', { name: /Review migration/ }).click()
 await win.waitForTimeout(1200)
 await shot('migration')
 await win.keyboard.press('Escape')
+
+// Query a CSV file with SQL (light): a Czech export with ';' and decimal commas.
+await theme('light')
+const csv = join(userData, 'prodeje-2026.csv')
+const rows = ['datum;pobočka;produkt;množství;cena']
+const shops = ['Praha', 'Brno', 'Ostrava', 'Plzeň']
+const products = ['Espresso', 'Latte', 'Čaj', 'Dort', 'Croissant']
+for (let i = 0; i < 400; i++) rows.push(`2026-${String(1 + (i % 9)).padStart(2, '0')}-${String(1 + (i % 27)).padStart(2, '0')};${shops[i % 4]};${products[(i * 7) % 5]};${1 + ((i * 13) % 6)};${(45 + ((i * 37) % 120)).toFixed(0)},${String((i * 11) % 100).padStart(2, '0')}`)
+writeFileSync(csv, rows.join('\n'))
+await app.evaluate(({ dialog }, path) => {
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
+}, csv)
+await win.keyboard.press('Meta+k')
+await win.keyboard.type('Query a CSV')
+await win.keyboard.press('Enter')
+await win.waitForTimeout(2500)
+await win.locator('.cm-content').last().click()
+await win.keyboard.press('Meta+a')
+await win.keyboard.insertText(`SELECT pobočka, produkt, sum(množství * cena) AS tržba\nFROM read_csv('${csv}', decimal_separator = ',')\nGROUP BY ALL\nORDER BY tržba DESC\nLIMIT 10;`)
+await win.keyboard.press('Meta+Enter')
+await win.waitForTimeout(1500)
+await shot('query-file')
 
 if (withAi) {
   await api('updateSettings', { ai: { activeProvider: 'claude-code', providers: [{ id: 'claude-code', enabled: true }], dataSharing: 'schema-and-samples', autoRunReadQueries: true } })
