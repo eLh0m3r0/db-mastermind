@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { BrowserWindow, dialog } from 'electron'
-import type { ConnectionConfig, DriverId, Environment } from '@dbmastermind/core'
+import { parsePgpass, type ConnectionConfig, type DriverId, type Environment } from '@dbmastermind/core'
 import { listConnections, saveConnection } from './connections'
 
 type Imported = Omit<ConnectionConfig, 'id'>
@@ -78,6 +78,13 @@ const DBEAVER_PROVIDERS: Record<string, DriverId> = {
 }
 
 /** DBeaver's well-known default key for credentials-config.json. */
+/** ~/.pgpass (Windows: %APPDATA%\\postgresql\\pgpass.conf), honouring PGPASSFILE. */
+function readPgpass(): Imported[] {
+  const file = process.env.PGPASSFILE ?? (process.platform === 'win32' ? join(appDataDir(), 'postgresql', 'pgpass.conf') : join(homedir(), '.pgpass'))
+  if (!existsSync(file)) throw new Error('No .pgpass file was found on this computer')
+  return parsePgpass(readFileSync(file, 'utf8'))
+}
+
 const DBEAVER_KEY = Buffer.from('babb4a9f774ab853c96c2d653dfe544a', 'hex')
 
 function readDbeaver(): Imported[] {
@@ -158,8 +165,8 @@ export async function exportConnections(ids?: string[]): Promise<string | null> 
   return r.filePath
 }
 
-export async function importConnections(source: 'beekeeper' | 'dbeaver' | 'file'): Promise<number> {
-  const items = source === 'beekeeper' ? readBeekeeper() : source === 'dbeaver' ? readDbeaver() : await readFileExport()
+export async function importConnections(source: 'beekeeper' | 'dbeaver' | 'pgpass' | 'file'): Promise<number> {
+  const items = source === 'beekeeper' ? readBeekeeper() : source === 'dbeaver' ? readDbeaver() : source === 'pgpass' ? readPgpass() : await readFileExport()
   const existing = listConnections()
   let count = 0
   for (const item of items) {

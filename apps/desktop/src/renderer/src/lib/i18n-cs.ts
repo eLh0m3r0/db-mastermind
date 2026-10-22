@@ -864,4 +864,5 @@ export const cs: Record<string, string> = {
   'Pink': 'Růžová',
   'Yellow': 'Žlutá',
   'Red': 'Červená',
+  'From .pgpass (PostgreSQL)': 'Ze souboru .pgpass (PostgreSQL)',
 }

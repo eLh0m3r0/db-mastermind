@@ -140,3 +140,26 @@ function parseAdoNet(text: string): Parsed {
     options: Object.keys(options).length ? options : undefined,
   }
 }
+
+/** Entries of a PostgreSQL password file (host:port:database:user:password, `*` wildcards, `\\:` escapes). */
+export function parsePgpass(text: string): Omit<ConnectionConfig, 'id'>[] {
+  const out: Omit<ConnectionConfig, 'id'>[] = []
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim() || line.trimStart().startsWith('#')) continue
+    const fields = line.split(/(?<!\\):/).map((f) => f.replace(/\\([:\\])/g, '$1'))
+    if (fields.length < 5) continue
+    const [host, port, database, user] = fields as [string, string, string, string]
+    // Wildcard hosts or users can't become a connection; a wildcard database means the server's default.
+    if (host === '*' || user === '*') continue
+    out.push({
+      name: `${host}${database !== '*' ? `/${database}` : ''}`,
+      driver: 'postgres',
+      host,
+      port: port !== '*' ? Number(port) : 5432,
+      database: database !== '*' ? database : undefined,
+      user,
+      password: fields.slice(4).join(':'),
+    })
+  }
+  return out
+}

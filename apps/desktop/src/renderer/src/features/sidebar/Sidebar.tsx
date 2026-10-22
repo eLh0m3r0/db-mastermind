@@ -314,6 +314,7 @@ function ConnectionList() {
             openMenu(e.currentTarget, [
               { label: t('From Beekeeper Studio'), onClick: () => void importFrom('beekeeper') },
               { label: t('From DBeaver'), onClick: () => void importFrom('dbeaver') },
+              { label: t('From .pgpass (PostgreSQL)'), onClick: () => void importFrom('pgpass') },
               { label: t('From JSON file…'), onClick: () => void importFrom('file') },
               'separator',
               { label: t('Share all connections (without passwords)…'), icon: <Share2 size={13} />, onClick: () => void shareConnections() },
@@ -342,7 +343,7 @@ export async function shareConnections(ids?: string[]) {
   }
 }
 
-export async function importFrom(source: 'beekeeper' | 'dbeaver' | 'file') {
+export async function importFrom(source: 'beekeeper' | 'dbeaver' | 'pgpass' | 'file') {
   try {
     const n = await api.importConnections(source)
     await useConnections.getState().load()

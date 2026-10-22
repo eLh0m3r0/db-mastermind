@@ -275,7 +275,7 @@ export interface MastermindApi {
   disconnect(id: string): Promise<void>
   isConnected(id: string): Promise<boolean>
   parseConnectionString(text: string): Promise<Partial<ConnectionConfig>>
-  importConnections(source: 'beekeeper' | 'dbeaver' | 'file'): Promise<number>
+  importConnections(source: 'beekeeper' | 'dbeaver' | 'pgpass' | 'file'): Promise<number>
   /** Writes connections without passwords or keys to a JSON file for colleagues; all when `ids` is empty. */
   exportConnections(ids?: string[]): Promise<string | null>
   /** Creates (or reuses) the demo SQLite database with its knowledge base; returns the connection id. */

@@ -57,3 +57,15 @@ describe('parseConnectionString', () => {
     expect(() => parseConnectionString('mongodb://x')).toThrow(/Unsupported/)
   })
 })
+
+describe('pgpass', () => {
+  it('reads entries, escapes and wildcards', async () => {
+    const { parsePgpass } = await import('../src/index.js')
+    const list = parsePgpass('# comment\ndb.example.com:5433:crm:analyst:s3cr\\:et\nlocalhost:*:*:postgres:pw\n*:*:*:*:skip\n')
+    expect(list).toEqual([
+      { name: 'db.example.com/crm', driver: 'postgres', host: 'db.example.com', port: 5433, database: 'crm', user: 'analyst', password: 's3cr:et' },
+      { name: 'localhost', driver: 'postgres', host: 'localhost', port: 5432, database: undefined, user: 'postgres', password: 'pw' },
+    ])
+  })
+})
+
