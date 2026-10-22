@@ -177,10 +177,10 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ⬜ Visual designer: add tables, columns, types, PK/FK, indexes, notes and colored groups on an infinite canvas
 - ✅ **DBML editor** with live diagram (text → canvas; canvas → text ⬜)
 - ✅ Reverse engineer: model from a live connection ("From database", or "Edit as model" from any diagram)
-- ⬜ Forward engineer: generate DDL for PostgreSQL / SQL Server / MySQL / SQLite from the model
+- ✅ Forward engineer: DDL for any supported database from the model, with type translation (boolean → bit, jsonb → nvarchar(max), indexed text → bounded strings; verified by running PostgreSQL's schema on every engine)
 - ✅ **Model ↔ database diff** → migration script, reviewed and opened in the SQL editor
 - ⬜ Model versions / snapshots with visual diff between them
-- ⬜ Import from DBML, SQL DDL, Prisma schema, Django/Rails migrations (via AI), dbdiagram.io export
+- ✅ Import from DBML and SQL DDL scripts (pg_dump, mysqldump, SSMS) · ⬜ Prisma, Django/Rails migrations (via AI)
 - ⬜ Export: SQL, DBML, Mermaid, PlantUML, PNG, SVG, PDF data dictionary
 - ⬜ AI: "design a schema for…", "normalize this table", "suggest indexes", "review my model"
 - ✅ **Data dictionary** of a live database: self-contained HTML (search, dark mode, print) or Markdown, with knowledge base notes

@@ -3,9 +3,11 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { bracketMatching, StreamLanguage } from '@codemirror/language'
 import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
-import { AlertTriangle, Database, FileCode2, FolderOpen, GitCompare, Save, Sparkles } from 'lucide-react'
-import { parseDbml, toDbml, type SchemaSnapshot } from '@dbmastermind/core/browser'
+import { AlertTriangle, Database, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare } from 'lucide-react'
+import { createScript, getDialect, parseDbml, toDbml, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
+import { openMenu } from '@/components/ui/ContextMenu'
+import { DRIVERS } from '../connections/drivers'
 import { Splitter } from '@/components/ui/Splitter'
 import { api } from '@/lib/api'
 import { tp, useT } from '@/lib/i18n'
@@ -115,6 +117,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const dark = useSettings((s) => s.dark)
   const updateTab = useWorkspace((s) => s.update)
   const openTab = useWorkspace((s) => s.open)
+  const newQuery = useWorkspace((s) => s.newQuery)
   const connection = useConnections((s) => s.list.find((c) => c.id === tab.connectionId))
   const liveSchema = useConnections((s) => s.runtime[tab.connectionId]?.schema)
   const loadSchema = useConnections((s) => s.loadSchema)
@@ -166,6 +169,27 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     replaceText(toDbml(snap.tables, { defaultSchema: snap.defaultSchema }), { dirty: true })
   }
 
+  const importDdl = async () => {
+    try {
+      const r = await api.importDdlFile()
+      if (!r) return
+      if (text.trim() && !window.confirm(t('Replace the model with the tables from {file}?', { file: r.path.split(/[\\/]/).pop() ?? '' }))) return
+      replaceText(r.dbml, { dirty: true })
+      if (r.skipped.length) toast({ kind: 'warning', message: tp(r.skipped.length, { one: '{n} statement could not be read', many: '{n} statements could not be read' }), detail: r.skipped.map((x) => `${x.error}\n  ${x.sql.split('\n')[0]}`).join('\n') })
+    } catch (err) {
+      toast({ kind: 'error', message: t('Could not import the SQL file'), detail: errorMessage(err) })
+    }
+  }
+
+  const ddlMenu = (anchor: HTMLElement) =>
+    openMenu(
+      anchor,
+      DRIVERS.map((d) => ({
+        label: d.label,
+        onClick: () => newQuery(tab.connectionId, `-- ${t('Model as {db} DDL', { db: d.label })}\n${createScript(model.tables, getDialect(d.id), { translateTypes: true })}`, `DDL · ${d.label}`),
+      })),
+    )
+
   const designWithAi = () =>
     askAi({
       prompt: t(
@@ -196,6 +220,12 @@ export function ModelView({ tab }: { tab: ModelTab }) {
         <div className="mx-1 h-4 w-px bg-line" />
         <Button size="sm" variant="ghost" icon={<Database size={13} />} onClick={() => void fromDatabase()}>
           {t('From database')}
+        </Button>
+        <Button size="sm" variant="ghost" icon={<FileInput size={13} />} onClick={() => void importDdl()} title={t('Read tables from a SQL script (pg_dump, mysqldump, SSMS…)')}>
+          {t('Import SQL…')}
+        </Button>
+        <Button size="sm" variant="ghost" icon={<TerminalSquare size={13} />} disabled={!model.tables.length} onClick={(e) => ddlMenu(e.currentTarget)}>
+          {t('SQL DDL')}
         </Button>
         <Button size="sm" variant="ghost" icon={<Sparkles size={13} />} onClick={designWithAi}>
           {t('Design with AI')}

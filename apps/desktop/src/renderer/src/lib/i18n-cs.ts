@@ -830,4 +830,13 @@ export const cs: Record<string, string> = {
   '{n} notes are out of date|few': '{n} poznámky jsou zastaralé',
   'Ask AI to update them': 'Nechat AI je aktualizovat',
   'Update the knowledge base: these notes mention things that no longer exist in the database. Check the current schema and fix the notes (front matter tables and relations, and the text).\n\n{issues}': 'Aktualizuj znalostní bázi: tyto poznámky zmiňují věci, které už v databázi nejsou. Zkontroluj aktuální schéma a oprav poznámky (tables a relations ve front matter i text). Odpovídej česky.\n\n{issues}',
+  'Replace the model with the tables from {file}?': 'Nahradit model tabulkami ze souboru {file}?',
+  '{n} statement could not be read': '{n} příkaz nešlo přečíst',
+  '{n} statements could not be read': '{n} příkazů nešlo přečíst',
+  '{n} statements could not be read|few': '{n} příkazy nešlo přečíst',
+  'Could not import the SQL file': 'SQL soubor se nepodařilo importovat',
+  'Model as {db} DDL': 'Model jako DDL pro {db}',
+  'Read tables from a SQL script (pg_dump, mysqldump, SSMS…)': 'Načíst tabulky ze SQL skriptu (pg_dump, mysqldump, SSMS…)',
+  'Import SQL…': 'Import SQL…',
+  'SQL DDL': 'SQL DDL',
 }

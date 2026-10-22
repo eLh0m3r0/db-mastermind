@@ -28,6 +28,8 @@ import {
   inlineParams,
   KnowledgeBase,
   staleKnowledge,
+  tablesFromDdl,
+  toDbml,
   resolveInside,
   SAMPLE_KNOWLEDGE,
   sampleDatabaseSql,
@@ -319,6 +321,14 @@ export const api: MastermindApi = {
     }
     if (extname(path).toLowerCase() !== '.dbml') throw new Error('Models are .dbml files')
     return { path, text: await readFile(path, 'utf8') }
+  },
+  async importDdlFile() {
+    const window = BrowserWindow.getFocusedWindow()
+    const options = { title: 'Import SQL DDL', properties: ['openFile' as const], filters: [{ name: 'SQL', extensions: ['sql', 'ddl', 'txt'] }] }
+    const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
+    if (r.canceled || !r.filePaths[0]) return null
+    const { tables, skipped } = await tablesFromDdl(await readFile(r.filePaths[0], 'utf8'))
+    return { path: r.filePaths[0], dbml: toDbml(tables, { defaultSchema: 'main' }), skipped }
   },
   async saveModelFile(text, path, defaultDir) {
     if (!path) {

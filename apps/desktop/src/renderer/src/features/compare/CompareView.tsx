@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ArrowRight, GitCompare, Minus, Pencil, Plus } from 'lucide-react'
-import { compareSchemas, generateMigration, getDialect, migrationScript, parseDbml, type SchemaChange, type SchemaSnapshot } from '@dbmastermind/core/browser'
+import { compareSchemas, generateMigration, getDialect, migrationScript, parseDbml, translateTables, type SchemaChange, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Checkbox, Select } from '@/components/ui/Input'
@@ -96,8 +96,10 @@ export function CompareView({ tab }: { tab: CompareTab }) {
   const changes = useMemo(() => {
     if (!snapshots) return []
     const pick = (snap: SchemaSnapshot, schema?: string) => snap.tables.filter((x) => !schema || (x.schema ?? '') === schema)
-    return compareSchemas(pick(snapshots.source, tab.sourceSchema), pick(snapshots.target, tab.targetSchema), { keepExtra })
-  }, [snapshots, tab.sourceSchema, tab.targetSchema, keepExtra])
+    // Across engines, source types are first written the target's way (boolean → bit, text → nvarchar(max)…).
+    const source = pick(snapshots.source, tab.sourceSchema)
+    return compareSchemas(crossEngine && target ? translateTables(source, target.driver) : source, pick(snapshots.target, tab.targetSchema), { keepExtra })
+  }, [snapshots, tab.sourceSchema, tab.targetSchema, keepExtra, crossEngine, target])
 
   const byTable = useMemo(() => {
     const map = new Map<string, SchemaChange[]>()

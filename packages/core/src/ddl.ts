@@ -1,4 +1,5 @@
 import { qualify, type Dialect } from './dialect.js'
+import { translateTables } from './type-map.js'
 import type { ColumnInfo, DriverId, ForeignKeyInfo, IndexInfo, TableInfo, TableRef } from './types.js'
 
 /**
@@ -653,7 +654,7 @@ function commentStatements(table: TableRef, tableComment: string | null | undefi
       `EXEC sys.sp_addextendedproperty @name = N'MS_Description', @value = ${literalComment(value, 'mssql')}, @level0type = N'SCHEMA', @level0name = ${literalComment(schema, 'mssql')}, @level1type = N'TABLE', @level1name = ${literalComment(table.name, 'mssql')}${column ? `, @level2type = N'COLUMN', @level2name = ${literalComment(column, 'mssql')}` : ''}`
     if (tableComment) out.push(prop(tableComment))
     for (const c of columns) if (c.comment) out.push(prop(c.comment, c.name))
-  } else if ((d.id === 'mysql' || d.id === 'mariadb') && tableComment !== undefined) {
+  } else if ((d.id === 'mysql' || d.id === 'mariadb') && tableComment !== undefined && (tableComment || allowNull)) {
     out.push(`ALTER TABLE ${t} COMMENT = ${literalComment(tableComment ?? '', d.id)}`)
   }
   return out
@@ -861,4 +862,15 @@ export function compareSchemas(source: TableInfo[], target: TableInfo[], options
     }
   }
   return diffTables(target, drafts)
+}
+
+/** CREATE script for a whole model (forward engineering), in any dialect. */
+export function createScript(tables: TableInfo[], dialect: Dialect, options: { translateTypes?: boolean } = {}): string {
+  const source = options.translateTypes ? translateTables(tables, dialect.id) : tables
+  const changes = compareSchemas(
+    source.filter((t) => t.type === 'table'),
+    [],
+    { keepExtra: true },
+  )
+  return migrationScript(generateMigration(changes, dialect, []), dialect)
 }
