@@ -92,6 +92,12 @@ Download from [Releases](https://github.com/eLh0m3r0/db-mastermind/releases/late
 Builds aren't code-signed yet. **macOS**: right-click the app → *Open* the first time (or run
 `xattr -dr com.apple.quarantine "/Applications/DB Mastermind.app"`). **Windows**: *More info → Run anyway*.
 
+With [Scoop](https://scoop.sh) on Windows (portable, updates with `scoop update`, keeps your data):
+
+```powershell
+scoop install https://github.com/eLh0m3r0/db-mastermind/releases/latest/download/db-mastermind.json
+```
+
 New to the app? Click **Try the demo database** on the start screen.
 
 ## Use it from Claude Code, Codex, Cursor… (MCP)
@@ -101,6 +107,13 @@ and only connections where you allow AI. Open **Settings → MCP server** for re
 
 ```bash
 claude mcp add dbmastermind -- "/Applications/DB Mastermind.app/Contents/MacOS/DB Mastermind" --mcp
+```
+
+While the app is running you can also turn on **Settings → MCP server → Local HTTP endpoint** and connect over
+HTTP (localhost only, with a token):
+
+```bash
+claude mcp add --transport http dbmastermind http://127.0.0.1:7337/mcp --header "Authorization: Bearer <token>"
 ```
 
 The agent gets `list_connections`, `list_tables`, `describe_table`, `search_schema`, `get_relationships`,
