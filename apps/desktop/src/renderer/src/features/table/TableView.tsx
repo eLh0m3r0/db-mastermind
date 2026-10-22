@@ -590,7 +590,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
           label: format === 'sql' ? 'SQL INSERT' : format === 'markdown' ? 'Markdown' : format.toUpperCase(),
           onClick: () =>
             void copyText(
-              copyRowsAs(format, fields, rows.map((r) => displayRows[r]!), connection?.driver, displayName(schema, tab.table)),
+              copyRowsAs(format, fields, rows.map((r) => displayRows[r]!), connection?.driver, tab.table),
             ),
         })),
       },
@@ -622,7 +622,6 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
     if (editable) {
       items.push(
         'separator',
-        { label: t('Edit cell'), shortcut: '↵', onClick: () => grid.current?.edit() },
         { label: t('Set NULL'), disabled: columnMeta[pos.col]?.nullable === false, onClick: () => rows.forEach((r) => onEdit(r, pos.col, null)) },
         { label: t('Clone row'), icon: <Rows3 size={13} />, onClick: () => cloneRow(pos.row) },
         { label: rows.length > 1 ? tp(rows.length, { one: 'Delete {n} row', many: 'Delete {n} rows' }) : t('Delete row'), icon: <Trash2 size={13} />, danger: true, onClick: () => deleteRows(rows) },

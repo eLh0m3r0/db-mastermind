@@ -1,4 +1,4 @@
-import { cellToText, getDialect, isBinaryValue, type CellValue, type DriverId, type ResultField } from '@dbmastermind/core/browser'
+import { cellToText, getDialect, isBinaryValue, qualify, type CellValue, type DriverId, type ResultField, type TableRef } from '@dbmastermind/core/browser'
 import type { ExportFormat } from '@shared/api'
 
 export const EXPORT_FORMATS: { id: ExportFormat; label: string }[] = [
@@ -21,7 +21,8 @@ export function copyRowsAs(
   fields: ResultField[],
   rows: CellValue[][],
   driver: DriverId | undefined,
-  tableName = 'my_table',
+  /** The source table (quoted per dialect in INSERTs); results of a query have none. */
+  table: TableRef = { name: 'my_table' },
 ): string {
   const names = fields.map((f) => f.name)
   switch (format) {
@@ -57,7 +58,8 @@ export function copyRowsAs(
         return dialect.id === 'mssql' ? `N'${t}'` : `'${t}'`
       }
       const cols = names.map((n) => dialect.quoteIdent(n)).join(', ')
-      return rows.map((r) => `INSERT INTO ${tableName} (${cols}) VALUES (${r.map((v) => lit(v ?? null)).join(', ')});`).join('\n')
+      const target = qualify(dialect, table)
+      return rows.map((r) => `INSERT INTO ${target} (${cols}) VALUES (${r.map((v) => lit(v ?? null)).join(', ')});`).join('\n')
     }
   }
 }
