@@ -5,7 +5,7 @@ import { Button, IconButton } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge, Checkbox, Input } from '@/components/ui/Input'
 import { api } from '@/lib/api'
-import { useT } from '@/lib/i18n'
+import { tp, useT } from '@/lib/i18n'
 import { cn, errorMessage, formatDuration } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { toast } from '@/store/ui'
@@ -45,14 +45,22 @@ export function ActivityView({ tab }: { tab: ActivityTab }) {
     return () => clearInterval(timer)
   }, [load, auto])
 
+  /** How many sessions each session blocks. */
+  const blocking = useMemo(() => {
+    const out = new Map<string, number>()
+    for (const s of sessions ?? []) for (const b of s.blockedBy ?? []) out.set(b, (out.get(b) ?? 0) + 1)
+    return out
+  }, [sessions])
+
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
     return (sessions ?? []).filter(
       (s) =>
-        (showIdle || s.own || !IDLE.test(s.state ?? '')) &&
+        // An idle session holding locks others wait for is exactly what you're looking for.
+        (showIdle || s.own || !IDLE.test(s.state ?? '') || blocking.has(s.id)) &&
         (!q || [s.id, s.user, s.database, s.client, s.application, s.query].some((v) => v?.toLowerCase().includes(q))),
     )
-  }, [sessions, showIdle, search])
+  }, [sessions, showIdle, search, blocking])
 
   const stop = async (s: SessionActivity, mode: 'cancel' | 'terminate') => {
     if (mode === 'terminate' && !window.confirm(t('End session {id}? Its open transaction is rolled back.', { id: s.id }))) return
@@ -72,7 +80,7 @@ export function ActivityView({ tab }: { tab: ActivityTab }) {
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line px-3 py-2">
         <Activity size={15} className="text-accent" />
         <span className="text-[12.5px] font-semibold">{t('Server activity')}</span>
-        {sessions && <span className="text-[11.5px] text-fg-faint">{t('{n} sessions', { n: String(visible.length) })}</span>}
+        {sessions && <span className="text-[11.5px] text-fg-faint">{tp(visible.length, { one: '{n} session', many: '{n} sessions' })}</span>}
         <div className="flex-1" />
         <Input inputSize="sm" className="w-56" placeholder={t('Search sessions…')} value={search} onChange={(e) => setSearch(e.target.value)} />
         <Checkbox checked={showIdle} onChange={setShowIdle} label={t('Show idle')} />
@@ -116,7 +124,19 @@ export function ActivityView({ tab }: { tab: ActivityTab }) {
                     <td className="max-w-[180px] truncate px-2 py-1.5 text-fg-muted" title={[s.client, s.application].filter(Boolean).join(' · ')}>
                       {s.application || s.client}
                     </td>
-                    <td className="px-2 py-1.5 whitespace-nowrap">{s.state}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap">
+                      {s.state}
+                      {!!s.blockedBy?.length && (
+                        <Badge tone="danger" className="ml-1.5">
+                          {t('waits for {id}', { id: s.blockedBy.join(', ') })}
+                        </Badge>
+                      )}
+                      {blocking.has(s.id) && (
+                        <Badge tone="warning" className="ml-1.5">
+                          {tp(blocking.get(s.id)!, { one: 'blocks {n} session', many: 'blocks {n} sessions' })}
+                        </Badge>
+                      )}
+                    </td>
                     <td className={cn('px-2 py-1.5 whitespace-nowrap tabular-nums', slow && 'font-medium text-warning')}>
                       {s.durationMs !== undefined && s.durationMs >= 0 ? formatDuration(s.durationMs) : ''}
                     </td>
