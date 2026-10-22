@@ -605,6 +605,7 @@ export const cs: Record<string, string> = {
   'Thinking…': 'Přemýšlím…',
   'Ask about {name}…': 'Zeptejte se na {name}…',
   'Enter to send · Shift+Enter for a new line · {shortcut} toggles this panel': 'Enter odešle · Shift+Enter nový řádek · {shortcut} přepne tento panel',
+  'Enter to send · Shift+Enter for a new line': 'Enter odešle · Shift+Enter nový řádek',
   'Set up AI': 'Nastavit AI',
   'New chat': 'Nový chat',
   'AI settings': 'Nastavení AI',

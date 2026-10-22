@@ -26,7 +26,7 @@ export interface AskTextOptions {
   /** Starting value, selected so typing replaces it. */
   value?: string
   placeholder?: string
-  /** Several lines; Cmd/Ctrl+Enter confirms. */
+  /** Several lines; Enter confirms and Shift+Enter starts a new line, as in the AI panel. */
   multiline?: boolean
   confirmLabel: string
 }
@@ -106,7 +106,7 @@ export function ConfirmDialog() {
               // The Modal focuses the field; the starting value is selected so typing replaces it.
               onFocus={(e) => e.currentTarget.select()}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault()
                   finish(true)
                 }
@@ -127,6 +127,7 @@ export function ConfirmDialog() {
               }}
             />
           ))}
+        {ask?.text?.multiline && <p className="text-[11px] text-fg-faint">{t('Enter to send · Shift+Enter for a new line')}</p>}
         {!!ask?.items?.length && (
           <pre className="max-h-48 overflow-auto rounded-md bg-subtle p-2.5 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap select-text">
             {ask.items.join('\n')}
