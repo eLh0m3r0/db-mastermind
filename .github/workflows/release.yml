@@ -77,6 +77,25 @@ jobs:
           node scripts/scoop-manifest.mjs "$V" "apps/desktop/release/DB-Mastermind-$V-win-x64-portable.zip" "apps/desktop/release/DB-Mastermind-$V-win-arm64-portable.zip" > db-mastermind.json
           cat db-mastermind.json
           gh release upload "$GITHUB_REF_NAME" db-mastermind.json --clobber
+      - name: Homebrew cask
+        # The repository doubles as a tap: brew tap elh0m3r0/db-mastermind https://github.com/eLh0m3r0/db-mastermind
+        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          node scripts/homebrew-cask.mjs "$V" "apps/desktop/release/DB-Mastermind-$V-mac-arm64.dmg" "apps/desktop/release/DB-Mastermind-$V-mac-x64.dmg" > "$RUNNER_TEMP/db-mastermind.rb"
+          cat "$RUNNER_TEMP/db-mastermind.rb"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            rm -rf "$RUNNER_TEMP/tap" && git fetch -q origin main && git worktree add -q -f "$RUNNER_TEMP/tap" origin/main
+            mkdir -p "$RUNNER_TEMP/tap/Casks" && cp "$RUNNER_TEMP/db-mastermind.rb" "$RUNNER_TEMP/tap/Casks/db-mastermind.rb"
+            git -C "$RUNNER_TEMP/tap" add Casks/db-mastermind.rb
+            if git -C "$RUNNER_TEMP/tap" diff --cached --quiet; then break; fi
+            git -C "$RUNNER_TEMP/tap" commit -qm "Homebrew cask $V [skip ci]"
+            if git -C "$RUNNER_TEMP/tap" push -q origin HEAD:main; then break; fi
+            git worktree remove -f "$RUNNER_TEMP/tap"; sleep 5
+          done
 
   mcp-npm:
     runs-on: ubuntu-latest

@@ -236,7 +236,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ⬜ Plugin API for drivers and AI tools
 - ⬜ Mac App Store and Microsoft Store editions
 - ⬜ Code signing (macOS notarization, Windows signing) once sponsored
-- ✅ Scoop manifest with every release (`scoop install …/db-mastermind.json`) · winget / Homebrew cask ⬜
+- ✅ Scoop manifest and Homebrew cask (this repo is the tap) updated with every release · winget ⬜
 
 ---
 

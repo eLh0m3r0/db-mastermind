@@ -100,6 +100,13 @@ With [Scoop](https://scoop.sh) on Windows (portable, updates with `scoop update`
 scoop install https://github.com/eLh0m3r0/db-mastermind/releases/latest/download/db-mastermind.json
 ```
 
+With [Homebrew](https://brew.sh) on macOS (updates with `brew upgrade`):
+
+```bash
+brew tap elh0m3r0/db-mastermind https://github.com/eLh0m3r0/db-mastermind
+brew install --cask db-mastermind
+```
+
 New to the app? Click **Try the demo database** on the start screen.
 
 ## For teams and IT
