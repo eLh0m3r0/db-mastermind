@@ -120,6 +120,32 @@ jobs:
             git worktree remove -f "$RUNNER_TEMP/tap"; sleep 5
           done
 
+  # Opens a pull request on microsoft/winget-pkgs (from a fork under the token's account) with the new version.
+  # Needs a WINGET_TOKEN secret (classic token with public_repo) and the package already in winget-pkgs.
+  winget:
+    needs: desktop
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    env:
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+    steps:
+      - name: Submit to winget
+        if: env.WINGET_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          if ! gh api repos/microsoft/winget-pkgs/contents/manifests/e/eLh0m3r0/DBMastermind >/dev/null 2>&1; then
+            echo "::notice::eLh0m3r0.DBMastermind is not in winget-pkgs yet (first submission still in review)"; exit 0
+          fi
+          curl -fsSL https://github.com/russellbanks/Komac/releases/download/v2.16.0/komac-2.16.0-x86_64-unknown-linux-gnu.tar.gz | tar xz -C "$RUNNER_TEMP"
+          KOMAC=$(find "$RUNNER_TEMP" -name komac -type f | head -1)
+          U="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
+          "$KOMAC" update eLh0m3r0.DBMastermind --version "$V" \
+            --urls "$U/DB-Mastermind-$V-win-x64-setup.exe" "$U/DB-Mastermind-$V-win-arm64-setup.exe" "$U/DB-Mastermind-$V-win-x64.msi" \
+            --release-notes-url "https://github.com/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME" \
+            --submit --token "$WINGET_TOKEN"
+
   mcp-npm:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import type { ConnectionConfig } from '@dbmastermind/core'
 import type { SavedDiagram, SavedQuery } from '../shared/api'
@@ -187,9 +187,17 @@ export function writeTeamConnection(dir: string, connection: ConnectionConfig): 
   for (const key of ['createdAt', 'updatedAt', 'lastUsedAt', 'pinnedTables', 'hiddenSchemas', 'managed', 'team']) delete rest[key]
   if (rest.ssh) rest.ssh = { ...rest.ssh, password: undefined, privateKey: undefined, passphrase: undefined }
   if (rest.ssl) rest.ssl = { ...rest.ssl, key: undefined }
+  // A knowledge base on this computer is copied into knowledge/<id>: colleagues can't reach a local path.
+  const inside = (p: string) => !relative(dir, p).startsWith('..') && !isAbsolute(relative(dir, p))
+  if (typeof rest.knowledgeBasePath === 'string' && !inside(rest.knowledgeBasePath)) {
+    const target = join(dir, TEAM_KNOWLEDGE, rest.id)
+    if (existsSync(rest.knowledgeBasePath)) {
+      cpSync(rest.knowledgeBasePath, target, { recursive: true, force: false, errorOnExist: false })
+      rest.knowledgeBasePath = target
+    } else delete rest.knowledgeBasePath
+  }
   // A knowledge base inside the team folder is stored relative, so it works from everyone's mount point.
-  if (typeof rest.knowledgeBasePath === 'string' && !relative(dir, rest.knowledgeBasePath).startsWith('..') && !isAbsolute(relative(dir, rest.knowledgeBasePath)))
-    rest.knowledgeBasePath = relative(dir, rest.knowledgeBasePath).split(sep).join('/')
+  if (typeof rest.knowledgeBasePath === 'string') rest.knowledgeBasePath = relative(dir, rest.knowledgeBasePath).split(sep).join('/')
   const next = [...list.filter((c) => c.id !== rest.id), rest as TeamConnection]
   const out = Array.isArray(raw) ? next : { ...(raw as object), connections: next }
   writeFileSync(file, `${JSON.stringify(out, null, 2)}\n`, 'utf8')

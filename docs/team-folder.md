@@ -35,6 +35,8 @@ team-folder/
   ```
 - **knowledge/** holds a folder per connection, named by its id or name. It's used as that connection's knowledge
   base automatically. You can also set `knowledgeBasePath` in connections.json, relative to the team folder.
+  *Add to team folder* copies the connection's knowledge base there (into `knowledge/<id>`) and switches it to the
+  team copy, so colleagues get the same notes and team AI tools.
 
 - **diagrams/**: in the ER diagram, choose **Diagrams → Share with the team folder**. Team diagrams appear in the
   same menu, marked *Team*. Moving tables or notes there updates the shared file.

@@ -59,6 +59,24 @@ describe('writing to the team folder', () => {
     removeTeamConnection(dir, 'team-ucetnictvi-db')
     expect(readTeamFolder(dir).connections.map((c) => c.id)).toEqual(['dwh', 'mine'])
   })
+  it('copies a knowledge base from this computer into the team folder, never writing a local path', () => {
+    const dir = folder()
+    const local = mkdtempSync(join(tmpdir(), 'dbm-kb-'))
+    mkdirSync(join(local, 'tools'))
+    writeFileSync(join(local, 'orders.md'), '# Orders')
+    writeFileSync(join(local, 'tools', 'late.sql'), 'SELECT 1')
+    writeTeamConnection(dir, { id: 'erp', name: 'ERP', driver: 'postgres', knowledgeBasePath: local } as never)
+    writeTeamConnection(dir, { id: 'gone', name: 'Gone', driver: 'postgres', knowledgeBasePath: join(local, 'missing') } as never)
+    const raw = JSON.parse(readFileSync(join(dir, 'connections.json'), 'utf8'))
+    expect(raw.connections.find((c: { id: string }) => c.id === 'erp').knowledgeBasePath).toBe('knowledge/erp')
+    expect(raw.connections.find((c: { id: string }) => c.id === 'gone').knowledgeBasePath).toBeUndefined()
+    expect(readFileSync(join(dir, 'knowledge', 'erp', 'tools', 'late.sql'), 'utf8')).toBe('SELECT 1')
+    expect(readTeamFolder(dir).connections.find((c) => c.id === 'erp')!.knowledgeBasePath).toBe(join(dir, 'knowledge', 'erp'))
+    // Sharing again keeps colleagues' notes in the team copy.
+    writeFileSync(join(dir, 'knowledge', 'erp', 'orders.md'), '# Orders (team)')
+    writeTeamConnection(dir, { id: 'erp', name: 'ERP', driver: 'postgres', knowledgeBasePath: local } as never)
+    expect(readFileSync(join(dir, 'knowledge', 'erp', 'orders.md'), 'utf8')).toBe('# Orders (team)')
+  })
 })
 
 describe('team diagrams', () => {
