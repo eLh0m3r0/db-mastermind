@@ -1,0 +1,130 @@
+import type { ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfo } from './types.js'
+
+/**
+ * Tables from a Prisma schema (`schema.prisma`): models with @map/@@map, scalar and native (@db.*) types,
+ * optional fields, defaults, @id/@@id, @unique/@@unique, @@index, relations (with onDelete/onUpdate) and enums.
+ * Relation-only fields (the "other side" of a relation, lists) don't become columns.
+ */
+export function tablesFromPrisma(text: string): { tables: TableInfo[]; enums: Record<string, string[]>; errors: { line: number; message: string }[] } {
+  const clean = text.replace(/\/\/.*$/gm, '')
+  const enums: Record<string, string[]> = {}
+  const errors: { line: number; message: string }[] = []
+  const blocks = [...clean.matchAll(/^\s*(model|enum|view)\s+(\w+)\s*\{([\s\S]*?)^\s*\}/gm)]
+  for (const [, kind, name, body] of blocks) {
+    if (kind === 'enum') enums[name!] = body!.split('\n').map((l) => l.trim().split(/\s+/)[0]!).filter((v) => /^\w+$/.test(v))
+  }
+  const models = new Map(blocks.filter((b) => b[1] !== 'enum').map((b) => [b[2]!, b[3]!]))
+  const tableName = (model: string) => /@@map\(\s*"([^"]+)"\s*\)/.exec(models.get(model) ?? '')?.[1] ?? model
+
+  /** Field name → database column name for a model. */
+  const columnNames = (model: string) => {
+    const map = new Map<string, string>()
+    for (const line of (models.get(model) ?? '').split('\n')) {
+      const m = /^\s*(\w+)\s+\w+/.exec(line)
+      if (m && !line.trim().startsWith('@@')) map.set(m[1]!, /@map\(\s*"([^"]+)"\s*\)/.exec(line)?.[1] ?? m[1]!)
+    }
+    return map
+  }
+  const listArg = (s: string) => s.split(',').map((x) => x.trim().replace(/\(.*$/, '')).filter(Boolean)
+
+  const tables: TableInfo[] = []
+  for (const [model, body] of models) {
+    const cols = columnNames(model)
+    const col = (field: string) => cols.get(field) ?? field
+    const columns: ColumnInfo[] = []
+    const primaryKey: string[] = []
+    const indexes: IndexInfo[] = []
+    const foreignKeys: ForeignKeyInfo[] = []
+    const table = tableName(model)
+    for (const raw of body.split('\n')) {
+      const line = raw.trim()
+      if (!line) continue
+      const block = /^@@(id|unique|index)\(\s*(?:fields:\s*)?\[([^\]]*)\]([^)]*)\)/.exec(line)
+      if (block) {
+        const names = listArg(block[2]!).map(col)
+        if (block[1] === 'id') primaryKey.push(...names)
+        else {
+          const custom = /(?:name|map):\s*"([^"]+)"/.exec(block[3]!)?.[1]
+          indexes.push({ name: custom ?? `${table}_${names.join('_')}_${block[1] === 'unique' ? 'key' : 'idx'}`, columns: names, unique: block[1] === 'unique', primary: false, constraint: block[1] === 'unique' })
+        }
+        continue
+      }
+      if (line.startsWith('@@')) continue
+      const m = /^(\w+)\s+(\w+)(\[\])?(\?)?\s*(.*)$/.exec(line)
+      if (!m) continue
+      const [, field, type, list, optional, attrs] = m as unknown as [string, string, string, string | undefined, string | undefined, string]
+      const relation = /@relation\(([^)]*)\)/.exec(attrs)?.[1]
+      if (models.has(type)) {
+        // The owning side carries fields/references; the other side and lists are not columns.
+        const fields = relation && /fields:\s*\[([^\]]*)\]/.exec(relation)?.[1]
+        const refs = relation && /references:\s*\[([^\]]*)\]/.exec(relation)?.[1]
+        if (fields && refs) {
+          const refCols = columnNames(type)
+          const action = (key: string) => {
+            const a = new RegExp(`${key}:\\s*(\\w+)`).exec(relation!)?.[1]
+            return a ? ({ Cascade: 'CASCADE', Restrict: 'RESTRICT', NoAction: 'NO ACTION', SetNull: 'SET NULL', SetDefault: 'SET DEFAULT' } as Record<string, string>)[a] : undefined
+          }
+          const columnsOf = listArg(fields).map(col)
+          foreignKeys.push({
+            name: /map:\s*"([^"]+)"/.exec(relation!)?.[1] ?? `${table}_${columnsOf.join('_')}_fkey`,
+            columns: columnsOf,
+            refTable: tableName(type),
+            refColumns: listArg(refs).map((r) => refCols.get(r) ?? r),
+            onDelete: action('onDelete'),
+            onUpdate: action('onUpdate'),
+          })
+        }
+        continue
+      }
+      if (list) {
+        errors.push({ line: 0, message: `${model}.${field}: scalar lists (${type}[]) are kept as text` })
+      }
+      const name = /@map\(\s*"([^"]+)"\s*\)/.exec(attrs)?.[1] ?? field
+      const native = /@db\.(\w+)(?:\(([^)]*)\))?/.exec(attrs)
+      const def = /@default\(((?:[^()]|\([^()]*\))*)\)/.exec(attrs)?.[1]?.trim()
+      const identity = def === 'autoincrement()'
+      let defaultValue: string | null = null
+      if (def && !identity) {
+        if (/^now\(\)$/.test(def)) defaultValue = 'now()'
+        else if (/^".*"$/.test(def)) defaultValue = `'${def.slice(1, -1).replaceAll("'", "''")}'`
+        else if (/^(true|false|-?\d+(\.\d+)?)$/.test(def)) defaultValue = def
+        else if (enums[type]?.includes(def)) defaultValue = `'${def}'`
+        // uuid(), cuid(), dbgenerated(…) are generated by Prisma or need the database's own function: no default.
+      }
+      columns.push({
+        name,
+        dataType: list ? 'text' : native ? nativeType(native[1]!, native[2]) : (SCALARS[type] ?? type),
+        nullable: !!optional,
+        defaultValue,
+        isPrimaryKey: false,
+        isIdentity: identity,
+        comment: null,
+      } as ColumnInfo)
+      if (/@id\b/.test(attrs)) primaryKey.push(name)
+      if (/@unique\b/.test(attrs)) indexes.push({ name: `${table}_${name}_key`, columns: [name], unique: true, primary: false, constraint: true })
+    }
+    for (const c of columns) c.isPrimaryKey = primaryKey.includes(c.name)
+    tables.push({ name: table, type: 'table', columns, primaryKey, indexes, foreignKeys, comment: null } as TableInfo)
+  }
+  return { tables, enums, errors }
+}
+
+const SCALARS: Record<string, string> = {
+  String: 'text',
+  Int: 'integer',
+  BigInt: 'bigint',
+  Float: 'double precision',
+  Decimal: 'decimal(65,30)',
+  Boolean: 'boolean',
+  DateTime: 'timestamp(3)',
+  Json: 'jsonb',
+  Bytes: 'bytea',
+}
+
+/** `@db.VarChar(255)` → varchar(255), `@db.Timestamptz(6)` → timestamptz(6). */
+function nativeType(name: string, args?: string): string {
+  const base = name.replace(/^Unsigned/, '').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()
+  const known: Record<string, string> = { 'double precision': 'double precision', 'small int': 'smallint', 'big int': 'bigint', 'tiny int': 'tinyint', 'medium int': 'mediumint', 'n var char': 'nvarchar', 'var char': 'varchar', 'n char': 'nchar', 'date time': 'datetime', 'date time2': 'datetime2', 'small date time': 'smalldatetime', 'date time offset': 'datetimeoffset', 'unique identifier': 'uniqueidentifier', 'var binary': 'varbinary', 'long text': 'longtext', 'medium text': 'mediumtext', 'tiny text': 'tinytext', 'n text': 'ntext' }
+  const sql = known[base] ?? base.replace(/\s+/g, '')
+  return args?.trim() ? `${sql}(${args.trim().replace(/"/g, '')})` : sql
+}

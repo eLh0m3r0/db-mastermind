@@ -95,7 +95,7 @@ project's (AI) maintainer and updated with every release.
 
 ---
 
-## Milestone 1 — Relationships & diagrams (v0.2) 🚧
+## Milestone 1 — Relationships & diagrams (v0.2) ✅
 
 - ✅ **Interactive ER diagram** of a schema or a selection of tables (auto layout, crow's-foot notation)
 - ✅ "Explore from table": start with one table, expand neighbours by FK hop
@@ -110,7 +110,7 @@ project's (AI) maintainer and updated with every release.
 
 ---
 
-## Milestone 2 — AI (v0.3) 🚧 (core shipped early in v0.1)
+## Milestone 2 — AI (v0.3) ✅
 
 ### Providers (bring your own)
 - ✅ Anthropic (Claude), OpenAI, OpenRouter (any model), Azure OpenAI, Google Gemini,
@@ -179,7 +179,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ Forward engineer: DDL for any supported database from the model, with type translation (boolean → bit, jsonb → nvarchar(max), indexed text → bounded strings; verified by running PostgreSQL's schema on every engine)
 - ✅ **Model ↔ database diff** → migration script, reviewed and opened in the SQL editor
 - ✅ Model versions: compare a model with another DBML file (older copy, another branch) — changes and migration
-- ✅ Import from DBML and SQL DDL scripts (pg_dump, mysqldump, SSMS) · ⬜ Prisma, Django/Rails migrations (via AI)
+- ✅ Import from DBML, SQL DDL scripts (pg_dump, mysqldump, SSMS) and Prisma schemas · Django/Rails migrations via the AI assistant
 - ✅ Export: SQL (any engine), DBML, Mermaid, PlantUML, PNG, SVG, HTML data dictionary (PDF via its print view)
 - ✅ AI on models: design or extend, review, suggest indexes, normalize, add audit columns — results apply to the model
 - ✅ **Data dictionary** of a live database: self-contained HTML (search, dark mode, print) or Markdown, with knowledge base notes

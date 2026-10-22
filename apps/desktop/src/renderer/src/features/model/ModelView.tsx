@@ -249,7 +249,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
         <Button size="sm" variant="ghost" icon={<Database size={13} />} onClick={() => void fromDatabase()}>
           {t('From database')}
         </Button>
-        <Button size="sm" variant="ghost" icon={<FileInput size={13} />} onClick={() => void importDdl()} title={t('Read tables from a SQL script (pg_dump, mysqldump, SSMS…)')}>
+        <Button size="sm" variant="ghost" icon={<FileInput size={13} />} onClick={() => void importDdl()} title={t('Read tables from a SQL script (pg_dump, mysqldump, SSMS…) or a Prisma schema')}>
           {t('Import SQL…')}
         </Button>
         <Button size="sm" variant="ghost" icon={<TerminalSquare size={13} />} disabled={!model.tables.length} onClick={(e) => ddlMenu(e.currentTarget)}>

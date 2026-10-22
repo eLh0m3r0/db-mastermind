@@ -997,4 +997,5 @@ export const cs: Record<string, string> = {
   'Shared with the team folder': 'Sdíleno do týmové složky',
   'Could not share the diagram': 'Diagram nejde sdílet',
   'Team': 'Tým',
+  'Read tables from a SQL script (pg_dump, mysqldump, SSMS…) or a Prisma schema': 'Načíst tabulky ze SQL skriptu (pg_dump, mysqldump, SSMS…) nebo ze schématu Prisma',
 }

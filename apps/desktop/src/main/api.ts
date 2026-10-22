@@ -29,6 +29,7 @@ import {
   KnowledgeBase,
   staleKnowledge,
   tablesFromDdl,
+  tablesFromPrisma,
   toDbml,
   resolveInside,
   SAMPLE_KNOWLEDGE,
@@ -401,10 +402,15 @@ export const api: MastermindApi = {
   },
   async importDdlFile() {
     const window = BrowserWindow.getFocusedWindow()
-    const options = { title: 'Import SQL DDL', properties: ['openFile' as const], filters: [{ name: 'SQL', extensions: ['sql', 'ddl', 'txt'] }] }
+    const options = { title: 'Import SQL DDL or a Prisma schema', properties: ['openFile' as const], filters: [{ name: 'SQL DDL or Prisma schema', extensions: ['sql', 'ddl', 'txt', 'prisma'] }] }
     const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
     if (r.canceled || !r.filePaths[0]) return null
-    const { tables, skipped } = await tablesFromDdl(await readFile(r.filePaths[0], 'utf8'))
+    const source = await readFile(r.filePaths[0], 'utf8')
+    if (extname(r.filePaths[0]).toLowerCase() === '.prisma' || /^\s*(model|datasource|generator)\s+\w+\s*\{/m.test(source)) {
+      const prisma = tablesFromPrisma(source)
+      return { path: r.filePaths[0], dbml: toDbml(prisma.tables, { enums: prisma.enums }), skipped: prisma.errors.map((e) => ({ sql: '', error: e.message })) }
+    }
+    const { tables, skipped } = await tablesFromDdl(source)
     return { path: r.filePaths[0], dbml: toDbml(tables, { defaultSchema: 'main' }), skipped }
   },
   async saveModelFile(text, path, defaultDir) {
