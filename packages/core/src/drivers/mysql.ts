@@ -1,8 +1,21 @@
 import type { Connection as CallbackConnection } from 'mysql2'
 import mysql from 'mysql2/promise'
 import type { FieldPacket, Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
+import net from 'node:net'
+import tls from 'node:tls'
+import { noTlsOnServer } from '../tls.js'
 import { mariadbDialect, mysqlDialect } from '../dialect.js'
-import { batchesFromEvents, ConnectionLostError, elapsed, QueryCancelledError, SessionTransactions, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
+import {
+  batchesFromEvents,
+  ConnectionLostError,
+  elapsed,
+  QueryCancelledError,
+  SessionTransactions,
+  type DatabaseDriver,
+  type IntrospectOptions,
+  type StreamBatch,
+  type StreamOptions,
+} from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import { openSshTunnel, type SshTunnel } from '../ssh.js'
 import type {
@@ -39,55 +52,81 @@ export class MysqlDriver implements DatabaseDriver {
   }
 
   async connect(): Promise<void> {
-    let host = this.config.host ?? 'localhost'
-    let port = this.config.port ?? 3306
-    if (this.config.ssh?.enabled) {
-      this.tunnel = await openSshTunnel(this.config.ssh, host, port)
-      host = this.tunnel.localHost
-      port = this.tunnel.localPort
-    }
-    const ssl = this.config.ssl
-    const sslMode = ssl?.mode ?? 'disable'
-    this.pool = mysql.createPool({
-      host,
-      port,
-      user: this.config.user,
-      password: this.config.password,
-      database: this.config.database || undefined,
-      ssl:
-        sslMode === 'disable'
-          ? undefined
-          : {
-              rejectUnauthorized: sslMode === 'verify-ca' || sslMode === 'verify-full',
-              ca: ssl?.ca || undefined,
-              cert: ssl?.cert || undefined,
-              key: ssl?.key || undefined,
-            },
-      connectionLimit: 6,
-      connectTimeout: 15_000,
-      dateStrings: true,
-      supportBigNumbers: true,
-      decimalNumbers: false,
-      multipleStatements: false,
-      enableKeepAlive: true,
-      charset: 'utf8mb4',
-      // Keep JSON as the exact text the server sent (consistent with other drivers, editable).
-      typeCast: (field, next) => {
-        if (field.type === 'JSON') return field.string('utf8')
-        const value = next()
-        // MariaDB reports JSON as BLOB with a json format hint, which mysql2 parses into objects.
-        if (value !== null && typeof value === 'object' && !Buffer.isBuffer(value) && !(value instanceof Date)) {
-          return JSON.stringify(value)
-        }
-        return value
-      },
-    })
+    const host = this.config.host ?? 'localhost'
+    const port = this.config.port ?? 3306
+    if (this.config.ssh?.enabled) this.tunnel = await openSshTunnel(this.config.ssh, host, port)
+    const tunnel = this.tunnel
+    const mode = this.config.ssl?.mode ?? 'disable'
+    const makePool = (tls: boolean) =>
+      mysql.createPool({
+        // Through a tunnel the socket goes to its local end while mysql2 keeps the real host name, which TLS
+        // verification (verify-full) checks the certificate against.
+        host,
+        port,
+        ...(tunnel ? { stream: () => net.connect(tunnel.localPort, tunnel.localHost) } : {}),
+        user: this.config.user,
+        password: this.config.password,
+        database: this.config.database || undefined,
+        ssl:
+          tls && mode !== 'disable'
+            ? {
+                rejectUnauthorized: mode === 'verify-ca' || mode === 'verify-full',
+                verifyIdentity: mode === 'verify-full',
+                ca: this.config.ssl?.ca || undefined,
+                cert: this.config.ssl?.cert || undefined,
+                key: this.config.ssl?.key || undefined,
+              }
+            : undefined,
+        connectionLimit: 6,
+        connectTimeout: 15_000,
+        dateStrings: true,
+        supportBigNumbers: true,
+        decimalNumbers: false,
+        multipleStatements: false,
+        enableKeepAlive: true,
+        charset: 'utf8mb4',
+        // Keep JSON as the exact text the server sent (consistent with other drivers, editable).
+        typeCast: (field, next) => {
+          if (field.type === 'JSON') return field.string('utf8')
+          const value = next()
+          // MariaDB reports JSON as BLOB with a json format hint, which mysql2 parses into objects.
+          if (
+            value !== null &&
+            typeof value === 'object' &&
+            !Buffer.isBuffer(value) &&
+            !(value instanceof Date)
+          ) {
+            return JSON.stringify(value)
+          }
+          return value
+        },
+      })
+    this.pool = makePool(true)
     if (this.config.readOnly) {
       // Raw (callback) connections: enforce read-only before the pool hands them out.
       this.pool.pool.on('connection', (conn) => conn.query('SET SESSION TRANSACTION READ ONLY'))
     }
-    const conn = await this.pool.getConnection()
-    conn.release()
+    try {
+      const conn = await this.pool.getConnection()
+      try {
+        // mysql2 checks the name in the certificate only for host names; an IP address passes unchecked.
+        if (mode === 'verify-full' && net.isIP(host)) {
+          const socket = (conn.connection as unknown as { stream?: { getPeerCertificate?: () => tls.PeerCertificate } }).stream
+          const mismatch = tls.checkServerIdentity(host, socket?.getPeerCertificate?.() ?? ({} as tls.PeerCertificate))
+          if (mismatch) throw mismatch
+        }
+      } finally {
+        conn.release()
+      }
+    } catch (err) {
+      if (this.config.ssl?.mode !== 'prefer' || !noTlsOnServer(err)) throw err
+      await this.pool.end().catch(() => {})
+      this.pool = makePool(false)
+      if (this.config.readOnly)
+        this.pool.pool.on('connection', (conn) => conn.query('SET SESSION TRANSACTION READ ONLY'))
+      const conn = await this.pool.getConnection()
+      conn.release()
+    }
   }
 
   async close(): Promise<void> {
@@ -208,7 +247,10 @@ export class MysqlDriver implements DatabaseDriver {
           // Statements without a result set still emit 'fields' (with undefined).
           if (!fields) return
           current = {
-            fields: fields.map((f): ResultField => ({ name: f.name, dataType: TYPE_NAMES[f.columnType ?? f.type ?? -1] })),
+            fields: fields.map((f): ResultField => ({
+              name: f.name,
+              dataType: TYPE_NAMES[f.columnType ?? f.type ?? -1],
+            })),
             rows: [],
             rowCount: 0,
             command: 'SELECT',
@@ -289,7 +331,13 @@ export class MysqlDriver implements DatabaseDriver {
               // Only the first result set is streamed.
               if (seenFields) firstDone = true
               seenFields = true
-              if (!firstDone) h.fields(fields.map((f): ResultField => ({ name: f.name, dataType: TYPE_NAMES[f.columnType ?? f.type ?? -1] })))
+              if (!firstDone)
+                h.fields(
+                  fields.map((f): ResultField => ({
+                    name: f.name,
+                    dataType: TYPE_NAMES[f.columnType ?? f.type ?? -1],
+                  })),
+                )
             })
             query.on('result', (row: unknown) => {
               if (Array.isArray(row) && !firstDone) h.row(row.map(normalizeValue))
@@ -349,7 +397,9 @@ export class MysqlDriver implements DatabaseDriver {
 
   async listDatabases(): Promise<string[]> {
     const [rows] = await this.activePool.query<RowDataPacket[]>('SHOW DATABASES')
-    return rows.map((r) => String(Object.values(r)[0])).filter((d) => !SYSTEM_SCHEMAS.includes(d.toLowerCase()))
+    return rows
+      .map((r) => String(Object.values(r)[0]))
+      .filter((d) => !SYSTEM_SCHEMAS.includes(d.toLowerCase()))
   }
 
   private async rows(sql: string, params: unknown[] = []): Promise<RawRow[]> {
@@ -363,7 +413,13 @@ export class MysqlDriver implements DatabaseDriver {
     let schemas = options.schemas
     if (!schemas?.length) schemas = currentDb ? [currentDb] : await this.listDatabases()
     if (schemas.length === 0) {
-      return { database: currentDb, schemas: [], tables: [], routines: [], capturedAt: new Date().toISOString() }
+      return {
+        database: currentDb,
+        schemas: [],
+        tables: [],
+        routines: [],
+        capturedAt: new Date().toISOString(),
+      }
     }
     const inList = schemas.map(() => '?').join(', ')
 
@@ -449,7 +505,13 @@ export class MysqlDriver implements DatabaseDriver {
       const name = String(s.name)
       let ix = t.indexes.find((i) => i.name === name)
       if (!ix) {
-        ix = { name, columns: [], unique: Number(s.non_unique) === 0, primary: name === 'PRIMARY', method: String(s.method ?? '') }
+        ix = {
+          name,
+          columns: [],
+          unique: Number(s.non_unique) === 0,
+          primary: name === 'PRIMARY',
+          method: String(s.method ?? ''),
+        }
         t.indexes.push(ix)
       }
       if (s.col !== null && s.col !== undefined) ix.columns.push(String(s.col))

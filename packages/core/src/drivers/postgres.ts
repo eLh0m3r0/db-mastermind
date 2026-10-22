@@ -1,9 +1,20 @@
 /// <reference path="../pg-cursor.d.ts" />
 import pg from 'pg'
 import Cursor from 'pg-cursor'
+import type { ConnectionOptions } from 'node:tls'
 import { postgresDialect } from '../dialect.js'
+import { noTlsOnServer, tlsOptions } from '../tls.js'
 import { classifyStatement } from '../sql-split.js'
-import { ConnectionLostError, elapsed, QueryCancelledError, SessionTransactions, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
+import {
+  ConnectionLostError,
+  elapsed,
+  QueryCancelledError,
+  SessionTransactions,
+  type DatabaseDriver,
+  type IntrospectOptions,
+  type StreamBatch,
+  type StreamOptions,
+} from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import { openSshTunnel, type SshTunnel } from '../ssh.js'
 import type {
@@ -48,32 +59,31 @@ export class PostgresDriver implements DatabaseDriver {
       host = this.tunnel.localHost
       port = this.tunnel.localPort
     }
-    const ssl = this.config.ssl
-    const sslMode = ssl?.mode ?? 'disable'
-    this.pool = new pg.Pool({
-      host,
-      port,
-      database: this.config.database || 'postgres',
-      user: this.config.user,
-      password: this.config.password,
-      ssl:
-        sslMode === 'disable'
-          ? false
-          : {
-              rejectUnauthorized: sslMode === 'verify-ca' || sslMode === 'verify-full',
-              ca: ssl?.ca || undefined,
-              cert: ssl?.cert || undefined,
-              key: ssl?.key || undefined,
-              ...(sslMode === 'verify-ca' ? { checkServerIdentity: () => undefined } : {}),
-            },
-      application_name: 'DB Mastermind',
-      connectionTimeoutMillis: 15_000,
-      idleTimeoutMillis: 60_000,
-      max: 6,
-      keepAlive: true,
-      types: typeOverrides,
-      options: this.config.readOnly ? '-c default_transaction_read_only=on' : undefined,
-    })
+    const serverHost = this.config.host ?? 'localhost'
+    const makePool = (ssl: false | ConnectionOptions) =>
+      new pg.Pool({
+        host,
+        port,
+        database: this.config.database || 'postgres',
+        user: this.config.user,
+        password: this.config.password,
+        ssl,
+        application_name: 'DB Mastermind',
+        connectionTimeoutMillis: 15_000,
+        idleTimeoutMillis: 60_000,
+        max: 6,
+        keepAlive: true,
+        types: typeOverrides,
+        options: this.config.readOnly ? '-c default_transaction_read_only=on' : undefined,
+      })
+    this.pool = makePool(tlsOptions(this.config.ssl, serverHost))
+    try {
+      await this.pool.query('SELECT 1')
+    } catch (err) {
+      if (this.config.ssl?.mode !== 'prefer' || !noTlsOnServer(err)) throw err
+      await this.pool.end().catch(() => {})
+      this.pool = makePool(false)
+    }
     // Idle clients can error when the server goes away; without a listener this crashes the process.
     this.pool.on('error', () => {})
     const client = await this.pool.connect()
@@ -119,7 +129,9 @@ export class PostgresDriver implements DatabaseDriver {
   }
 
   /** Sticky client per editor session so BEGIN … COMMIT across executions works. */
-  private async acquire(session?: string): Promise<{ client: pg.PoolClient; release: (err?: unknown) => void }> {
+  private async acquire(
+    session?: string,
+  ): Promise<{ client: pg.PoolClient; release: (err?: unknown) => void }> {
     if (!session) {
       const client = await this.checkout()
       // A dead connection goes away instead of back to the pool.
@@ -147,7 +159,6 @@ export class PostgresDriver implements DatabaseDriver {
           this.sessions.delete(session)
           c.release(true)
         }
-
       },
     }
   }
@@ -206,18 +217,29 @@ export class PostgresDriver implements DatabaseDriver {
     const start = process.hrtime.bigint()
     try {
       if (options.maxRows === undefined) {
-        const res = await client.query({ text: sql, values: options.params, rowMode: 'array', types: typeOverrides })
+        const res = await client.query({
+          text: sql,
+          values: options.params,
+          rowMode: 'array',
+          types: typeOverrides,
+        })
         const results = (Array.isArray(res) ? res : [res]) as pg.QueryArrayResult[]
         const durationMs = elapsed(start)
         return results.map((r) => this.toResult(r, r.rows, false, durationMs))
       }
       const cursor = client.query(new Cursor(sql, options.params, { rowMode: 'array', types: typeOverrides }))
-      const { rows, result } = await new Promise<{ rows: unknown[][]; result: pg.QueryArrayResult }>((resolve, reject) => {
-        cursor.read(options.maxRows! + 1, (err, rows, result) => (err ? reject(err) : resolve({ rows, result })))
-      })
+      const { rows, result } = await new Promise<{ rows: unknown[][]; result: pg.QueryArrayResult }>(
+        (resolve, reject) => {
+          cursor.read(options.maxRows! + 1, (err, rows, result) =>
+            err ? reject(err) : resolve({ rows, result }),
+          )
+        },
+      )
       await cursor.close().catch(() => {})
       const truncated = rows.length > options.maxRows
-      return [this.toResult(result, truncated ? rows.slice(0, options.maxRows) : rows, truncated, elapsed(start))]
+      return [
+        this.toResult(result, truncated ? rows.slice(0, options.maxRows) : rows, truncated, elapsed(start)),
+      ]
     } catch (err) {
       failure = err
       if (cancelled) throw new QueryCancelledError()
@@ -241,11 +263,21 @@ export class PostgresDriver implements DatabaseDriver {
     const cursor = client.query(new Cursor(sql, options.params, { rowMode: 'array', types: typeOverrides }))
     try {
       for (;;) {
-        const { rows, result } = await new Promise<{ rows: unknown[][]; result: pg.QueryArrayResult }>((resolve, reject) => {
-          cursor.read(options.batchSize ?? 5000, (err, rows, result) => (err ? reject(err) : resolve({ rows, result })))
-        })
+        const { rows, result } = await new Promise<{ rows: unknown[][]; result: pg.QueryArrayResult }>(
+          (resolve, reject) => {
+            cursor.read(options.batchSize ?? 5000, (err, rows, result) =>
+              err ? reject(err) : resolve({ rows, result }),
+            )
+          },
+        )
         if (!rows.length) return
-        yield { fields: (result.fields ?? []).map((f) => ({ name: f.name, dataType: this.typeNames.get(f.dataTypeID) })), rows: rows.map((row) => row.map(normalizeValue)) }
+        yield {
+          fields: (result.fields ?? []).map((f) => ({
+            name: f.name,
+            dataType: this.typeNames.get(f.dataTypeID),
+          })),
+          rows: rows.map((row) => row.map(normalizeValue)),
+        }
       }
     } catch (err) {
       if (cancelled) throw new QueryCancelledError()
@@ -257,7 +289,12 @@ export class PostgresDriver implements DatabaseDriver {
     }
   }
 
-  private toResult(r: pg.QueryArrayResult, rows: unknown[][], truncated: boolean, durationMs: number): QueryResult {
+  private toResult(
+    r: pg.QueryArrayResult,
+    rows: unknown[][],
+    truncated: boolean,
+    durationMs: number,
+  ): QueryResult {
     const fields = (r.fields ?? []).map((f) => ({ name: f.name, dataType: this.typeNames.get(f.dataTypeID) }))
     const hasRows = fields.length > 0
     return {
@@ -320,12 +357,21 @@ export class PostgresDriver implements DatabaseDriver {
     const params = options.schemas?.length ? [options.schemas] : []
 
     const [meta, schemas, tables, columns, constraints, indexes, routines] = await Promise.all([
-      pool.query<{ db: string; schema: string }>('SELECT current_database() AS db, current_schema() AS schema'),
+      pool.query<{ db: string; schema: string }>(
+        'SELECT current_database() AS db, current_schema() AS schema',
+      ),
       pool.query<{ nspname: string }>(
         `SELECT n.nspname FROM pg_namespace n WHERE ${SYSTEM_SCHEMA_FILTER}${schemaFilter} ORDER BY n.nspname`,
         params,
       ),
-      pool.query<{ schema: string; name: string; relkind: string; comment: string | null; estimate: string; definition: string | null }>(
+      pool.query<{
+        schema: string
+        name: string
+        relkind: string
+        comment: string | null
+        estimate: string
+        definition: string | null
+      }>(
         `SELECT n.nspname AS schema, c.relname AS name, c.relkind::text AS relkind,
                 obj_description(c.oid, 'pg_class') AS comment, c.reltuples::bigint AS estimate,
                 CASE WHEN c.relkind IN ('v','m') THEN pg_get_viewdef(c.oid, true) END AS definition
@@ -423,7 +469,13 @@ export class PostgresDriver implements DatabaseDriver {
 
     const key = (schema: string, name: string) => `${schema}\u0000${name}`
     const byKey = new Map<string, TableInfo>()
-    const kinds: Record<string, ObjectType> = { r: 'table', p: 'table', v: 'view', m: 'materialized_view', f: 'foreign_table' }
+    const kinds: Record<string, ObjectType> = {
+      r: 'table',
+      p: 'table',
+      v: 'view',
+      m: 'materialized_view',
+      f: 'foreign_table',
+    }
     for (const t of tables.rows) {
       const info: TableInfo = {
         schema: t.schema,
@@ -439,7 +491,13 @@ export class PostgresDriver implements DatabaseDriver {
       }
       byKey.set(key(t.schema, t.name), info)
     }
-    const fkAction: Record<string, string> = { a: 'NO ACTION', r: 'RESTRICT', c: 'CASCADE', n: 'SET NULL', d: 'SET DEFAULT' }
+    const fkAction: Record<string, string> = {
+      a: 'NO ACTION',
+      r: 'RESTRICT',
+      c: 'CASCADE',
+      n: 'SET NULL',
+      d: 'SET DEFAULT',
+    }
     for (const con of constraints.rows) {
       const t = byKey.get(key(con.schema, con.table))
       if (!t) continue
@@ -504,8 +562,14 @@ export class PostgresDriver implements DatabaseDriver {
 export function isConnectionLost(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false
   const e = err as { code?: string; message?: string }
-  if (e.code && ['57P01', '57P02', '57P03', 'ECONNRESET', 'EPIPE', 'ETIMEDOUT', 'ECONNREFUSED'].includes(e.code)) return true
-  return /Connection terminated|terminating connection|Client has encountered a connection error|Connection is closed|not queryable/i.test(e.message ?? '')
+  if (
+    e.code &&
+    ['57P01', '57P02', '57P03', 'ECONNRESET', 'EPIPE', 'ETIMEDOUT', 'ECONNREFUSED'].includes(e.code)
+  )
+    return true
+  return /Connection terminated|terminating connection|Client has encountered a connection error|Connection is closed|not queryable/i.test(
+    e.message ?? '',
+  )
 }
 
 /**
