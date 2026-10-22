@@ -33,6 +33,8 @@ export interface AskTextOptions {
 
 interface Ask extends ConfirmOptions {
   resolve: (ok: boolean) => void
+  /** askChoice: the second way forward next to confirmLabel. */
+  secondary?: { label: string; resolve: () => void }
   text?: { value: string; placeholder?: string; multiline?: boolean; resolve: (value: string | null) => void }
 }
 
@@ -41,6 +43,17 @@ const useConfirm = create<{ ask?: Ask }>(() => ({}))
 /** Asks before an action, in the app's own dialog (window.confirm only offers OK/Cancel). */
 export function confirmAction(options: ConfirmOptions): Promise<boolean> {
   return new Promise((resolve) => useConfirm.setState({ ask: { ...options, resolve } }))
+}
+
+/**
+ * Two ways forward and Cancel (e.g. "Copy notes" / "Switch without copying"), so cancelling is never mistaken for
+ * the second choice. Resolves with 'confirm', 'secondary' or null.
+ */
+export function askChoice(options: ConfirmOptions & { secondaryLabel: string }): Promise<'confirm' | 'secondary' | null> {
+  const { secondaryLabel, ...rest } = options
+  return new Promise((resolve) =>
+    useConfirm.setState({ ask: { ...rest, resolve: (ok) => resolve(ok ? 'confirm' : null), secondary: { label: secondaryLabel, resolve: () => resolve('secondary') } } }),
+  )
 }
 
 /** Asks for a line of text (a name, a request). Electron has no window.prompt. Resolves with null when cancelled. */
@@ -82,6 +95,16 @@ export function ConfirmDialog() {
           <Button variant="ghost" onClick={() => finish(false)} data-autofocus={ask?.danger ? true : undefined}>
             {t('Cancel')}
           </Button>
+          {ask?.secondary && (
+            <Button
+              onClick={() => {
+                ask.secondary!.resolve()
+                useConfirm.setState({ ask: undefined })
+              }}
+            >
+              {ask.secondary.label}
+            </Button>
+          )}
           <Button variant={ask?.danger ? 'danger' : 'primary'} onClick={() => finish(true)} disabled={empty} data-autofocus={ask?.danger || ask?.text ? undefined : true}>
             {ask?.confirmLabel}
           </Button>
@@ -103,7 +126,9 @@ export function ConfirmDialog() {
               value={value}
               placeholder={ask.text.placeholder}
               onChange={(e) => setValue(e.target.value)}
-              // The Modal focuses the field; the starting value is selected so typing replaces it.
+              // Focused on mount, not a frame later (the Modal's own focus): keys typed right after opening would be
+              // lost. The starting value is selected so typing replaces it.
+              autoFocus
               onFocus={(e) => e.currentTarget.select()}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -117,7 +142,9 @@ export function ConfirmDialog() {
               value={value}
               placeholder={ask.text.placeholder}
               onChange={(e) => setValue(e.target.value)}
-              // The Modal focuses the field; the starting value is selected so typing replaces it.
+              // Focused on mount, not a frame later (the Modal's own focus): keys typed right after opening would be
+              // lost. The starting value is selected so typing replaces it.
+              autoFocus
               onFocus={(e) => e.currentTarget.select()}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
