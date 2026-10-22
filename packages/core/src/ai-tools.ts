@@ -1,4 +1,5 @@
 import { describeError, type DatabaseService } from './engine.js'
+import { explainQuery, type PlanNode } from './explain.js'
 import { KnowledgeBase } from './knowledge.js'
 import { findTable, incomingReferences } from './schema-utils.js'
 import { classifyStatement, splitStatements } from './sql-split.js'
@@ -335,32 +336,24 @@ export const DB_TOOLS: DbTool[] = [
   },
   {
     name: 'explain_query',
-    description: 'Show the execution plan of a SELECT without running it (EXPLAIN). Use it to check performance.',
+    description: 'Execution plan of a SELECT (without running it) as an indented operator tree with estimated cost and rows. Use it to check performance and index usage.',
     inputSchema: { type: 'object', properties: { sql: { type: 'string' } }, required: ['sql'], additionalProperties: false },
     readOnly: true,
     async run(ctx, input) {
       const sql = str(input, 'sql')
       if (!sql) return 'Missing sql.'
-      if (classifyStatement(sql) !== 'read') return 'Only SELECT statements can be explained here.'
-      const driver = ctx.db.config(ctx.connectionId).driver
-      const script =
-        driver === 'mssql'
-          ? `SET SHOWPLAN_TEXT ON\nGO\n${sql}\nGO\nSET SHOWPLAN_TEXT OFF`
-          : driver === 'sqlite'
-            ? `EXPLAIN QUERY PLAN ${sql}`
-            : `EXPLAIN ${sql}`
-      const session = `explain-${Date.now()}`
       try {
-        const outcomes = await ctx.db.runScript(ctx.connectionId, script, { session, maxRows: 200 })
-        const failed = outcomes.find((o) => o.error)
-        if (failed) return `ERROR: ${failed.error!.message}`
-        return outcomes
-          .flatMap((o) => o.results ?? [])
-          .filter((r) => r.fields.length)
-          .map((r) => r.rows.map((row) => row.map((v) => (v === null ? '' : cellToText(v))).join(' | ')).join('\n'))
-          .join('\n')
-      } finally {
-        await ctx.db.releaseSession(ctx.connectionId, session)
+        const plan = await explainQuery(ctx.db, ctx.connectionId, sql)
+        const lines: string[] = []
+        const walk = (n: PlanNode, depth: number) => {
+          const facts = [n.cost !== undefined ? `cost ${n.cost}` : '', n.rows !== undefined ? `rows ${n.rows}` : ''].filter(Boolean).join(', ')
+          lines.push(`${'  '.repeat(depth)}${n.operation}${n.object ? ` on ${n.object}` : ''}${facts ? ` (${facts})` : ''}${n.detail ? ` — ${n.detail}` : ''}`)
+          for (const c of n.children) walk(c, depth + 1)
+        }
+        walk(plan.root, 0)
+        return lines.join('\n')
+      } catch (err) {
+        return `ERROR: ${describeError(err).message}`
       }
     },
   },
