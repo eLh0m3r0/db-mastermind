@@ -77,4 +77,24 @@ describe.skipIf(skip.has('ssh'))('ssh tunnel', () => {
     expect(await value('ssh-pw', 'tab')).toBe('1')
     expect(crashes).toEqual([])
   }, 90_000)
+
+  it('says the SSH tunnel is the problem while the SSH server is down', async () => {
+    execSync(`docker stop ${container}`)
+    try {
+      expect(await value('ssh-pw')).toMatch(/SSH tunnel through 127\.0\.0\.1:2222 is not working/)
+    } finally {
+      execSync(`docker start ${container}`)
+    }
+    for (let i = 0; i < 30; i++) {
+      try {
+        execSync(`docker exec ${container} sh -c "nc -z 127.0.0.1 2222"`, { stdio: 'ignore' })
+        break
+      } catch {
+        await new Promise((r) => setTimeout(r, 1000))
+      }
+    }
+    await new Promise((r) => setTimeout(r, 2000))
+    expect(await value('ssh-pw')).toBe('1')
+    expect(crashes).toEqual([])
+  }, 90_000)
 })

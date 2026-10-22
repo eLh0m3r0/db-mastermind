@@ -169,6 +169,14 @@ export class MssqlDriver implements DatabaseDriver {
   private transactions = new SessionTransactions()
 
   async execute(text: string, options: QueryOptions = {}): Promise<QueryResult[]> {
+    try {
+      return await this.executeTracked(text, options)
+    } catch (err) {
+      throw this.tunnel?.explain(err) ?? err
+    }
+  }
+
+  private async executeTracked(text: string, options: QueryOptions = {}): Promise<QueryResult[]> {
     const session = options.session
     // A session is a one-connection pool that quietly reconnects when the server or network drops it (and SPIDs are
     // reused). A transaction open on the old connection is gone then, and the next statements would autocommit

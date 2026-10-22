@@ -163,6 +163,14 @@ export class PostgresDriver implements DatabaseDriver {
 
   async execute(sql: string, options: QueryOptions = {}): Promise<QueryResult[]> {
     try {
+      return await this.executeTracked(sql, options)
+    } catch (err) {
+      throw this.tunnel?.explain(err) ?? err
+    }
+  }
+
+  private async executeTracked(sql: string, options: QueryOptions = {}): Promise<QueryResult[]> {
+    try {
       const results = await this.executeOnce(sql, options)
       if (options.session) this.transactions.ran(options.session, sql)
       return results

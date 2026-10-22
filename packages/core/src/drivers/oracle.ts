@@ -130,6 +130,14 @@ export class OracleDriver implements DatabaseDriver {
 
   async execute(sql: string, options: QueryOptions = {}): Promise<QueryResult[]> {
     try {
+      return await this.executeTracked(sql, options)
+    } catch (err) {
+      throw this.tunnel?.explain(err) ?? err
+    }
+  }
+
+  private async executeTracked(sql: string, options: QueryOptions = {}): Promise<QueryResult[]> {
+    try {
       return await this.executeOnce(sql, options)
     } catch (err) {
       if (!isConnectionLost(err) || options.signal?.aborted) throw err

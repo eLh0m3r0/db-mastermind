@@ -76,6 +76,11 @@ export class HostKeyMismatchError extends Error {
 export interface SshTunnel {
   localHost: string
   localPort: number
+  /**
+   * A database error while the SSH connection is failing, rephrased to say so: drivers otherwise only see their
+   * socket closing ("Connection terminated unexpectedly").
+   */
+  explain(err: unknown): unknown
   close(): Promise<void>
 }
 
@@ -142,6 +147,7 @@ export async function openSshTunnel(ssh: SshConfig, targetHost: string, targetPo
   let client: Client | undefined
   let connecting: Promise<Client> | undefined
   let closed = false
+  let failure: { message: string; at: number } | undefined
   const gone = (c: Client) => () => {
     if (client === c) client = undefined
   }
@@ -154,7 +160,12 @@ export async function openSshTunnel(ssh: SshConfig, targetHost: string, targetPo
         c.on('error', gone(c))
         if (closed) c.end()
         client = c
+        failure = undefined
         return c
+      })
+      .catch((err: unknown) => {
+        failure = { message: err instanceof Error ? err.message : String(err), at: Date.now() }
+        throw err
       })
       .finally(() => {
         connecting = undefined
@@ -202,6 +213,10 @@ export async function openSshTunnel(ssh: SshConfig, targetHost: string, targetPo
   return {
     localHost: '127.0.0.1',
     localPort: address.port,
+    explain: (err) =>
+      failure && Date.now() - failure.at < 60_000 && !(err instanceof HostKeyMismatchError)
+        ? new Error(`The SSH tunnel through ${ssh.host}:${ssh.port ?? 22} is not working: ${failure.message}`, { cause: err })
+        : err,
     close: () =>
       new Promise<void>((resolve) => {
         closed = true
