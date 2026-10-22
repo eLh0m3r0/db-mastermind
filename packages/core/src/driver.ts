@@ -119,8 +119,8 @@ export class QueryCancelledError extends Error {
 
 export class ReadOnlyViolationError extends Error {
   override name = 'ReadOnlyViolationError'
-  constructor() {
-    super('This connection is read-only. Only SELECT-like statements are allowed.')
+  constructor(message = 'This connection is read-only. Only SELECT-like statements are allowed.') {
+    super(message)
   }
 }
 

@@ -160,7 +160,8 @@ async function runSql(ctx: ToolContext, sql: string, maxRows: number): Promise<s
   } else if (!ctx.allowData) {
     return 'Refused: the user only shares the schema with the assistant, not table contents. Write the SQL for the user to run instead.'
   }
-  const outcomes = await ctx.db.runScript(ctx.connectionId, sql, { maxRows: Math.max(maxRows, 1) })
+  // Statements nobody confirmed run in a read-only transaction: a SELECT can still call a function that writes.
+  const outcomes = await ctx.db.runScript(ctx.connectionId, sql, { maxRows: Math.max(maxRows, 1), readOnly: !writes.length })
   for (const o of outcomes) ctx.onExecuted?.(o)
   return outcomes
     .map((o, i) => {

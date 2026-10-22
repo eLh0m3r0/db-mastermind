@@ -14,7 +14,7 @@ import { buildChangeStatements, type RowChange } from './mutations.js'
 import { bindParameters, extractParameters } from './parameters.js'
 import { KnowledgeBase, relationToForeignKey } from './knowledge.js'
 import { findTable } from './schema-utils.js'
-import { classifyStatement, isReadOnlyScript, splitStatements } from './sql-split.js'
+import { classifyStatement, fitsReadOnlyTransaction, isReadOnlyScript, splitStatements } from './sql-split.js'
 import type { ConnectionConfig, SchemaSnapshot, ServerInfo, StatementOutcome, TableInfo, TablePage, TableRef } from './types.js'
 
 export function createDriver(config: ConnectionConfig): DatabaseDriver {
@@ -51,6 +51,11 @@ export interface RunScriptOptions {
   params?: unknown[]
   /** Values for `:name` / `?` / `$1` parameters (keys: `name`, `$1`…); bound per statement. */
   parameterValues?: Record<string, string | null>
+  /**
+   * Only reads, enforced by the database where it can: the script runs on its own connection inside a read-only
+   * transaction that is always rolled back (unconfirmed AI queries; a SELECT may call a function that writes).
+   */
+  readOnly?: boolean
 }
 
 
@@ -179,6 +184,27 @@ export class DatabaseService {
   /** Splits and runs a script statement by statement, collecting per-statement outcomes. */
   async runScript(id: string, script: string, options: RunScriptOptions = {}): Promise<StatementOutcome[]> {
     const entry = this.get(id)
+    // ApplicationIntent=ReadOnly only binds on read replicas, and T-SQL needs no semicolons (`SELECT 1 DELETE …`):
+    // a read-only SQL Server connection also runs everything in a transaction that is rolled back.
+    // (`readOnly: false` is the guarded inner run.)
+    if (entry.config.readOnly && entry.config.driver === 'mssql' && options.readOnly === undefined) {
+      // Same per-statement error as other read-only connections, without running any of the script.
+      if (!fitsReadOnlyTransaction(script, entry.config.driver)) return [{ sql: script, start: 0, end: script.length, error: describeError(new ReadOnlyViolationError()), durationMs: 0 }]
+      options = { ...options, readOnly: true }
+    }
+    if (options.readOnly) {
+      if (!fitsReadOnlyTransaction(script, entry.config.driver)) throw new ReadOnlyViolationError('Only reads are allowed here (no writes, DDL, transaction control or procedure calls).')
+      const begin = entry.driver.dialect.beginReadOnly
+      if (!begin) return this.runScript(id, script, { ...options, readOnly: false })
+      const session = options.session ?? `readonly-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      try {
+        await entry.driver.execute(begin, { session })
+        return await this.runScript(id, script, { ...options, readOnly: false, session })
+      } finally {
+        await entry.driver.execute(entry.driver.dialect.rollback, { session }).catch(() => {})
+        if (!options.session) await entry.driver.releaseSession(session).catch(() => {})
+      }
+    }
     // T-SQL batches run as a whole (variables and temp tables span statements); only GO splits them.
     const statements = splitStatements(script, entry.config.driver, { batchesOnly: entry.config.driver === 'mssql' })
     const outcomes: StatementOutcome[] = []

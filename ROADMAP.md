@@ -131,6 +131,7 @@ project's (AI) maintainer and updated with every release.
 - ✅ "Explain with AI" on any table or column in the explorer (values, codes, distribution)
 - ✅ AI-suggested filters in the data browser ("orders from last month over 1000 CZK"), validated against real columns
 - ✅ Writes (UPDATE/DELETE/DDL) proposed by AI always require explicit user confirmation
+- ✅ Unconfirmed AI queries (assistant, MCP agents, team tools) run in a read-only transaction enforced by the database and rolled back, so a SELECT calling a function that writes changes nothing (PostgreSQL, MySQL/MariaDB, SQL Server, Oracle)
 
 ### Knowledge base
 - ✅ Per-connection folder of Markdown files (business glossary, table docs, relationships, gotchas)

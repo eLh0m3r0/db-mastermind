@@ -86,7 +86,7 @@ export function sqlTool(spec: SqlToolSpec): DbTool {
         values[p.name] = v === undefined || v === null ? null : String(v)
       }
       try {
-        const outcomes = await ctx.db.runScript(ctx.connectionId, spec.sql, { maxRows: ctx.maxRows ?? 200, parameterValues: values })
+        const outcomes = await ctx.db.runScript(ctx.connectionId, spec.sql, { maxRows: ctx.maxRows ?? 200, parameterValues: values, readOnly: true })
         for (const o of outcomes) ctx.onExecuted?.(o)
         return outcomes
           .map((o) => (o.error ? `ERROR: ${o.error.message}` : (o.results ?? []).map((r) => formatResultForModel(r, ctx.maxRows ?? 200)).join('\n\n')))

@@ -274,12 +274,25 @@ export function classifyStatement(sql: string): StatementKind {
   }
 }
 
-function stripLiterals(sql: string): string {
+export function stripLiterals(sql: string): string {
   return sql
     .replace(/'(?:[^']|'')*'/g, "''")
     .replace(/"(?:[^"]|"")*"/g, '""')
     .replace(/--[^\n]*/g, ' ')
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
+}
+
+/** Keywords that end, nest or leave a transaction, or run other code: not allowed inside a read-only guard. */
+const ESCAPES_TRANSACTION = /\b(COMMIT|ROLLBACK|SAVEPOINT|RELEASE|EXEC|EXECUTE|CALL|SET\s+TRANSACTION|BEGIN\s+TRAN\w*|START\s+TRANSACTION)\b/i
+
+/**
+ * True when a script may run inside a read-only transaction: only reads, and nothing that could end the transaction
+ * (T-SQL needs no semicolons, so `SELECT 1 COMMIT DELETE …` is one statement that starts with SELECT).
+ */
+export function fitsReadOnlyTransaction(script: string, driver: DriverId): boolean {
+  if (!isReadOnlyScript(script, driver)) return false
+  // Elsewhere every statement ends with a semicolon, so splitting already isolates COMMIT, CALL and the like.
+  return driver !== 'mssql' || !ESCAPES_TRANSACTION.test(stripLiterals(script).replace(/\[[^\]]*\]/g, '[]'))
 }
 
 /** True when every statement is a pure read. Unknown statements count as writes. */

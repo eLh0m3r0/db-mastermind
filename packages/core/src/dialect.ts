@@ -31,6 +31,11 @@ export interface Dialect {
   begin: string
   commit: string
   rollback: string
+  /**
+   * Starts a transaction in which the database refuses (or, for SQL Server, the final rollback undoes) any change.
+   * Unconfirmed AI queries run inside one, so a function with side effects can't write. Unset: no such guard.
+   */
+  beginReadOnly?: string
 }
 
 const doubleQuote = (name: string) => `"${name.replaceAll('"', '""')}"`
@@ -53,6 +58,7 @@ export const postgresDialect: Dialect = {
   begin: 'BEGIN',
   commit: 'COMMIT',
   rollback: 'ROLLBACK',
+  beginReadOnly: 'BEGIN TRANSACTION READ ONLY',
 }
 
 export const duckdbDialect: Dialect = {
@@ -80,6 +86,7 @@ export const mysqlDialect: Dialect = {
   begin: 'START TRANSACTION',
   commit: 'COMMIT',
   rollback: 'ROLLBACK',
+  beginReadOnly: 'START TRANSACTION READ ONLY',
 }
 
 export const mariadbDialect: Dialect = { ...mysqlDialect, id: 'mariadb', sqlFlavor: 'mariadb' }
@@ -103,6 +110,7 @@ export const mssqlDialect: Dialect = {
   begin: 'BEGIN TRANSACTION',
   commit: 'COMMIT TRANSACTION',
   rollback: 'ROLLBACK TRANSACTION',
+  beginReadOnly: 'BEGIN TRANSACTION',
 }
 
 export const sqliteDialect: Dialect = {
@@ -139,6 +147,7 @@ export const oracleDialect: Dialect = {
   begin: 'SET TRANSACTION READ WRITE',
   commit: 'COMMIT',
   rollback: 'ROLLBACK',
+  beginReadOnly: 'SET TRANSACTION READ ONLY',
 }
 
 /**
