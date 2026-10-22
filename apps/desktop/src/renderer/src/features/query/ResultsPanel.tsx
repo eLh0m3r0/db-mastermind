@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { AlertTriangle, BarChart3, CheckCircle2, Copy, Download, LayoutDashboard, Pin, Sparkles, TerminalSquare, X, XCircle, CircleStop } from 'lucide-react'
 import { cellToText, type CellValue, type QueryResult, type SortSpec, type StatementOutcome } from '@dbmastermind/core/browser'
@@ -78,6 +78,8 @@ export function ResultsPanel({
   const tr = useT()
   const language = useSettings((s) => s.settings?.language)
 
+  const tabStrip = useRef<HTMLDivElement>(null)
+  const messageList = useRef<HTMLDivElement>(null)
   // Pinned results stay when the next query runs, to compare side by side as tabs.
   const [pinned, setPinned] = useState<ResultTab[]>([])
   const tabs = useMemo<ResultTab[]>(() => {
@@ -105,6 +107,13 @@ export function ResultsPanel({
         : tabs[tabs.length - 1]!.key
   const isPinned = (key: string) => key.startsWith('pin:')
   const current = tabs.find((t) => t.key === activeKey)
+  useEffect(() => {
+    tabStrip.current?.querySelector(`[data-result-tab="${CSS.escape(activeKey)}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [activeKey])
+  // After a long script fails near the end, show the error rather than the first of many successes.
+  useEffect(() => {
+    if (activeKey === 'messages' && hasError) messageList.current?.querySelector('[data-failed]')?.scrollIntoView({ block: 'nearest' })
+  }, [activeKey, hasError, outcomes])
 
   const sortedRows = useMemo(() => {
     if (!current) return []
@@ -178,40 +187,44 @@ export function ResultsPanel({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex h-8 shrink-0 items-center gap-0.5 border-b border-line bg-subtle px-1.5">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setActive(t.key)}
-            className={cn(
-              'h-6 rounded px-2 text-[12px]',
-              activeKey === t.key ? 'bg-elevated font-medium text-fg shadow-sm' : 'text-fg-muted hover:text-fg',
-            )}
-          >
-            {isPinned(t.key) && <Pin size={10} className="mr-1 inline text-accent" />}
-            {t.label}
-            <span className="ml-1.5 text-fg-faint">{formatCount(t.result.rowCount)}</span>
-            {isPinned(t.key) && (
-              <span
-                role="button"
-                tabIndex={-1}
-                title={tr('Unpin')}
-                className="ml-1 inline-flex rounded text-fg-faint hover:bg-hover hover:text-fg"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setPinned((p) => p.filter((x) => x.key !== t.key))
-                }}
-              >
-                <X size={11} />
-              </span>
-            )}
-          </button>
-        ))}
+        {/* Many result sets scroll sideways in one line; Messages stays in view next to them. */}
+        <div ref={tabStrip} className="flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              data-result-tab={t.key}
+              onClick={() => setActive(t.key)}
+              className={cn(
+                'h-6 shrink-0 rounded px-2 text-[12px] whitespace-nowrap',
+                activeKey === t.key ? 'bg-elevated font-medium text-fg shadow-sm' : 'text-fg-muted hover:text-fg',
+              )}
+            >
+              {isPinned(t.key) && <Pin size={10} className="mr-1 inline text-accent" />}
+              {t.label}
+              <span className="ml-1.5 text-fg-faint">{formatCount(t.result.rowCount)}</span>
+              {isPinned(t.key) && (
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  title={tr('Unpin')}
+                  className="ml-1 inline-flex rounded text-fg-faint hover:bg-hover hover:text-fg"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setPinned((p) => p.filter((x) => x.key !== t.key))
+                  }}
+                >
+                  <X size={11} />
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
         <button
           type="button"
           onClick={() => setActive('messages')}
           className={cn(
-            'flex h-6 items-center gap-1 rounded px-2 text-[12px]',
+            'flex h-6 shrink-0 items-center gap-1 rounded px-2 text-[12px] whitespace-nowrap',
             activeKey === 'messages' ? 'bg-elevated font-medium text-fg shadow-sm' : 'text-fg-muted hover:text-fg',
           )}
         >
@@ -287,11 +300,12 @@ export function ResultsPanel({
       </div>
       <div className="min-h-0 flex-1">
         {activeKey === 'messages' || !current ? (
-          <div className="h-full overflow-auto p-2 font-mono text-[12px] select-text">
+          <div ref={messageList} className="h-full overflow-auto p-2 font-mono text-[12px] select-text">
             {outcomes.length === 0 && <div className="p-2 text-fg-faint">{tr('Nothing to run.')}</div>}
             {outcomes.map((o, i) => (
               <div
                 key={i}
+                data-failed={o.error && !cancelled(o) ? true : undefined}
                 className={cn('mb-1.5 rounded-md border p-2', o.error && !cancelled(o) ? 'border-danger/30 bg-danger-soft' : 'border-line bg-subtle')}
               >
                 <div className="flex items-center gap-2">
@@ -364,7 +378,7 @@ export function ResultsPanel({
                 {
                   label: tr('Copy rows as'),
                   submenu: (['json', 'csv', 'markdown', 'sql'] as const).map((format) => ({
-                    label: format === 'sql' ? 'SQL INSERT' : format.toUpperCase(),
+                    label: format === 'sql' ? 'SQL INSERT' : format === 'markdown' ? 'Markdown' : format.toUpperCase(),
                     onClick: () => {
                       const s = sel ?? selection
                       if (!s) return

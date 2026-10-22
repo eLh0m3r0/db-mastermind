@@ -587,7 +587,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
       {
         label: t('Copy rows as'),
         submenu: (['json', 'csv', 'markdown', 'sql'] as const).map((format) => ({
-          label: format === 'sql' ? 'SQL INSERT' : format.toUpperCase(),
+          label: format === 'sql' ? 'SQL INSERT' : format === 'markdown' ? 'Markdown' : format.toUpperCase(),
           onClick: () =>
             void copyText(
               copyRowsAs(format, fields, rows.map((r) => displayRows[r]!), connection?.driver, displayName(schema, tab.table)),
