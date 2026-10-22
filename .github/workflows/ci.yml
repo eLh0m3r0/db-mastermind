@@ -134,6 +134,17 @@ jobs:
           cd ../..
           node e2e/smoke.mjs "$($exe.FullName)"
           if (Test-Path (Join-Path $exe.DirectoryName 'data')) { throw "A per-machine install must not use portable mode" }
+      - name: Microsoft Store package builds (placeholder identity)
+        if: runner.os == 'Windows'
+        working-directory: apps/desktop
+        shell: bash
+        run: >
+          npx electron-builder --win appx --x64 --prepackaged release/win-unpacked --publish never
+          --config.appx.identityName=Test.DBMastermind --config.appx.publisher="CN=00000000-0000-0000-0000-000000000000"
+          --config.appx.publisherDisplayName="Test" --config.appx.applicationId=DBMastermind --config.appx.displayName="DB Mastermind"
+          && ls -la release/*.appx
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4

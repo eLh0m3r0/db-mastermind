@@ -242,7 +242,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ AI tool plugins: `tools/*.sql` in the knowledge base become read-only, parameter-bound tools for the assistant and MCP
   agents (docs/ai-tools.md; verified end to end with Claude Code over MCP)
 - 💡 Driver plugins (third-party code in the app needs a sandbox and signing story first)
-- ⬜ Mac App Store and Microsoft Store editions
+- 🚧 Microsoft Store (MSIX signed by the Store; packaging ready, waits for the Partner Center identity — docs/microsoft-store.md) · Mac App Store: not planned (sandbox would cut features)
 - ⬜ Code signing (macOS notarization, Windows signing) once sponsored
 - ✅ Scoop manifest and Homebrew cask (this repo is the tap) updated with every release · winget ⬜
 

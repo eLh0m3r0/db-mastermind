@@ -84,6 +84,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Microsoft Store package (MSIX, signed by the Store)
+        # Needs the app's identity from Partner Center as repository variables (see docs/microsoft-store.md).
+        if: runner.os == 'Windows' && vars.MSSTORE_IDENTITY_NAME != ''
+        working-directory: apps/desktop
+        shell: bash
+        run: >
+          npx electron-builder --win appx --x64 --prepackaged release/win-unpacked --publish always
+          --config.appx.identityName="${{ vars.MSSTORE_IDENTITY_NAME }}"
+          --config.appx.publisher="${{ vars.MSSTORE_PUBLISHER }}"
+          --config.appx.publisherDisplayName="${{ vars.MSSTORE_PUBLISHER_NAME }}"
+          --config.appx.applicationId=DBMastermind
+          --config.appx.displayName="DB Mastermind"
+          --config.appx.artifactName='DB-Mastermind-${version}-store.${ext}'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Homebrew cask
         # The repository doubles as a tap: brew tap elh0m3r0/db-mastermind https://github.com/eLh0m3r0/db-mastermind
         if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')

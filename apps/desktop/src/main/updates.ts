@@ -20,6 +20,8 @@ function newer(a: string, b: string): boolean {
  * portable zip (Scoop or the user replaces it), not MSI (IT deploys it), not macOS (Squirrel needs a signed app).
  */
 export function canAutoUpdate(): boolean {
+  // Microsoft Store installs are updated by the Store.
+  if (process.windowsStore) return false
   if (process.platform === 'win32') return !isPortable && existsSync(join(dirname(app.getPath('exe')), 'Uninstall DB Mastermind.exe'))
   return process.platform === 'linux' && !!process.env.APPIMAGE
 }
