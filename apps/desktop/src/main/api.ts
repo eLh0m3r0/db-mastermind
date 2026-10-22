@@ -13,6 +13,8 @@ import {
   schemaOverview,
   writeSqlPrompt,
   listActivity,
+  listGrants,
+  listPrincipals,
   buildDataDictionary,
   compareTableData,
   type DictionaryNote,
@@ -254,6 +256,14 @@ export const api: MastermindApi = {
   async listActivity(connectionId) {
     await ensureConnected(connectionId)
     return listActivity(db, connectionId)
+  },
+  async listPrincipals(connectionId) {
+    await ensureConnected(connectionId)
+    return listPrincipals(db, connectionId)
+  },
+  async listGrants(connectionId, principal) {
+    await ensureConnected(connectionId)
+    return listGrants(db, connectionId, principal)
   },
   async stopSession(connectionId, sessionId, mode) {
     await ensureConnected(connectionId)

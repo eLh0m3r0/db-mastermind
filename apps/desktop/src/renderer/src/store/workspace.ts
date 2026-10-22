@@ -67,12 +67,18 @@ export interface DataCompareTab extends BaseTab {
   keyColumns?: string
 }
 
+/** Users, roles and their privileges. */
+export interface RolesTab extends BaseTab {
+  kind: 'roles'
+  principal?: string
+}
+
 /** Server activity: sessions and running queries. */
 export interface ActivityTab extends BaseTab {
   kind: 'activity'
 }
 
-export type Tab = QueryTab | TableTab | StructureTab | DiagramTab | KnowledgeTab | CompareTab | ActivityTab | DataCompareTab
+export type Tab = QueryTab | TableTab | StructureTab | DiagramTab | KnowledgeTab | CompareTab | ActivityTab | DataCompareTab | RolesTab
 export type NewTab =
   | Omit<QueryTab, 'id'>
   | Omit<TableTab, 'id'>
@@ -82,6 +88,7 @@ export type NewTab =
   | Omit<CompareTab, 'id'>
   | Omit<ActivityTab, 'id'>
   | Omit<DataCompareTab, 'id'>
+  | Omit<RolesTab, 'id'>
 
 interface WorkspaceState {
   tabs: Tab[]

@@ -201,7 +201,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ⬜ Backup / restore helpers (pg_dump, mysqldump wrappers when available)
 - ✅ Server activity: sessions and running queries with auto-refresh, cancel query, end session (PG, MySQL/MariaDB, MSSQL, Oracle)
 - ✅ Server activity: lock waits (who waits for whom), blocking sessions highlighted even when idle
-- ⬜ Users & roles browser
+- ✅ Users & roles browser: memberships, members and object privileges (PostgreSQL incl. column grants, MySQL/MariaDB, SQL Server, Oracle)
 - ✅ Snippets with fields (built-in, dialect-aware: sel, cnt, dup, orph, cte, tx…; your own in Settings)
 - ⬜ Split editor panes, side-by-side results
 

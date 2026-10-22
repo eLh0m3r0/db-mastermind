@@ -1,6 +1,8 @@
 import type {
   ConnectionConfig,
   DataCompareResult,
+  Grant,
+  Principal,
   ExplainResult,
   FilterGroup,
   FilterNode,
@@ -264,6 +266,8 @@ export interface MastermindApi {
   explainQuery(connectionId: string, sql: string, analyze?: boolean): Promise<ExplainResult>
   releaseSession(connectionId: string, session: string): Promise<void>
   listActivity(connectionId: string): Promise<SessionActivity[]>
+  listPrincipals(connectionId: string): Promise<Principal[]>
+  listGrants(connectionId: string, principal: string): Promise<Grant[]>
   stopSession(connectionId: string, sessionId: string, mode: 'cancel' | 'terminate'): Promise<void>
   /** Writes HTML/Markdown documentation of the schema (with knowledge base notes); returns the path or null if cancelled. */
   exportDataDictionary(connectionId: string, format: 'html' | 'markdown', schemas?: string[]): Promise<string | null>
@@ -354,6 +358,8 @@ export const API_METHODS = [
   'explainQuery',
   'releaseSession',
   'listActivity',
+  'listPrincipals',
+  'listGrants',
   'stopSession',
   'exportDataDictionary',
   'compareData',

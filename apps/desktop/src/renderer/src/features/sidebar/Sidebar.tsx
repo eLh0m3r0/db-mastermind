@@ -16,6 +16,7 @@ import {
   Power,
   Search,
   Share2,
+  ShieldCheck,
   Trash2,
   Unplug,
 } from 'lucide-react'
@@ -68,6 +69,9 @@ export function connectionMenu(c: StoredConnection): Parameters<typeof openMenu>
     { label: t('Edit…'), icon: <Pencil size={13} />, onClick: () => useUi.getState().set({ modal: { kind: 'connection', connectionId: c.id } }) },
     { label: t('Duplicate'), icon: <Copy size={13} />, onClick: () => void duplicate(c.id) },
     { label: t('Data dictionary (HTML)…'), icon: <FileText size={13} />, onClick: () => void exportDataDictionary(c.id, 'html') },
+    ...(isFileDriver(c.driver)
+      ? []
+      : [{ label: t('Users & roles'), icon: <ShieldCheck size={13} />, onClick: () => useWorkspace.getState().open({ kind: 'roles', connectionId: c.id, title: t('Users & roles') }) }]),
     { label: t('Share with colleagues (without password)…'), icon: <Share2 size={13} />, onClick: () => void shareConnections([c.id]) },
     'separator',
     {
