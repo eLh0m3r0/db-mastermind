@@ -1,7 +1,9 @@
 name: Auto-update check
 
-# Installs an older release with the Windows installer, lets it find, download and install the latest release
-# through electron-updater, and checks that the installed version changed. Runs after every release.
+# Installs an old version with the Windows installer, lets it find, download and install the latest release
+# through electron-updater, and checks that the installed version changed.
+#   current: the code in this commit, built as version 0.0.1 (tests the updater code before it ships)
+#   release: the previous release (tests what users actually have)
 on:
   workflow_run:
     workflows: [Release]
@@ -9,17 +11,47 @@ on:
   workflow_dispatch:
     inputs:
       from:
-        description: 'Version to install first (default: the release before the latest)'
+        description: 'Release to install first for the "release" job (default: the one before the latest)'
         required: false
 
 permissions:
   contents: read
 
 jobs:
-  windows:
+  current:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: windows-latest
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - name: Build an installer of this code as version 0.0.1
+        working-directory: apps/desktop
+        run: npx electron-vite build && npx electron-builder --win nsis --x64 --publish never -c.extraMetadata.version=0.0.1
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Install it silently
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem apps/desktop/release/*0.0.1*setup*.exe | Select-Object -First 1
+          Start-Process $setup.FullName -ArgumentList '/S' -Wait
+          $exe = "$env:LOCALAPPDATA\Programs\DB Mastermind\DB Mastermind.exe"
+          if (-not (Test-Path $exe)) { throw "Not installed: $exe" }
+          Get-Content "$env:LOCALAPPDATA\Programs\DB Mastermind\resources\app-update.yml"
+      - name: Update to the latest release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./.github/scripts/update-check.ps1 -Latest ((gh release view -R $env:GITHUB_REPOSITORY --json tagName -q .tagName) -replace '^v', '')
+
+  release:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
       - name: Pick versions
         id: v
         shell: bash
@@ -33,7 +65,7 @@ jobs:
           echo "latest=${latest#v}" >> "$GITHUB_OUTPUT"
           echo "from=${from#v}" >> "$GITHUB_OUTPUT"
           echo "Updating ${from#v} → ${latest#v}"
-      - name: Install the older version silently
+      - name: Install the older release silently
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -41,56 +73,7 @@ jobs:
           $v = '${{ steps.v.outputs.from }}'
           gh release download "v$v" -R $env:GITHUB_REPOSITORY -p "DB-Mastermind-$v-win-x64-setup.exe" -D $env:RUNNER_TEMP
           Start-Process "$env:RUNNER_TEMP\DB-Mastermind-$v-win-x64-setup.exe" -ArgumentList '/S' -Wait
-          $exe = "$env:LOCALAPPDATA\Programs\DB Mastermind\DB Mastermind.exe"
-          if (-not (Test-Path $exe)) { throw "Not installed: $exe" }
-          (Get-Item $exe).VersionInfo.ProductVersion
-      - name: Run it until the update is downloaded, then quit to install
+          if (-not (Test-Path "$env:LOCALAPPDATA\Programs\DB Mastermind\DB Mastermind.exe")) { throw 'Not installed' }
+      - name: Update to the latest release
         shell: pwsh
-        run: |
-          $latest = '${{ steps.v.outputs.latest }}'
-          $exe = "$env:LOCALAPPDATA\Programs\DB Mastermind\DB Mastermind.exe"
-          $env:ELECTRON_ENABLE_LOGGING = '1'
-          $app = Start-Process $exe -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP\app-out.log" -RedirectStandardError "$env:RUNNER_TEMP\app-err.log"
-          $deadline = (Get-Date).AddMinutes(8)
-          $found = $null
-          while ((Get-Date) -lt $deadline -and -not $found) {
-            Start-Sleep -Seconds 10
-            # electron-updater keeps the downloaded installer as installer.exe (or under pending/) in its cache folder.
-            $found = Get-ChildItem "$env:LOCALAPPDATA" -Directory -Filter '*-updater' | ForEach-Object { Get-ChildItem $_.FullName -Recurse -Filter '*.exe' -ErrorAction SilentlyContinue } | Where-Object { $_.Length -gt 50MB } | Select-Object -First 1
-          }
-          if (-not $found) {
-            Get-ChildItem "$env:LOCALAPPDATA" -Directory -Filter '*-updater' | ForEach-Object { Get-ChildItem $_.FullName -Recurse | Format-Table FullName, Length }
-            Write-Host '--- app stdout ---'; Get-Content "$env:RUNNER_TEMP\app-out.log" -Tail 80 -ErrorAction SilentlyContinue
-            Write-Host '--- app stderr ---'; Get-Content "$env:RUNNER_TEMP\app-err.log" -Tail 80 -ErrorAction SilentlyContinue
-            Get-ChildItem "$env:LOCALAPPDATA\Programs\DB Mastermind" | Format-Table Name
-            Get-ChildItem "$env:LOCALAPPDATA\Programs\DB Mastermind\resources" | Format-Table Name
-            Get-Content "$env:LOCALAPPDATA\Programs\DB Mastermind\resources\app-update.yml" -ErrorAction SilentlyContinue
-            throw "The update to $latest was not downloaded"
-          }
-          Write-Host "Downloaded: $($found.FullName)"
-          # Let the download settle, then quit normally (not a kill): autoInstallOnAppQuit runs the installer.
-          Start-Sleep -Seconds 20
-          Write-Host "Main window handle: $($app.MainWindowHandle)"
-          $app.CloseMainWindow() | Out-Null
-          Start-Sleep -Seconds 5
-          if (Get-Process -Id $app.Id -ErrorAction SilentlyContinue) {
-            Write-Host 'Still running after CloseMainWindow; asking with taskkill (WM_CLOSE)'
-            taskkill /PID $app.Id /T
-            Start-Sleep -Seconds 5
-          }
-          Write-Host "App running: $([bool](Get-Process -Id $app.Id -ErrorAction SilentlyContinue))"
-          Get-Process | Where-Object { $_.ProcessName -match 'installer|DB Mastermind|setup' } | Format-Table ProcessName, Id, Path
-          $deadline = (Get-Date).AddMinutes(4)
-          do {
-            Start-Sleep -Seconds 10
-            $v = (Get-Item $exe -ErrorAction SilentlyContinue).VersionInfo.ProductVersion
-            Write-Host "Installed version: $v"
-          } while ((Get-Date) -lt $deadline -and -not ("$v" -like "$latest*"))
-          if (-not ("$v" -like "$latest*")) {
-            Get-Process | Where-Object { $_.ProcessName -match 'installer|DB Mastermind|setup' } | Format-Table ProcessName, Id, Path
-            Get-ChildItem "$env:LOCALAPPDATA" -Directory -Filter '*-updater' | ForEach-Object { Get-ChildItem $_.FullName -Recurse | Format-Table FullName, Length, LastWriteTime }
-            Write-Host '--- app stdout ---'; Get-Content "$env:RUNNER_TEMP\app-out.log" -Tail 60 -ErrorAction SilentlyContinue
-            Write-Host '--- app stderr ---'; Get-Content "$env:RUNNER_TEMP\app-err.log" -Tail 60 -ErrorAction SilentlyContinue
-            throw "Expected $latest after quitting, found $v"
-          }
-          Write-Host "Updated to $latest"
+        run: ./.github/scripts/update-check.ps1 -Latest '${{ steps.v.outputs.latest }}'
