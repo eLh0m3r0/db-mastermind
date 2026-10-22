@@ -26,7 +26,8 @@ PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite — Windows · 
   *this month*…), raw `WHERE`, quick filters from any cell
 - **Foreign keys everywhere**: click an arrow in a cell to open the referenced row, or jump to rows that
   reference this one
-- SQL editor with schema-aware autocomplete, multiple result sets, cancel, format, history and saved queries
+- SQL editor with schema-aware autocomplete (after `JOIN` it suggests related tables with the whole `ON` clause),
+  query parameters, execution plans, multiple result sets, cancel, format, history and saved queries
 - Export a page or the whole (filtered) table to CSV, Excel, JSON, SQL or Markdown, streamed with no row limit
 - Command palette (`Ctrl/⌘ K`), quick table open (`Ctrl/⌘ P`), light & dark themes, English and Czech UI
 - **Enterprise-ready connections**: SSH tunnels, SSL, read-only and production safety rails, **SQL Server Windows
@@ -36,10 +37,15 @@ PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite — Windows · 
 
 - **Charts from any result**: bar, line or scatter in one click, with a colorblind-safe palette
 - **Import CSV / Excel** into a table with column mapping (Windows-1250 exports from Czech Excel included)
+- **Server activity**: running queries and sessions, cancel a query or end a session
+- Pin favourite tables, hide schemas you don't use
 
 **Understand and redesign the model**
 - **Interactive ER diagrams** with automatic layout, crow's-foot notation, focus on a table and its neighbours,
   export to PNG / SVG / Mermaid / DBML
+- **Join path**: pick two tables and see how they connect, then open it as a ready `SELECT … JOIN`
+- **Schema compare** between two connections or schemas (dev → prod) with the migration for the target
+- **Data dictionary**: one self-contained HTML page (or Markdown) documenting every table, with your notes
 - **Schema designer on the live database**: edit tables, columns, keys and indexes right on the diagram. DB
   Mastermind generates the migration for your database (including SQLite table rebuilds and dependent views),
   checks the existing data first (NULLs, duplicates, orphans) and writes a rollback script
@@ -51,6 +57,7 @@ PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite — Windows · 
 - Bring your own model: **Anthropic, OpenAI, OpenRouter, Gemini, Azure OpenAI, Ollama / LM Studio** (local)
 - …or use your existing **Claude Code** or **Codex** subscription, with nothing extra to pay
 - The assistant explores the schema, runs read-only queries, and asks before any write
+- **Explain with AI** on any table, and **filters in plain language** ("paid orders over 1000 this month")
 - **Knowledge base**: a folder of Markdown notes per database (business meaning, codes, joins, gotchas).
   The AI reads it, and can write the first version for you. Relationships documented there
   (`relations: ["orders.customer_code -> customers.code"]`) show up in diagrams and FK navigation
