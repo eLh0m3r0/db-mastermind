@@ -15,6 +15,7 @@ import {
   schemaOverview,
   type ConnectionConfig,
   type DatabaseService,
+  type StatementOutcome,
   type ToolContext,
 } from '@dbmastermind/core'
 
@@ -28,6 +29,8 @@ export interface McpServerOptions {
   /** Hide table contents (query results, samples) from agents. */
   schemaOnly?: boolean
   version?: string
+  /** Called for every statement an agent ran (audit log). */
+  onExecuted?: (connectionId: string, outcome: StatementOutcome) => void
 }
 
 const INSTRUCTIONS = `DB Mastermind gives you safe access to the user's databases.
@@ -65,6 +68,7 @@ export function createMcpServer(options: McpServerOptions): Server {
       allowKnowledgeWrites: options.allowKnowledgeWrites,
       confirmWrite: options.allowWrites ? async () => true : undefined,
       maxRows: 100,
+      onExecuted: options.onExecuted ? (o) => options.onExecuted!(config.id, o) : undefined,
     }
   }
 

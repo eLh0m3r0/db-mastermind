@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Dashboard, HistoryEntry, SavedDiagram, SavedQuery, WorkspaceState } from '@shared/api'
-import { readJson, writeJson } from './storage'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { dataPath, readJson, writeJson } from './storage'
 
 const HISTORY_FILE = 'history.json'
 const SAVED_FILE = 'saved-queries.json'
@@ -8,6 +9,8 @@ const WORKSPACE_FILE = 'workspace.json'
 const DIAGRAMS_FILE = 'diagrams.json'
 const DASHBOARDS_FILE = 'dashboards.json'
 const MAX_HISTORY = 5000
+/** Statements run by external agents through `--mcp` (a separate process appends here). */
+export const MCP_HISTORY_FILE = 'mcp-history.jsonl'
 
 let history: HistoryEntry[] | undefined
 let historyTimer: NodeJS.Timeout | undefined
@@ -40,10 +43,29 @@ export function addHistory(entry: Omit<HistoryEntry, 'id'>): void {
   scheduleHistoryWrite()
 }
 
+function mcpHistory(): HistoryEntry[] {
+  const file = dataPath(MCP_HISTORY_FILE)
+  if (!existsSync(file)) return []
+  const out: HistoryEntry[] = []
+  readFileSync(file, 'utf8')
+    .split('\n')
+    .forEach((line, i) => {
+      if (!line.trim()) return
+      try {
+        out.push({ ...(JSON.parse(line) as Omit<HistoryEntry, 'id'>), id: `mcp-${i}`, source: 'mcp' })
+      } catch {
+        // A line cut short by a crash: skip it.
+      }
+    })
+  return out.reverse()
+}
+
 export function listHistory(connectionId?: string, search?: string, limit = 500): HistoryEntry[] {
   const needle = search?.trim().toLowerCase()
   const out: HistoryEntry[] = []
-  for (const h of loadHistory()) {
+  const agent = mcpHistory()
+  const all = agent.length ? [...loadHistory(), ...agent].sort((a, b) => b.executedAt.localeCompare(a.executedAt)) : loadHistory()
+  for (const h of all) {
     if (connectionId && h.connectionId !== connectionId) continue
     if (needle && !h.sql.toLowerCase().includes(needle)) continue
     out.push(h)
@@ -55,6 +77,11 @@ export function listHistory(connectionId?: string, search?: string, limit = 500)
 export function clearHistory(connectionId?: string): void {
   history = connectionId ? loadHistory().filter((h) => h.connectionId !== connectionId) : []
   scheduleHistoryWrite()
+  const file = dataPath(MCP_HISTORY_FILE)
+  if (existsSync(file)) {
+    const keep = connectionId ? mcpHistory().reverse().filter((h) => h.connectionId !== connectionId) : []
+    writeFileSync(file, keep.map(({ id: _id, ...h }) => `${JSON.stringify(h)}\n`).join(''))
+  }
 }
 
 export function listSavedQueries(): SavedQuery[] {

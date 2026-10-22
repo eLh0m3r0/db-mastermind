@@ -57,3 +57,6 @@ npm run dev                   # desktop app with HMR
   `npm pack`, `build/after-pack.cjs` keeps only the target's binding in each package.
 - `runScript` without a session runs multi-statement scripts on a temporary session, so BEGIN … COMMIT stay
   on one connection.
+- This checkout lives in an iCloud-synced folder: never package the app locally into `apps/desktop/release`
+  (hundreds of MB keep iCloud busy and file access hangs for minutes). Package to a temp dir instead:
+  `npx electron-builder --dir -c.directories.output="$TMPDIR/dbm-release"`.

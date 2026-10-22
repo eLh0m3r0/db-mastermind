@@ -225,7 +225,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ Share connections with colleagues: export without passwords/keys, import from the file
 - ⬜ Shared team workspace via Git or a shared folder: connections, knowledge base, diagrams, saved queries
   kept in sync automatically
-- ✅ Audit log: every statement (editor, grid edits, imports, the in-app AI) with its source, exportable to CSV · statements from external MCP agents ⬜
+- ✅ Audit log: every statement (editor, grid edits, imports, the in-app AI and external MCP agents) with its source, exportable to CSV
 - ⬜ MSI package for Intune / SCCM
 
 ---

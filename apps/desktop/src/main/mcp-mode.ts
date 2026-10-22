@@ -3,6 +3,8 @@ import { join } from 'node:path'
 import { app } from 'electron'
 import { listConnections, loadConnections } from './connections'
 import type { McpChildConfig } from './mcp-server'
+import { MCP_HISTORY_FILE } from './library'
+import { dataPath } from './storage'
 import { getSettings, loadSettings } from './settings'
 
 export const isMcpMode = process.argv.includes('--mcp')
@@ -35,6 +37,7 @@ export async function runMcpMode(): Promise<void> {
     allowWrites: settings.mcp.allowWrites,
     schemaOnly: settings.ai.dataSharing === 'schema',
     version: app.getVersion(),
+    historyFile: dataPath(MCP_HISTORY_FILE),
   }
   const child = fork(join(__dirname, 'mcp-server.js'), [], {
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },

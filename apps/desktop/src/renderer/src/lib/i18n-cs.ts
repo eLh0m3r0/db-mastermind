@@ -873,4 +873,5 @@ export const cs: Record<string, string> = {
   'Every statement run on this connection (editor, grid edits, imports, AI) as CSV': 'Všechny příkazy spuštěné na tomto připojení (editor, úpravy v tabulce, importy, AI) jako CSV',
   'History exported': 'Historie exportována',
   'Export…': 'Export…',
+  'MCP': 'MCP',
 }

@@ -23,7 +23,7 @@ export function openSql(connectionId: string, sql: string, title?: string) {
   ws.newQuery(connectionId, sql, title)
 }
 
-const SOURCE_LABELS = { grid: 'grid', import: 'import', ai: 'AI', editor: 'editor' } as const
+const SOURCE_LABELS = { grid: 'grid', import: 'import', ai: 'AI', mcp: 'MCP', editor: 'editor' } as const
 
 export function HistoryPanel({ connectionId }: { connectionId: string }) {
   const [entries, setEntries] = useState<HistoryEntry[]>([])

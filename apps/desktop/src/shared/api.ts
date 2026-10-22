@@ -101,7 +101,7 @@ export interface HistoryEntry {
   rowCount?: number
   error?: string
   /** Where the statement came from; missing = the SQL editor. */
-  source?: 'editor' | 'grid' | 'import' | 'ai'
+  source?: 'editor' | 'grid' | 'import' | 'ai' | 'mcp'
 }
 
 /** A named subset of tables with its own layout ("Sales", "Billing"…). */
