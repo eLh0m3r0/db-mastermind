@@ -226,8 +226,6 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ Trino (and Starburst) over its HTTP protocol, no extra dependency: the connection's catalog is browsed, any
   catalog is queryable; typed filters, exact BIGINT/DECIMAL, streaming exports that cancel the server query, EXPLAIN
   (ANALYZE); read-only grid; integration-tested in CI against Trino 483
-- ⬜ Redshift, Snowflake, Cassandra (need cloud accounts to test)
-- 💡 MongoDB, Redis (document/key-value browsers)
 - ✅ SQL Server Windows (integrated) authentication (msnodesqlv8 + ODBC, tested on Windows CI)
 
 ---
@@ -249,10 +247,21 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ High-contrast theme (light and dark, WCAG AA text; follows the OS "increase contrast" setting), Windows forced-colors support, visible focus rings
 - ✅ AI tool plugins: `tools/*.sql` in the knowledge base become read-only, parameter-bound tools for the assistant and MCP
   agents (docs/ai-tools.md; verified end to end with Claude Code over MCP)
-- 💡 Driver plugins (third-party code in the app needs a sandbox and signing story first)
 - 🚧 Microsoft Store (MSIX signed by the Store; packaging ready, waits for the Partner Center identity — docs/microsoft-store.md) · Mac App Store: not planned (sandbox would cut features)
-- ⬜ Code signing (macOS notarization, Windows signing) once sponsored
+- ✅ macOS releases signed with a stable project certificate; saved passwords encrypted with a key that survives updates (no keychain prompt)
+- ⬜ Windows code signing through SignPath Foundation (free for open source; the maintainer applies) — no "unknown publisher" warning
+- ⬜ Pilot with colleagues (a few weeks of everyday use, read-only connections first); 1.0 when it passes without serious issues and the Windows installer is signed
 - ✅ Scoop manifest and Homebrew cask (this repo is the tap) updated with every release · winget: first version submitted (microsoft/winget-pkgs#458825, in review); later releases open a PR automatically (release.yml `winget` job, komac, `WINGET_TOKEN` secret) — once merged: submit 0.9.3 with `komac update` (it shipped while the first PR was in review) and add the `winget install` line to README/website
+
+### Later, when someone needs it
+- Redshift, Snowflake, Cassandra drivers (need real accounts to test properly)
+- Driver plugins (third-party code in the app needs a sandbox and signing story first)
+- macOS notarization (needs a paid Apple Developer ID)
+
+### Not planned
+- MongoDB, Redis: a different kind of tool (documents and key-value stores, not tables)
+- Chocolatey, Flathub, AUR: winget, Scoop and Homebrew cover Windows and macOS; IT departments get the MSI; Linux has the AppImage and .deb
+- Mac App Store: its sandbox would cut features
 
 ---
 
