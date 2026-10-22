@@ -1,14 +1,11 @@
 import { useMemo, useState } from 'react'
 import {
   Activity,
-  BookMarked,
   BookOpen,
   ChevronDown,
   Copy,
   Database,
   FileText,
-  FolderTree,
-  History,
   Home,
   Pencil,
   Plug,
@@ -196,25 +193,24 @@ export function Sidebar() {
       {connection ? (
         <>
           <ConnectionHeader connection={connection} />
-          <div className="flex gap-0.5 px-2 pb-1">
+          <div className="flex gap-px px-1.5 pb-1">
             {(
               [
-                ['explorer', FolderTree, 'Explorer'],
-                ['saved', BookMarked, 'Saved'],
-                ['history', History, 'History'],
+                ['explorer', 'Explorer'],
+                ['saved', 'Saved'],
+                ['history', 'History'],
               ] as const
-            ).map(([id, Icon, label]) => (
+            ).map(([id, label]) => (
               <button
                 key={id}
                 type="button"
                 onClick={() => setPanel(id)}
                 title={t(label)}
                 className={cn(
-                  'flex h-6 min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-1 text-[11.5px] font-medium',
+                  'flex h-6 min-w-0 flex-auto items-center justify-center rounded-md px-1 text-[11.5px] font-medium',
                   panel === id ? 'bg-active text-fg' : 'text-fg-muted hover:bg-hover hover:text-fg',
                 )}
               >
-                <Icon size={12} className="shrink-0" />
                 <span className="truncate">{t(label)}</span>
               </button>
             ))}
@@ -222,7 +218,7 @@ export function Sidebar() {
               type="button"
               title={t('Knowledge base')}
               onClick={() => useWorkspace.getState().open({ kind: 'knowledge', connectionId: connection.id, title: t('Knowledge base') })}
-              className="flex h-6 w-7 items-center justify-center rounded-md text-fg-muted hover:bg-hover hover:text-fg"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-muted hover:bg-hover hover:text-fg"
             >
               <BookOpen size={12} />
             </button>
@@ -231,7 +227,7 @@ export function Sidebar() {
                 type="button"
                 title={t('Server activity')}
                 onClick={() => useWorkspace.getState().open({ kind: 'activity', connectionId: connection.id, title: t('Server activity') })}
-                className="flex h-6 w-7 items-center justify-center rounded-md text-fg-muted hover:bg-hover hover:text-fg"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-muted hover:bg-hover hover:text-fg"
               >
                 <Activity size={12} />
               </button>

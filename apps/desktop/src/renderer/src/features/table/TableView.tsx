@@ -647,6 +647,12 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
     ])
   }
 
+  /** The filter bar with a condition ready to fill in (⌘F and the Filter button behave the same). */
+  const openFilters = () => {
+    if (draft.children.length === 0 && table?.columns[0]) setDraft((d) => ({ ...d, children: [newCondition(table.columns[0]!.name)] }))
+    setShowFilters(true)
+  }
+
   useEffect(() => {
     if (!focused) return
     const onKey = (e: KeyboardEvent) => {
@@ -659,7 +665,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
         refresh()
       } else if (mod && e.key.toLowerCase() === 'f' && !e.shiftKey) {
         e.preventDefault()
-        setShowFilters(true)
+        openFilters()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -701,12 +707,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
           size="sm"
           variant={showFilters ? 'subtle' : 'ghost'}
           icon={<Filter size={14} />}
-          onClick={() => {
-            if (!showFilters && draft.children.length === 0 && table?.columns[0]) {
-              setDraft((d) => ({ ...d, children: [newCondition(table.columns[0]!.name)] }))
-            }
-            setShowFilters((v) => !v)
-          }}
+          onClick={() => (showFilters ? setShowFilters(false) : openFilters())}
           title={`${t('Filters')} (${keys('⌘F')})`}
         >
           {t('Filter')}
