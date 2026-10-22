@@ -222,7 +222,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 
 - ✅ Managed configuration file (pre-defined connections, AI endpoints, policies) for IT departments — docs/managed-config.md
 - ✅ Share connections with colleagues: export without passwords/keys, import from the file
-- ⬜ Shared team workspace via Git or a shared folder: connections, knowledge base, diagrams, saved queries
+- ✅ Shared team folder (network drive, OneDrive, Git): connections, knowledge bases, saved queries (diagrams ⬜)
   kept in sync automatically
 - ✅ Audit log: every statement (editor, grid edits, imports, the in-app AI and external MCP agents) with its source, exportable to CSV
 - ⬜ MSI package for Intune / SCCM

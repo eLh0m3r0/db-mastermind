@@ -41,6 +41,7 @@ The first file found wins:
     { "id": "azure", "enabled": true, "resourceName": "corp-openai", "model": "gpt-5" }
   ],
   "defaultAiProvider": "azure",
+  "teamFolder": "\\\\fileserver\\data-team\\dbmastermind",
   "policies": {
     "allowedAiProviders": ["azure", "ollama"],
     "maxAiDataSharing": "schema-and-samples",
@@ -75,6 +76,8 @@ The first file found wins:
 | `allowMcp: false` | agents can't use the app as an MCP server, over stdio or HTTP |
 | `allowMcpWrites: false` | agents can only read through MCP |
 | `disableUpdateCheck: true` | no check for new versions on GitHub |
+
+`teamFolder` sets the [team folder](team-folder.md) for everyone (users can't change it).
 
 `aiProviders` pre-fills provider settings (endpoint, model, Azure resource) without keys.
 

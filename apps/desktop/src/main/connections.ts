@@ -3,6 +3,7 @@ import type { ConnectionConfig } from '@dbmastermind/core'
 import type { ExplorerPrefs, StoredConnection } from '@shared/api'
 import { managedConfig } from './managed'
 import { mergeManagedConnections } from './managed-config'
+import { team } from './team'
 import { decryptSecret, encryptSecret, readJson, writeJson } from './storage'
 
 const FILE = 'connections.json'
@@ -24,10 +25,15 @@ async function transformSecrets(
 
 let cache: StoredConnection[] = []
 
+/** Team folder connections first, then the organization's managed ones (those win). */
+function mergeAll(stored: StoredConnection[]): StoredConnection[] {
+  return mergeManagedConnections(mergeManagedConnections(stored, { connections: team()?.connections }, undefined, 'team'), managedConfig())
+}
+
 /** Reads and decrypts saved connections. Must run after app 'ready', before anything uses them. */
 export async function loadConnections(): Promise<void> {
   const stored = await Promise.all(readJson<StoredConnection[]>(FILE, []).map((c) => transformSecrets(c, decryptSecret)))
-  cache = mergeManagedConnections(stored, managedConfig())
+  cache = mergeAll(stored)
 }
 
 export function listConnections(): StoredConnection[] {
@@ -70,7 +76,7 @@ export function saveConnection(config: ConnectionConfig): StoredConnection {
     hiddenSchemas: (config as StoredConnection).hiddenSchemas ?? existing?.hiddenSchemas,
   }
   // Managed fields always win over what was edited in the form.
-  cache = mergeManagedConnections(existing ? all.map((c) => (c.id === id ? saved : c)) : [...all, saved], managedConfig())
+  cache = mergeAll(existing ? all.map((c) => (c.id === id ? saved : c)) : [...all, saved])
   persist()
   return cache.find((c) => c.id === id)!
 }
@@ -96,13 +102,14 @@ export function setExplorerPrefs(id: string, prefs: ExplorerPrefs): void {
 
 export function deleteConnection(id: string): void {
   if (getConnection(id).managed) throw new Error('This connection is managed by your organization and can\'t be deleted')
+  if (getConnection(id).team) throw new Error('This connection comes from the team folder: remove it from the team first')
   cache = listConnections().filter((c) => c.id !== id)
   persist()
 }
 
 export function duplicateConnection(id: string): StoredConnection {
   const source = getConnection(id)
-  return saveConnection({ ...source, id: '', name: `${source.name} (copy)`, managed: undefined } as StoredConnection)
+  return saveConnection({ ...source, id: '', name: `${source.name} (copy)`, managed: undefined, team: undefined } as StoredConnection)
 }
 
 export function defaultName(c: Partial<ConnectionConfig>): string {

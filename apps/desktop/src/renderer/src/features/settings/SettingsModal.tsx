@@ -1,11 +1,11 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { FolderOpen } from 'lucide-react'
-import type { AppSettings, ManagedInfo } from '@shared/api'
+import type { AppSettings, ManagedInfo, TeamStatus } from '@shared/api'
 import { Button } from '@/components/ui/Button'
 import { Checkbox, Field, Input, Segmented, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { api } from '@/lib/api'
-import { cn } from '@/lib/utils'
+import { cn, errorMessage } from '@/lib/utils'
 import { useSettings } from '@/store/settings'
 import { useUi } from '@/store/ui'
 import { AiSettingsSection } from '../ai/AiSettings'
@@ -58,6 +58,7 @@ export function SettingsModal() {
         <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-auto p-5">
           {current === 'general' && (
             <>
+              <TeamFolderRow />
               <Row label={t('Theme')}>
                 <Segmented
                   value={settings.theme}
@@ -161,6 +162,52 @@ export function SettingsModal() {
         </div>
       </div>
     </Modal>
+  )
+}
+
+/** Shared folder with the team's connections, saved queries and knowledge bases. */
+function TeamFolderRow() {
+  const t = useT()
+  const [status, setStatus] = useState<TeamStatus | null>(null)
+  useEffect(() => {
+    void api.teamStatus().then(setStatus)
+  }, [])
+  const choose = async (path?: string | null) => {
+    try {
+      setStatus(await api.setTeamFolder(path))
+    } catch (err) {
+      setStatus((s) => (s ? { ...s, error: errorMessage(err) } : s))
+    }
+  }
+  return (
+    <Row
+      label={t('Team folder')}
+      hint={t('A shared folder (network drive, OneDrive, Git) with connections.json, queries/*.sql and knowledge/: everyone gets the same connections, saved queries and notes.')}
+    >
+      <div className="flex flex-col gap-1 text-[12.5px]">
+        <div className="flex items-center gap-2">
+          {status?.folder ? <code className="truncate rounded bg-subtle px-1.5 py-0.5 text-[12px] select-text">{status.folder}</code> : <span className="text-fg-faint">{t('None')}</span>}
+          {!status?.locked && (
+            <>
+              <Button size="xs" icon={<FolderOpen size={12} />} onClick={() => void choose()}>
+                {t('Choose…')}
+              </Button>
+              {status?.folder && (
+                <Button size="xs" variant="ghost" onClick={() => void choose(null)}>
+                  {t('Stop using')}
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+        {status?.folder && (
+          <span className={status.error ? 'text-danger' : 'text-fg-muted'}>
+            {status.error ?? t('{c} connections · {q} saved queries', { c: status.connections, q: status.queries })}
+            {status.locked && ` · ${t('set by your organization')}`}
+          </span>
+        )}
+      </div>
+    </Row>
   )
 }
 

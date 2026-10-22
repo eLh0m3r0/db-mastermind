@@ -107,6 +107,8 @@ New to the app? Click **Try the demo database** on the start screen.
 Drop a `dbmastermind-managed.json` next to the portable app (or in `%ProgramData%\DB Mastermind\`) to give everyone
 the same connections (without passwords), the company's AI endpoint and rules such as "AI off", "only Azure OpenAI"
 or "MCP read-only". See [docs/managed-config.md](docs/managed-config.md).
+A **team folder** (network drive, OneDrive, Git) shares connections, saved queries as `.sql` files and knowledge
+bases, kept in sync while the app runs. See [docs/team-folder.md](docs/team-folder.md).
 
 ## Use it from Claude Code, Codex, Cursor… (MCP)
 

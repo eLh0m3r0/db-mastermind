@@ -7,6 +7,7 @@ import { buildMenu } from './menu'
 import { flushHistory } from './library'
 import { flushConnections, loadConnections } from './connections'
 import { getSettings, loadSettings } from './settings'
+import { watchTeamFolder } from './team'
 import { applyMcpHttp } from './mcp-http'
 import { isMcpMode, runMcpMode } from './mcp-mode'
 import { configureDataDir, readJson, writeJson } from './storage'
@@ -102,7 +103,10 @@ function startApp() {
 
   app.whenReady().then(async () => {
     app.setAppUserModelId('dev.dbmastermind.app')
-    await Promise.all([loadConnections(), loadSettings()])
+    // Settings first: they name the team folder that contributes connections.
+    await loadSettings()
+    await loadConnections()
+    watchTeamFolder()
     buildMenu()
     createWindow()
     void applyMcpHttp()

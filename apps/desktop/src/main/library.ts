@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import type { Dashboard, HistoryEntry, SavedDiagram, SavedQuery, WorkspaceState } from '@shared/api'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { listConnections } from './connections'
 import { dataPath, readJson, writeJson } from './storage'
+import { invalidateTeam, team, teamDir } from './team'
+import { deleteTeamQuery, isTeamQuery, TEAM_QUERY_PREFIX, writeTeamQuery } from './team-folder'
 
 const HISTORY_FILE = 'history.json'
 const SAVED_FILE = 'saved-queries.json'
@@ -84,12 +87,37 @@ export function clearHistory(connectionId?: string): void {
   }
 }
 
-export function listSavedQueries(): SavedQuery[] {
+function localSavedQueries(): SavedQuery[] {
   return readJson<SavedQuery[]>(SAVED_FILE, [])
 }
 
+/** This computer's saved queries plus the team folder's (folder "Team/…"). */
+export function listSavedQueries(): SavedQuery[] {
+  const connections = listConnections()
+  // A team query may name a personal connection ("-- connection: ERP"): match it by name here.
+  const shared = (team()?.queries ?? []).map((q) =>
+    q.connectionId && !connections.some((c) => c.id === q.connectionId) ? { ...q, connectionId: connections.find((c) => c.name === q.connectionId)?.id ?? q.connectionId } : q,
+  )
+  return [...localSavedQueries(), ...shared]
+}
+
 export function saveQuery(query: Omit<SavedQuery, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): SavedQuery {
-  const all = listSavedQueries()
+  const dir = teamDir()
+  if (dir && isTeamQuery(query)) {
+    const connectionName = listConnections().find((c) => c.id === query.connectionId)?.name
+    const id = writeTeamQuery(dir, { ...query, folder: query.folder && isTeamQuery({ folder: query.folder }) ? query.folder : 'Team' }, connectionName)
+    // A query moved into the team folder leaves this computer's list.
+    if (query.id && !query.id.startsWith(TEAM_QUERY_PREFIX)) deleteSavedQuery(query.id)
+    invalidateTeam()
+    return listSavedQueries().find((q) => q.id === id)!
+  }
+  if (query.id?.startsWith(TEAM_QUERY_PREFIX)) {
+    // Moved out of the team folder: becomes a personal query.
+    if (dir) deleteTeamQuery(dir, query.id)
+    invalidateTeam()
+    query = { ...query, id: undefined }
+  }
+  const all = localSavedQueries()
   const now = new Date().toISOString()
   const existing = query.id ? all.find((q) => q.id === query.id) : undefined
   const saved: SavedQuery = {
@@ -104,9 +132,15 @@ export function saveQuery(query: Omit<SavedQuery, 'id' | 'createdAt' | 'updatedA
 }
 
 export function deleteSavedQuery(id: string): void {
+  const dir = teamDir()
+  if (id.startsWith(TEAM_QUERY_PREFIX)) {
+    if (dir) deleteTeamQuery(dir, id)
+    invalidateTeam()
+    return
+  }
   writeJson(
     SAVED_FILE,
-    listSavedQueries().filter((q) => q.id !== id),
+    localSavedQueries().filter((q) => q.id !== id),
   )
 }
 

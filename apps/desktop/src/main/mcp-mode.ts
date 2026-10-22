@@ -30,7 +30,8 @@ function argValue(name: string): string | undefined {
 export async function runMcpMode(): Promise<void> {
   app.dock?.hide()
   await app.whenReady()
-  await Promise.all([loadConnections(), loadSettings()])
+  await loadSettings()
+  await loadConnections()
   if (managed()?.config.policies?.allowMcp === false) {
     process.stderr.write(`DB Mastermind: the MCP server is turned off by your organization (${managed()!.info.path})\n`)
     app.exit(1)

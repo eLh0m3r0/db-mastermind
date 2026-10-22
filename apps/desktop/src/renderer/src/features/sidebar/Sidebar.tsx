@@ -20,6 +20,7 @@ import {
   Trash2,
   Unplug,
   Building2,
+  Users,
 } from 'lucide-react'
 import { isFileDriver } from '@dbmastermind/core/browser'
 import type { StoredConnection } from '@shared/api'
@@ -31,6 +32,7 @@ import { api, isMac } from '@/lib/api'
 import { exportDataDictionary } from '@/lib/dictionary'
 import { cn, errorMessage, fuzzyScore } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
+import { useSettings } from '@/store/settings'
 import { toast, useUi } from '@/store/ui'
 import { useActiveTab, useWorkspace } from '@/store/workspace'
 import { DriverIcon, driverLabel } from '../connections/drivers'
@@ -60,6 +62,16 @@ export async function connectAndSelect(id: string): Promise<boolean> {
   return ok
 }
 
+async function teamAction(run: () => Promise<void>, message: string) {
+  try {
+    await run()
+    await useConnections.getState().load()
+    toast({ kind: 'success', message })
+  } catch (err) {
+    toast({ kind: 'error', message: t('Team folder'), detail: errorMessage(err) })
+  }
+}
+
 export function connectionMenu(c: StoredConnection): Parameters<typeof openMenu>[1] {
   const { runtime, disconnect, duplicate, remove } = useConnections.getState()
   const connected = runtime[c.id]?.status === 'connected'
@@ -74,12 +86,20 @@ export function connectionMenu(c: StoredConnection): Parameters<typeof openMenu>
       ? []
       : [{ label: t('Users & roles'), icon: <ShieldCheck size={13} />, onClick: () => useWorkspace.getState().open({ kind: 'roles', connectionId: c.id, title: t('Users & roles') }) }]),
     { label: t('Share with colleagues (without password)…'), icon: <Share2 size={13} />, onClick: () => void shareConnections([c.id]) },
+    c.team
+      ? { label: t('Remove from team folder'), icon: <Users size={13} />, onClick: () => void teamAction(() => api.removeConnectionFromTeam(c.id), t('Removed from the team folder')) }
+      : {
+          label: t('Add to team folder'),
+          icon: <Users size={13} />,
+          disabled: !useSettings.getState().settings?.teamFolder || !!c.managed,
+          onClick: () => void teamAction(() => api.addConnectionToTeam(c.id), t('Added to the team folder (without password)')),
+        },
     'separator',
     {
-      label: c.managed ? t('Delete (managed by your organization)') : t('Delete'),
+      label: c.managed ? t('Delete (managed by your organization)') : c.team ? t('Delete (remove it from the team folder first)') : t('Delete'),
       icon: <Trash2 size={13} />,
       danger: true,
-      disabled: !!c.managed,
+      disabled: !!c.managed || !!c.team,
       onClick: () => {
         if (window.confirm(t('Delete connection “{name}”? Saved queries are kept.', { name: c.name }))) {
           useWorkspace.getState().closeForConnection(c.id)
@@ -286,6 +306,11 @@ function ConnectionList() {
                   <div className="flex items-center gap-1.5 truncate text-[12.5px] font-medium">
                     {c.color && <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: c.color }} />}
                     <span className="truncate">{c.name}</span>
+                    {c.team && !c.managed && (
+                      <span title={t('Shared through the team folder')}>
+                        <Users size={11} className="shrink-0 text-fg-faint" />
+                      </span>
+                    )}
                     {c.managed && (
                       <span title={t('Managed by your organization')}>
                         <Building2 size={11} className="shrink-0 text-fg-faint" />

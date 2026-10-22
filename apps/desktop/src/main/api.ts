@@ -45,6 +45,8 @@ import { completeText, extractJson } from './ai/complete'
 import { listModels, testProvider } from './ai/models'
 import { exportConnections, importConnections } from './importers'
 import { managed } from './managed'
+import { reloadTeam, setTeamFolder, teamDir, teamStatus } from './team'
+import { removeTeamConnection, writeTeamConnection } from './team-folder'
 import { addToMcpClient, mcpClientStatuses, type McpLaunch } from './mcp-clients'
 import { applyMcpHttp, mcpHttpStatus } from './mcp-http'
 import { buildMenu } from './menu'
@@ -197,6 +199,31 @@ export const api: MastermindApi = {
   },
   async mcpHttpStatus() {
     return mcpHttpStatus()
+  },
+  async teamStatus() {
+    return teamStatus()
+  },
+  async setTeamFolder(path) {
+    if (path === undefined) {
+      const window = BrowserWindow.getFocusedWindow()
+      const options = { title: 'Team folder', properties: ['openDirectory' as const, 'createDirectory' as const] }
+      const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
+      if (r.canceled || !r.filePaths[0]) return teamStatus()
+      path = r.filePaths[0]
+    }
+    return setTeamFolder(path)
+  },
+  async addConnectionToTeam(id) {
+    const dir = teamDir()
+    if (!dir) throw new Error('Choose a team folder first (Settings → General)')
+    writeTeamConnection(dir, connections.getConnection(id))
+    await reloadTeam()
+  },
+  async removeConnectionFromTeam(id) {
+    const dir = teamDir()
+    if (!dir) return
+    removeTeamConnection(dir, id)
+    await reloadTeam()
   },
   async mcpClients() {
     return mcpClientStatuses()

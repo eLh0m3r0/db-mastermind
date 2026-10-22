@@ -14,6 +14,8 @@ export interface ManagedConfig {
   aiProviders?: Omit<AiProviderSettings, 'apiKey'>[]
   /** Used when the user hasn't chosen a provider. */
   defaultAiProvider?: AiProviderId
+  /** Team folder everyone uses (network share, synced folder); users can't change it. */
+  teamFolder?: string
   policies?: ManagedPolicies
 }
 
@@ -49,8 +51,16 @@ export function readManagedConfig(paths: string[]): { config: ManagedConfig; inf
   }
 }
 
-/** Saved connections with the managed ones added; managed fields win, the user's own credentials are kept. */
-export function mergeManagedConnections(stored: StoredConnection[], managed: ManagedConfig | null, now = new Date().toISOString()): StoredConnection[] {
+/**
+ * Saved connections with the managed (or team folder) ones added; their fields win, the user's own credentials
+ * are kept. `mark` is the flag set on them.
+ */
+export function mergeManagedConnections(
+  stored: StoredConnection[],
+  managed: Pick<ManagedConfig, 'connections' | 'policies'> | null,
+  now = new Date().toISOString(),
+  mark: 'managed' | 'team' = 'managed',
+): StoredConnection[] {
   const defs = managed?.connections ?? []
   const byId = new Map(defs.map((d) => [d.id, d]))
   const strip = <T extends object>(d: T): T => {
@@ -61,14 +71,14 @@ export function mergeManagedConnections(stored: StoredConnection[], managed: Man
   }
   const out = stored.map((c) => {
     const def = byId.get(c.id)
-    if (!def) return c.managed ? { ...c, managed: undefined } : c
-    const merged = { ...c, ...strip(def), managed: true } as StoredConnection
+    if (!def) return c[mark] ? { ...c, [mark]: undefined } : c
+    const merged = { ...c, ...strip(def), [mark]: true } as StoredConnection
     // Keep the user's SSH secrets when the managed entry defines the tunnel.
     if (def.ssh && c.ssh) merged.ssh = { ...merged.ssh!, password: c.ssh.password, privateKey: c.ssh.privateKey, passphrase: c.ssh.passphrase }
     return merged
   })
   for (const def of defs) {
-    if (!stored.some((c) => c.id === def.id)) out.push({ ...(strip(def) as ConnectionConfig), createdAt: now, updatedAt: now, managed: true } as StoredConnection)
+    if (!stored.some((c) => c.id === def.id)) out.push({ ...(strip(def) as ConnectionConfig), createdAt: now, updatedAt: now, [mark]: true } as StoredConnection)
   }
   if (managed?.policies?.allowAi === false) return out.map((c) => ({ ...c, aiEnabled: false }))
   return out
@@ -92,6 +102,7 @@ export function enforceManagedSettings(settings: AppSettings, managed: ManagedCo
   const dataSharing = SHARING.indexOf(settings.ai.dataSharing) > cap ? SHARING[cap]! : settings.ai.dataSharing
   return {
     ...settings,
+    teamFolder: managed.teamFolder ?? settings.teamFolder,
     ai: { ...settings.ai, providers, activeProvider, dataSharing },
     mcp: {
       ...settings.mcp,

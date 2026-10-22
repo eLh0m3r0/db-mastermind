@@ -138,8 +138,10 @@ export function App() {
         action: { label: t('Download'), run: () => void window.mastermind.api.openExternal(info.url) },
       }),
     )
+    const offTeam = bridge.on('team:changed', () => void useConnections.getState().load())
     const uninstall = installKeymap()
     return () => {
+      offTeam()
       off()
       uninstall()
     }

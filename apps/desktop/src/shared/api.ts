@@ -116,6 +116,17 @@ export interface AppSettings {
   mcp: McpSettings
   /** User snippets (built-ins are always available unless overridden by trigger). */
   snippets?: Snippet[]
+  /** Shared folder with the team's connections, saved queries and knowledge bases. */
+  teamFolder?: string
+}
+
+export interface TeamStatus {
+  folder?: string
+  /** Set by the managed configuration: users can't change it. */
+  locked: boolean
+  connections: number
+  queries: number
+  error?: string
 }
 
 export interface StoredConnection extends ConnectionConfig {
@@ -128,6 +139,8 @@ export interface StoredConnection extends ConnectionConfig {
   hiddenSchemas?: string[]
   /** Comes from the organization's managed configuration: server settings are fixed, it can't be deleted. */
   managed?: boolean
+  /** Comes from the team folder's connections.json (kept in sync with it). */
+  team?: boolean
 }
 
 export type ExplorerPrefs = Pick<StoredConnection, 'pinnedTables' | 'hiddenSchemas'>
@@ -321,6 +334,14 @@ export interface MastermindApi {
   exportHistory(connectionId?: string): Promise<string | null>
   /** State of the local HTTP MCP endpoint (Settings → MCP server). */
   mcpHttpStatus(): Promise<{ running: boolean; error?: string; url: string }>
+  /** The team folder in use and what it shares. */
+  teamStatus(): Promise<TeamStatus>
+  /** Picks a team folder (dialog when `path` is undefined; null clears it). */
+  setTeamFolder(path?: string | null): Promise<TeamStatus>
+  /** Writes a connection (without passwords) to the team folder's connections.json. */
+  addConnectionToTeam(id: string): Promise<void>
+  /** Removes a connection from the team folder's connections.json (it stays on this computer). */
+  removeConnectionFromTeam(id: string): Promise<void>
   /** Which agent apps are installed and already know about DB Mastermind. */
   mcpClients(): Promise<McpClientStatus[]>
   /** Adds DB Mastermind to an agent app's MCP config (keeping a `.bak` copy); returns the changed file. */
@@ -416,6 +437,8 @@ export interface MainEvents {
   'update:available': { version: string; url: string }
   'connection:lost': { connectionId: string; message: string }
   'ai:event': AiEvent
+  /** Files in the team folder changed: reload connections and saved queries. */
+  'team:changed': undefined
 }
 
 export type IpcResult<T> = { ok: true; value: T } | { ok: false; error: { message: string; code?: string; name?: string } }
@@ -440,6 +463,10 @@ export const API_METHODS = [
   'exportHistory',
   'mcpHttpStatus',
   'mcpClients',
+  'teamStatus',
+  'setTeamFolder',
+  'addConnectionToTeam',
+  'removeConnectionFromTeam',
   'addToMcpClient',
   'exportConnections',
   'createSampleDatabase',
