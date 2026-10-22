@@ -1,4 +1,4 @@
-import { useUi } from '@/store/ui'
+import { askAi } from '@/store/ui'
 
 export const GENERATE_KB_PROMPT = `Document this database into the knowledge base.
 
@@ -10,6 +10,5 @@ export const GENERATE_KB_PROMPT = `Document this database into the knowledge bas
 Be factual: say "probably" when you infer meaning from data. Keep each file focused and skimmable.`
 
 export function askAiToDocument() {
-  useUi.getState().set({ aiPanelVisible: true })
-  window.dispatchEvent(new CustomEvent('ai:ask', { detail: { prompt: GENERATE_KB_PROMPT } }))
+  askAi({ prompt: GENERATE_KB_PROMPT })
 }

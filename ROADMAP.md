@@ -123,7 +123,7 @@ project's (AI) maintainer and updated with every release.
   knowledge base, search schema
 - 🚧 Inline "Ask AI" in the SQL editor (`Ctrl/Cmd+I`): natural language → SQL, explain, optimize,
   fix the error that just happened
-- ⬜ "Explain this table / column / relationship" from the explorer
+- ✅ "Explain with AI" on any table in the explorer (column / relationship variants ⬜)
 - ✅ AI-suggested filters in the data browser ("orders from last month over 1000 CZK"), validated against real columns
 - ✅ Writes (UPDATE/DELETE/DDL) proposed by AI always require explicit user confirmation
 

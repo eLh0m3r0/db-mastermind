@@ -135,15 +135,6 @@ export function AiPanel() {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
   }, [chat?.messages])
 
-  useEffect(() => {
-    const onAsk = (e: Event) => {
-      const detail = (e as CustomEvent<{ sql?: string; prompt?: string }>).detail
-      if (detail?.prompt) setInput(detail.prompt)
-      requestAnimationFrame(() => inputRef.current?.focus())
-    }
-    window.addEventListener('ai:ask', onAsk)
-    return () => window.removeEventListener('ai:ask', onAsk)
-  }, [])
 
   const send = (text: string) => {
     if (!connectionId || !text.trim()) return
@@ -163,6 +154,16 @@ export function AiPanel() {
       context,
     })
   }
+
+  const aiRequest = useUi((s) => s.aiRequest)
+  useEffect(() => {
+    if (!aiRequest) return
+    useUi.getState().set({ aiRequest: undefined })
+    if (aiRequest.prompt && aiRequest.send && status === 'connected' && !chat?.running) send(aiRequest.prompt)
+    else if (aiRequest.prompt) setInput(aiRequest.prompt)
+    requestAnimationFrame(() => inputRef.current?.focus())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiRequest])
 
   const stop = () => {
     if (!connectionId || !chat) return

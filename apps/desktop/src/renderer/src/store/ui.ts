@@ -25,6 +25,8 @@ interface UiState {
   palette?: 'commands' | 'tables'
   sidePanel?: 'history' | 'saved'
   toasts: Toast[]
+  /** Pending request for the AI panel; consumed once the panel is mounted. */
+  aiRequest?: { prompt?: string; send?: boolean; nonce: number }
   set(patch: Partial<Omit<UiState, 'set' | 'toast' | 'dismissToast'>>): void
   toast(toast: Omit<Toast, 'id'>): void
   dismissToast(id: number): void
@@ -67,3 +69,10 @@ export const useUi = create<UiState>((set, get) => ({
 }))
 
 export const toast = (t: Omit<Toast, 'id'>) => useUi.getState().toast(t)
+
+let aiNonce = 0
+
+/** Opens the AI panel and focuses the input, optionally pre-filled with a prompt or sending it right away. */
+export function askAi(request: { prompt?: string; send?: boolean } = {}) {
+  useUi.getState().set({ aiPanelVisible: true, aiRequest: { ...request, nonce: ++aiNonce } })
+}

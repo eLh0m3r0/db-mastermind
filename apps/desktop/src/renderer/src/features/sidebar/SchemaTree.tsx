@@ -14,6 +14,7 @@ import {
   Network,
   RefreshCw,
   Search,
+  Sparkles,
   Table2,
   TerminalSquare,
 } from 'lucide-react'
@@ -26,6 +27,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import { exportDataDictionary } from '@/lib/dictionary'
 import { copyText, cn, formatCount, fuzzyScore } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
+import { askAi } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
 import { useT } from '@/lib/i18n'
 
@@ -63,6 +65,9 @@ export function generateSql(kind: 'select' | 'insert' | 'update' | 'delete' | 'c
       return `DELETE FROM ${name}\nWHERE ${where};`
   }
 }
+
+export const EXPLAIN_TABLE_PROMPT =
+  'Explain the table {table}: what it stores, what its columns mean (look at a few sample rows to decode statuses and codes), how it relates to other tables, and two or three typical queries. Use the knowledge base if it documents this table.'
 
 export function SchemaTree({ connection, schema }: { connection: StoredConnection; schema?: SchemaSnapshot }) {
   const runtime = useConnections((s) => s.runtime[connection.id])
@@ -152,6 +157,11 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
       { label: tr('Open data'), icon: <Table2 size={13} />, onClick: () => openTable(t) },
       { label: tr('Open structure'), icon: <Layers size={13} />, onClick: () => openTab({ kind: 'structure', connectionId: connection.id, table: { schema: t.schema, name: t.name }, title: tr('{name} · structure', { name: t.name }) }) },
       { label: tr('Show in diagram'), icon: <Network size={13} />, onClick: () => openTab({ kind: 'diagram', connectionId: connection.id, title: tr('Diagram: {name}', { name: t.name }), focus: t.name }) },
+      {
+        label: tr('Explain with AI'),
+        icon: <Sparkles size={13} />,
+        onClick: () => askAi({ prompt: tr(EXPLAIN_TABLE_PROMPT, { table: t.schema ? `${t.schema}.${t.name}` : t.name }), send: true }),
+      },
       'separator',
       { label: tr('New query: SELECT'), icon: <TerminalSquare size={13} />, onClick: () => newQuery(connection.id, generateSql('select', t, connection), t.name) },
       {

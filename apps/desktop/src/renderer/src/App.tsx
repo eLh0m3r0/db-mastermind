@@ -9,7 +9,7 @@ import { t } from '@/lib/i18n'
 import { installKeymap } from '@/lib/keymap'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
-import { toast, useUi } from '@/store/ui'
+import { askAi, toast, useUi } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
 import { ActivityView } from './features/activity/ActivityView'
 import { AiPanel } from './features/ai/AiPanel'
@@ -56,8 +56,7 @@ function useGlobalCommands() {
             ui.set({ aiPanelVisible: !ui.aiPanelVisible })
             break
           case 'ask-ai':
-            ui.set({ aiPanelVisible: true })
-            window.dispatchEvent(new CustomEvent('ai:ask', { detail: {} }))
+            askAi()
             break
           case 'palette':
             ui.set({ palette: ui.palette ? undefined : 'commands' })

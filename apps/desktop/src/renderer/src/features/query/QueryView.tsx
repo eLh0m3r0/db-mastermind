@@ -11,7 +11,7 @@ import { api, modKey } from '@/lib/api'
 import { debounce, errorMessage, uid } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
-import { toast, useUi } from '@/store/ui'
+import { askAi, toast } from '@/store/ui'
 import { useWorkspace, type QueryTab } from '@/store/workspace'
 import { onCommand } from '@/lib/commands'
 import { ParamsModal, type ParamValues } from './ParamsModal'
@@ -150,9 +150,8 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
   }, [tab, updateTab, t])
 
   const askAi = useCallback(() => {
-    useUi.getState().set({ aiPanelVisible: true })
-    window.dispatchEvent(new CustomEvent('ai:ask', { detail: { connectionId: tab.connectionId, sql: editor.current?.getRunTarget()?.sql ?? '' } }))
-  }, [tab.connectionId])
+    askAi()
+  }, [])
 
   useEffect(() => {
     if (!active) return
