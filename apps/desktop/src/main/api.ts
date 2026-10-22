@@ -462,6 +462,18 @@ export const api: MastermindApi = {
     await writeFile(r.filePath, text, 'utf8')
     return r.filePath
   },
+  async saveImageFile(dataUrl, name) {
+    const ext = extname(name).slice(1).toLowerCase() === 'svg' ? 'svg' : 'png'
+    const window = BrowserWindow.getFocusedWindow()
+    const options = { title: 'Save image', defaultPath: name, filters: [{ name: ext === 'svg' ? 'SVG image' : 'PNG image', extensions: [ext] }] }
+    const r = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
+    if (r.canceled || !r.filePath) return null
+    const comma = dataUrl.indexOf(',')
+    const meta = dataUrl.slice(0, comma)
+    const body = dataUrl.slice(comma + 1)
+    await writeFile(r.filePath, meta.endsWith(';base64') ? Buffer.from(body, 'base64') : Buffer.from(decodeURIComponent(body), 'utf8'))
+    return r.filePath
+  },
   async importDdlFile() {
     const window = BrowserWindow.getFocusedWindow()
     const options = { title: 'Import SQL DDL or a Prisma schema', properties: ['openFile' as const], filters: [{ name: 'SQL DDL or Prisma schema', extensions: ['sql', 'ddl', 'txt', 'prisma'] }] }

@@ -142,6 +142,8 @@ const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData
 
 interface NoteNodeData extends Record<string, unknown> {
   text: string
+  /** Just added: the cursor goes in so typing starts the note. */
+  autoFocus?: boolean
   onChange: (text: string) => void
   onDelete: () => void
 }
@@ -151,9 +153,31 @@ const NoteNode = memo(function NoteNode({ data }: NodeProps<Node<NoteNodeData>>)
   const tr = useT()
   const [text, setText] = useState(data.text)
   useEffect(() => setText(data.text), [data.text])
+  // Saved while typing (not only on blur), so a note survives quitting the app with the cursor still in it.
+  const save = useRef(data.onChange)
+  save.current = data.onChange
+  useEffect(() => {
+    if (text === data.text) return
+    const timer = setTimeout(() => save.current(text), 400)
+    return () => clearTimeout(timer)
+  }, [text, data.text])
+  const area = useRef<HTMLTextAreaElement>(null)
+  // React Flow shows a node only once it's measured, and a hidden field can't take focus: retry for a few frames.
+  useEffect(() => {
+    if (!data.autoFocus) return
+    let frames = 0
+    let id = 0
+    const tryFocus = () => {
+      area.current?.focus()
+      if (document.activeElement !== area.current && ++frames < 20) id = requestAnimationFrame(tryFocus)
+    }
+    id = requestAnimationFrame(tryFocus)
+    return () => cancelAnimationFrame(id)
+  }, [data.autoFocus])
   return (
     <div className="group relative w-[220px] rounded-md border border-warning/50 bg-[color-mix(in_srgb,var(--warning)_14%,var(--bg))] p-2 shadow-sm">
       <textarea
+        ref={area}
         value={text}
         placeholder={tr('Note…')}
         onChange={(e) => setText(e.target.value)}
@@ -174,6 +198,25 @@ const NoteNode = memo(function NoteNode({ data }: NodeProps<Node<NoteNodeData>>)
 })
 
 const nodeTypes = { table: TableNode, note: NoteNode }
+
+/** CSS properties kept when the diagram is exported as an image (see exportImage). */
+const EXPORT_STYLE_PROPERTIES = [
+  'display', 'position', 'top', 'right', 'bottom', 'left', 'z-index', 'box-sizing', 'overflow-x', 'overflow-y', 'visibility', 'opacity',
+  'width', 'height', 'min-width', 'min-height', 'max-width', 'max-height', 'transform', 'transform-origin',
+  'margin-top', 'margin-right', 'margin-bottom', 'margin-left', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+  'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width', 'border-top-style', 'border-right-style',
+  'border-bottom-style', 'border-left-style', 'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color',
+  'border-top-left-radius', 'border-top-right-radius', 'border-bottom-left-radius', 'border-bottom-right-radius',
+  'background-color', 'background-image', 'box-shadow', 'outline-style', 'outline-width', 'outline-color',
+  'color', 'font-family', 'font-size', 'font-weight', 'font-style', 'font-variant-numeric', 'line-height', 'letter-spacing',
+  'text-align', 'text-transform', 'text-overflow', 'white-space', 'word-break', 'vertical-align', 'text-decoration-line',
+  'flex-direction', 'flex-wrap', 'flex-grow', 'flex-shrink', 'flex-basis', 'align-items', 'align-self', 'justify-content',
+  'gap', 'row-gap', 'column-gap', 'grid-template-columns', 'grid-template-rows',
+  'fill', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-dasharray', 'stroke-linecap', 'stroke-linejoin', 'stroke-opacity',
+  'marker-start', 'marker-end',
+  // Theme variables that inline styles (edge strokes, markers, notes) refer to.
+  '--text-muted', '--text-faint', '--warning', '--bg', '--bg-subtle', '--bg-elevated', '--accent', '--accent-soft', '--border', '--border-strong',
+]
 const isNote = (id: string) => id.startsWith('note:')
 
 /** Names for the series palette colors, in palette order. */
@@ -349,13 +392,24 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
     if (!schema && !model) void loadSchema(tab.connectionId)
   }, [schema, model, loadSchema, tab.connectionId])
 
+  // Schemas hidden in the explorer stay out of the diagram's picker (unless that would leave none).
+  const visibleSchemas = useMemo(() => {
+    if (!schema) return []
+    const hidden = new Set(connection?.hiddenSchemas ?? [])
+    const shown = schema.schemas.filter((s) => !hidden.has(s))
+    return shown.length ? shown : schema.schemas
+  }, [schema, connection?.hiddenSchemas])
+
   useEffect(() => {
     if (!schema || schemaFilter) return
-    // Prefer the default schema, unless it's empty and another one has the tables.
+    // Prefer the default schema, unless it's hidden or empty and another one has the tables.
     const count = (s: string) => schema.tables.filter((t) => (t.schema ?? '') === s).length
-    const preferred = schema.defaultSchema && count(schema.defaultSchema) > 0 ? schema.defaultSchema : [...schema.schemas].sort((a, b) => count(b) - count(a))[0]
+    const preferred =
+      schema.defaultSchema && visibleSchemas.includes(schema.defaultSchema) && count(schema.defaultSchema) > 0
+        ? schema.defaultSchema
+        : [...visibleSchemas].sort((a, b) => count(b) - count(a))[0]
     setSchemaFilter(preferred ?? '*')
-  }, [schema, schemaFilter])
+  }, [schema, schemaFilter, visibleSchemas])
 
   const joinPath = useMemo(
     () => (schema && focusName && pathTo ? findJoinPath(schema, { name: focusName }, { name: pathTo }) : undefined),
@@ -623,12 +677,17 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
     try {
       flow.fitView({ padding: 0.05 })
       await new Promise((r) => setTimeout(r, 350))
-      const options = { backgroundColor: dark ? '#16181d' : '#ffffff', pixelRatio: 2, filter: (node: HTMLElement) => !node.classList?.contains('react-flow__minimap') }
+      const options = {
+        backgroundColor: dark ? '#16181d' : '#ffffff',
+        pixelRatio: 2,
+        // The picture, without the minimap and the zoom buttons.
+        filter: (node: HTMLElement) => !node.classList?.contains('react-flow__minimap') && !node.classList?.contains('react-flow__controls') && !node.classList?.contains('react-flow__panel'),
+        // Only what the diagram's look depends on: copying every computed style made a 7-table SVG 9 MB.
+        includeStyleProperties: EXPORT_STYLE_PROPERTIES,
+      }
       const url = format === 'png' ? await toPng(wrapper.current!.querySelector('.react-flow') as HTMLElement, options) : await toSvg(wrapper.current!.querySelector('.react-flow') as HTMLElement, options)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${tab.title.replace(/[^\w.-]+/g, '_')}.${format}`
-      a.click()
+      const path = await api.saveImageFile(url, `${tab.title.replace(/[^\w.-]+/g, '_')}.${format}`)
+      if (path) toast({ kind: 'success', message: tr('Diagram saved'), detail: path, action: { label: tr('Show in folder'), run: () => void api.showItemInFolder(path) } })
     } catch (err) {
       toast({ kind: 'error', message: tr('Export failed'), detail: errorMessage(err) })
     }
@@ -746,6 +805,7 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
   const latestNotes = useRef(tab.notes)
   latestNotes.current = tab.notes
   const setNotes = (notes: DiagramNote[]) => updateTab(tab.id, { notes: notes.length ? notes : undefined })
+  const newNote = useRef<string | null>(null)
   useEffect(() => {
     setNoteNodes(
       (tab.notes ?? []).map((note) => ({
@@ -754,6 +814,7 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
         position: { x: note.x, y: note.y },
         data: {
           text: note.text,
+          autoFocus: newNote.current === note.id,
           onChange: (text: string) => setNotes((latestNotes.current ?? []).map((x) => (x.id === note.id ? { ...x, text } : x))),
           onDelete: () => setNotes((latestNotes.current ?? []).filter((x) => x.id !== note.id)),
         },
@@ -763,7 +824,9 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
   }, [tab.notes])
   const addNote = () => {
     const center = flow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
-    setNotes([...(tab.notes ?? []), { id: uid('n'), text: '', x: Math.round(center.x), y: Math.round(center.y) }])
+    const id = uid('n')
+    newNote.current = id
+    setNotes([...(tab.notes ?? []), { id, text: '', x: Math.round(center.x), y: Math.round(center.y) }])
   }
 
   const saveAs = async (name: string) => {
@@ -887,7 +950,7 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
         ) : (
           schema.schemas.length > 1 && (
             <Select inputSize="sm" className="h-7 w-40" value={schemaFilter} onChange={(e) => setSchemaFilter(e.target.value)}>
-              {schema.schemas.map((s) => (
+              {schema.schemas.filter((s) => visibleSchemas.includes(s) || s === schemaFilter).map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>
@@ -1186,7 +1249,9 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
               updateDraft(node.id, { ...drafts[node.id]!, position: node.position })
               return
             }
-            const positions = { ...(tab.positions ?? {}), [node.id]: node.position }
+            // Pin the whole layout, not just this table: otherwise the others come back from the "new tables go in
+            // a column" rule after a restart instead of where they were.
+            const positions = { ...currentPositions(), ...(tab.positions ?? {}), [node.id]: node.position }
             updateTab(tab.id, { positions })
           }}
           onNodeDoubleClick={(_, n) => !isNote(n.id) && openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name })}

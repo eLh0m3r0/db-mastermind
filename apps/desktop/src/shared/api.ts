@@ -447,6 +447,8 @@ export interface MastermindApi {
   /** Reads a SQL DDL script (pg_dump, mysqldump, SSMS…) into DBML; asks for the file. */
   /** Saves a SQL script (migrations); asks where, suggesting `name`. Returns the path or null. */
   saveSqlFile(text: string, name: string, defaultDir?: string): Promise<string | null>
+  /** Saves a PNG/SVG data URL through a save dialog; null when cancelled. */
+  saveImageFile(dataUrl: string, name: string): Promise<string | null>
   importDdlFile(): Promise<{ path: string; dbml: string; skipped: { sql: string; error: string }[] } | null>
   queryFile(path?: string): Promise<{ connectionId: string; sql: string; title: string } | null>
 
@@ -574,6 +576,7 @@ export const API_METHODS = [
   'saveModelFile',
   'importDdlFile',
   'saveSqlFile',
+  'saveImageFile',
   'fetchTable',
   'countTable',
   'importPreview',
