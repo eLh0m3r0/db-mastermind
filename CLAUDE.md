@@ -60,3 +60,5 @@ npm run dev                   # desktop app with HMR
 - This checkout lives in an iCloud-synced folder: never package the app locally into `apps/desktop/release`
   (hundreds of MB keep iCloud busy and file access hangs for minutes). Package to a temp dir instead:
   `npx electron-builder --dir -c.directories.output="$TMPDIR/dbm-release"`.
+- The UI starts in the system language (Czech on a Czech Mac). E2E scripts pass `DBM_LANGUAGE: 'en'` so English
+  labels match.

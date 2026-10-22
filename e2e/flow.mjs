@@ -6,7 +6,7 @@ import { join } from 'node:path'
 
 const out = process.argv[2] ?? 'e2e-shots'
 const userData = mkdtempSync(join(tmpdir(), 'dbm-ui-'))
-const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, DBM_USER_DATA: userData, DBM_NO_UPDATE_CHECK: '1' } })
+const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, DBM_USER_DATA: userData, DBM_NO_UPDATE_CHECK: '1', DBM_LANGUAGE: 'en' } })
 const win = await app.firstWindow()
 const errors = []
 win.on('pageerror', (e) => errors.push(e.message))

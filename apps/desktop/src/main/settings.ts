@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { app } from 'electron'
 import type { AiProviderSettings, AppSettings } from '@shared/api'
 import { decryptSecret, encryptSecret, readJson, writeJson } from './storage'
 
@@ -7,7 +8,8 @@ const FILE = 'settings.json'
 export function defaultSettings(): AppSettings {
   return {
     theme: 'system',
-    language: 'en',
+    // First run follows the system language (Czech or English); after that the user's choice is stored.
+    language: process.env.DBM_LANGUAGE === 'en' || process.env.DBM_LANGUAGE === 'cs' ? process.env.DBM_LANGUAGE : /^cs\b/i.test(app.getLocale()) || app.getPreferredSystemLanguages().some((l) => /^cs\b/i.test(l)) ? 'cs' : 'en',
     pageSize: 200,
     maxResultRows: 10_000,
     editorFontSize: 13,
@@ -36,7 +38,8 @@ export async function loadSettings(): Promise<void> {
     ai: { ...defaults.ai, ...stored.ai, providers: await mapKeys(stored.ai?.providers ?? [], decryptSecret) },
     mcp: { ...defaults.mcp, ...stored.mcp },
   }
-  if (!stored.mcp?.token) persist(cached)
+  // The first run stores the generated token and the detected language.
+  if (!stored.mcp?.token || !stored.language) persist(cached)
 }
 
 export function getSettings(): AppSettings {

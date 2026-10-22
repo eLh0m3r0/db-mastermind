@@ -11,7 +11,7 @@ const userData = mkdtempSync(join(tmpdir(), 'dbm-uismoke-'))
 const app = await electron.launch({
   executablePath: exe,
   args: process.platform === 'linux' ? ['--no-sandbox'] : [],
-  env: { ...process.env, DBM_USER_DATA: userData, DBM_NO_UPDATE_CHECK: '1' },
+  env: { ...process.env, DBM_USER_DATA: userData, DBM_NO_UPDATE_CHECK: '1', DBM_LANGUAGE: 'en' },
 })
 const win = await app.firstWindow()
 const errors = []

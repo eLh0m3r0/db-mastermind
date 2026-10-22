@@ -6,7 +6,7 @@ import { join } from 'node:path'
 const out = mkdtempSync(join(tmpdir(), 'dbm-share-'))
 const file = join(out, 'team.json')
 async function launch() {
-  const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, DBM_USER_DATA: mkdtempSync(join(tmpdir(), 'dbm-ui17-')), DBM_NO_UPDATE_CHECK: '1' } })
+  const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, DBM_USER_DATA: mkdtempSync(join(tmpdir(), 'dbm-ui17-')), DBM_NO_UPDATE_CHECK: '1', DBM_LANGUAGE: 'en' } })
   const win = await app.firstWindow()
   await win.waitForTimeout(800)
   await app.evaluate(({ dialog }, path) => {

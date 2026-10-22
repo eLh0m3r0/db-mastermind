@@ -4,7 +4,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 const out = process.argv[2]
-const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, DBM_USER_DATA: mkdtempSync(join(tmpdir(), 'dbm-ui22-')), DBM_NO_UPDATE_CHECK: '1' } })
+const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, DBM_USER_DATA: mkdtempSync(join(tmpdir(), 'dbm-ui22-')), DBM_NO_UPDATE_CHECK: '1', DBM_LANGUAGE: 'en' } })
 const win = await app.firstWindow()
 win.on('dialog', (d) => d.accept())
 await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 900))
