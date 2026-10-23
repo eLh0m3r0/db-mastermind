@@ -9,7 +9,7 @@
 Browse, filter, query, diagram and redesign databases, with an AI assistant that knows your schema and your
 team's notes. It also exposes everything over MCP to Claude Code, Codex, Cursor and other agents.
 
-[Download](https://github.com/eLh0m3r0/db-mastermind/releases/latest) · [Roadmap](ROADMAP.md) · [Report an issue](https://github.com/eLh0m3r0/db-mastermind/issues/new)
+[Website](https://dbmastermind.app) · [Download](https://github.com/eLh0m3r0/db-mastermind/releases/latest) · [Roadmap](ROADMAP.md) · [Report an issue](https://github.com/eLh0m3r0/db-mastermind/issues/new)
 
 PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB · ClickHouse · CockroachDB · BigQuery · Trino — Windows · macOS · Linux — English & čeština — MIT, no feature limits
 

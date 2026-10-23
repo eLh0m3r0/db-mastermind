@@ -12,7 +12,7 @@ const asset = (file) => `${repo}/releases/download/v${version}/${basename(file)}
 const manifest = {
   version,
   description: 'Free, open-source database client: browse, filter, ER diagrams, schema design with migrations, AI assistant',
-  homepage: 'https://elh0m3r0.github.io/db-mastermind/',
+  homepage: 'https://dbmastermind.app/',
   license: 'MIT',
   architecture: {
     '64bit': { url: asset(x64), hash: sha(x64) },

@@ -6,7 +6,7 @@
   "description": "Free and open-source database client with AI, ER diagrams and MCP server.",
   "license": "MIT",
   "author": "DB Mastermind contributors",
-  "homepage": "https://github.com/eLh0m3r0/db-mastermind",
+  "homepage": "https://dbmastermind.app",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",

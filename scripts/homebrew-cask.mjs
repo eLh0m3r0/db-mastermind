@@ -18,7 +18,7 @@ process.stdout.write(`cask "db-mastermind" do
   url "https://github.com/eLh0m3r0/db-mastermind/releases/download/v#{version}/DB-Mastermind-#{version}-mac-#{arch}.dmg"
   name "DB Mastermind"
   desc "Database client with ER diagrams, schema design with migrations and AI"
-  homepage "https://elh0m3r0.github.io/db-mastermind/"
+  homepage "https://dbmastermind.app/"
 
   livecheck do
     url :url
