@@ -11,7 +11,7 @@ import { watchTeamFolder } from './team'
 import { applyMcpHttp } from './mcp-http'
 import { isMcpMode, runMcpMode } from './mcp-mode'
 import { configureDataDir, dataPath, readJson, writeJson } from './storage'
-import { checkForUpdates } from './updates'
+import { startUpdateChecks } from './updates'
 
 configureDataDir()
 
@@ -112,9 +112,14 @@ function startApp() {
     buildMenu()
     createWindow()
     void applyMcpHttp()
-    void checkForUpdates(
-      (info) => mainWindow?.webContents.send('update:available', info),
-      (info) => mainWindow?.webContents.send('update:ready', info),
+    const tell = (channel: 'update:available' | 'update:ready', info: unknown) => {
+      if (!mainWindow || mainWindow.isDestroyed()) return false
+      mainWindow.webContents.send(channel, info)
+      return true
+    }
+    startUpdateChecks(
+      (info) => tell('update:available', info),
+      (info) => tell('update:ready', info),
     )
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()

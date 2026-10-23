@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { app } from 'electron'
+import { app, powerMonitor } from 'electron'
 import { canSelfUpdateMac, downloadMacUpdate, installMacUpdateNow } from './mac-update'
 import { managedConfig } from './managed'
 import { isPortable } from './storage'
@@ -114,8 +114,57 @@ export async function checkForUpdates(
     const release = await latestRelease()
     if (release && newer(release.version, app.getVersion())) notify(release)
   } catch {
-    // Offline or rate limited: try again next launch.
+    // Offline or rate limited: the next scheduled check tries again.
   }
+}
+
+const HOUR = 3_600_000
+
+/**
+ * Runs `check` now, every `every` ms, and after the computer wakes up when the last check is older than `afterWake`.
+ * An app left open for days (or a laptop that sleeps overnight) still learns about new versions. Returns a stop
+ * function.
+ */
+export function scheduleChecks(check: () => Promise<void>, onWake: (listener: () => void) => void, every = 4 * HOUR, afterWake = HOUR): () => void {
+  let last = 0
+  let running = false
+  const run = () => {
+    if (running) return
+    running = true
+    last = Date.now()
+    void check()
+      .catch(() => {})
+      .finally(() => {
+        running = false
+      })
+  }
+  run()
+  const timer = setInterval(run, every)
+  timer.unref?.()
+  let stopped = false
+  onWake(() => {
+    if (!stopped && Date.now() - last >= afterWake) run()
+  })
+  return () => {
+    stopped = true
+    clearInterval(timer)
+  }
+}
+
+/**
+ * The startup check, repeated while the app runs. Each version is announced once: a later check that finds the same
+ * download (or the same release) stays quiet. The callbacks return false when there was no window to tell.
+ */
+export function startUpdateChecks(notify: (info: { version: string; url: string }) => boolean, ready: (info: { version: string }) => boolean): void {
+  if (!app.isPackaged || disabled()) return
+  const told = new Set<string>()
+  const once = <T extends { version: string }>(kind: string, fn: (info: T) => boolean) => (info: T) => {
+    if (!told.has(`${kind} ${info.version}`) && fn(info)) told.add(`${kind} ${info.version}`)
+  }
+  scheduleChecks(
+    () => checkForUpdates(once('available', notify), once('ready', ready)),
+    (listener) => powerMonitor.on('resume', listener),
+  )
 }
 
 export type UpdateCheck =
