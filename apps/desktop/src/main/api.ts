@@ -68,6 +68,12 @@ import { applyMcpHttp, mcpHttpStatus } from './mcp-http'
 import { buildMenu } from './menu'
 import * as library from './library'
 import { getSettings, updateSettings } from './settings'
+
+/** CSV separator: the user's choice, else semicolons in Czech (Excel there splits columns on them). */
+function csvDelimiter(): ',' | ';' {
+  const settings = getSettings()
+  return settings.csvDelimiter ?? (settings.language === 'cs' ? ';' : ',')
+}
 import { reportIssueUrl } from './report-issue'
 import { isPortable } from './storage'
 
@@ -669,7 +675,7 @@ export const api: MastermindApi = {
     const path = await askSavePath(request.format, request.defaultName)
     if (!path) return null
     const dialect = request.connectionId ? getDialect(connections.getConnection(request.connectionId).driver) : undefined
-    const writer = createExportWriter(path, request.format, request.result.fields, { tableName: request.tableName, dialect })
+    const writer = createExportWriter(path, request.format, request.result.fields, { tableName: request.tableName, dialect, csvDelimiter: csvDelimiter() })
     await writer.writeRows(request.result.rows)
     await writer.close()
     return path
@@ -694,6 +700,7 @@ export const api: MastermindApi = {
       writer ??= createExportWriter(path, request.format, page.result.fields, {
         tableName: qualify(dialect, request.table),
         dialect,
+        csvDelimiter: csvDelimiter(),
       })
       await writer.writeRows(page.result.rows)
       offset += page.result.rows.length
@@ -711,7 +718,7 @@ export const api: MastermindApi = {
     let rows = 0
     try {
       for await (const batch of db.streamQuery(request.connectionId, request.sql.trim().replace(/;\s*$/, ''))) {
-        writer ??= createExportWriter(path, request.format, batch.fields, { tableName: request.defaultName, dialect })
+        writer ??= createExportWriter(path, request.format, batch.fields, { tableName: request.defaultName, dialect, csvDelimiter: csvDelimiter() })
         await writer.writeRows(batch.rows)
         rows += batch.rows.length
       }

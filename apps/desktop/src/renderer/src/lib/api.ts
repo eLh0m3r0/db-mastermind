@@ -1,4 +1,5 @@
 import { API_METHODS, type MastermindApi } from '@shared/api'
+import { t } from './i18n'
 
 /** An error from the main process with its code (database error codes, PASSWORD_REQUIRED…). */
 export class ApiError extends Error {
@@ -19,7 +20,8 @@ export const api = Object.fromEntries(
     async (...args: unknown[]) => {
       const result = await window.mastermind.call(method, args)
       if (result.ok) return result.value
-      throw new ApiError(result.error.message, result.error.code, result.error.name)
+      // The app's own messages in the UI language (database errors have no translation and stay as they are).
+      throw new ApiError(t(result.error.message), result.error.code, result.error.name)
     },
   ]),
 ) as unknown as MastermindApi

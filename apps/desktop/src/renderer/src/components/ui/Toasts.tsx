@@ -8,7 +8,7 @@ export function Toasts() {
   const dismiss = useUi((s) => s.dismissToast)
   const tr = useT()
   return (
-    <div className="pointer-events-none fixed right-4 bottom-10 z-[70] flex w-[360px] flex-col gap-2">
+    <div className="pointer-events-none fixed right-4 bottom-16 z-[70] flex w-[360px] flex-col gap-2">
       {toasts.map((t) => {
         const Icon = { info: Info, success: CheckCircle2, error: XCircle, warning: AlertTriangle }[t.kind]
         return (

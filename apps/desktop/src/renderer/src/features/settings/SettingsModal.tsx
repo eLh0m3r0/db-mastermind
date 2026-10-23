@@ -123,6 +123,12 @@ export function SettingsModal() {
               <Row label={t('NULL display')}>
                 <Input className="w-32" value={settings.nullDisplay} onChange={(e) => set({ nullDisplay: e.target.value })} />
               </Row>
+              <Row label={t('CSV separator')} hint={t('Excel set to Czech (and many other languages) splits columns on semicolons.')}>
+                <Select className="w-48" value={settings.csvDelimiter ?? (settings.language === 'cs' ? ';' : ',')} onChange={(e) => set({ csvDelimiter: e.target.value as ',' | ';' })}>
+                  <option value=",">{t('Comma ( , )')}</option>
+                  <option value=";">{t('Semicolon ( ; )')}</option>
+                </Select>
+              </Row>
             </>
           )}
           {current === 'ai' && <AiSettingsSection />}

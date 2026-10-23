@@ -136,6 +136,8 @@ export interface AppSettings {
   showSystemSchemas: boolean
   nullDisplay: string
   dateFormat: 'iso' | 'locale'
+  /** CSV separator; Excel in Czech (and much of Europe) expects semicolons. Unset: by the app's language. */
+  csvDelimiter?: ',' | ';'
   ai: AiSettings
   mcp: McpSettings
   /** User snippets (built-ins are always available unless overridden by trigger). */

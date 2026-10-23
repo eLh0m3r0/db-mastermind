@@ -19,6 +19,11 @@ function csvCell(value: CellValue, separator: string): string {
   return text.includes(separator) || /["\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
 }
 
+/** Column types holding decimal numbers. */
+function isNumericType(type?: string): boolean {
+  return !!type && /^(numeric|decimal|number|real|float|double|money|smallmoney|dec|fixed)/i.test(type.trim())
+}
+
 function jsonCell(value: CellValue): unknown {
   if (isBinaryValue(value)) return `0x${value.$binary}`
   return value
@@ -47,8 +52,15 @@ export function createExportWriter(
   path: string,
   format: ExportFormat,
   fields: ResultField[],
-  options: { tableName?: string; dialect?: Dialect } = {},
+  options: { tableName?: string; dialect?: Dialect; csvDelimiter?: string } = {},
 ): ExportWriter {
+  const sep = options.csvDelimiter ?? ','
+  // Semicolon CSV is what Excel uses where the decimal separator is a comma (Czech): numbers follow, else Excel reads
+  // 10.5 as a date or text.
+  // Exact decimals often arrive as strings (PostgreSQL numeric): those only in columns typed as numbers.
+  const decimalComma = sep === ';' ? fields.map((f) => isNumericType(f.dataType)) : []
+  const csvValue = (v: CellValue, i: number): CellValue =>
+    sep === ';' && (typeof v === 'number' || (decimalComma[i] && typeof v === 'string' && /^-?\d+\.\d+$/.test(v))) ? String(v).replace('.', ',') : v
   if (format === 'xlsx') return createXlsxWriter(path, fields)
 
   const out: WriteStream = createWriteStream(path, { encoding: 'utf8' })
@@ -65,7 +77,7 @@ export function createExportWriter(
     switch (format) {
       case 'csv':
         // BOM so Excel opens UTF-8 (accented characters) correctly.
-        return '﻿' + names.map((n) => csvCell(n, ',')).join(',') + '\r\n'
+        return '﻿' + names.map((n) => csvCell(n, sep)).join(sep) + '\r\n'
       case 'tsv':
         return names.map((n) => csvCell(n, '\t')).join('\t') + '\n'
       case 'json':
@@ -84,7 +96,7 @@ export function createExportWriter(
   const row = (r: CellValue[]): string => {
     switch (format) {
       case 'csv':
-        return r.map((v) => csvCell(v, ',')).join(',') + '\r\n'
+        return r.map((v, i) => csvCell(csvValue(v, i), sep)).join(sep) + '\r\n'
       case 'tsv':
         return r.map((v) => csvCell(v, '\t')).join('\t') + '\n'
       case 'json': {

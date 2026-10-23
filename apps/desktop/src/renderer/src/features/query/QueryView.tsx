@@ -149,6 +149,8 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
 
   const cancel = useCallback(() => {
     if (runId.current) void api.cancelQuery(runId.current)
+    // Back to typing: the Cancel button disappears with the run.
+    editor.current?.focus()
   }, [])
 
   const format = useCallback(() => {
