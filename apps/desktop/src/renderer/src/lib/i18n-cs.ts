@@ -641,6 +641,7 @@ export const cs: Record<string, string> = {
   'Default page size in the table browser.': 'Výchozí velikost stránky v prohlížeči tabulek.',
   'Editor font size': 'Velikost písma editoru',
   'Links': 'Odkazy',
+  'Author': 'Autor',
   'Max result rows': 'Max. počet řádků výsledku',
   'Mode': 'Režim',
   'NULL display': 'Zobrazení NULL',

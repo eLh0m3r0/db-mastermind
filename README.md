@@ -181,6 +181,10 @@ npm run test:integration   # every driver and migration against real databases
 See [CLAUDE.md](CLAUDE.md) for architecture and conventions, [docs/STRATEGY.md](docs/STRATEGY.md) for product
 direction.
 
+## Author
+
+DB Mastermind is created and maintained by [Václav Mudra](https://vaclavmudra.com).
+
 ## Support
 
 DB Mastermind is free, open source and has no paid tier. If it saves you time, you can

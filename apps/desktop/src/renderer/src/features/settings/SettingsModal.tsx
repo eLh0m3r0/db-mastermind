@@ -175,6 +175,14 @@ export function SettingsModal() {
                   </Button>
                 </div>
               </Row>
+              <Row label={t('Author')}>
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px]">Václav Mudra</span>
+                  <Button size="xs" onClick={() => void api.openExternal('https://vaclavmudra.com')}>
+                    vaclavmudra.com
+                  </Button>
+                </div>
+              </Row>
               <Row label={t('Links')}>
                 <div className="flex gap-2">
                   <Button size="xs" onClick={() => void api.openExternal('https://dbmastermind.app')}>

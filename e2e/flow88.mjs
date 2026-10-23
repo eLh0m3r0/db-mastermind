@@ -1,5 +1,5 @@
 // Update checks can be turned off: `node e2e/flow88.mjs <screenshot dir>`. Settings → General → Updates saves
-// checkForUpdates; About links to the website. Czech UI.
+// checkForUpdates; About names the author and links to the website. Czech UI.
 import { _electron as electron } from '@playwright/test'
 import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -48,6 +48,12 @@ try {
   await win.waitForTimeout(300)
   opened = await app.evaluate(() => globalThis.__opened)
   check('About links to the website', opened === 'https://dbmastermind.app', opened)
+  const about = await win.locator('[role=dialog]').innerText()
+  check('About names the author', about.includes('Autor') && about.includes('Václav Mudra'))
+  await win.locator('[role=dialog]').getByRole('button', { name: 'vaclavmudra.com' }).click()
+  await win.waitForTimeout(300)
+  opened = await app.evaluate(() => globalThis.__opened)
+  check("author's website opens", opened === 'https://vaclavmudra.com', opened)
   await win.screenshot({ path: join(out, '88-about.png') })
 } finally {
   console.log('page errors:', errors.length ? errors : 'none')

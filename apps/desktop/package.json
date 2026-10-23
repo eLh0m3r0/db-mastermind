@@ -5,7 +5,10 @@
   "private": true,
   "description": "Free and open-source database client with AI, ER diagrams and MCP server.",
   "license": "MIT",
-  "author": "DB Mastermind contributors",
+  "author": {
+    "name": "Václav Mudra",
+    "url": "https://vaclavmudra.com"
+  },
   "homepage": "https://dbmastermind.app",
   "main": "./out/main/index.js",
   "scripts": {

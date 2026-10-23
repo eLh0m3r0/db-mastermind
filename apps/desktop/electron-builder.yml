@@ -1,5 +1,6 @@
 appId: dev.dbmastermind.app
 productName: DB Mastermind
+copyright: Copyright © 2026 Václav Mudra
 artifactName: DB-Mastermind-${version}-${os}-${arch}.${ext}
 directories:
   buildResources: build

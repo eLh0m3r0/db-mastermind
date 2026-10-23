@@ -105,6 +105,7 @@ function startApp() {
 
   app.whenReady().then(async () => {
     app.setAppUserModelId('dev.dbmastermind.app')
+    app.setAboutPanelOptions({ copyright: '© 2026 Václav Mudra · MIT license', website: 'https://dbmastermind.app', credits: 'Václav Mudra · vaclavmudra.com' })
     useKnownHostsFile(dataPath('known-hosts.json'))
     // Settings first: they name the team folder that contributes connections.
     await loadSettings()
