@@ -45,7 +45,7 @@ Planned enterprise features, built only once there's demand, and only features i
 - Signed MSI for software distribution tools (Intune, SCCM)
 - Priority support and custom drivers
 
-Other income: GitHub Sponsors and paid support or onboarding for companies.
+Other income: Ko-fi donations and paid support or onboarding for companies.
 
 **Why this model:** MIT keeps adoption friction at zero, so colleagues can use it at work without legal review.
 Store editions earn money from people who'd rather pay than click through an unsigned-app warning.
@@ -62,7 +62,7 @@ away from an individual.
 
 - v0.1: I and my colleagues replace Beekeeper Studio for daily work.
 - v0.3: AI + knowledge base make onboarding onto an unknown database dramatically faster.
-- v1.0: 1k GitHub stars, listed in winget/Homebrew, first sponsors.
+- v1.0: 1k GitHub stars, listed in winget/Homebrew, first supporters on Ko-fi.
 
 ## Maintenance model
 

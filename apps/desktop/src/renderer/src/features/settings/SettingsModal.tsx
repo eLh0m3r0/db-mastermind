@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Coffee, FolderOpen, Heart } from 'lucide-react'
+import { Coffee, FolderOpen } from 'lucide-react'
 import type { AppSettings, ManagedInfo, TeamStatus } from '@shared/api'
 import { Button } from '@/components/ui/Button'
 import { Checkbox, Field, Input, Segmented, Select } from '@/components/ui/Input'
@@ -195,9 +195,6 @@ export function SettingsModal() {
                 <div className="flex gap-2">
                   <Button size="xs" variant="primary" icon={<Coffee size={12} />} onClick={() => void api.openExternal('https://ko-fi.com/vaclavmudra')}>
                     Ko-fi
-                  </Button>
-                  <Button size="xs" icon={<Heart size={12} />} onClick={() => void api.openExternal('https://github.com/sponsors/eLh0m3r0')}>
-                    GitHub Sponsors
                   </Button>
                 </div>
               </Row>

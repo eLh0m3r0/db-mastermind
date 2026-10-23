@@ -184,7 +184,7 @@ direction.
 ## Support
 
 DB Mastermind is free, open source and has no paid tier. If it saves you time, you can
-[buy me a coffee on Ko-fi](https://ko-fi.com/vaclavmudra) or [sponsor it on GitHub](https://github.com/sponsors/eLh0m3r0).
+[buy me a coffee on Ko-fi](https://ko-fi.com/vaclavmudra).
 
 ## Code signing policy
 
