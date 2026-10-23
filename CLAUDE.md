@@ -44,7 +44,8 @@ npm run dev                   # desktop app with HMR
 - mysql2 emits `fields` with `undefined` for statements without result sets.
 - mysql2 parses MariaDB JSON (BLOB + json hint) into objects; `typeCast` re-stringifies it.
 - `KILL QUERY` must complete before a connection is reused, or it can kill the next statement.
-- node:sqlite can't be interrupted; cancelling abandons the worker and opens a fresh one.
+- node:sqlite can't be interrupted; cancelling abandons the worker and opens a fresh one. A worker stuck in a query
+  keeps the process from exiting, so before-quit exits hard when `sqliteWorkersAlive()` is still > 0 (e2e/flow86).
 - pg user queries use identity type parsers (exact text); catalog queries must use `pg.types`.
 - npm optional-deps bug: if rolldown/vitest says "Cannot find native binding", delete `node_modules` and
   `package-lock.json` and reinstall.
