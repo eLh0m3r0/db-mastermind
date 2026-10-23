@@ -9,10 +9,19 @@ const out = process.env.SHOTS_DIR ?? 'docs/screenshots'
 const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
 const withAi = process.argv.includes('--ai')
 const userData = mkdtempSync(join(tmpdir(), 'dbm-shots-'))
-const app = await electron.launch({ args: ['apps/desktop', ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-gpu'] : [])], env: { ...process.env, DBM_USER_DATA: userData, DBM_NO_UPDATE_CHECK: '1', DBM_LANGUAGE: process.env.DBM_LANGUAGE ?? 'en' } })
+const home = mkdtempSync(join(tmpdir(), 'dbm-shots-home-'))
+const app = await electron.launch({ args: ['apps/desktop', ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-gpu'] : [])], env: { ...process.env, ...(process.env.CI ? {} : { HOME: home }), DBM_USER_DATA: userData, DBM_NO_UPDATE_CHECK: '1', DBM_LANGUAGE: process.env.DBM_LANGUAGE ?? 'en' } })
 const win = await app.firstWindow()
 win.on('dialog', (d) => d.accept())
-await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 900))
+// Off-screen and in the background locally, so it never gets in the way.
+await app.evaluate(({ BrowserWindow }, local) => {
+  const w = BrowserWindow.getAllWindows()[0]
+  w.setSize(1440, 900)
+  if (local) {
+    w.setPosition(-4000, 0)
+    w.blur()
+  }
+}, !process.env.CI)
 const api = (fn, ...args) => win.evaluate(([fn, args]) => window.mastermind.api[fn](...args), [fn, args])
 const shot = async (name) => {
   await win.waitForTimeout(400)
@@ -33,10 +42,9 @@ await win.waitForTimeout(800)
 await theme('light')
 await shot('home')
 
-// Table browser with filters (dark)
+// Table browser with filters. All screenshots are light: they read better on the website and in the README.
 await win.getByRole('button', { name: 'Try the demo database' }).click()
 await win.getByPlaceholder(/Filter \d+ tables/).waitFor({ timeout: 20000 })
-await theme('dark')
 await win.getByPlaceholder(/Filter \d+ tables/).fill('orders')
 await win.getByPlaceholder(/Filter \d+ tables/).press('Enter')
 await win.waitForTimeout(800)
@@ -54,8 +62,7 @@ await win.getByText('Gift wrap, please', { exact: true }).first().click()
 await win.getByRole('button', { name: 'Row details' }).click()
 await shot('table-filters')
 
-// SQL editor (light)
-await theme('light')
+// SQL editor
 await win.keyboard.press(`${mod}+t`)
 await win.locator('.cm-content').last().click()
 await win.keyboard.type(
@@ -73,7 +80,7 @@ if (box) await win.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5)
 await shot('chart')
 await win.getByRole('button', { name: 'Show table' }).click()
 
-// ER diagram (light) and designer (dark)
+// ER diagram and designer
 await win.keyboard.press(`${mod}+k`)
 await win.keyboard.type('ER diagram')
 await win.keyboard.press('Enter')
@@ -87,7 +94,6 @@ await win.waitForTimeout(2000)
 await shot('join-path')
 await win.getByRole('button', { name: 'Show whole schema' }).click()
 await win.waitForTimeout(2000)
-await theme('dark')
 await win.getByRole('button', { name: 'Design' }).click()
 await win.locator('.react-flow__node', { hasText: 'customers' }).first().click()
 await win.getByRole('button', { name: 'Add', exact: true }).first().click()
@@ -99,8 +105,7 @@ await win.waitForTimeout(1200)
 await shot('migration')
 await win.keyboard.press('Escape')
 
-// Query a CSV file with SQL (light): a Czech export with ';' and decimal commas.
-await theme('light')
+// Query a CSV file with SQL: a Czech export with ';' and decimal commas.
 const csv = join(userData, 'prodeje-2026.csv')
 const rows = ['datum;pobočka;produkt;množství;cena']
 const shops = ['Praha', 'Brno', 'Ostrava', 'Plzeň']

@@ -30,7 +30,7 @@ PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB · Cl
   query parameters, execution plans, multiple result sets, cancel, format, history and saved queries
 - Export a page, the whole (filtered) table or every row of a query to CSV, Excel, JSON, SQL or Markdown, streamed
   with no row limit
-- Command palette (`Ctrl/⌘ K`), quick table open (`Ctrl/⌘ P`), light & dark themes, English and Czech UI
+- Command palette (`Ctrl/⌘ K`), quick table open (`Ctrl/⌘ P`), light, dark and high-contrast themes (follow the system or pick one in Settings), English and Czech UI
 - **Enterprise-ready connections**: SSH tunnels, SSL, read-only and production safety rails, **SQL Server Windows
   authentication** (no password, your domain account), **Oracle without Instant Client**
 
