@@ -32,6 +32,24 @@ const SCHEMES: Record<string, DriverId> = {
   presto: 'trino',
 }
 
+/** sslmode spellings of libpq, MySQL and their .NET / JDBC drivers. */
+const modeMap: Record<string, SslMode> = {
+  disable: 'disable',
+  disabled: 'disable',
+  none: 'disable',
+  allow: 'prefer',
+  prefer: 'prefer',
+  preferred: 'prefer',
+  require: 'require',
+  required: 'require',
+  'verify-ca': 'verify-ca',
+  verify_ca: 'verify-ca',
+  verifyca: 'verify-ca',
+  'verify-full': 'verify-full',
+  verify_identity: 'verify-full',
+  verifyfull: 'verify-full',
+}
+
 export class ConnectionUrlError extends Error {
   override name = 'ConnectionUrlError'
 }
@@ -78,19 +96,6 @@ export function parseConnectionString(input: string): Parsed {
   }
   const sslmode = (params.get('sslmode') ?? params.get('ssl-mode') ?? '').toLowerCase()
   const sslFlag = (params.get('ssl') ?? params.get('SSL') ?? params.get('encrypt') ?? '').toLowerCase()
-  const modeMap: Record<string, SslMode> = {
-    disable: 'disable',
-    disabled: 'disable',
-    allow: 'prefer',
-    prefer: 'prefer',
-    preferred: 'prefer',
-    require: 'require',
-    required: 'require',
-    'verify-ca': 'verify-ca',
-    verify_ca: 'verify-ca',
-    'verify-full': 'verify-full',
-    verify_identity: 'verify-full',
-  }
   if (modeMap[sslmode]) config.ssl = { mode: modeMap[sslmode] }
   else if (sslFlag === 'true' || sslFlag === '1') config.ssl = { mode: 'require' }
   else if (sslFlag === 'false' || sslFlag === '0') config.ssl = { mode: 'disable' }
@@ -120,13 +125,15 @@ function parseJdbcSqlServer(text: string): Parsed {
   const [hostAndInstance = '', port] = hostPart.split(':')
   const [host, instanceName] = hostAndInstance.split('\\')
   const options: Record<string, string | boolean> = {}
-  if (instanceName) options.instanceName = instanceName
+  const instance = instanceName || kv.get('instancename')
+  if (instance) options.instanceName = instance
   if (kv.get('trustservercertificate') === 'true') options.trustServerCertificate = true
   if (kv.get('domain')) options.domain = kv.get('domain')!
+  if (kv.get('integratedsecurity')?.toLowerCase() === 'true') options.authentication = 'windows'
   return {
     driver: 'mssql',
     host: host || 'localhost',
-    port: port ? Number(port) : instanceName ? undefined : 1433,
+    port: port ? Number(port) : instance ? undefined : 1433,
     database: kv.get('databasename') ?? kv.get('database'),
     user: kv.get('user') ?? kv.get('username'),
     password: kv.get('password'),
@@ -135,8 +142,33 @@ function parseJdbcSqlServer(text: string): Parsed {
   }
 }
 
+/**
+ * Npgsql (`Host=…;Username=…`) and MySQL Connector/NET (`Server=…;Port=3306;Uid=…`) strings look like SQL Server's;
+ * SQL Server puts the port after a comma and never has a Port key.
+ */
+function adoNetDriver(kv: Map<string, string>): DriverId {
+  const port = kv.get('port')
+  if (kv.has('host') || kv.has('username') || port === '5432') return 'postgres'
+  return port ? 'mysql' : 'mssql'
+}
+
 function parseAdoNet(text: string): Parsed {
   const kv = parseKeyValues(text)
+  const driver = adoNetDriver(kv)
+  if (driver !== 'mssql') {
+    const hosts = kv.get('host') ?? kv.get('server') ?? kv.get('data source') ?? 'localhost'
+    const sslmode = modeMap[(kv.get('ssl mode') ?? kv.get('sslmode') ?? '').toLowerCase()]
+    return {
+      driver,
+      // Npgsql lists fallback hosts after commas: the first one is the server.
+      host: hosts.split(',')[0]!.trim() || 'localhost',
+      port: Number(kv.get('port')) || DEFAULT_PORTS[driver],
+      database: kv.get('database') ?? kv.get('initial catalog'),
+      user: kv.get('username') ?? kv.get('user id') ?? kv.get('uid') ?? kv.get('user'),
+      password: kv.get('password') ?? kv.get('pwd'),
+      ssl: sslmode ? { mode: sslmode } : undefined,
+    }
+  }
   const server = (kv.get('server') ?? kv.get('data source') ?? kv.get('address') ?? 'localhost').replace(/^tcp:/i, '')
   const [hostAndInstance = 'localhost', port] = server.split(',')
   const [host, instanceName] = hostAndInstance.split('\\')
@@ -144,6 +176,8 @@ function parseAdoNet(text: string): Parsed {
   if (instanceName) options.instanceName = instanceName
   if (kv.get('trustservercertificate')?.toLowerCase() === 'true') options.trustServerCertificate = true
   const encrypt = kv.get('encrypt')?.toLowerCase()
+  const integrated = (kv.get('integrated security') ?? kv.get('trusted_connection'))?.toLowerCase()
+  if (integrated === 'true' || integrated === 'yes' || integrated === 'sspi') options.authentication = 'windows'
   return {
     driver: 'mssql',
     host: host === '.' || host === '(local)' ? 'localhost' : host,

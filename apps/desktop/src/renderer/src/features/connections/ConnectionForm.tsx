@@ -111,6 +111,7 @@ export function ConnectionForm() {
     try {
       const parsed = await api.parseConnectionString(text)
       setConfig((c) => ({ ...c, ...parsed, name: c.name }))
+      setTest({ state: 'idle' })
       setUrlText('')
       toast({ kind: 'success', message: t('Connection details filled in from the URL') })
     } catch (err) {

@@ -49,6 +49,34 @@ describe('parseConnectionString', () => {
     })
   })
 
+  it('turns integrated security into Windows authentication', () => {
+    expect(parseConnectionString('Server=sql01\\SQLEXPRESS;Database=Sklad;Integrated Security=True').options).toEqual({ instanceName: 'SQLEXPRESS', authentication: 'windows' })
+    expect(parseConnectionString('Server=sql01;Database=Sklad;Trusted_Connection=yes').options).toEqual({ authentication: 'windows' })
+    expect(parseConnectionString('jdbc:sqlserver://sql01:1433;databaseName=Sklad;integratedSecurity=true').options).toEqual({ authentication: 'windows' })
+    expect(parseConnectionString('jdbc:sqlserver://sql01;instanceName=PROD;databaseName=Sklad')).toMatchObject({ host: 'sql01', port: undefined, options: { instanceName: 'PROD' } })
+  })
+
+  it('parses Npgsql and MySQL Connector/NET strings', () => {
+    expect(parseConnectionString('Host=pg01,pg02;Port=5433;Database=crm;Username=anna;Password=x;SSL Mode=Require')).toEqual({
+      driver: 'postgres',
+      host: 'pg01',
+      port: 5433,
+      database: 'crm',
+      user: 'anna',
+      password: 'x',
+      ssl: { mode: 'require' },
+    })
+    expect(parseConnectionString('Server=my01;Port=3306;Database=shop;Uid=root;Pwd=x;SslMode=None;')).toEqual({
+      driver: 'mysql',
+      host: 'my01',
+      port: 3306,
+      database: 'shop',
+      user: 'root',
+      password: 'x',
+      ssl: { mode: 'disable' },
+    })
+  })
+
   it('parses sqlite paths', () => {
     expect(parseConnectionString('sqlite:///Users/me/app.db')).toEqual({ driver: 'sqlite', filePath: '/Users/me/app.db' })
   })
