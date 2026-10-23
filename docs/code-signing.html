@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code signing policy — DB Mastermind</title>
+<meta name="author" content="Václav Mudra">
+<meta name="description" content="How DB Mastermind releases are built and signed, who approves them, and how to uninstall the app.">
+<link rel="canonical" href="https://dbmastermind.app/code-signing.html">
+<link rel="icon" href="icon.svg">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="home" href="./"><img src="icon.svg" alt=""><strong>DB Mastermind</strong></a>
+    <nav>
+      <a href="./#features">Features</a>
+      <a href="./#install">Install</a>
+      <a href="https://github.com/eLh0m3r0/db-mastermind">GitHub</a>
+    </nav>
+  </header>
+
+  <main class="page">
+    <h1>Code signing policy</h1>
+    <p class="callout">Free code signing provided by <a href="https://about.signpath.io">SignPath.io</a>, certificate by <a href="https://signpath.org">SignPath Foundation</a>.</p>
+
+    <h2>Team roles</h2>
+    <ul>
+      <li>Committers and reviewers: <a href="https://github.com/eLh0m3r0">Václav Mudra (@eLh0m3r0)</a></li>
+      <li>Approvers: <a href="https://github.com/eLh0m3r0">Václav Mudra (@eLh0m3r0)</a></li>
+    </ul>
+
+    <h2>How releases are built and signed</h2>
+    <ul>
+      <li>Every release is built by <a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/.github/workflows/release.yml">GitHub Actions</a> from the tagged source in <a href="https://github.com/eLh0m3r0/db-mastermind">the project's repository</a>; nothing is built or signed on a personal computer.</li>
+      <li>Only files built from this project's own source are signed. Contributions from outside the team are reviewed before they are merged.</li>
+      <li>Each signing request is approved by hand by an approver.</li>
+      <li>All team members use multi-factor authentication for GitHub and SignPath.</li>
+    </ul>
+
+    <h2>Privacy</h2>
+    <p>This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. Details: <a href="privacy.html">privacy policy</a>.</p>
+
+    <h2>Installing and uninstalling</h2>
+    <ul>
+      <li><strong>Portable zip (Windows):</strong> changes nothing on your system. Delete the folder to remove it; your data is in the <em>data</em> folder next to the app.</li>
+      <li><strong>Windows installer and MSI:</strong> add a Start menu entry; remove the app in <em>Settings → Apps → Installed apps</em>.</li>
+      <li><strong>macOS:</strong> move the app from Applications to the Trash.</li>
+      <li><strong>Scoop / Homebrew:</strong> <code>scoop uninstall db-mastermind</code> or <code>brew uninstall --cask db-mastermind</code>.</li>
+      <li><strong>Linux:</strong> delete the AppImage, or remove the .deb package with your package manager.</li>
+    </ul>
+    <p>Installed versions keep settings and connections in your user data folder (<em>Settings → About → Data folder</em>) until you delete it.</p>
+  </main>
+
+  <footer>
+    <span>DB Mastermind by <a href="https://vaclavmudra.com">Václav Mudra</a> · MIT license</span>
+    <span><a href="privacy.html">Privacy policy</a> · <a href="code-signing.html">Code signing policy</a> · <a href="https://ko-fi.com/vaclavmudra">☕ Support on Ko-fi</a></span>
+  </footer>
+</div>
+</body>
+</html>

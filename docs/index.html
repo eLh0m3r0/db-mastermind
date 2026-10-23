@@ -8,77 +8,7 @@
 <meta name="description" content="Free, open-source database client for PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite and DuckDB: data browser with advanced filters, ER diagrams, live schema design with migrations, and AI that knows your database.">
 <link rel="canonical" href="https://dbmastermind.app/">
 <link rel="icon" href="icon.svg">
-<style>
-:root {
-  --bg: #ffffff; --fg: #1b1d23; --muted: #5d6472; --faint: #8a919c; --line: #e5e7eb; --subtle: #f6f7f9;
-  --accent: #5b3ee6; --accent-fg: #ffffff; --accent-soft: #efebff; --card: #ffffff;
-}
-@media (prefers-color-scheme: dark) {
-  :root { --bg: #121317; --fg: #e8e9ed; --muted: #a2a8b3; --faint: #7a808b; --line: #262931; --subtle: #181a1f; --accent: #9d8cff; --accent-fg: #14121f; --accent-soft: #241f45; --card: #17191e; }
-}
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; }
-a { color: var(--accent); }
-.wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
-header { display: flex; align-items: center; gap: 12px; padding: 18px 0; }
-header img { width: 32px; height: 32px; }
-header nav { margin-left: auto; display: flex; gap: 20px; font-size: 14px; }
-header nav a { color: var(--muted); text-decoration: none; }
-header nav a:hover { color: var(--fg); }
-.hero { padding: 56px 0 32px; text-align: center; }
-.hero h1 { font-size: clamp(32px, 5vw, 52px); line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 16px; }
-.hero p { font-size: 19px; color: var(--muted); max-width: 720px; margin: 0 auto 28px; }
-.cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
-.btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 10px; font-weight: 600; text-decoration: none; border: 1px solid var(--line); color: var(--fg); background: var(--card); }
-.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
-.btn small { font-weight: 400; opacity: .8; }
-.note { font-size: 13px; color: var(--faint); margin-top: 12px; }
-.shot { margin: 40px auto 0; border-radius: 14px; border: 1px solid var(--line); overflow: hidden; box-shadow: 0 20px 60px rgba(30, 20, 80, .15); }
-.shot img { display: block; width: 100%; height: auto; }
-.engines { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 28px 0 0; padding: 0; list-style: none; }
-.engines li { padding: 4px 12px; border-radius: 999px; background: var(--subtle); border: 1px solid var(--line); font-size: 13px; color: var(--muted); }
-section { padding: 64px 0 8px; }
-section > h2 { font-size: 30px; letter-spacing: -0.01em; margin: 0 0 8px; }
-section > p.lead { color: var(--muted); margin: 0 0 28px; max-width: 720px; }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
-.card { border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: 18px 20px; }
-.card h3 { margin: 0 0 6px; font-size: 16px; }
-.card p { margin: 0; color: var(--muted); font-size: 14.5px; }
-.feature { display: grid; grid-template-columns: 1fr 1.4fr; gap: 32px; align-items: center; margin: 48px 0; }
-.feature:nth-child(even) .text { order: 2; }
-.feature h3 { font-size: 22px; margin: 0 0 8px; }
-.feature p { color: var(--muted); margin: 0 0 8px; }
-.feature img { width: 100%; border-radius: 10px; border: 1px solid var(--line); }
-.kbd { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--subtle); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
-pre { background: var(--subtle); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow: auto; font-size: 13.5px; }
-footer { margin-top: 64px; padding: 28px 0 40px; border-top: 1px solid var(--line); color: var(--faint); font-size: 14px; display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; }
-.mcp { border: 1px solid var(--line); border-radius: 12px; background: var(--card); padding: 14px 16px 6px; }
-.mcp-bar { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; }
-.tabs, .os { display: flex; flex-wrap: wrap; gap: 4px; }
-.tabs button, .os button { font: inherit; font-size: 13.5px; padding: 5px 11px; border-radius: 8px; border: 1px solid transparent; background: none; color: var(--muted); cursor: pointer; }
-.tabs button:hover, .os button:hover { color: var(--fg); background: var(--subtle); }
-.tabs button[aria-selected="true"] { background: var(--accent-soft); color: var(--fg); font-weight: 600; }
-[hidden] { display: none !important; }
-.os { border: 1px solid var(--line); border-radius: 9px; padding: 2px; }
-.os button { padding: 3px 9px; font-size: 12.5px; }
-.os button[aria-pressed="true"] { background: var(--subtle); color: var(--fg); font-weight: 600; }
-.mcp-where { margin: 14px 0 6px; font-size: 14.5px; color: var(--muted); }
-.mcp pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
-.mcp-note { font-size: 13.5px; color: var(--faint); margin: 8px 0 10px; }
-#mcp .mcp + .lead { margin-top: 20px; }
-.mcp-easy { max-width: 760px; color: var(--muted); margin: -12px 0 20px; }
-.policy { max-width: 820px; }
-.policy h3 { font-size: 17px; margin: 24px 0 6px; }
-.policy p, .policy li { color: var(--muted); }
-.policy ul { padding-left: 20px; margin: 6px 0; }
-.cz { background: var(--accent-soft); border-radius: 12px; padding: 18px 22px; }
-@media (max-width: 760px) {
-  header nav { display: none; }
-  .feature { grid-template-columns: 1fr; gap: 14px; }
-  .feature:nth-child(even) .text { order: 0; }
-}
-</style>
+<link rel="stylesheet" href="site.css">
 </head>
 <body>
 <div class="wrap">
@@ -90,6 +20,8 @@ footer { margin-top: 64px; padding: 28px 0 40px; border-top: 1px solid var(--lin
       <a href="#ai">AI</a>
       <a href="#design">Design</a>
       <a href="#mcp">MCP</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#install">Install</a>
       <a href="https://github.com/eLh0m3r0/db-mastermind">GitHub</a>
     </nav>
   </header>
@@ -102,10 +34,7 @@ footer { margin-top: 64px; padding: 28px 0 40px; border-top: 1px solid var(--lin
       <a class="btn" href="https://github.com/eLh0m3r0/db-mastermind/releases/latest">All downloads</a>
       <a class="btn" href="https://github.com/eLh0m3r0/db-mastermind">Source code</a>
     </div>
-    <div class="note"><a href="#code-signing">Code signing policy</a> · <a href="#privacy">Privacy</a></div>
-    <div class="note" id="download-note">Windows: portable zip, just unzip and run · macOS (Apple Silicon &amp; Intel) · Linux AppImage / deb</div>
-    <div class="note">Scoop: <code>scoop install https://github.com/eLh0m3r0/db-mastermind/releases/latest/download/db-mastermind.json</code></div>
-    <div class="note">Homebrew: <code>brew tap elh0m3r0/db-mastermind https://github.com/eLh0m3r0/db-mastermind &amp;&amp; brew install --cask db-mastermind</code></div>
+    <div class="note">Windows · macOS (Apple Silicon &amp; Intel) · Linux — or <a href="#install">install with Scoop, Homebrew or an MSI</a></div>
     <ul class="engines">
       <li>PostgreSQL</li><li>SQL Server</li><li>Oracle</li><li>MySQL</li><li>MariaDB</li><li>SQLite</li><li>DuckDB</li><li>ClickHouse</li><li>CockroachDB</li><li>BigQuery</li><li>Trino</li><li>CSV · Parquet · Excel</li>
     </ul>
@@ -187,50 +116,54 @@ footer { margin-top: 64px; padding: 28px 0 40px; border-top: 1px solid var(--lin
     <p class="lead">Tools for agents: <code>list_connections</code>, <code>list_tables</code>, <code>describe_table</code>, <code>search_schema</code>, <code>get_relationships</code>, <code>find_join_path</code>, <code>sample_rows</code>, <code>run_query</code>, <code>explain_query</code>, <code>search_knowledge</code>, <code>read_knowledge</code>, plus prompts such as <em>document_database</em>.</p>
   </section>
 
-  <section>
-    <div class="cz">
-      <strong>Pro kolegy:</strong> stáhněte si <em>DB-Mastermind-…-win-x64-portable.zip</em>, rozbalte a spusťte <em>DB Mastermind.exe</em> — nic se neinstaluje. V Nastavení → Obecné → Jazyk přepněte na češtinu. Připojení vám může kolega poslat jako soubor (bez hesel).
+  <section id="privacy">
+    <h2>Private by design</h2>
+    <p class="lead">Your databases, queries and passwords stay on your computer. No account, no tracking, nothing sent anywhere you didn't choose.</p>
+    <div class="grid trust">
+      <div class="card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg><h3>No telemetry</h3><p>No analytics, no crash reports, no usage statistics, no sign-in.</p></div>
+      <div class="card"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><h3>Secrets stay local</h3><p>Passwords and API keys are encrypted with your system keychain and go only to the database or AI provider they belong to.</p></div>
+      <div class="card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4"/></svg><h3>AI only when you choose</h3><p>Off until you set up a provider, read-only by default, and switchable off per connection or for the whole company. Ollama keeps it all on your machine.</p></div>
+      <div class="card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg><h3>One request of its own</h3><p>The only automatic network call asks GitHub whether a new version exists. Turn it off in Settings → General.</p></div>
     </div>
+    <p class="more"><a href="privacy.html">Read the full privacy policy →</a></p>
   </section>
 
-  <section id="code-signing" class="policy">
-    <h2>Code signing policy</h2>
-    <p>Free code signing provided by <a href="https://about.signpath.io">SignPath.io</a>, certificate by <a href="https://signpath.org">SignPath Foundation</a>.</p>
-    <h3>Team roles</h3>
-    <ul>
-      <li>Committers and reviewers: <a href="https://github.com/eLh0m3r0">Václav Mudra (@eLh0m3r0)</a></li>
-      <li>Approvers: <a href="https://github.com/eLh0m3r0">Václav Mudra (@eLh0m3r0)</a></li>
-    </ul>
-    <h3>How releases are built and signed</h3>
-    <ul>
-      <li>Every release is built by <a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/.github/workflows/release.yml">GitHub Actions</a> from the tagged source in <a href="https://github.com/eLh0m3r0/db-mastermind">this repository</a>; nothing is built or signed on a personal computer.</li>
-      <li>Only files built from this project's own source are signed. Contributions from outside the team are reviewed before they are merged.</li>
-      <li>Each signing request is approved by hand by an approver.</li>
-      <li>All team members use multi-factor authentication for GitHub and SignPath.</li>
-    </ul>
-    <h3>Installing and uninstalling</h3>
-    <p>The portable zip changes nothing on your system: delete the folder to remove it (your data is in the <em>data</em> folder next to the app). The installers add a Start menu / Applications entry and remove it again through <em>Apps &amp; features</em> on Windows, by moving the app to the Trash on macOS, with <code>scoop uninstall db-mastermind</code> or <code>brew uninstall --cask db-mastermind</code>, and on Linux by deleting the AppImage or removing the .deb package. Your settings and connections stay in your user data folder (Settings → About → Data folder) until you delete it.</p>
-  </section>
-
-  <section id="privacy" class="policy">
-    <h2>Privacy</h2>
-    <p>This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.</p>
-    <p>No telemetry, no analytics, no crash reports, no account. In detail:</p>
-    <ul>
-      <li><strong>Update checks</strong> (the only thing that happens on its own): every few hours the app asks GitHub for the latest release and downloads it if there is one. GitHub sees your IP address and the app version, under the <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub Privacy Statement</a>. Turn it off in Settings → General → Updates; IT can turn it off for everyone with the <a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/docs/managed-config.md"><code>disableUpdateCheck</code></a> policy.</li>
-      <li><strong>Databases</strong>: the app connects only to the databases you set up.</li>
-      <li><strong>AI</strong> is off until you set up a provider. Then your questions and the schema and data the assistant reads go to the provider you chose, under its privacy policy: <a href="https://www.anthropic.com/legal/privacy">Anthropic</a>, <a href="https://openai.com/policies/privacy-policy/">OpenAI</a>, <a href="https://openrouter.ai/privacy">OpenRouter</a>, <a href="https://policies.google.com/privacy">Google Gemini</a>, <a href="https://www.microsoft.com/privacy/privacystatement">Azure OpenAI</a>. Ollama runs on your own computer. Each connection can have AI turned off, and IT can turn it off for all.</li>
-      <li><strong>MCP server</strong>: off until you turn it on, and then it listens only on your own computer (127.0.0.1).</li>
-      <li>Passwords and API keys are stored encrypted on your computer and never leave it, except to the database or AI provider they belong to.</li>
-    </ul>
-    <p>This website is hosted on GitHub Pages; the download button asks GitHub which file is the latest.</p>
+  <section id="install">
+    <h2>Install</h2>
+    <p class="lead">Free for everyone, with no feature limits. The app keeps itself up to date.</p>
+    <div class="grid install">
+      <div class="card">
+        <h3>Windows</h3>
+        <p><strong>No installation:</strong> download the <em>portable zip</em>, unzip it, run <em>DB Mastermind.exe</em>. Settings stay in the folder.</p>
+        <p><strong>Installer:</strong> <em>…-setup.exe</em>, per user, no admin rights. <strong>For IT:</strong> per-machine <em>.msi</em>.</p>
+        <p><strong>Scoop:</strong></p>
+        <pre>scoop install https://github.com/eLh0m3r0/db-mastermind/releases/latest/download/db-mastermind.json</pre>
+      </div>
+      <div class="card">
+        <h3>macOS</h3>
+        <p>Download the <em>.dmg</em> for Apple Silicon or Intel and drag the app to Applications. The first time, right-click it and choose <em>Open</em>.</p>
+        <p><strong>Homebrew:</strong></p>
+        <pre>brew tap elh0m3r0/db-mastermind https://github.com/eLh0m3r0/db-mastermind
+brew install --cask db-mastermind</pre>
+      </div>
+      <div class="card">
+        <h3>Linux</h3>
+        <p><strong>AppImage:</strong> make it executable and run it; it updates itself.</p>
+        <p><strong>Debian / Ubuntu:</strong> the <em>.deb</em> package.</p>
+      </div>
+    </div>
+    <p class="more"><a href="https://github.com/eLh0m3r0/db-mastermind/releases/latest">All downloads and release notes →</a> · <a class="subtle" href="code-signing.html">Code signing policy</a></p>
   </section>
 
   <footer>
     <span>DB Mastermind by <a href="https://vaclavmudra.com">Václav Mudra</a> · MIT license · made with Claude</span>
-    <span><a href="#code-signing">Code signing policy</a> · <a href="#privacy">Privacy</a> · <a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md">Roadmap</a> · <a href="https://github.com/eLh0m3r0/db-mastermind/issues">Issues</a> · <a href="https://ko-fi.com/vaclavmudra">☕ Support on Ko-fi</a></span>
+    <span><a href="privacy.html">Privacy policy</a> · <a href="code-signing.html">Code signing policy</a> · <a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md">Roadmap</a> · <a href="https://github.com/eLh0m3r0/db-mastermind/issues">Issues</a> · <a href="https://ko-fi.com/vaclavmudra">☕ Support on Ko-fi</a></span>
   </footer>
 </div>
+<script>
+// Old links to the sections that moved to their own pages.
+if (location.hash === '#code-signing') location.replace('code-signing.html')
+</script>
 <script>
 // Point the main button at the right file of the latest release for this computer.
 (async () => {

@@ -201,7 +201,7 @@ Free code signing provided by [SignPath.io](https://about.signpath.io), certific
 
 Releases are built by GitHub Actions ([release.yml](.github/workflows/release.yml)) from the tagged source in this
 repository, only this project's own files are signed, and every signing request is approved by hand. Details and
-uninstall instructions: [dbmastermind.app/#code-signing](https://dbmastermind.app/#code-signing).
+uninstall instructions: [dbmastermind.app/code-signing.html](https://dbmastermind.app/code-signing.html).
 
 ## Privacy
 
@@ -209,7 +209,7 @@ This program will not transfer any information to other networked systems unless
 or the person installing or operating it. The one exception is the update check, which asks GitHub for the latest
 release every few hours; turn it off in Settings → General → Updates (or for everyone with the `disableUpdateCheck`
 policy). AI providers receive data only after you set one up. Full privacy policy:
-[dbmastermind.app/#privacy](https://dbmastermind.app/#privacy).
+[dbmastermind.app/privacy.html](https://dbmastermind.app/privacy.html).
 
 ## License
 
