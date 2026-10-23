@@ -52,6 +52,10 @@ section > p.lead { color: var(--muted); margin: 0 0 28px; max-width: 720px; }
 .kbd { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--subtle); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
 pre { background: var(--subtle); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow: auto; font-size: 13.5px; }
 footer { margin-top: 64px; padding: 28px 0 40px; border-top: 1px solid var(--line); color: var(--faint); font-size: 14px; display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; }
+.policy { max-width: 820px; }
+.policy h3 { font-size: 17px; margin: 24px 0 6px; }
+.policy p, .policy li { color: var(--muted); }
+.policy ul { padding-left: 20px; margin: 6px 0; }
 .cz { background: var(--accent-soft); border-radius: 12px; padding: 18px 22px; }
 @media (max-width: 760px) {
   header nav { display: none; }
@@ -82,6 +86,7 @@ footer { margin-top: 64px; padding: 28px 0 40px; border-top: 1px solid var(--lin
       <a class="btn" href="https://github.com/eLh0m3r0/db-mastermind/releases/latest">All downloads</a>
       <a class="btn" href="https://github.com/eLh0m3r0/db-mastermind">Source code</a>
     </div>
+    <div class="note"><a href="#code-signing">Code signing policy</a> · <a href="#privacy">Privacy</a></div>
     <div class="note" id="download-note">Windows: portable zip, just unzip and run · macOS (Apple Silicon &amp; Intel) · Linux AppImage / deb</div>
     <div class="note">Scoop: <code>scoop install https://github.com/eLh0m3r0/db-mastermind/releases/latest/download/db-mastermind.json</code></div>
     <div class="note">Homebrew: <code>brew tap elh0m3r0/db-mastermind https://github.com/eLh0m3r0/db-mastermind &amp;&amp; brew install --cask db-mastermind</code></div>
@@ -148,9 +153,42 @@ footer { margin-top: 64px; padding: 28px 0 40px; border-top: 1px solid var(--lin
     </div>
   </section>
 
+  <section id="code-signing" class="policy">
+    <h2>Code signing policy</h2>
+    <p>Free code signing provided by <a href="https://about.signpath.io">SignPath.io</a>, certificate by <a href="https://signpath.org">SignPath Foundation</a>.</p>
+    <h3>Team roles</h3>
+    <ul>
+      <li>Committers and reviewers: <a href="https://github.com/eLh0m3r0">Václav Mudra (@eLh0m3r0)</a></li>
+      <li>Approvers: <a href="https://github.com/eLh0m3r0">Václav Mudra (@eLh0m3r0)</a></li>
+    </ul>
+    <h3>How releases are built and signed</h3>
+    <ul>
+      <li>Every release is built by <a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/.github/workflows/release.yml">GitHub Actions</a> from the tagged source in <a href="https://github.com/eLh0m3r0/db-mastermind">this repository</a>; nothing is built or signed on a personal computer.</li>
+      <li>Only files built from this project's own source are signed. Contributions from outside the team are reviewed before they are merged.</li>
+      <li>Each signing request is approved by hand by an approver.</li>
+      <li>All team members use multi-factor authentication for GitHub and SignPath.</li>
+    </ul>
+    <h3>Installing and uninstalling</h3>
+    <p>The portable zip changes nothing on your system: delete the folder to remove it (your data is in the <em>data</em> folder next to the app). The installers add a Start menu / Applications entry and remove it again through <em>Apps &amp; features</em> on Windows, by moving the app to the Trash on macOS, with <code>scoop uninstall db-mastermind</code> or <code>brew uninstall --cask db-mastermind</code>, and on Linux by deleting the AppImage or removing the .deb package. Your settings and connections stay in your user data folder (Settings → About → Data folder) until you delete it.</p>
+  </section>
+
+  <section id="privacy" class="policy">
+    <h2>Privacy</h2>
+    <p>This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.</p>
+    <p>No telemetry, no analytics, no crash reports, no account. In detail:</p>
+    <ul>
+      <li><strong>Update checks</strong> (the only thing that happens on its own): every few hours the app asks GitHub for the latest release and downloads it if there is one. GitHub sees your IP address and the app version, under the <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub Privacy Statement</a>. Turn it off in Settings → General → Updates; IT can turn it off for everyone with the <a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/docs/managed-config.md"><code>disableUpdateCheck</code></a> policy.</li>
+      <li><strong>Databases</strong>: the app connects only to the databases you set up.</li>
+      <li><strong>AI</strong> is off until you set up a provider. Then your questions and the schema and data the assistant reads go to the provider you chose, under its privacy policy: <a href="https://www.anthropic.com/legal/privacy">Anthropic</a>, <a href="https://openai.com/policies/privacy-policy/">OpenAI</a>, <a href="https://openrouter.ai/privacy">OpenRouter</a>, <a href="https://policies.google.com/privacy">Google Gemini</a>, <a href="https://www.microsoft.com/privacy/privacystatement">Azure OpenAI</a>. Ollama runs on your own computer. Each connection can have AI turned off, and IT can turn it off for all.</li>
+      <li><strong>MCP server</strong>: off until you turn it on, and then it listens only on your own computer (127.0.0.1).</li>
+      <li>Passwords and API keys are stored encrypted on your computer and never leave it, except to the database or AI provider they belong to.</li>
+    </ul>
+    <p>This website is hosted on GitHub Pages; the download button asks GitHub which file is the latest.</p>
+  </section>
+
   <footer>
     <span>DB Mastermind · MIT license · made with Claude</span>
-    <span><a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md">Roadmap</a> · <a href="https://github.com/eLh0m3r0/db-mastermind/issues">Issues</a> · <a href="https://ko-fi.com/vaclavmudra">☕ Support on Ko-fi</a></span>
+    <span><a href="#code-signing">Code signing policy</a> · <a href="#privacy">Privacy</a> · <a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md">Roadmap</a> · <a href="https://github.com/eLh0m3r0/db-mastermind/issues">Issues</a> · <a href="https://ko-fi.com/vaclavmudra">☕ Support on Ko-fi</a></span>
   </footer>
 </div>
 <script>

@@ -100,6 +100,14 @@ export function SettingsModal() {
                   hint={t('Always on for connections marked as production.')}
                 />
               </Row>
+              <Row label={t('Updates')}>
+                <Checkbox
+                  checked={settings.checkForUpdates !== false}
+                  onChange={(v) => set({ checkForUpdates: v })}
+                  label={t('Check for new versions automatically')}
+                  hint={t('Asks GitHub every few hours. Nothing about you or your databases is sent.')}
+                />
+              </Row>
             </>
           )}
           {current === 'snippets' && <SnippetsSection />}
@@ -169,6 +177,9 @@ export function SettingsModal() {
               </Row>
               <Row label={t('Links')}>
                 <div className="flex gap-2">
+                  <Button size="xs" onClick={() => void api.openExternal('https://dbmastermind.app')}>
+                    {t('Website')}
+                  </Button>
                   <Button size="xs" onClick={() => void api.openExternal('https://github.com/eLh0m3r0/db-mastermind')}>
                     GitHub
                   </Button>

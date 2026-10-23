@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { app, powerMonitor } from 'electron'
 import { canSelfUpdateMac, downloadMacUpdate, installMacUpdateNow } from './mac-update'
 import { managedConfig } from './managed'
+import { getSettings } from './settings'
 import { isPortable } from './storage'
 
 const RELEASES_API = 'https://api.github.com/repos/eLh0m3r0/db-mastermind/releases/latest'
@@ -84,7 +85,10 @@ function autoUpdaterFor(ready: (info: { version: string }) => void) {
   return updater
 }
 
+/** Off for good: the environment or the IT policy. Help → Check for Updates says so. */
 const disabled = () => process.env.DBM_NO_UPDATE_CHECK || managedConfig()?.policies?.disableUpdateCheck
+/** The background checks also respect the user's setting; checking by hand still works. */
+const automaticOff = () => disabled() || getSettings().checkForUpdates === false
 
 /**
  * Self-updating installs download new versions in the background and offer a restart (or install on quit).
@@ -94,7 +98,7 @@ export async function checkForUpdates(
   notify: (info: { version: string; url: string }) => void,
   ready: (info: { version: string }) => void = () => {},
 ): Promise<void> {
-  if (!app.isPackaged || disabled()) return
+  if (!app.isPackaged || automaticOff()) return
   const auto = canAutoUpdate()
   log('INFO', `Version ${app.getVersion()} on ${process.platform}/${process.arch}; self-updating install: ${auto}; exe ${app.getPath('exe')}`)
   if (auto) {

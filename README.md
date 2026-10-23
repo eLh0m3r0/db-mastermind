@@ -186,6 +186,25 @@ direction.
 DB Mastermind is free, open source and has no paid tier. If it saves you time, you can
 [buy me a coffee on Ko-fi](https://ko-fi.com/vaclavmudra) or [sponsor it on GitHub](https://github.com/sponsors/eLh0m3r0).
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+- Committers and reviewers: [Václav Mudra (@eLh0m3r0)](https://github.com/eLh0m3r0)
+- Approvers: [Václav Mudra (@eLh0m3r0)](https://github.com/eLh0m3r0)
+
+Releases are built by GitHub Actions ([release.yml](.github/workflows/release.yml)) from the tagged source in this
+repository, only this project's own files are signed, and every signing request is approved by hand. Details and
+uninstall instructions: [dbmastermind.app/#code-signing](https://dbmastermind.app/#code-signing).
+
+## Privacy
+
+This program will not transfer any information to other networked systems unless specifically requested by the user
+or the person installing or operating it. The one exception is the update check, which asks GitHub for the latest
+release every few hours; turn it off in Settings → General → Updates (or for everyone with the `disableUpdateCheck`
+policy). AI providers receive data only after you set one up. Full privacy policy:
+[dbmastermind.app/#privacy](https://dbmastermind.app/#privacy).
+
 ## License
 
 [MIT](LICENSE). Free for personal and commercial use.

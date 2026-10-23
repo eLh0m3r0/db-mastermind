@@ -138,6 +138,8 @@ export interface AppSettings {
   dateFormat: 'iso' | 'locale'
   /** CSV separator; Excel in Czech (and much of Europe) expects semicolons. Unset: by the app's language. */
   csvDelimiter?: ',' | ';'
+  /** Background checks for new versions on GitHub (default on). Help → Check for Updates works either way. */
+  checkForUpdates?: boolean
   ai: AiSettings
   mcp: McpSettings
   /** User snippets (built-ins are always available unless overridden by trigger). */
