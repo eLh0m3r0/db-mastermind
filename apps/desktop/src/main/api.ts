@@ -821,8 +821,8 @@ export const api: MastermindApi = {
     const { system, prompt } = filterPrompt(info, request)
     return sanitizeFilter(extractJson(await completeText(system, prompt)), info)
   },
-  async listAiChats(connectionId) {
-    return listChats(connectionId)
+  async listAiChats(connectionId, query) {
+    return listChats(connectionId, query)
   },
   async getAiChat(id) {
     return getChat(id)

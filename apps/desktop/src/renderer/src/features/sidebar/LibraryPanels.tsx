@@ -7,7 +7,7 @@ import { api, keys } from '@/lib/api'
 import { copyText, cn, errorMessage, formatDuration, fuzzyScore } from '@/lib/utils'
 import { toast } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
-import { t, tp, useT } from '@/lib/i18n'
+import { formatDate, t, tp, useT } from '@/lib/i18n'
 import { confirmAction } from '@/components/ui/ConfirmDialog'
 
 function relativeTime(iso: string): string {
@@ -15,7 +15,7 @@ function relativeTime(iso: string): string {
   if (diff < 60_000) return t('just now')
   if (diff < 3_600_000) return t('{n} min ago', { n: Math.floor(diff / 60_000) })
   if (diff < 86_400_000) return t('{n} h ago', { n: Math.floor(diff / 3_600_000) })
-  return new Date(iso).toLocaleDateString()
+  return formatDate(iso, 'date')
 }
 
 /** Puts SQL into the active query tab of this connection, or opens a new one. */

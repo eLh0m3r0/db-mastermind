@@ -24,11 +24,47 @@ function trim(messages: unknown[]): unknown[] {
   })
 }
 
-export function listChats(connectionId: string): AiChatSummary[] {
+/** Lower case without diacritics, so "prijem" finds "Příjem". */
+const fold = (s: string) => s.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '')
+
+/** What a chat says: message text and the SQL the assistant ran. */
+function chatTexts(chat: AiStoredChat): string[] {
+  const texts = [chat.title]
+  for (const m of chat.messages as { parts?: { type?: string; text?: unknown; input?: { sql?: unknown } }[] }[]) {
+    for (const p of m.parts ?? []) {
+      if (p.type === 'text' && typeof p.text === 'string') texts.push(p.text)
+      if (p.type === 'tool' && typeof p.input?.sql === 'string') texts.push(p.input.sql)
+    }
+  }
+  return texts
+}
+
+/** The text around the first match, on one line. */
+function snippet(texts: string[], word: string): string | undefined {
+  for (const text of texts.slice(1)) {
+    const at = fold(text).indexOf(word)
+    if (at < 0) continue
+    const start = Math.max(0, at - 40)
+    const line = text.slice(start, at + word.length + 80).replace(/\s+/g, ' ').trim()
+    return `${start > 0 ? '…' : ''}${line}${at + word.length + 80 < text.length ? '…' : ''}`
+  }
+  return undefined
+}
+
+/** Saved chats of a connection, newest first; with a query, those whose title or messages contain all its words. */
+export function listChats(connectionId: string, query = ''): AiChatSummary[] {
+  const words = fold(query).split(/\s+/).filter(Boolean)
   return all()
     .filter((c) => c.connectionId === connectionId)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .map(({ id, title, updatedAt, messages }) => ({ id, title, updatedAt, messageCount: messages.length }))
+    .flatMap((c) => {
+      const summary: AiChatSummary = { id: c.id, title: c.title, updatedAt: c.updatedAt, messageCount: c.messages.length }
+      if (!words.length) return [summary]
+      const texts = chatTexts(c)
+      const folded = fold(texts.join('\n'))
+      if (!words.every((w) => folded.includes(w))) return []
+      return [{ ...summary, snippet: snippet(texts, words[0]!) }]
+    })
 }
 
 export function getChat(id: string): AiStoredChat | null {

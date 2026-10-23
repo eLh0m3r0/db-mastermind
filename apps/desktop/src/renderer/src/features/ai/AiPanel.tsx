@@ -5,6 +5,7 @@ import { designFromDbml } from '@dbmastermind/core/browser'
 import type { AiChatSummary, AiEvent } from '@shared/api'
 import { askText, confirmAction } from '@/components/ui/ConfirmDialog'
 import { Button, IconButton } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 import { Spinner } from '@/components/ui/Spinner'
 import { api, bridge, modKey } from '@/lib/api'
 import { runCommand } from '@/lib/commands'
@@ -17,7 +18,7 @@ import { useCurrentConnectionId } from '../sidebar/Sidebar'
 import { useAiAccess } from './AiPermissions'
 import { Markdown } from './Markdown'
 import { providerMeta } from './providers'
-import { tp, useT } from '@/lib/i18n'
+import { formatDate, tp, useT } from '@/lib/i18n'
 
 type Part =
   | { type: 'text'; text: string }
@@ -489,8 +490,22 @@ function ToolCall({ part }: { part: Extract<Part, { type: 'tool' }> }) {
 function ChatHistory({ connectionId, currentId, onOpen, onDeletedCurrent }: { connectionId: string; currentId?: string; onOpen: (id: string) => void; onDeletedCurrent: () => void }) {
   const t = useT()
   const [chats, setChats] = useState<AiChatSummary[] | null>(null)
-  const load = () => void api.listAiChats(connectionId).then(setChats)
-  useEffect(load, [connectionId])
+  const [query, setQuery] = useState('')
+  const [anySaved, setAnySaved] = useState(true)
+  const latest = useRef(0)
+  const load = (q = query) => {
+    const request = ++latest.current
+    void api.listAiChats(connectionId, q).then((list) => {
+      if (request !== latest.current) return // a newer search answered meanwhile
+      setChats(list)
+      if (!q.trim()) setAnySaved(list.length > 0)
+    })
+  }
+  useEffect(() => {
+    // Typing searches after a short pause; opening the list (no query) loads at once.
+    const timer = setTimeout(() => load(query), query.trim() ? 150 : 0)
+    return () => clearTimeout(timer)
+  }, [connectionId, query])
 
   const rename = async (c: AiChatSummary) => {
     const title = await askText({ title: t('Rename chat'), value: c.title, confirmLabel: t('Rename') })
@@ -506,28 +521,48 @@ function ChatHistory({ connectionId, currentId, onOpen, onDeletedCurrent }: { co
   }
 
   if (!chats) return <div className="flex flex-1 items-center justify-center"><Spinner /></div>
-  if (!chats.length) return <div className="flex flex-1 items-center justify-center p-6 text-center text-[12px] text-fg-faint">{t('No saved chats yet. Chats are kept here when you ask something.')}</div>
+  if (!anySaved && !query.trim()) return <div className="flex flex-1 items-center justify-center p-6 text-center text-[12px] text-fg-faint">{t('No saved chats yet. Chats are kept here when you ask something.')}</div>
   return (
-    <div className="min-h-0 flex-1 overflow-auto p-2">
-      {chats.map((c) => (
-        <div key={c.id} className={cn('group flex items-center gap-1 rounded-md pr-1 hover:bg-muted', c.id === currentId && 'bg-muted')}>
-          <button type="button" className="flex min-w-0 flex-1 items-start gap-2 px-2 py-1.5 text-left" onClick={() => onOpen(c.id)}>
-            <MessageSquare size={13} className="mt-0.5 shrink-0 text-fg-faint" />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[12.5px]">{c.title}</span>
-              <span className="block text-[11px] text-fg-faint">
-                {new Date(c.updatedAt).toLocaleString()} · {tp(c.messageCount, { one: '{n} message', many: '{n} messages' })}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="px-2 pt-2">
+        <Input
+          inputSize="sm"
+          autoFocus
+          placeholder={t('Search chats…')}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && query) {
+              e.stopPropagation()
+              setQuery('')
+            }
+            if (e.key === 'Enter' && chats[0]) onOpen(chats[0].id)
+          }}
+        />
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto p-2">
+        {!chats.length && <div className="p-4 text-center text-[12px] text-fg-faint">{t('No chats contain “{query}”', { query: query.trim() })}</div>}
+        {chats.map((c) => (
+          <div key={c.id} className={cn('group flex items-center gap-1 rounded-md pr-1 hover:bg-muted', c.id === currentId && 'bg-muted')}>
+            <button type="button" className="flex min-w-0 flex-1 items-start gap-2 px-2 py-1.5 text-left" onClick={() => onOpen(c.id)}>
+              <MessageSquare size={13} className="mt-0.5 shrink-0 text-fg-faint" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[12.5px]">{c.title}</span>
+                {c.snippet && <span className="line-clamp-2 block text-[11.5px] break-words text-fg-muted">{c.snippet}</span>}
+                <span className="block text-[11px] text-fg-faint">
+                  {formatDate(c.updatedAt)} · {tp(c.messageCount, { one: '{n} message', many: '{n} messages' })}
+                </span>
               </span>
-            </span>
-          </button>
-          <IconButton label={t('Rename chat')} className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => void rename(c)}>
-            <Pencil size={12} />
-          </IconButton>
-          <IconButton label={t('Delete chat')} className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => void remove(c)}>
-            <Trash2 size={12} />
-          </IconButton>
-        </div>
-      ))}
+            </button>
+            <IconButton label={t('Rename chat')} className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => void rename(c)}>
+              <Pencil size={12} />
+            </IconButton>
+            <IconButton label={t('Delete chat')} className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => void remove(c)}>
+              <Trash2 size={12} />
+            </IconButton>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

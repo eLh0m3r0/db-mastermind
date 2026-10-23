@@ -9,7 +9,7 @@ import { Input, Select } from '@/components/ui/Input'
 import { Spinner } from '@/components/ui/Spinner'
 import { api } from '@/lib/api'
 import { openDashboard } from '@/lib/dashboards'
-import { useT } from '@/lib/i18n'
+import { formatDate, useT } from '@/lib/i18n'
 import { cn, debounce, errorMessage, formatDuration, uid } from '@/lib/utils'
 import { useWorkspace, type DashboardTab } from '@/store/workspace'
 import { confirmAction } from '@/components/ui/ConfirmDialog'
@@ -54,7 +54,7 @@ function TileView({
           onBlur={() => title.trim() && title !== tile.title && onChange({ ...tile, title: title.trim() })}
           onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
         />
-        {state?.loading ? <Spinner size={12} className="text-fg-faint" /> : state?.at && <span className="text-[10.5px] text-fg-faint">{new Date(state.at).toLocaleTimeString()}</span>}
+        {state?.loading ? <Spinner size={12} className="text-fg-faint" /> : state?.at && <span className="text-[10.5px] text-fg-faint">{formatDate(state.at, 'time')}</span>}
         <div className="flex opacity-50 group-hover:opacity-100">
           <IconButton label={t('Refresh')} onClick={onRefresh}>
             <RefreshCw size={12} />

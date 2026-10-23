@@ -106,6 +106,8 @@ export interface AiChatSummary {
   title: string
   updatedAt: string
   messageCount: number
+  /** When searching: the text around the first match. */
+  snippet?: string
 }
 
 export interface McpSettings {
@@ -554,7 +556,7 @@ export interface MastermindApi {
   aiSuggestFilter(connectionId: string, table: TableRef, request: string): Promise<FilterGroup>
   cancelAiChat(chatId: string): Promise<void>
   /** Saved assistant chats of a connection, newest first. */
-  listAiChats(connectionId: string): Promise<AiChatSummary[]>
+  listAiChats(connectionId: string, query?: string): Promise<AiChatSummary[]>
   getAiChat(id: string): Promise<AiStoredChat | null>
   saveAiChat(chat: { id: string; connectionId: string; title?: string; messages: unknown[] }): Promise<void>
   renameAiChat(id: string, title: string): Promise<void>

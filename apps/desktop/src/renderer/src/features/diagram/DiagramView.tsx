@@ -57,7 +57,7 @@ import { useWorkspace, type DiagramTab } from '@/store/workspace'
 import type { SavedDiagram, DiagramNote } from '@shared/api'
 import { MigrationModal } from './MigrationModal'
 import { TableEditor } from './TableEditor'
-import { t, tp, useT } from '@/lib/i18n'
+import { formatDate, t, tp, useT } from '@/lib/i18n'
 import { askText, confirmAction } from '@/components/ui/ConfirmDialog'
 
 const elk = new ELK()
@@ -1131,7 +1131,7 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
                   },
                   ...(sets.length ? ['separator' as const] : []),
                   ...sets.map((cs) => ({
-                    label: `${cs.name} · ${new Date(cs.createdAt).toLocaleDateString()}`,
+                    label: `${cs.name} · ${formatDate(cs.createdAt, 'date')}`,
                     submenu: [
                       {
                         label: tr('Load (replaces the current changes)'),

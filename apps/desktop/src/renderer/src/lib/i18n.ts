@@ -41,6 +41,18 @@ export function tp(count: number, forms: PluralForms, vars?: Vars): string {
   return fill(cs[base] ?? base, all)
 }
 
+/**
+ * A date and/or time in the app's language: Czech dates in the Czech UI even on an English system. English follows
+ * the system's own format.
+ */
+export function formatDate(value: string | number | Date, part: 'date' | 'time' | 'both' = 'both'): string {
+  const date = new Date(value)
+  const locale = isCzech() ? 'cs-CZ' : undefined
+  if (part === 'date') return date.toLocaleDateString(locale)
+  if (part === 'time') return date.toLocaleTimeString(locale)
+  return date.toLocaleString(locale)
+}
+
 /** Subscribes the component to language changes and returns `t`. */
 export function useT(): typeof t {
   useSettings((s) => s.settings?.language)
