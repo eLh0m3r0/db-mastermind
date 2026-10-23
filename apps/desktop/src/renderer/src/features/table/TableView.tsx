@@ -845,7 +845,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
         <div className="relative min-w-0 flex-1" onKeyDown={onGridKeyDown} onPaste={onGridPaste}>
           {error ? (
             <div className="m-3 rounded-md border border-danger/30 bg-danger-soft p-3 font-mono text-[12px] whitespace-pre-wrap text-danger select-text">
-              {error}
+              {t(error)}
             </div>
           ) : !result && loading ? (
             <div className="flex h-full items-center justify-center text-fg-faint">

@@ -1139,4 +1139,6 @@ export const cs: Record<string, string> = {
   'Only for you: colleagues use the team’s knowledge base.': 'Jen pro vás: kolegové používají týmovou znalostní bázi.',
   'Shared through the team folder.': 'Sdíleno přes týmovou složku.',
   'Also used by {names}': 'Používá i {names}',
+  'This connection is read-only. Only SELECT-like statements are allowed.': 'Připojení je jen pro čtení. Povolené jsou jen příkazy typu SELECT.',
+  'A SQL filter can only be a condition that reads: run changes in the SQL editor.': 'SQL filtr může být jen podmínka, která čte: změny spusťte v SQL editoru.',
 }

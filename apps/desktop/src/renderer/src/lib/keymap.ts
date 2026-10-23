@@ -40,10 +40,11 @@ export function installKeymap(): () => void {
     // Editors and grids handle their own keys first and mark them handled.
     if (e.defaultPrevented) return
     const sig = signature(e)
-    const tabMatch = /^Mod\+([1-9])$/.exec(sig)
-    if (tabMatch) {
+    // Czech and other layouts type ě, š, č… on the digit row: match the physical key.
+    const digit = (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey ? /^Digit([1-9])$/.exec(e.code)?.[1] : /^Mod\+([1-9])$/.exec(sig)?.[1]
+    if (digit) {
       const ws = useWorkspace.getState()
-      const index = tabMatch[1] === '9' ? ws.tabs.length - 1 : Number(tabMatch[1]) - 1
+      const index = digit === '9' ? ws.tabs.length - 1 : Number(digit) - 1
       const tab = ws.tabs[index]
       if (tab) {
         e.preventDefault()

@@ -89,7 +89,8 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       const statements = splitStatements(target.sql, driver)
       const dangerous = statements.filter((s) => isDangerousStatement(s.text))
       const isProd = connection?.environment === 'production'
-      if (dangerous.length && (settings?.confirmDangerousStatements !== false || isProd)) {
+      // A read-only connection refuses them anyway: no point asking.
+      if (dangerous.length && !connection?.readOnly && (settings?.confirmDangerousStatements !== false || isProd)) {
         const ok = await confirmAction({
           title: dangerous.length === 1 ? t('Run a statement that can delete data?') : t('Run statements that can delete data?'),
           items: dangerous.map((d) => d.text.replace(/\s+/g, ' ').slice(0, 200)),
@@ -127,7 +128,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
         }
       }
     },
-    [driver, connection?.environment, settings?.confirmDangerousStatements, tab.connectionId, tab.id, loadSchema],
+    [driver, connection?.environment, connection?.readOnly, settings?.confirmDangerousStatements, tab.connectionId, tab.id, loadSchema],
   )
 
   const explain = useCallback(

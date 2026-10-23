@@ -72,6 +72,12 @@ export function ResultsPanel({
 }) {
   const settings = useSettings((s) => s.settings)
   const [active, setActive] = useState<string>('auto')
+  // A new run shows its own results (or its error), not the tab picked for the previous one, e.g. Messages.
+  const [activeFor, setActiveFor] = useState(outcomes)
+  if (activeFor !== outcomes) {
+    setActiveFor(outcomes)
+    setActive('auto')
+  }
   const [sorts, setSorts] = useState<Record<string, SortSpec[]>>({})
   const [selection, setSelection] = useState<GridSelection | null>(null)
   const [charts, setCharts] = useState<Record<string, ChartConfig | null>>({})
@@ -326,7 +332,7 @@ export function ResultsPanel({
                   <div className="mt-1.5 pl-5 text-fg-muted">{tr('Cancelled')}</div>
                 ) : o.error ? (
                   <div className="mt-1.5 pl-5 whitespace-pre-wrap text-danger">
-                    {o.error.message}
+                    {tr(o.error.message)}
                     {o.error.code && <span className="ml-2 text-fg-faint">[{o.error.code}]</span>}
                     {onFixWithAi && (
                       <div className="mt-1.5">
