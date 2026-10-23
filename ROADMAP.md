@@ -257,6 +257,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - Redshift, Snowflake, Cassandra drivers (need real accounts to test properly)
 - Driver plugins (third-party code in the app needs a sandbox and signing story first)
 - macOS notarization (needs a paid Apple Developer ID)
+- SQLite in its own process: node:sqlite can't interrupt a running statement, so a cancelled runaway query keeps one CPU core busy until the app quits (quitting itself works). Worth it if the pilot hits it.
 
 ### Not planned
 - MongoDB, Redis: a different kind of tool (documents and key-value stores, not tables)
