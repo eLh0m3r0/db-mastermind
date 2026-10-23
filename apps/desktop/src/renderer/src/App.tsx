@@ -14,7 +14,7 @@ import { installKeymap } from '@/lib/keymap'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { askAi, toast, useUi } from '@/store/ui'
-import { useWorkspace } from '@/store/workspace'
+import { confirmCloseTabs, useWorkspace } from '@/store/workspace'
 import { ActivityView } from './features/activity/ActivityView'
 import { AiPanel } from './features/ai/AiPanel'
 import { CompareView } from './features/compare/CompareView'
@@ -52,7 +52,10 @@ function useGlobalCommands() {
             ui.set({ modal: { kind: 'connection' } })
             break
           case 'close-tab':
-            if (ws.activeTabId) ws.close(ws.activeTabId)
+            if (ws.activeTabId) {
+              const id = ws.activeTabId
+              void confirmCloseTabs([id]).then((ok) => ok && ws.close(id))
+            }
             break
           case 'reopen-tab':
             ws.reopen()

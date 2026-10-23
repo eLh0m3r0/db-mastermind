@@ -7,7 +7,7 @@ import { isMac, modKey } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useUi } from '@/store/ui'
-import { useWorkspace, type Tab } from '@/store/workspace'
+import { confirmCloseTabs, useWorkspace, type Tab } from '@/store/workspace'
 import { useCurrentConnectionId } from '../sidebar/Sidebar'
 import { useT } from '@/lib/i18n'
 
@@ -28,10 +28,11 @@ export function TabBar() {
   const t = useT()
   const multipleConnections = new Set(tabs.map((t) => t.connectionId)).size > 1
 
+  const closeTab = (id: string) => void confirmCloseTabs([id]).then((ok) => ok && close(id))
   const menu = (e: React.MouseEvent, tab: Tab) =>
     openMenu(e, [
-      { label: t('Close'), shortcut: `${modKey}W`, onClick: () => close(tab.id) },
-      { label: t('Close others'), onClick: () => closeOthers(tab.id) },
+      { label: t('Close'), shortcut: `${modKey}W`, onClick: () => closeTab(tab.id) },
+      { label: t('Close others'), onClick: () => void confirmCloseTabs(tabs.filter((x) => x.id !== tab.id).map((x) => x.id)).then((ok) => ok && closeOthers(tab.id)) },
       'separator',
       { label: t('Open to the side'), icon: <Columns2 size={13} />, disabled: tabs.length < 2 || split?.right === tab.id, onClick: () => splitRight(tab.id) },
       ...(split ? [{ label: t('Close split view'), onClick: () => unsplit() }] : []),
@@ -81,7 +82,7 @@ export function TabBar() {
               onMouseDown={(e) => {
                 if (e.button === 1) {
                   e.preventDefault()
-                  close(tab.id)
+                  closeTab(tab.id)
                 } else if (e.button === 0) activate(tab.id)
               }}
               onContextMenu={(e) => menu(e, tab)}
@@ -109,7 +110,7 @@ export function TabBar() {
                 aria-label={t('Close tab')}
                 className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-faint hover:bg-active hover:text-fg', !active && 'opacity-0 group-hover:opacity-100', dirty && 'hidden group-hover:flex')}
                 onMouseDown={(e) => e.stopPropagation()}
-                onClick={() => close(tab.id)}
+                onClick={() => closeTab(tab.id)}
               >
                 <X size={12} />
               </button>

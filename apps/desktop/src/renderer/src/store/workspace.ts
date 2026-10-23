@@ -3,7 +3,8 @@ import type { DesignTable, FilterNode, SortSpec, TableRef } from '@dbmastermind/
 import type { DiagramNote } from '@shared/api'
 import { api } from '@/lib/api'
 import { debounce, uid } from '@/lib/utils'
-import { t } from '@/lib/i18n'
+import { t, tp } from '@/lib/i18n'
+import { confirmAction } from '@/components/ui/ConfirmDialog'
 
 interface BaseTab {
   id: string
@@ -146,6 +147,20 @@ interface WorkspaceState {
   newQuery(connectionId: string, sql?: string, title?: string): string
 }
 
+/** Unsaved grid edits per table tab: they live in the tab's view, so closing it would drop them silently. */
+const unsavedEdits = new Map<string, number>()
+
+export function setUnsavedEdits(tabId: string, count: number): void {
+  if (count > 0) unsavedEdits.set(tabId, count)
+  else unsavedEdits.delete(tabId)
+}
+
+/** True when the tabs can close: none has unsaved grid edits, or the user agrees to discard them. */
+export async function confirmCloseTabs(ids: string[]): Promise<boolean> {
+  const n = ids.reduce((sum, id) => sum + (unsavedEdits.get(id) ?? 0), 0)
+  return n === 0 || confirmAction({ title: tp(n, { one: 'Discard {n} pending change?', many: 'Discard {n} pending changes?' }), confirmLabel: t('Discard'), danger: true })
+}
+
 const persist = debounce((tabs: Tab[], activeTabId?: string) => {
   void api.saveWorkspace({ tabs, activeTabId })
 }, 400)
@@ -191,7 +206,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     open(tab, options = { reuse: true }) {
       const { tabs } = get()
       if (options.reuse !== false) {
-        const existing = tabs.find((t) => sameTarget(t, tab))
+        // A new filter reloads the table: a tab with unsaved edits keeps them and the filter opens in a new tab.
+        const existing = tabs.find((t) => sameTarget(t, tab) && !(tab.kind === 'table' && 'filter' in tab && unsavedEdits.has(t.id)))
         if (existing) {
           // Re-opening a table with a new filter (e.g. FK navigation) updates it.
           const patched = tab.kind === 'table' && 'filter' in tab ? { ...existing, filter: tab.filter } : existing

@@ -52,7 +52,7 @@ import { copyText, errorMessage, formatCount, formatDuration, uid } from '@/lib/
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { toast } from '@/store/ui'
-import { useWorkspace, type TableTab } from '@/store/workspace'
+import { setUnsavedEdits, useWorkspace, type TableTab } from '@/store/workspace'
 import { copyRowsAs, EXPORT_FORMATS } from '../results/copy'
 import { FilterBuilder, newCondition } from './FilterBuilder'
 import { ImportModal } from './ImportModal'
@@ -168,6 +168,10 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
   const primaryKey = table?.primaryKey ?? []
   const editable = !!table && table.type === 'table' && primaryKey.length > 0 && !readOnly
   const pendingCount = pending.edits.size + pending.inserted.length + pending.deleted.size
+  useEffect(() => {
+    setUnsavedEdits(tab.id, pendingCount)
+    return () => setUnsavedEdits(tab.id, 0)
+  }, [tab.id, pendingCount])
 
   // Sync the draft when the filter is replaced from outside (FK navigation, AI).
   const filterKey = JSON.stringify(tab.filter ?? null)
