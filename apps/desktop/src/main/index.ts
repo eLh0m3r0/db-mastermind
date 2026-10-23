@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron'
-import { describeError, useKnownHostsFile } from '@dbmastermind/core'
+import { describeError, sqliteWorkersAlive, useKnownHostsFile } from '@dbmastermind/core'
 import { API_CHANNEL, type IpcResult, type MastermindApi } from '@shared/api'
 import { api, db } from './api'
 import { buildMenu } from './menu'
@@ -133,7 +133,13 @@ function startApp() {
     quitting = true
     event.preventDefault()
     // Close database connections cleanly (rolls back open sessions) before exiting.
-    void Promise.race([Promise.all([db.disconnectAll(), flushConnections()]), new Promise((r) => setTimeout(r, 3000))]).finally(() => app.quit())
+    void Promise.race([db.disconnectAll(), new Promise((r) => setTimeout(r, 3000))])
+      .then(() => flushConnections())
+      .finally(() => {
+        // A SQLite worker stuck in a runaway query can't be stopped, and exiting would wait for it forever.
+        if (sqliteWorkersAlive() > 0) process.kill(process.pid, 'SIGKILL')
+        app.quit()
+      })
   })
 
   app.on('window-all-closed', () => {

@@ -123,6 +123,13 @@ interface RawResult {
   truncated?: boolean
 }
 
+/**
+ * Workers that haven't exited yet. One still in a long SQLite step (a runaway query, even after Cancel abandoned it)
+ * ignores terminate(), and the process can't exit while it runs: the app checks this before quitting.
+ */
+const liveWorkers = new Set<Worker>()
+export const sqliteWorkersAlive = (): number => liveWorkers.size
+
 export class SqliteDriver implements DatabaseDriver {
   readonly dialect = sqliteDialect
   private worker?: Worker
@@ -148,6 +155,8 @@ export class SqliteDriver implements DatabaseDriver {
       workerData: { path, readOnly: Boolean(this.config.readOnly) },
     })
     this.worker = worker
+    liveWorkers.add(worker)
+    worker.once('exit', () => liveWorkers.delete(worker))
     worker.on('message', (reply: WorkerReply) => {
       const p = this.pending.get(reply.id)
       if (!p) return
