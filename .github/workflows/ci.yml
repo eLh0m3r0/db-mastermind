@@ -188,6 +188,9 @@ jobs:
         with:
           install: localdb
       - run: npm install --no-audit --no-fund
+      # Claude Code / Codex are .cmd shims run through cmd.exe here: arguments with quotes, & and % must arrive intact.
+      - name: Agent CLIs start through cmd.exe
+        run: npx vitest run --project unit apps/desktop/test/cli-launch.test.ts
       - name: List ODBC drivers
         shell: pwsh
         run: Get-OdbcDriver | Where-Object Name -like '*SQL Server*' | Select-Object Name
