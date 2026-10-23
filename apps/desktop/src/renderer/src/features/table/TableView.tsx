@@ -660,13 +660,21 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
     setShowFilters(true)
   }
 
+  const root = useRef<HTMLDivElement>(null)
+  const review = useRef(() => {})
+  review.current = () => {
+    if (pendingCount > 0) void showPreview()
+  }
   useEffect(() => {
     if (!focused) return
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey
-      if (mod && e.key.toLowerCase() === 's' && pendingCount > 0) {
+      if (mod && e.key.toLowerCase() === 's') {
         e.preventDefault()
-        void showPreview()
+        // A cell editor or a row details field commits on blur: let that edit land before the review opens.
+        const el = document.activeElement
+        if (el instanceof HTMLElement && el.matches('input, textarea') && root.current?.contains(el)) el.blur()
+        setTimeout(() => review.current())
       } else if (mod && e.key.toLowerCase() === 'r') {
         e.preventDefault()
         refresh()
@@ -707,7 +715,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
   const selectedRow = selection ? selection.focus.row : null
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div ref={root} className="flex h-full min-h-0 flex-col">
       {/* Toolbar */}
       <div className="flex h-10 shrink-0 items-center gap-1.5 border-b border-line px-2">
         <Button

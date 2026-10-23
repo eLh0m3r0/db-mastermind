@@ -236,16 +236,19 @@ export function DataGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fieldsKey])
 
-  // Keep the selection inside bounds when data changes.
+  // Keep the selection inside bounds when data changes, and tell the parent (row details, delete) the cell it moved to.
   useEffect(() => {
-    setSelectionState((sel) => {
-      if (!sel) return sel
-      const maxRow = rows.length - 1
-      const maxCol = fields.length - 1
-      if (maxRow < 0 || maxCol < 0) return null
-      const clamp = (p: CellPos) => ({ row: Math.min(p.row, maxRow), col: Math.min(p.col, maxCol) })
-      return { anchor: clamp(sel.anchor), focus: clamp(sel.focus) }
-    })
+    if (!selection) return
+    const maxRow = rows.length - 1
+    const maxCol = fields.length - 1
+    if (maxRow < 0 || maxCol < 0) {
+      setSelection(null)
+      return
+    }
+    const clamp = (p: CellPos) => ({ row: Math.min(p.row, maxRow), col: Math.min(p.col, maxCol) })
+    const next = { anchor: clamp(selection.anchor), focus: clamp(selection.focus) }
+    if (JSON.stringify(next) !== JSON.stringify(selection)) setSelection(next)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows.length, fields.length])
 
   const rowHeaderWidth = Math.max(ROW_HEADER_MIN, String(rowNumberOffset + rows.length).length * 8 + 18)
@@ -334,7 +337,9 @@ export function DataGrid({
       if (!editing || !onEdit) return
       const original = rows[editing.pos.row]?.[editing.pos.col] ?? null
       const originalText = original === null ? null : cellToText(original)
-      if (value !== originalText) onEdit(editing.pos.row, editing.pos.col, value)
+      // A NULL cell opens empty: leaving it untouched keeps NULL instead of writing ''.
+      const untouchedNull = original === null && value === '' && editing.value === ''
+      if (value !== originalText && !untouchedNull) onEdit(editing.pos.row, editing.pos.col, value)
       const pos = editing.pos
       setEditing(null)
       let next = pos
@@ -755,6 +760,11 @@ function CellEditor({
     el.setSelectionRange(len, len)
   }, [])
   const onKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+      // Save shortcut: keep the typed value and let the table's handler see the key.
+      onCommit(value)
+      return
+    }
     e.stopPropagation()
     if (e.key === 'Escape') {
       e.preventDefault()
