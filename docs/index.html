@@ -53,6 +53,21 @@ section > p.lead { color: var(--muted); margin: 0 0 28px; max-width: 720px; }
 .kbd { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--subtle); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
 pre { background: var(--subtle); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow: auto; font-size: 13.5px; }
 footer { margin-top: 64px; padding: 28px 0 40px; border-top: 1px solid var(--line); color: var(--faint); font-size: 14px; display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; }
+.mcp { border: 1px solid var(--line); border-radius: 12px; background: var(--card); padding: 14px 16px 6px; }
+.mcp-bar { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; }
+.tabs, .os { display: flex; flex-wrap: wrap; gap: 4px; }
+.tabs button, .os button { font: inherit; font-size: 13.5px; padding: 5px 11px; border-radius: 8px; border: 1px solid transparent; background: none; color: var(--muted); cursor: pointer; }
+.tabs button:hover, .os button:hover { color: var(--fg); background: var(--subtle); }
+.tabs button[aria-selected="true"] { background: var(--accent-soft); color: var(--fg); font-weight: 600; }
+[hidden] { display: none !important; }
+.os { border: 1px solid var(--line); border-radius: 9px; padding: 2px; }
+.os button { padding: 3px 9px; font-size: 12.5px; }
+.os button[aria-pressed="true"] { background: var(--subtle); color: var(--fg); font-weight: 600; }
+.mcp-where { margin: 14px 0 6px; font-size: 14.5px; color: var(--muted); }
+.mcp pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
+.mcp-note { font-size: 13.5px; color: var(--faint); margin: 8px 0 10px; }
+#mcp .mcp + .lead { margin-top: 20px; }
+.mcp-easy { max-width: 760px; color: var(--muted); margin: -12px 0 20px; }
 .policy { max-width: 820px; }
 .policy h3 { font-size: 17px; margin: 24px 0 6px; }
 .policy p, .policy li { color: var(--muted); }
@@ -142,10 +157,34 @@ footer { margin-top: 64px; padding: 28px 0 40px; border-top: 1px solid var(--lin
   </section>
 
   <section id="mcp">
-    <h2>Your databases in Claude Code, Codex and Cursor</h2>
-    <p class="lead">DB Mastermind is also an MCP server: agents get schema exploration, read-only queries, join paths and your knowledge base, using the connections you already have.</p>
-<pre>claude mcp add dbmastermind -- "/Applications/DB Mastermind.app/Contents/MacOS/DB Mastermind" --mcp</pre>
-    <p class="lead">Or just click <em>Add to Claude Code / Claude Desktop / Codex / Cursor / VS Code</em> in Settings → MCP server.</p>
+    <h2>Your databases in Claude Code, Codex, Cursor and more</h2>
+    <p class="lead">DB Mastermind is also an MCP server: agents get schema exploration, read-only queries, join paths and your knowledge base, using the connections you already have. They see only connections where you allow AI, read-only unless you say otherwise.</p>
+    <p class="mcp-easy">Easiest: in the app open <em>Settings → MCP server</em> and click <em>Add to Claude Code / Claude Desktop / Codex / Cursor / VS Code</em>. It writes their config for you and keeps a <code>.bak</code> copy. The same page shows the exact command for your computer.</p>
+    <div class="mcp">
+      <div class="mcp-bar">
+        <div class="tabs" role="tablist" aria-label="Agent">
+          <button role="tab" data-tool="claude-code" aria-selected="true">Claude Code</button>
+          <button role="tab" data-tool="codex">Codex</button>
+          <button role="tab" data-tool="claude-desktop">Claude Desktop</button>
+          <button role="tab" data-tool="cursor">Cursor</button>
+          <button role="tab" data-tool="vscode">VS Code / Copilot</button>
+          <button role="tab" data-tool="windsurf">Windsurf</button>
+          <button role="tab" data-tool="gemini">Gemini CLI</button>
+          <button role="tab" data-tool="zed">Zed</button>
+          <button role="tab" data-tool="jetbrains">JetBrains</button>
+          <button role="tab" data-tool="http">Over HTTP</button>
+        </div>
+        <div class="os" role="group" aria-label="Your system">
+          <button data-os="mac" aria-pressed="true">macOS</button>
+          <button data-os="win" aria-pressed="false">Windows</button>
+          <button data-os="linux" aria-pressed="false">Linux</button>
+        </div>
+      </div>
+      <p class="mcp-where" id="mcp-where"></p>
+      <pre id="mcp-code"></pre>
+      <p class="mcp-note" id="mcp-note"></p>
+    </div>
+    <p class="lead">Tools for agents: <code>list_connections</code>, <code>list_tables</code>, <code>describe_table</code>, <code>search_schema</code>, <code>get_relationships</code>, <code>find_join_path</code>, <code>sample_rows</code>, <code>run_query</code>, <code>explain_query</code>, <code>search_knowledge</code>, <code>read_knowledge</code>, plus prompts such as <em>document_database</em>.</p>
   </section>
 
   <section>
@@ -213,6 +252,53 @@ footer { margin-top: 64px; padding: 28px 0 40px; border-top: 1px solid var(--lin
   } catch {
     // Offline or rate-limited: the button still opens the releases page.
   }
+})()
+</script>
+<script>
+// MCP setup per agent and OS: the snippet carries this computer's path to the app.
+(() => {
+  const exe = {
+    mac: '/Applications/DB Mastermind.app/Contents/MacOS/DB Mastermind',
+    win: 'C:\\Users\\<you>\\AppData\\Local\\Programs\\DB Mastermind\\DB Mastermind.exe',
+    linux: '/opt/DB Mastermind/db-mastermind',
+  }
+  const args = (os) => (os === 'linux' ? ['--no-sandbox', '--mcp'] : ['--mcp'])
+  const shell = (os) => [exe[os], ...args(os)].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ')
+  const json = (o) => JSON.stringify(o, null, 2)
+  const std = (os) => ({ command: exe[os], args: args(os) })
+  const home = { mac: '~', win: '%USERPROFILE%', linux: '~' }
+  const appData = { mac: '~/Library/Application Support', win: '%APPDATA%', linux: '~/.config' }
+  const tools = {
+    'claude-code': (os) => ({ where: 'Run in a terminal:', code: `claude mcp add --scope user dbmastermind -- ${shell(os)}`, note: 'Check it with <code>claude mcp list</code> or <code>/mcp</code> inside Claude Code.' }),
+    codex: (os) => ({ where: 'Run in a terminal:', code: `codex mcp add dbmastermind -- ${shell(os)}`, note: `Or add it to <code>${home[os]}/.codex/config.toml</code> by hand:<br><code>[mcp_servers.dbmastermind]</code> with <code>command</code> and <code>args</code> as above. The Codex IDE extension uses the same file.` }),
+    'claude-desktop': (os) => ({ where: `Settings → Developer → Edit Config opens <code>${appData[os]}/Claude/claude_desktop_config.json</code>. Add:`, code: json({ mcpServers: { dbmastermind: std(os) } }), note: 'Restart Claude Desktop afterwards.' }),
+    cursor: (os) => ({ where: `<code>${home[os]}/.cursor/mcp.json</code> (all projects) or <code>.cursor/mcp.json</code> in a project:`, code: json({ mcpServers: { dbmastermind: std(os) } }), note: 'Cursor Settings → MCP shows whether it started.' }),
+    vscode: (os) => ({ where: 'Command Palette → <em>MCP: Open User Configuration</em> (or <code>.vscode/mcp.json</code> in a project). Note the key is <code>servers</code>:', code: json({ servers: { dbmastermind: { type: 'stdio', ...std(os) } } }), note: 'Then use it from GitHub Copilot Chat in Agent mode.' }),
+    windsurf: (os) => ({ where: `Windsurf Settings → Cascade → MCP servers → View raw config (<code>${home[os]}/.codeium/windsurf/mcp_config.json</code>):`, code: json({ mcpServers: { dbmastermind: std(os) } }), note: 'Press Refresh in the MCP panel afterwards.' }),
+    gemini: (os) => ({ where: `<code>${home[os]}/.gemini/settings.json</code> (or <code>.gemini/settings.json</code> in a project):`, code: json({ mcpServers: { dbmastermind: std(os) } }), note: 'Check it with <code>/mcp</code> inside Gemini CLI.' }),
+    zed: (os) => ({ where: 'Settings → AI → MCP Servers → Add Custom Server, or in <code>settings.json</code> (<em>zed: open settings file</em>):', code: json({ context_servers: { dbmastermind: std(os) } }), note: 'Zed uses the servers in its Agent Panel.' }),
+    jetbrains: (os) => ({ where: 'Settings → Tools → AI Assistant → Model Context Protocol (MCP) → Add → As JSON:', code: json({ mcpServers: { dbmastermind: std(os) } }), note: 'IntelliJ IDEA, DataGrip, PyCharm and the other JetBrains IDEs with AI Assistant (2025.1 or newer).' }),
+    http: () => ({ where: 'Prefer one running app over each agent starting its own copy? Turn on <em>Settings → MCP server → Local HTTP endpoint</em>, then point the agent at it with the token shown there. Claude Code:', code: 'claude mcp add --transport http dbmastermind http://127.0.0.1:7337/mcp --header "Authorization: Bearer <token>"', note: `Clients with JSON config use the URL and header instead of a command, e.g. Cursor: <code>${json({ mcpServers: { dbmastermind: { url: 'http://127.0.0.1:7337/mcp', headers: { Authorization: 'Bearer <token>' } } } }).replace(/\n\s*/g, ' ')}</code>. Only this computer can reach it.` }),
+  }
+  const osNotes = {
+    mac: '',
+    win: " Windows: this is the installer's location; with the portable zip use the path where you unzipped it. In JSON, every backslash is doubled.",
+    linux: ' Linux: the .deb installs to <code>/opt/DB Mastermind</code>; with the AppImage use the path to the .AppImage file.',
+  }
+  let tool = 'claude-code'
+  let os = /Windows/.test(navigator.userAgent) ? 'win' : /Linux/.test(navigator.userAgent) && !/Android/.test(navigator.userAgent) ? 'linux' : 'mac'
+  const render = () => {
+    const t = tools[tool](os)
+    document.getElementById('mcp-where').innerHTML = t.where
+    document.getElementById('mcp-code').textContent = t.code
+    document.getElementById('mcp-note').innerHTML = t.note + (tool === 'http' ? '' : osNotes[os])
+    document.querySelectorAll('.tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tool === tool)))
+    document.querySelectorAll('.os button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.os === os)))
+    document.querySelector('.os').hidden = tool === 'http'
+  }
+  document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => { tool = b.dataset.tool; render() }))
+  document.querySelectorAll('.os button').forEach((b) => b.addEventListener('click', () => { os = b.dataset.os; render() }))
+  render()
 })()
 </script>
 </body>

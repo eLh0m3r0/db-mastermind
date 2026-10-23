@@ -124,14 +124,16 @@ or "MCP read-only". See [docs/managed-config.md](docs/managed-config.md).
 A **team folder** (network drive, OneDrive, Git) shares connections, saved queries as `.sql` files and knowledge
 bases, kept in sync while the app runs. See [docs/team-folder.md](docs/team-folder.md).
 
-## Use it from Claude Code, Codex, Cursor… (MCP)
+## Use it from Claude Code, Codex, Cursor, VS Code… (MCP)
 
 DB Mastermind can run as an MCP server, so coding agents can explore your databases safely: read-only by default,
 and only connections where you allow AI. Open **Settings → MCP server** and click **Add to Claude Code / Claude Desktop /
-Codex / Cursor / VS Code**: the app writes their config for you (keeping a `.bak` copy). Or add it by hand, e.g. Claude Code:
+Codex / Cursor / VS Code**: the app writes their config for you (keeping a `.bak` copy). Or add it by hand; setup for
+Claude Code, Codex, Claude Desktop, Cursor, VS Code / Copilot, Windsurf, Gemini CLI, Zed and JetBrains IDEs is on
+[dbmastermind.app/#mcp](https://dbmastermind.app/#mcp). Claude Code, for example:
 
 ```bash
-claude mcp add dbmastermind -- "/Applications/DB Mastermind.app/Contents/MacOS/DB Mastermind" --mcp
+claude mcp add --scope user dbmastermind -- "/Applications/DB Mastermind.app/Contents/MacOS/DB Mastermind" --mcp
 ```
 
 While the app is running you can also turn on **Settings → MCP server → Local HTTP endpoint** and connect over

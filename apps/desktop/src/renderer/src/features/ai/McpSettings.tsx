@@ -19,9 +19,11 @@ export function McpSettingsSection() {
   const args = info?.mcpCommand.args ?? ['--mcp']
   const quoted = [command, ...args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ')
   const snippets: [string, string][] = [
-    ['Claude Code', `claude mcp add dbmastermind -- ${quoted}`],
-    ['Codex CLI (~/.codex/config.toml)', `[mcp_servers.dbmastermind]\ncommand = ${JSON.stringify(command)}\nargs = ${JSON.stringify(args)}`],
-    ['Claude Desktop / Cursor / VS Code (JSON)', JSON.stringify({ mcpServers: { dbmastermind: { command, args } } }, null, 2)],
+    ['Claude Code', `claude mcp add --scope user dbmastermind -- ${quoted}`],
+    ['Codex', `codex mcp add dbmastermind -- ${quoted}`],
+    ['Claude Desktop / Cursor / Windsurf / Gemini CLI / JetBrains (JSON)', JSON.stringify({ mcpServers: { dbmastermind: { command, args } } }, null, 2)],
+    ['VS Code / Copilot (mcp.json)', JSON.stringify({ servers: { dbmastermind: { type: 'stdio', command, args } } }, null, 2)],
+    ['Zed (settings.json)', JSON.stringify({ context_servers: { dbmastermind: { command, args } } }, null, 2)],
   ]
   const [clients, setClients] = useState<McpClientStatus[]>([])
   useEffect(() => {
