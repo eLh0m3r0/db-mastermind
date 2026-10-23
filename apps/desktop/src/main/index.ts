@@ -11,6 +11,7 @@ import { watchTeamFolder } from './team'
 import { applyMcpHttp } from './mcp-http'
 import { isMcpMode, runMcpMode } from './mcp-mode'
 import { configureDataDir, dataPath, readJson, writeJson } from './storage'
+import { swapMacUpdateBeforeKill } from './mac-update'
 import { startUpdateChecks } from './updates'
 
 configureDataDir()
@@ -137,7 +138,10 @@ function startApp() {
       .then(() => flushConnections())
       .finally(() => {
         // A SQLite worker stuck in a runaway query can't be stopped, and exiting would wait for it forever.
-        if (sqliteWorkersAlive() > 0) process.kill(process.pid, 'SIGKILL')
+        if (sqliteWorkersAlive() > 0) {
+          swapMacUpdateBeforeKill()
+          process.kill(process.pid, 'SIGKILL')
+        }
         app.quit()
       })
   })

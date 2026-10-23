@@ -27,6 +27,7 @@ interface Pending {
 let pending: Pending | undefined
 let relaunch = false
 let hooked = false
+let swapLog: Log | undefined
 
 /** The running .app bundle, e.g. /Applications/DB Mastermind.app. */
 export function macBundle(): string {
@@ -101,6 +102,7 @@ export async function downloadMacUpdate(current: string, newer: (a: string, b: s
   log('INFO', `Update ${latest.version} downloaded; installs on quit or "Restart now"`)
   if (!hooked) {
     hooked = true
+    swapLog = log
     app.on('will-quit', () => swapAfterExit(log))
   }
   return latest.version
@@ -133,6 +135,11 @@ function swapAfterExit(log: Log): void {
   })
   child.unref()
   pending = undefined
+}
+
+/** The app is about to be killed (will-quit won't fire): start the swap now, it waits for this process to end. */
+export function swapMacUpdateBeforeKill(): void {
+  if (swapLog) swapAfterExit(swapLog)
 }
 
 export function macUpdateReady(): boolean {
