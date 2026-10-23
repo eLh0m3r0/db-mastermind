@@ -192,17 +192,6 @@ DB Mastermind is created and maintained by [Václav Mudra](https://vaclavmudra.c
 DB Mastermind is free, open source and has no paid tier. If it saves you time, you can
 [buy me a coffee on Ko-fi](https://ko-fi.com/vaclavmudra).
 
-## Code signing policy
-
-Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
-
-- Committers and reviewers: [Václav Mudra (@eLh0m3r0)](https://github.com/eLh0m3r0)
-- Approvers: [Václav Mudra (@eLh0m3r0)](https://github.com/eLh0m3r0)
-
-Releases are built by GitHub Actions ([release.yml](.github/workflows/release.yml)) from the tagged source in this
-repository, only this project's own files are signed, and every signing request is approved by hand. Details and
-uninstall instructions: [dbmastermind.app/code-signing.html](https://dbmastermind.app/code-signing.html).
-
 ## Privacy
 
 This program will not transfer any information to other networked systems unless specifically requested by the user

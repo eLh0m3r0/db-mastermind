@@ -243,13 +243,13 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 
 ## Milestone 7 — v1.0
 
-- ✅ Website on https://dbmastermind.app (GitHub Pages from docs/, HTTPS) with a download button for your OS, code signing policy and privacy policy; Czech quick guide (docs/navod.md), team-folder and managed-config docs
+- ✅ Website on https://dbmastermind.app (GitHub Pages from docs/, HTTPS) with a download button for your OS and a privacy policy; Czech quick guide (docs/navod.md), team-folder and managed-config docs
 - ✅ High-contrast theme (light and dark, WCAG AA text; follows the OS "increase contrast" setting), Windows forced-colors support, visible focus rings
 - ✅ AI tool plugins: `tools/*.sql` in the knowledge base become read-only, parameter-bound tools for the assistant and MCP
   agents (docs/ai-tools.md; verified end to end with Claude Code over MCP)
 - 🚧 Microsoft Store (MSIX signed by the Store; packaging ready, waits for the Partner Center identity — docs/microsoft-store.md) · Mac App Store: not planned (sandbox would cut features)
 - ✅ macOS releases signed with a stable project certificate; saved passwords encrypted with a key that survives updates (no keychain prompt)
-- ⬜ Windows code signing through SignPath Foundation (free for open source) — no "unknown publisher" warning. Applied 2026-10-23; the website and README carry the required code signing policy, privacy policy and attribution. Once approved: SignPath IDs + `SIGNPATH_API_TOKEN` → signing step in release.yml
+- ⬜ Windows code signing — no "unknown publisher" warning. SignPath Foundation declined on 2026-10-23 (the project needs more public visibility first: stars, articles, users; reapply later). Meanwhile the Microsoft Store build is signed by Microsoft; a paid certificate is the owner's call
 - ⬜ Pilot with colleagues (a few weeks of everyday use, read-only connections first); 1.0 when it passes without serious issues and the Windows installer is signed
 - ✅ Scoop manifest and Homebrew cask (this repo is the tap) updated with every release · winget: first version submitted (microsoft/winget-pkgs#458825, in review); later releases open a PR automatically (release.yml `winget` job, komac, `WINGET_TOKEN` secret) — once merged: submit 0.9.3 with `komac update` (it shipped while the first PR was in review) and add the `winget install` line to README/website
 
