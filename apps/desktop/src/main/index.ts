@@ -26,6 +26,12 @@ interface WindowState {
   maximized?: boolean
 }
 
+/**
+ * E2E runs on a machine someone is using (DBM_E2E_BACKGROUND, development builds only): no Dock icon, the app never
+ * becomes active, and the window opens off-screen without taking the focus.
+ */
+const e2eBackground = !app.isPackaged && !!process.env.DBM_E2E_BACKGROUND
+
 function createWindow() {
   const state = readJson<WindowState>('window.json', { width: 1440, height: 900 })
   const theme = getSettings().theme
@@ -33,8 +39,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: state.width,
     height: state.height,
-    x: state.x,
-    y: state.y,
+    x: e2eBackground ? -4000 : state.x,
+    y: e2eBackground ? 0 : state.y,
     minWidth: 900,
     minHeight: 560,
     show: false,
@@ -54,7 +60,7 @@ function createWindow() {
   })
   if (state.maximized) mainWindow.maximize()
 
-  mainWindow.once('ready-to-show', () => mainWindow?.show())
+  mainWindow.once('ready-to-show', () => (e2eBackground ? mainWindow?.showInactive() : mainWindow?.show()))
   mainWindow.on('close', () => {
     if (!mainWindow) return
     const bounds = mainWindow.getNormalBounds()
@@ -83,6 +89,7 @@ function startApp() {
     app.quit()
     return
   }
+  if (e2eBackground && process.platform === 'darwin') app.setActivationPolicy('accessory')
   ipcMain.handle(API_CHANNEL, async (_event, method: keyof MastermindApi, args: unknown[]): Promise<IpcResult<unknown>> => {
     const fn = api[method] as ((...a: unknown[]) => Promise<unknown>) | undefined
     if (typeof fn !== 'function') return { ok: false, error: { message: `Unknown method ${String(method)}` } }

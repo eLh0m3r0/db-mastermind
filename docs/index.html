@@ -50,15 +50,29 @@
   <section id="features">
     <h2>Everything you do every day, done well</h2>
     <p class="lead">No row limits, no paywalled features. Light, dark and high-contrast themes (follow the system or pick one in Settings), in English and Czech.</p>
+    <div class="feature">
+      <div class="text"><h3>An SQL editor that knows your schema</h3><p>Autocomplete suggests tables and columns as you type and writes whole JOINs from foreign keys. Parameters, snippets, execution plans, history and saved queries are built in.</p><p>Results open in a fast grid; export every row to CSV, Excel, JSON or SQL, beyond any display limit.</p></div>
+      <img src="screenshots/query.png" alt="SQL editor with results">
+    </div>
+    <div class="feature">
+      <div class="text"><h3>Query any file</h3><p>Drop a CSV, Parquet, JSON or Excel file on the window and query it with SQL right away. Czech exports with semicolons and decimal commas just work.</p><p>Import a file into a table with column mapping when you need it in the database.</p></div>
+      <img src="screenshots/query-file.png" alt="SQL over a CSV file">
+    </div>
+    <div class="feature">
+      <div class="text"><h3>Charts in one click</h3><p>Turn any result into a bar, line or scatter chart, and pin charts and single numbers to a dashboard that refreshes itself.</p></div>
+      <img src="screenshots/chart.png" alt="Chart of a query result">
+    </div>
+    <h3 class="grid-title">And much more</h3>
     <div class="grid">
       <div class="card"><h3>Advanced filters</h3><p>Nested AND/OR groups, 25+ operators (in list, between, regex, last N days, this month), raw WHERE, or describe the filter in plain words.</p></div>
-      <div class="card"><h3>SQL editor</h3><p>Schema-aware autocomplete that writes whole JOINs from foreign keys, snippets, parameters, execution plans, history and saved queries.</p></div>
-      <div class="card"><h3>Query any file</h3><p>Drop a CSV, Parquet, JSON or Excel file on the window and query it with SQL. Czech exports with decimal commas just work.</p></div>
-      <div class="card"><h3>Charts &amp; dashboards</h3><p>Chart any result in one click and pin it to a dashboard that refreshes itself.</p></div>
+      <div class="card"><h3>Edit with a safety net</h3><p>Edit cells, paste from Excel and add rows; every change waits in a change set you review before it's saved.</p></div>
       <div class="card"><h3>Compare</h3><p>Schemas between environments with the migration for the target, and table data with a sync script.</p></div>
-      <div class="card"><h3>For DBAs too</h3><p>Running queries and lock waits, cancel or end sessions, users &amp; roles with their privileges.</p></div>
-      <div class="card"><h3>Enterprise connections</h3><p>SSH tunnels, SSL, read-only and production guard rails, SQL Server Windows authentication, Oracle without Instant Client.</p></div>
-      <div class="card"><h3>Share with your team</h3><p>Export connections without passwords, a data dictionary as one HTML page, and a Markdown knowledge base in Git.</p></div>
+      <div class="card"><h3>For DBAs too</h3><p>Running queries and lock waits, cancel or end sessions, users &amp; roles with their privileges, backup and restore.</p></div>
+      <div class="card"><h3>Enterprise connections</h3><p>SSH tunnels, SSL, SQL Server Windows authentication, Oracle without Instant Client, import from Beekeeper, DBeaver and DataGrip.</p></div>
+      <div class="card"><h3>Safe by default</h3><p>Read-only connections, a production guard, and a confirmation before DELETE or UPDATE without WHERE, DROP or TRUNCATE.</p></div>
+      <div class="card"><h3>Keyboard first</h3><p>Command palette (<span class="kbd">Ctrl/⌘ K</span>), quick table open (<span class="kbd">Ctrl/⌘ P</span>), split view, tabs that survive a restart.</p></div>
+      <div class="card"><h3>Big schemas stay fast</h3><p>Thousands of tables across many schemas: filter the explorer, hide schemas you don't use, pin the tables you do.</p></div>
+      <div class="card"><h3>Share with your team</h3><p>A shared team folder with connections, queries and notes, exports without passwords, and a data dictionary as one HTML page.</p></div>
     </div>
   </section>
 
@@ -80,7 +94,10 @@
 
   <section id="ai">
     <h2>AI that knows your database</h2>
-    <p class="lead">Use your own API key (Anthropic, OpenAI, OpenRouter, Gemini, Azure, local Ollama) or your existing Claude Code / Codex subscription.</p>
+    <p class="lead">Bring the AI you already have: your Claude Code or Codex subscription, your own API key, or a model running on your computer.</p>
+    <ul class="engines left">
+      <li>Claude Code</li><li>Codex</li><li>Anthropic</li><li>OpenAI</li><li>OpenRouter</li><li>Gemini</li><li>Azure OpenAI</li><li>Ollama (local)</li>
+    </ul>
     <div class="feature">
       <div class="text">
         <h3>Ask, explain, fix</h3>
@@ -88,6 +105,11 @@
         <p>A per-database <strong>knowledge base</strong> of Markdown notes teaches it what your codes and statuses mean — and AI can write the first version for you.</p>
       </div>
       <img src="screenshots/ai.png" alt="AI assistant">
+    </div>
+    <div class="grid">
+      <div class="card"><h3>Knowledge base</h3><p>Markdown notes per database explain what tables, codes and statuses mean. Keep them in Git, share them with the team, let AI draft them.</p></div>
+      <div class="card"><h3>Design with AI</h3><p>Describe a change in plain words; the assistant proposes tables and columns as pending design changes with a migration you review.</p></div>
+      <div class="card"><h3>You stay in control</h3><p>Per connection: AI off, schema only, read or write. Changes always ask first; IT can turn AI off for everyone.</p></div>
     </div>
   </section>
 

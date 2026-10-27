@@ -17,7 +17,7 @@ try {
   await win.waitForTimeout(800)
   const c = await api('saveConnection', { id: '', name: 'Prod PG', driver: 'postgres', host: '127.0.0.1', port: 54329, user: 'postgres', password: 'mastermind', database: 'mastermind', environment: 'production' })
   await api('connect', c.id)
-  await api('runQuery', { connectionId: c.id, sql: 'DROP TABLE IF EXISTS shop.flow68; CREATE TABLE shop.flow68 (a int); INSERT INTO shop.flow68 VALUES (1), (2)', runId: 's' })
+  await api('runQuery', { connectionId: c.id, sql: 'CREATE SCHEMA IF NOT EXISTS shop; DROP TABLE IF EXISTS shop.flow68; CREATE TABLE shop.flow68 (a int); INSERT INTO shop.flow68 VALUES (1), (2)', runId: 's' })
   await win.reload(); await win.waitForTimeout(1000)
   await win.getByText('Prod PG', { exact: true }).first().dblclick()
   const ed = win.locator('.cm-content:visible').first()

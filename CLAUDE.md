@@ -61,6 +61,7 @@ npm run dev                   # desktop app with HMR
 - This checkout lives in an iCloud-synced folder: never package the app locally into `apps/desktop/release`
   (hundreds of MB keep iCloud busy and file access hangs for minutes). Package to a temp dir instead:
   `npx electron-builder --dir -c.directories.output="$TMPDIR/dbm-release"`.
+- Running e2e flows on the owner's Mac: set `DBM_E2E_BACKGROUND=1` (development builds only) so the app gets no Dock icon, never becomes active and opens its window off-screen; give each flow a throwaway HOME. Flows that use PostgreSQL need `npm run db:up` (at least `postgres`) and the `shop` fixtures, seeded by `DBM_SKIP=mysql,mariadb,mssql,ms,duckdb,sqlite npx vitest run --root packages/core test/drivers.integration.test.ts`.
 - The UI starts in the system language (Czech on a Czech Mac). E2E scripts pass `DBM_LANGUAGE: 'en'` so English
   labels match.
 - CockroachDB goes through the PostgreSQL driver: its catalog returns NULL where PostgreSQL has booleans
