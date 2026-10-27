@@ -241,16 +241,19 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 
 ---
 
-## Milestone 7 — v1.0
+## Milestone 7 — v1.0 ✅ released 1.0.0 (2026-10-27)
+
+1.0 shipped on the owner's decision after his own use and a full regression run of the e2e click-through flows; Windows users get a signed build through the Microsoft Store, and the colleague pilot runs on 1.0 with fixes as 1.0.x.
+
 
 - ✅ Website on https://dbmastermind.app (GitHub Pages from docs/, HTTPS) with a download button for your OS and a privacy policy; Czech quick guide (docs/navod.md), team-folder and managed-config docs
 - ✅ High-contrast theme (light and dark, WCAG AA text; follows the OS "increase contrast" setting), Windows forced-colors support, visible focus rings
 - ✅ AI tool plugins: `tools/*.sql` in the knowledge base become read-only, parameter-bound tools for the assistant and MCP
   agents (docs/ai-tools.md; verified end to end with Claude Code over MCP)
-- 🚧 Microsoft Store (MSIX signed by the Store; packaging ready, waits for the Partner Center identity — docs/microsoft-store.md) · Mac App Store: not planned (sandbox would cut features)
+- 🚧 Microsoft Store (MSIX signed by the Store): identity set, every release attaches `…-store.appx`; first submission by the owner with docs/store-listing.md · Mac App Store: not planned (sandbox would cut features)
 - ✅ macOS releases signed with a stable project certificate; saved passwords encrypted with a key that survives updates (no keychain prompt)
 - ⬜ Windows code signing — no "unknown publisher" warning. SignPath Foundation declined on 2026-10-23 (the project needs more public visibility first: stars, articles, users; reapply later). Meanwhile the Microsoft Store build is signed by Microsoft; a paid certificate is the owner's call
-- ⬜ Pilot with colleagues (a few weeks of everyday use, read-only connections first); 1.0 when it passes without serious issues and the Windows installer is signed
+- ⬜ Pilot with colleagues on 1.0 from the Microsoft Store (read-only connections first); fixes ship as 1.0.x
 - ✅ Scoop manifest and Homebrew cask (this repo is the tap) updated with every release · winget: first version submitted (microsoft/winget-pkgs#458825, in review); later releases open a PR automatically (release.yml `winget` job, komac, `WINGET_TOKEN` secret) — once merged: submit 0.9.3 with `komac update` (it shipped while the first PR was in review) and add the `winget install` line to README/website
 
 ### Later, when someone needs it
