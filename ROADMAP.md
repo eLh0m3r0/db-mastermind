@@ -235,8 +235,6 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ Managed configuration file (pre-defined connections, AI endpoints, policies) for IT departments — docs/managed-config.md
 - ✅ Share connections with colleagues: export without passwords/keys, import from the file
 - ✅ Shared team folder (network drive, OneDrive, Git): connections, knowledge bases, saved queries, ER diagrams. A Teams channel works through OneDrive sync (docs/team-folder.md)
-- 💡 Team folder and knowledge base straight on SharePoint / a Teams channel without the OneDrive client (Microsoft Graph sign-in; needs an Entra app registration and the company's consent)
-- 💡 Spot OneDrive/Dropbox conflict copies (`orders-LAPTOP-JAN.md`) in the knowledge base and offer to merge them
   kept in sync automatically
 - ✅ Audit log: every statement (editor, grid edits, imports, the in-app AI and external MCP agents) with its source, exportable to CSV
 - ✅ MSI package for Intune / SCCM (per-machine, silent `msiexec /i … /qn`; CI installs it and runs the smoke test)
@@ -252,7 +250,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ High-contrast theme (light and dark, WCAG AA text; follows the OS "increase contrast" setting), Windows forced-colors support, visible focus rings
 - ✅ AI tool plugins: `tools/*.sql` in the knowledge base become read-only, parameter-bound tools for the assistant and MCP
   agents (docs/ai-tools.md; verified end to end with Claude Code over MCP)
-- 🚧 Microsoft Store (MSIX signed by the Store): identity set, every release attaches `…-store.appx`; first submission by the owner with docs/store-listing.md · Mac App Store: not planned (sandbox would cut features)
+- 🚧 Microsoft Store (MSIX signed by the Store): identity set, every release attaches `…-store.appx`; 1.0.0 submitted by the owner on 2026-10-27 (docs/store-listing.md); once live: Store link on the website and in the README · Mac App Store: not planned (sandbox would cut features)
 - ✅ macOS releases signed with a stable project certificate; saved passwords encrypted with a key that survives updates (no keychain prompt)
 - ⬜ Windows code signing — no "unknown publisher" warning. SignPath Foundation declined on 2026-10-23 (the project needs more public visibility first: stars, articles, users; reapply later). Meanwhile the Microsoft Store build is signed by Microsoft; a paid certificate is the owner's call
 - ⬜ Pilot with colleagues on 1.0 from the Microsoft Store (read-only connections first); fixes ship as 1.0.x
@@ -268,6 +266,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - MongoDB, Redis: a different kind of tool (documents and key-value stores, not tables)
 - Chocolatey, Flathub, AUR: winget, Scoop and Homebrew cover Windows and macOS; IT departments get the MSI; Linux has the AppImage and .deb
 - Mac App Store: its sandbox would cut features
+- Direct SharePoint / Teams access without the OneDrive client: a synced OneDrive folder already works as the team folder or knowledge base
 
 ---
 
