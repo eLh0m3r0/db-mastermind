@@ -31,6 +31,7 @@ const CS: Record<string, string> = {
   'Ask AI…': 'Zeptat se AI…',
   History: 'Historie',
   'Saved Queries': 'Uložené dotazy',
+  'DB Mastermind Website': 'Web DB Mastermind',
   Documentation: 'Dokumentace',
   Roadmap: 'Plán vývoje',
   'Report an Issue': 'Nahlásit problém',
@@ -128,6 +129,7 @@ export function buildMenu(): void {
     {
       role: 'help',
       submenu: [
+        { label: m('DB Mastermind Website'), click: () => void shell.openExternal('https://dbmastermind.app') },
         { label: m('Documentation'), click: () => void shell.openExternal('https://github.com/eLh0m3r0/db-mastermind#readme') },
         { label: m('Roadmap'), click: () => void shell.openExternal('https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md') },
         { label: m('Report an Issue'), click: () => void shell.openExternal(reportIssueUrl()) },
