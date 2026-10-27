@@ -27,7 +27,7 @@ From the next release on, `DB-Mastermind-<version>-store.appx` is attached to th
    - **Pricing**: Free.
    - **Properties**: category *Developer tools*. For the restricted capability `runFullTrust`, explain that it's a
      desktop database client that connects to databases over the network and works with local files.
-   - **Store listings**: description and screenshots, reusing the README text and `docs/screenshots/`.
+   - **Store listings**: texts in English and Czech, screenshots and captions: see [store-listing.md](store-listing.md).
    - **Age ratings**: the questionnaire.
 4. **Submit to the Store**. Certification usually takes a few days. Store installs update through the Store; the
    app's own updater is off for them.
