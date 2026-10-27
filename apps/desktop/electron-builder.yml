@@ -50,6 +50,10 @@ nsis:
   allowElevation: false
   allowToChangeInstallationDirectory: true
   artifactName: DB-Mastermind-${version}-win-${arch}-setup.${ext}
+# Microsoft Store package (release.yml adds the identity from Partner Center). Tiles: build/appx/.
+appx:
+  backgroundColor: transparent
+  languages: [en-US, cs-CZ]
 linux:
   executableName: db-mastermind
   # Ubuntu 24.04+ restricts the user namespaces Chromium's sandbox needs; AppImages can't ship a SUID helper.

@@ -112,6 +112,8 @@ jobs:
       - name: Microsoft Store package (MSIX, signed by the Store)
         # Needs the app's identity from Partner Center as repository variables (see docs/microsoft-store.md).
         if: runner.os == 'Windows' && vars.MSSTORE_IDENTITY_NAME != ''
+        # A problem with the Store package must not stop the release itself.
+        continue-on-error: true
         working-directory: apps/desktop
         shell: bash
         run: >
