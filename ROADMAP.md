@@ -234,7 +234,9 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 
 - ✅ Managed configuration file (pre-defined connections, AI endpoints, policies) for IT departments — docs/managed-config.md
 - ✅ Share connections with colleagues: export without passwords/keys, import from the file
-- ✅ Shared team folder (network drive, OneDrive, Git): connections, knowledge bases, saved queries, ER diagrams
+- ✅ Shared team folder (network drive, OneDrive, Git): connections, knowledge bases, saved queries, ER diagrams. A Teams channel works through OneDrive sync (docs/team-folder.md)
+- 💡 Team folder and knowledge base straight on SharePoint / a Teams channel without the OneDrive client (Microsoft Graph sign-in; needs an Entra app registration and the company's consent)
+- 💡 Spot OneDrive/Dropbox conflict copies (`orders-LAPTOP-JAN.md`) in the knowledge base and offer to merge them
   kept in sync automatically
 - ✅ Audit log: every statement (editor, grid edits, imports, the in-app AI and external MCP agents) with its source, exportable to CSV
 - ✅ MSI package for Intune / SCCM (per-machine, silent `msiexec /i … /qn`; CI installs it and runs the smoke test)

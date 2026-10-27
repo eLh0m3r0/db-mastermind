@@ -81,6 +81,9 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
 - **Týmová složka** (Nastavení → Obecné):
   - síťový disk, OneDrive nebo Git repozitář s připojeními (bez hesel), uloženými dotazy, diagramy
     a znalostními bázemi
+  - složka kanálu v Teams: v kanálu **Soubory → Otevřít v SharePointu → Synchronizovat** (nebo *Přidat zástupce
+    do Mých souborů*), na složce zvolte *Vždy uchovávat v tomto zařízení* a vyberte ji jako týmovou složku
+    nebo jako znalostní bázi připojení (Znalostní báze → *Změnit…*)
   - změny od kolegů se načtou samy
   - podrobnosti v [team-folder.md](team-folder.md)
 - **Spravovaná konfigurace pro IT:** soubor `dbmastermind-managed.json` vedle aplikace. Přidá předdefinovaná

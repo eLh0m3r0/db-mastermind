@@ -6,6 +6,23 @@ OneDrive/SharePoint, Dropbox or a Git repository everyone pulls.
 Set it in **Settings → General → Team folder**. An IT department can set it for everyone with `"teamFolder"` in
 the [managed configuration](managed-config.md).
 
+## OneDrive, SharePoint and Teams channels
+
+DB Mastermind works with any folder on disk, so a Teams channel's files work once OneDrive syncs them to your
+computer:
+
+1. In Teams, open the channel → **Files** → **Open in SharePoint** (or the **…** menu in the Files tab).
+2. Click **Sync** (the whole library) or **Add shortcut to My files** (just that folder).
+3. The folder appears in File Explorer under your company's name, e.g. `C:\Users\jan\Contoso\Sales - Data`, or in
+   `OneDrive - Contoso` for a shortcut. On a Mac it's in Finder under *OneDrive* (`~/Library/CloudStorage/…`).
+4. Right-click the folder → **Always keep on this device**, so notes are there offline and colleagues' changes show
+   up right away.
+5. Pick that folder as the **team folder** (Settings → General) or as one connection's knowledge base
+   (Knowledge base → **Change…**).
+
+If two people edit the same note at the same moment, OneDrive keeps both and adds the computer's name to one of
+them (e.g. `orders-LAPTOP-JAN.md`); merge them by hand. Passwords never go to the folder.
+
 ## Layout
 
 ```
