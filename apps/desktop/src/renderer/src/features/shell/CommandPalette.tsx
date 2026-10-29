@@ -36,18 +36,8 @@ export function CommandPalette() {
     fn()
   }
 
-  const tables = useMemo(() => {
-    if (!schema) return []
-    const q = search.trim()
-    const list = q
-      ? schema.tables
-          .map((t) => ({ t, score: fuzzyScore(t.name, q) }))
-          .filter((x) => x.score >= 0)
-          .sort((a, b) => b.score - a.score)
-          .map((x) => x.t)
-      : schema.tables
-    return list.slice(0, mode === 'tables' ? 200 : 30)
-  }, [schema, search, mode])
+  const query = search.trim()
+  const tables = useMemo(() => (schema ? byScore(schema.tables, query, (t) => t.name).slice(0, mode === 'tables' ? 200 : 30) : []), [schema, query, mode])
 
   if (!mode) return null
   const dark = useSettings.getState().dark
@@ -97,11 +87,33 @@ export function CommandPalette() {
     { id: 'disconnect', label: t('Disconnect'), icon: <Unplug size={14} />, run: () => runCommand('disconnect'), needsConnection: true },
   ]
 
+  // The palette filters itself (cmdk would sort the groups by score): commands first, then connections, then tables.
+  const shownCommands = byScore(
+    commands.filter((c) => !c.needsConnection || connectionId),
+    query,
+    (c) => c.label,
+  )
+  const shownConnections = byScore(connections, query, (c) => c.name)
+  const tableGroup = tables.length > 0 && connectionId && (
+    <Command.Group heading={t('Tables')}>
+      {tables.map((t) => (
+        <Item
+          key={`${t.schema}.${t.name}`}
+          value={`table ${t.schema ?? ''}.${t.name}`}
+          onSelect={() => run(() => openTab({ kind: 'table', connectionId, table: { schema: t.schema, name: t.name }, title: t.name }))}
+          icon={t.type === 'table' ? <Table2 size={14} className="text-accent" /> : <Eye size={14} className="text-info" />}
+          label={t.name}
+          hint={t.schema && t.schema !== schema?.defaultSchema ? t.schema : undefined}
+        />
+      ))}
+    </Command.Group>
+  )
+
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/25 pt-[12vh] dark:bg-black/45" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <Command
         label={t('Command palette')}
-        shouldFilter={mode === 'commands'}
+        shouldFilter={false}
         className="w-[600px] max-w-[92vw] overflow-hidden rounded-xl border border-line bg-elevated shadow-pop"
         onKeyDown={(e) => e.key === 'Escape' && close()}
       >
@@ -114,42 +126,40 @@ export function CommandPalette() {
         />
         <Command.List className="max-h-[420px] overflow-auto p-1.5 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-fg-faint [&_[cmdk-group-heading]]:uppercase">
           <Command.Empty className="p-6 text-center text-[12.5px] text-fg-faint">{t('No results')}</Command.Empty>
-          {tables.length > 0 && connectionId && (
-            <Command.Group heading={t('Tables')}>
-              {tables.map((t) => (
-                <Item
-                  key={`${t.schema}.${t.name}`}
-                  value={`table ${t.schema ?? ''}.${t.name}`}
-                  onSelect={() => run(() => openTab({ kind: 'table', connectionId, table: { schema: t.schema, name: t.name }, title: t.name }))}
-                  icon={t.type === 'table' ? <Table2 size={14} className="text-accent" /> : <Eye size={14} className="text-info" />}
-                  label={t.name}
-                  hint={t.schema && t.schema !== schema?.defaultSchema ? t.schema : undefined}
-                />
+          {mode === 'commands' && shownCommands.length > 0 && (
+            <Command.Group heading={t('Commands')}>
+              {shownCommands.map((c) => (
+                <Item key={c.id} value={c.id} onSelect={() => run(c.run)} icon={c.icon} label={c.label} shortcut={c.shortcut} />
               ))}
             </Command.Group>
           )}
-          {mode === 'commands' && (
-            <>
-              <Command.Group heading={t('Commands')}>
-                {commands
-                  .filter((c) => !c.needsConnection || connectionId)
-                  .map((c) => (
-                    <Item key={c.id} value={c.label} onSelect={() => run(c.run)} icon={c.icon} label={c.label} shortcut={c.shortcut} />
-                  ))}
-              </Command.Group>
-              <Command.Group heading={t('Connections')}>
-                {connections.map((c) => (
-                  <Item key={c.id} value={`connect ${c.name}`} onSelect={() => run(() => void connectAndSelect(c.id))} icon={<DriverIcon driver={c.driver} size={14} />} label={c.name} hint={<Plug size={12} />} />
-                ))}
-              </Command.Group>
-            </>
+          {mode === 'commands' && shownConnections.length > 0 && (
+            <Command.Group heading={t('Connections')}>
+              {shownConnections.map((c) => (
+                <Item key={c.id} value={`connect ${c.id}`} onSelect={() => run(() => void connectAndSelect(c.id))} icon={<DriverIcon driver={c.driver} size={14} />} label={c.name} hint={<Plug size={12} />} />
+              ))}
+            </Command.Group>
           )}
+          {tableGroup}
         </Command.List>
       </Command>
     </div>,
     document.body,
   )
 }
+
+/** Items matching the query, best first; all of them in their own order when there's no query. Diacritics don't matter. */
+function byScore<T>(items: T[], query: string, text: (item: T) => string): T[] {
+  if (!query) return items
+  const q = fold(query)
+  return items
+    .map((item) => ({ item, score: fuzzyScore(fold(text(item)), q) }))
+    .filter((x) => x.score >= 0)
+    .sort((a, b) => b.score - a.score)
+    .map((x) => x.item)
+}
+
+const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '')
 
 function Item({ value, onSelect, icon, label, hint, shortcut }: { value: string; onSelect: () => void; icon: React.ReactNode; label: string; hint?: React.ReactNode; shortcut?: string }) {
   return (

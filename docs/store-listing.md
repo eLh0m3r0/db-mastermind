@@ -12,6 +12,7 @@ Texts and answers for Partner Center, ready to paste. The steps are in [microsof
 | Support contact info | https://github.com/eLh0m3r0/db-mastermind/issues |
 | Does this product access, collect or transmit personal information? | Yes: it connects to the user's own databases and, only when the user sets one up, sends questions to the AI provider they chose. The privacy policy above explains it. |
 | Product declarations | Leave the defaults; don't tick "This app has been tested to meet accessibility guidelines". |
+| Generative AI | **Yes, declare it** (certification of 1.0.0 failed without it): the optional AI assistant writes SQL, explanations and notes with the AI provider the user sets up (their own API key, Claude Code / Codex subscription or a local model). Off until configured; can be turned off per connection or by IT. |
 | System requirements | Minimum: 4 GB memory, 64-bit (x64) Windows 10 or 11 |
 
 **Restricted capability `runFullTrust` (justification):**
@@ -20,7 +21,7 @@ Texts and answers for Partner Center, ready to paste. The steps are in [microsof
 
 ## Age rating (IARC questionnaire)
 
-Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexual content, gambling, drugs, purchases, location sharing and user-to-user communication. If asked about generated content: the app has an optional AI assistant that writes SQL and answers questions about the user's own database, using the AI provider the user configures; there is no chat between users and nothing is shared publicly. Expected result: 3+ / Everyone.
+Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexual content, gambling, drugs, purchases, location sharing and user-to-user communication. For generative AI, answer **Yes**: the app has an optional AI assistant that writes SQL and answers questions about the user's own database, using the AI provider the user configures; there is no chat between users and nothing is shared publicly. Expected result: 3+ / Everyone.
 
 ## Store listing — English (en-us)
 
