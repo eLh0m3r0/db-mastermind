@@ -1,0 +1,48 @@
+name: Windows install check
+
+# Installs a release with each Windows installer (x64 and arm64, on matching runners) the way a user does, then checks
+# where the app landed, what the Start menu shortcut points to, and that the installed exe starts.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (default: latest)'
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            arch: x64
+          - runner: windows-11-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the installers
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = '${{ inputs.tag }}'
+          if (-not $tag) { $tag = gh release view -R $env:GITHUB_REPOSITORY --json tagName -q .tagName }
+          gh release download $tag -R $env:GITHUB_REPOSITORY -p "*-win-${{ matrix.arch }}-setup.exe" -p "*-win-setup.exe" -D setup
+          Get-ChildItem setup | Format-Table Name, Length
+      - name: Install with the ${{ matrix.arch }} installer
+        shell: pwsh
+        run: ./.github/scripts/windows-install-check.ps1 -Setup (Get-ChildItem setup/*-win-${{ matrix.arch }}-setup.exe | Select-Object -First 1).FullName
+      - name: Uninstall
+        if: always()
+        shell: pwsh
+        run: |
+          $u = Get-ChildItem "$env:LOCALAPPDATA\Programs\DB Mastermind\Uninstall*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($u) { Start-Process $u.FullName -ArgumentList '/S' -Wait }
+      - name: Install with the combined installer
+        shell: pwsh
+        run: ./.github/scripts/windows-install-check.ps1 -Setup (Get-ChildItem setup/*-win-setup.exe | Select-Object -First 1).FullName
