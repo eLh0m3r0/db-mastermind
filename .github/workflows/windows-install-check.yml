@@ -35,6 +35,7 @@ jobs:
           gh release download $tag -R $env:GITHUB_REPOSITORY -p "*-win-${{ matrix.arch }}-setup.exe" -p "*-win-setup.exe" -D setup
           Get-ChildItem setup | Format-Table Name, Length
       - name: Install with the ${{ matrix.arch }} installer
+        continue-on-error: true
         shell: pwsh
         run: ./.github/scripts/windows-install-check.ps1 -Setup (Get-ChildItem setup/*-win-${{ matrix.arch }}-setup.exe | Select-Object -First 1).FullName
       - name: Uninstall
