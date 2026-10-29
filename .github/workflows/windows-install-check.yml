@@ -34,6 +34,9 @@ jobs:
           if (-not $tag) { $tag = gh release view -R $env:GITHUB_REPOSITORY --json tagName -q .tagName }
           gh release download $tag -R $env:GITHUB_REPOSITORY -p "*-win-${{ matrix.arch }}-setup.exe" -p "*-win-setup.exe" -D setup
           Get-ChildItem setup | Format-Table Name, Length
+      - name: What the installers carry
+        shell: pwsh
+        run: Get-ChildItem setup/*.exe | ForEach-Object { ./.github/scripts/windows-installer-contents.ps1 -Setup $_.FullName }
       - name: Install with the ${{ matrix.arch }} installer
         continue-on-error: true
         shell: pwsh
