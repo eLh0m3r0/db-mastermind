@@ -48,6 +48,19 @@ jobs:
       - name: Install with the ${{ matrix.arch }} installer
         shell: pwsh
         run: ./.github/scripts/windows-install-check.ps1 -Setup (Get-ChildItem setup/*-win-${{ matrix.arch }}-setup.exe | Select-Object -First 1).FullName
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Test tools (Playwright drives the installed app)
+        run: npm install --no-audit --no-fund
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - name: Export to Excel and CSV in the installed app
+        shell: pwsh
+        run: |
+          $env:DBM_EXE = "$env:LOCALAPPDATA\Programs\DB Mastermind\DB Mastermind.exe"
+          node e2e/export-check.mjs "$env:RUNNER_TEMP\export"
       - name: Uninstall
         if: always()
         shell: pwsh
@@ -83,3 +96,8 @@ jobs:
       - name: Install it
         shell: pwsh
         run: ./.github/scripts/windows-install-check.ps1 -Setup (Get-ChildItem apps/desktop/release/*setup*.exe | Select-Object -First 1).FullName
+      - name: Export to Excel and CSV in the installed app
+        shell: pwsh
+        run: |
+          $env:DBM_EXE = "$env:LOCALAPPDATA\Programs\DB Mastermind\DB Mastermind.exe"
+          node e2e/export-check.mjs "$env:RUNNER_TEMP\export"
