@@ -3,6 +3,9 @@ name: Windows install check
 # Installs a release with each Windows installer (x64 and arm64, on matching runners) the way a user does, then checks
 # where the app landed, what the Start menu shortcut points to, and that the installed exe starts.
 on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
@@ -18,6 +21,7 @@ permissions:
 
 jobs:
   install:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -42,7 +46,6 @@ jobs:
         shell: pwsh
         run: Get-ChildItem setup/*.exe | ForEach-Object { ./.github/scripts/windows-installer-contents.ps1 -Setup $_.FullName }
       - name: Install with the ${{ matrix.arch }} installer
-        continue-on-error: true
         shell: pwsh
         run: ./.github/scripts/windows-install-check.ps1 -Setup (Get-ChildItem setup/*-win-${{ matrix.arch }}-setup.exe | Select-Object -First 1).FullName
       - name: Uninstall
@@ -52,6 +55,7 @@ jobs:
           $u = Get-ChildItem "$env:LOCALAPPDATA\Programs\DB Mastermind\Uninstall*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($u) { Start-Process $u.FullName -ArgumentList '/S' -Wait }
       - name: Install with the combined installer
+        if: always()
         shell: pwsh
         run: ./.github/scripts/windows-install-check.ps1 -Setup (Get-ChildItem setup/*-win-setup.exe | Select-Object -First 1).FullName
 

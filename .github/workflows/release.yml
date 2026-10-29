@@ -75,6 +75,9 @@ jobs:
         env:
           # No Apple Developer ID yet (see docs/STRATEGY.md): electron-builder doesn't sign; after-pack does.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # 7-Zip compresses arm64 executables with its ARM64 filter, which the installer's older Nsis7z plugin can't
+          # undo: the Windows on Arm installer then installed only the uninstaller. BCJ is one it understands.
+          ELECTRON_BUILDER_7Z_FILTER: BCJ
           MAC_SIGN_P12: ${{ secrets.MAC_SIGN_P12 }}
           MAC_SIGN_PASSWORD: ${{ secrets.MAC_SIGN_PASSWORD }}
       # electron-builder's own publishing looks the release up in the release list, which can lag right after the
