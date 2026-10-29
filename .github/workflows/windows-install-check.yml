@@ -8,6 +8,10 @@ on:
       tag:
         description: 'Release tag (default: latest)'
         required: false
+      build:
+        description: 'Also build an arm64 installer from this commit on Windows on Arm and install it'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -50,3 +54,28 @@ jobs:
       - name: Install with the combined installer
         shell: pwsh
         run: ./.github/scripts/windows-install-check.ps1 -Setup (Get-ChildItem setup/*-win-setup.exe | Select-Object -First 1).FullName
+
+  build-arm64:
+    if: inputs.build
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - run: npm run build -w packages/mcp
+      - name: Build the arm64 installer the way release.yml does
+        working-directory: apps/desktop
+        shell: bash
+        run: npx electron-vite build && npx electron-builder --win nsis --arm64 --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          ELECTRON_BUILDER_7Z_FILTER: BCJ
+      - name: What it carries
+        shell: pwsh
+        run: ./.github/scripts/windows-installer-contents.ps1 -Setup (Get-ChildItem apps/desktop/release/*setup*.exe | Select-Object -First 1).FullName
+      - name: Install it
+        shell: pwsh
+        run: ./.github/scripts/windows-install-check.ps1 -Setup (Get-ChildItem apps/desktop/release/*setup*.exe | Select-Object -First 1).FullName
