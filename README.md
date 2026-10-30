@@ -9,7 +9,7 @@
 Browse, filter, query, diagram and redesign databases, with an AI assistant that knows your schema and your
 team's notes. It also exposes everything over MCP to Claude Code, Codex, Cursor and other agents.
 
-[Website](https://dbmastermind.app) · [Download](https://github.com/eLh0m3r0/db-mastermind/releases/latest) · [Roadmap](ROADMAP.md) · [Report an issue](https://github.com/eLh0m3r0/db-mastermind/issues/new)
+[Website](https://dbmastermind.app) · [Microsoft Store](https://apps.microsoft.com/detail/9p0grd7bz4nf) · [Download](https://github.com/eLh0m3r0/db-mastermind/releases/latest) · [Roadmap](ROADMAP.md) · [Report an issue](https://github.com/eLh0m3r0/db-mastermind/issues/new)
 
 PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB · ClickHouse · CockroachDB · BigQuery · Trino — Windows · macOS · Linux — English & čeština — MIT, no feature limits
 
@@ -82,7 +82,10 @@ PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB · Cl
 
 ## Install
 
-Download from [Releases](https://github.com/eLh0m3r0/db-mastermind/releases/latest):
+**Windows: [get it from the Microsoft Store](https://apps.microsoft.com/detail/9p0grd7bz4nf)** — signed by Microsoft (no SmartScreen warning), updates
+through the Store.
+
+Or download from [Releases](https://github.com/eLh0m3r0/db-mastermind/releases/latest):
 
 | Platform | File |
 |---|---|
@@ -91,7 +94,7 @@ Download from [Releases](https://github.com/eLh0m3r0/db-mastermind/releases/late
 | macOS Apple Silicon / Intel | `DB-Mastermind-<version>-mac-arm64.dmg` / `-mac-x64.dmg` |
 | Linux | `DB-Mastermind-<version>-linux-x86_64.AppImage` or `-linux-amd64.deb` |
 
-Builds aren't code-signed yet. **macOS**: right-click the app → *Open* the first time (or run
+The downloads aren't code-signed yet (the Store version is). **macOS**: right-click the app → *Open* the first time (or run
 `xattr -dr com.apple.quarantine "/Applications/DB Mastermind.app"`). **Windows**: *More info → Run anyway*.
 
 With [Scoop](https://scoop.sh) on Windows (portable, updates with `scoop update`, keeps your data):

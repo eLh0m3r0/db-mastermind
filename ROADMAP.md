@@ -250,7 +250,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ High-contrast theme (light and dark, WCAG AA text; follows the OS "increase contrast" setting), Windows forced-colors support, visible focus rings
 - ✅ AI tool plugins: `tools/*.sql` in the knowledge base become read-only, parameter-bound tools for the assistant and MCP
   agents (docs/ai-tools.md; verified end to end with Claude Code over MCP)
-- 🚧 Microsoft Store (MSIX signed by the Store): identity set, every release attaches `…-store.appx`; 1.0.0 submitted by the owner on 2026-10-27 (docs/store-listing.md); once live: Store link on the website and in the README · Mac App Store: not planned (sandbox would cut features)
+- ✅ Microsoft Store: [live since 1.0.0](https://apps.microsoft.com/detail/9p0grd7bz4nf) (MSIX signed by the Store). Every release attaches `…-store.appx`; the owner submits updates in Partner Center every few releases (docs/microsoft-store.md) · Mac App Store: not planned (sandbox would cut features)
 - ✅ macOS releases signed with a stable project certificate; saved passwords encrypted with a key that survives updates (no keychain prompt)
 - ⬜ Windows code signing — no "unknown publisher" warning. SignPath Foundation declined on 2026-10-23 (the project needs more public visibility first: stars, articles, users; reapply later). Meanwhile the Microsoft Store build is signed by Microsoft; a paid certificate is the owner's call
 - ⬜ Pilot with colleagues on 1.0 from the Microsoft Store (read-only connections first); fixes ship as 1.0.x

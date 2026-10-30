@@ -4,6 +4,8 @@ Krátký průvodce pro kolegy: jak aplikaci rozběhnout a co v ní najdete. Vše
 
 ## 1. Instalace
 
+- **Windows z Microsoft Store (doporučeno):** [DB Mastermind ve Storu](https://apps.microsoft.com/detail/9p0grd7bz4nf). Podepsané
+  Microsoftem, bez varování při spuštění, aktualizuje se přes Store.
 - **Windows bez instalace:** stáhněte `DB-Mastermind-…-win-x64-portable.zip` z
   [posledního vydání](https://github.com/eLh0m3r0/db-mastermind/releases/latest), rozbalte ho a spusťte
   `DB Mastermind.exe`. Připojení a nastavení se ukládají do složky `data` vedle aplikace.
