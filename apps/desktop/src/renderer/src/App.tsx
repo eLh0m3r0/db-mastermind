@@ -165,6 +165,11 @@ export function App() {
       }),
     )
     const offTeam = bridge.on('team:changed', () => void useConnections.getState().load())
+    const offOpened = bridge.on('connection:opened', ({ connectionId, serverInfo }) => useConnections.getState().opened(connectionId, serverInfo))
+    // VPN or Wi-Fi back: unreachable connections try again right away instead of waiting for the next retry.
+    const retryNow = () => useConnections.getState().retryNow()
+    window.addEventListener('online', retryNow)
+    window.addEventListener('focus', retryNow)
     const offReady = bridge.on('update:ready', (info) =>
       toast({
         kind: 'success',
@@ -177,6 +182,9 @@ export function App() {
     const uninstall = installKeymap()
     return () => {
       offTeam()
+      offOpened()
+      window.removeEventListener('online', retryNow)
+      window.removeEventListener('focus', retryNow)
       offReady()
       off()
       uninstall()

@@ -78,7 +78,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 
 **Search terms** (7): `database client` · `SQL editor` · `PostgreSQL` · `SQL Server` · `MySQL` · `ER diagram` · `database AI`
 
-**What's new in this version:** First release in the Microsoft Store.
+**What's new in this version:** Run all with several result sets: Copy all (TSV, JSON or Markdown, optionally with each statement) and Download all (one Excel workbook with a sheet per result, or a ZIP with a file per result). Copying a single result offers JSON and Markdown too. After a VPN or network drop, the table explorer reconnects by itself as soon as the server is reachable again.
 
 **Copyright and trademark info:** © 2026 Václav Mudra. MIT license.
 
@@ -152,7 +152,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 
 **Search terms:** `databázový klient` · `SQL editor` · `PostgreSQL` · `SQL Server` · `MySQL` · `ER diagram` · `databáze AI`
 
-**What's new in this version:** První vydání v Microsoft Store.
+**What's new in this version:** Spuštění celého skriptu s více výsledky: Kopírovat vše (TSV, JSON nebo Markdown, volitelně i s SQL každého dotazu) a Stáhnout vše (jeden sešit Excelu s listem pro každý výsledek, nebo ZIP se souborem pro každý výsledek). Kopírování jednoho výsledku nabízí i JSON a Markdown. Po výpadku VPN nebo sítě se průzkumník tabulek sám znovu připojí, jakmile je server zase dostupný.
 
 **Screenshots:** the same files; captions:
 

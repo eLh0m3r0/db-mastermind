@@ -46,7 +46,7 @@ project's (AI) maintainer and updated with every release.
 - ✅ Secrets encrypted with OS keychain (Electron `safeStorage`)
 - ✅ Connection colors, groups/folders, environment tag (dev / test / prod) with prod safety rails
 - ✅ Read-only connection mode (enforced at session level where the DB supports it)
-- ✅ Test connection, reconnect, keep-alive
+- ✅ Test connection, reconnect, keep-alive; an unreachable server (VPN down) is retried in the background and the explorer follows a reconnect made by a query — unreleased
 - ✅ Import connections from the tools found on the computer (menu shows them with counts): Beekeeper Studio, DBeaver, DataGrip/IntelliJ, pgAdmin 4, SSMS, Azure Data Studio, MySQL Workbench, HeidiSQL, Navicat, Oracle SQL Developer, DbVisualizer, TablePlus, Sequel Ace, VS Code SQLTools, `.pgpass`; or from a file (format detected)
 
 ### Schema explorer
@@ -76,7 +76,7 @@ project's (AI) maintainer and updated with every release.
 ### SQL editor
 - ✅ CodeMirror 6 editor with dialect-aware highlighting
 - ✅ Schema-aware autocomplete (schemas, tables, columns, aliases, keywords, functions)
-- ✅ Run statement under cursor / selection / whole script; multiple result sets
+- ✅ Run statement under cursor / selection / whole script; multiple result sets; Copy all (TSV / JSON / Markdown, optionally with each statement) and Download all (Excel with a sheet per result, other formats as a ZIP) — unreleased
 - ✅ Cancel running query; elapsed timer
 - ✅ Format SQL; comment toggle; multi-cursor
 - ✅ Query parameters (`:name`, `$1`, `?`) with prompt (bound, never inlined)

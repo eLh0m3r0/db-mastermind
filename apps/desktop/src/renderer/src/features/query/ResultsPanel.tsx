@@ -14,7 +14,16 @@ import { pinToDashboard } from '@/lib/dashboards'
 import { cn, copyText, errorMessage, formatCount, formatDuration } from '@/lib/utils'
 import { useSettings } from '@/store/settings'
 import { toast } from '@/store/ui'
-import { copyRowsAs, EXPORT_FORMATS } from '../results/copy'
+import { copyResultsAs, copyRowsAs, EXPORT_FORMATS, type NamedResult, type ResultCopyFormat } from '../results/copy'
+
+// With SQL is a separate choice: a long script's statements can dwarf a one-row result.
+const COPY_FORMATS: { id: ResultCopyFormat; label: string; withSql?: boolean }[] = [
+  { id: 'tsv', label: 'TSV (Excel)' },
+  { id: 'json', label: 'JSON' },
+  { id: 'json', label: 'JSON + SQL', withSql: true },
+  { id: 'markdown', label: 'Markdown' },
+  { id: 'markdown', label: 'Markdown + SQL', withSql: true },
+]
 import type { DriverId } from '@dbmastermind/core/browser'
 import { tp, useT } from '@/lib/i18n'
 
@@ -36,6 +45,18 @@ function compareCells(a: CellValue, b: CellValue): number {
   const nb = Number(tb)
   if (ta !== '' && tb !== '' && !Number.isNaN(na) && !Number.isNaN(nb)) return na - nb
   return ta.localeCompare(tb, undefined, { numeric: true, sensitivity: 'base' })
+}
+
+function sortRows(result: QueryResult, sort: SortSpec[] | undefined): CellValue[][] {
+  if (!sort?.length) return result.rows
+  const idx = sort.map((s) => ({ i: result.fields.findIndex((f) => f.name === s.column), dir: s.direction === 'asc' ? 1 : -1 }))
+  return [...result.rows].sort((a, b) => {
+    for (const { i, dir } of idx) {
+      const c = compareCells(a[i] ?? null, b[i] ?? null)
+      if (c !== 0) return c * dir
+    }
+    return 0
+  })
 }
 
 /** "revenue by month" for a chart, the column names otherwise. */
@@ -121,19 +142,9 @@ export function ResultsPanel({
     if (activeKey === 'messages' && hasError) messageList.current?.querySelector('[data-failed]')?.scrollIntoView({ block: 'nearest' })
   }, [activeKey, hasError, outcomes])
 
-  const sortedRows = useMemo(() => {
-    if (!current) return []
-    const sort = sorts[current.key]
-    if (!sort?.length) return current.result.rows
-    const idx = sort.map((s) => ({ i: current.result.fields.findIndex((f) => f.name === s.column), dir: s.direction === 'asc' ? 1 : -1 }))
-    return [...current.result.rows].sort((a, b) => {
-      for (const { i, dir } of idx) {
-        const c = compareCells(a[i] ?? null, b[i] ?? null)
-        if (c !== 0) return c * dir
-      }
-      return 0
-    })
-  }, [current, sorts])
+  const sortedRows = useMemo(() => (current ? sortRows(current.result, sorts[current.key]) : []), [current, sorts])
+  // Copy all / Download all cover this run's results, not the pinned ones from earlier runs.
+  const runTabs = tabs.filter((t) => !t.key.startsWith('pin:'))
 
   if (running && !outcomes) {
     return (
@@ -188,6 +199,48 @@ export function ResultsPanel({
     } catch (err) {
       toast({ kind: 'error', message: tr('Export failed'), detail: errorMessage(err) })
     }
+  }
+
+  const copyFormats = (results: () => NamedResult[]) =>
+    COPY_FORMATS.map((f) => ({
+      label: f.label,
+      onClick: () => {
+        const text = copyResultsAs(f.id, results(), { withSql: f.withSql })
+        void copyText(text).then(() => toast({ kind: 'success', message: tr('Copied as {format}', { format: f.label }) }))
+      },
+    }))
+
+  const named = (t: ResultTab): NamedResult => ({ name: t.label, sql: t.statement.sql, fields: t.result.fields, rows: sortRows(t.result, sorts[t.key]) })
+
+  const downloadAll = async (format: (typeof EXPORT_FORMATS)[number]['id']) => {
+    try {
+      const path = await api.exportResults({
+        format,
+        defaultName: 'query-results',
+        results: runTabs.map((t) => {
+          const r = named(t)
+          return { name: r.name, fields: r.fields, rows: r.rows }
+        }),
+        connectionId,
+      })
+      if (path) toast({ kind: 'success', message: tp(runTabs.length, { one: 'Exported {n} result', many: 'Exported {n} results' }), detail: path, action: { label: tr('Show in folder'), run: () => void api.showItemInFolder(path) } })
+    } catch (err) {
+      toast({ kind: 'error', message: tr('Export failed'), detail: errorMessage(err) })
+    }
+  }
+
+  const allMenu = (anchor: HTMLElement, kind: 'copy' | 'download') => {
+    const truncated = runTabs.some((t) => t.result.truncated)
+    const note = truncated ? [{ label: tr('Results cut off at the row limit include the rows shown'), disabled: true }, 'separator' as const] : []
+    openMenu(anchor, [
+      ...note,
+      ...(kind === 'copy'
+        ? copyFormats(() => runTabs.map(named))
+        : EXPORT_FORMATS.map((f) => ({
+            label: f.id === 'xlsx' ? tr('Excel (.xlsx), a sheet per result') : tr('{format}, a ZIP with a file per result', { format: f.label }),
+            onClick: () => void downloadAll(f.id),
+          }))),
+    ])
   }
 
   return (
@@ -295,13 +348,23 @@ export function ResultsPanel({
                 <LayoutDashboard size={13} />
               </IconButton>
             )}
-            <IconButton label={tr('Copy all as TSV')} onClick={() => void copyText(selectionToTsv(current.result.fields, sortedRows, { anchor: { row: 0, col: 0 }, focus: { row: sortedRows.length - 1, col: current.result.fields.length - 1 } }, true))}>
+            <IconButton label={tr('Copy')} onClick={(e) => openMenu(e.currentTarget, copyFormats(() => [{ ...named(current), rows: sortedRows }]))}>
               <Copy size={13} />
             </IconButton>
             <IconButton label={tr('Export')} onClick={(e) => exportCurrent(e.currentTarget)}>
               <Download size={13} />
             </IconButton>
           </>
+        )}
+        {runTabs.length > 1 && (
+          <div className="ml-1.5 flex shrink-0 items-center gap-0.5 border-l border-line pl-1.5" data-all-results>
+            <Button size="xs" variant="ghost" icon={<Copy size={12} />} onClick={(e) => allMenu(e.currentTarget, 'copy')} title={tr('Copy all results of this run')}>
+              {tr('Copy all')}
+            </Button>
+            <Button size="xs" variant="ghost" icon={<Download size={12} />} onClick={(e) => allMenu(e.currentTarget, 'download')} title={tr('Download all results of this run')}>
+              {tr('Download all')}
+            </Button>
+          </div>
         )}
       </div>
       <div className="min-h-0 flex-1">

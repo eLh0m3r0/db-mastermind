@@ -256,6 +256,12 @@ function NotConnected({ connection }: { connection: StoredConnection }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 text-center">
       {runtime?.status === 'error' && <div className="text-[12px] break-words text-danger select-text">{runtime.error}</div>}
+      {runtime?.status === 'error' && runtime.retrying && (
+        <div className="text-[11.5px] text-fg-muted">
+          <Spinner size={11} className="mr-1.5 inline-block align-[-1px]" />
+          {t('Server unreachable, trying again automatically…')}
+        </div>
+      )}
       <button
         type="button"
         className="inline-flex h-8 items-center gap-2 rounded-md bg-accent px-3 text-[13px] font-medium text-accent-fg hover:bg-accent-hover"

@@ -1,4 +1,7 @@
 import { createWriteStream, writeFileSync, type WriteStream } from 'node:fs'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { zipSync, strToU8 } from 'fflate'
 import { cellToText, isBinaryValue, type CellValue, type Dialect, type ResultField } from '@dbmastermind/core'
 import type { ExportFormat } from '@shared/api'
@@ -150,12 +153,8 @@ function columnLetter(index: number): string {
   return s
 }
 
-/**
- * Office Open XML writer: one sheet, inline strings, bold frozen header with a filter. The parts follow what Excel
- * writes itself (a Normal cell style, a dimension, the filter's defined name, document properties), so strict
- * readers open it without repairs.
- */
-function createXlsxWriter(path: string, fields: ResultField[]): ExportWriter {
+/** One worksheet: inline strings, bold frozen header with a filter. */
+function sheetXml(fields: ResultField[], rows: CellValue[][], selected: boolean): { xml: string; absolute: string } {
   const rowsXml: string[] = []
   let rowIndex = 0
   const cell = (value: CellValue, col: number, row: number, style = 0): string => {
@@ -176,42 +175,102 @@ function createXlsxWriter(path: string, fields: ResultField[]): ExportWriter {
     fields.map((f) => f.name),
     1,
   )
+  for (const r of rows) addRow(r)
+  const lastCol = columnLetter(Math.max(0, fields.length - 1))
+  const range = `A1:${lastCol}${rowIndex}`
+  const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><dimension ref="${range}"/><sheetViews><sheetView${selected ? ' tabSelected="1"' : ''} workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><sheetData>${rowsXml.join('')}</sheetData><autoFilter ref="${range}"/><pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>`
+  return { xml, absolute: `$A$1:$${lastCol}$${rowIndex}` }
+}
+
+/** Excel sheet names: at most 31 characters, none of []:*?/\, no apostrophe at either end, unique ignoring case. */
+export function sheetNames(names: string[]): string[] {
+  const used = new Set<string>()
+  return names.map((name, i) => {
+    const base = (name.replace(/[[\]:*?/\\]/g, ' ').replace(/^'+|'+$/g, '').trim() || `Sheet${i + 1}`).slice(0, 31).trim()
+    let candidate = base
+    for (let n = 2; used.has(candidate.toLowerCase()); n++) candidate = `${base.slice(0, 31 - ` (${n})`.length)} (${n})`
+    used.add(candidate.toLowerCase())
+    return candidate
+  })
+}
+
+/**
+ * Office Open XML workbook, one sheet per result. The parts follow what Excel writes itself (a Normal cell style,
+ * a dimension, the filter's defined name, document properties), so strict readers open it without repairs.
+ */
+export function xlsxWorkbook(sheets: { name: string; fields: ResultField[]; rows: CellValue[][] }[]): Uint8Array {
+  const names = sheetNames(sheets.map((s) => s.name))
+  const built = sheets.map((s, i) => sheetXml(s.fields, s.rows, i === 0))
+  // Excel quotes names in references only when it has to: spaces, punctuation, or something that reads as a cell (A1).
+  const quoted = (name: string) => (/^[A-Za-z_][A-Za-z0-9_.]*$/.test(name) && !/^[A-Za-z]{1,3}\d+$/.test(name) ? name : `'${name.replaceAll("'", "''")}'`)
+  const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z')
+  const files: Record<string, Uint8Array> = {
+    '[Content_Types].xml': strToU8(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${built.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`,
+    ),
+    '_rels/.rels': strToU8(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>`,
+    ),
+    'xl/workbook.xml': strToU8(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets>${names.map((n, i) => `<sheet name="${xmlEscape(n)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets><definedNames>${built.map((b, i) => `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">${xmlEscape(quoted(names[i]!))}!${b.absolute}</definedName>`).join('')}</definedNames></workbook>`,
+    ),
+    'xl/_rels/workbook.xml.rels': strToU8(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${built.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${built.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
+    ),
+    'xl/styles.xml': strToU8(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles><dxfs count="0"/><tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/></styleSheet>`,
+    ),
+    'docProps/core.xml': strToU8(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:creator>DB Mastermind</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified></cp:coreProperties>`,
+    ),
+    'docProps/app.xml': strToU8(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>DB Mastermind</Application></Properties>`,
+    ),
+  }
+  built.forEach((b, i) => (files[`xl/worksheets/sheet${i + 1}.xml`] = strToU8(b.xml)))
+  return zipSync(files, { level: 6 })
+}
+
+function createXlsxWriter(path: string, fields: ResultField[]): ExportWriter {
+  const rows: CellValue[][] = []
   return {
-    async writeRows(rows) {
-      for (const r of rows) addRow(r)
+    async writeRows(batch) {
+      for (const r of batch) rows.push(r)
     },
     async close() {
-      const lastCol = columnLetter(Math.max(0, fields.length - 1))
-      const range = `A1:${lastCol}${Math.max(1, rowIndex)}`
-      const absolute = `$A$1:$${lastCol}$${Math.max(1, rowIndex)}`
-      const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><dimension ref="${range}"/><sheetViews><sheetView tabSelected="1" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><sheetData>${rowsXml.join('')}</sheetData><autoFilter ref="${range}"/><pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>`
-      const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z')
-      const files = {
-        '[Content_Types].xml': strToU8(
-          `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`,
-        ),
-        '_rels/.rels': strToU8(
-          `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>`,
-        ),
-        'xl/workbook.xml': strToU8(
-          `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">Data!${absolute}</definedName></definedNames></workbook>`,
-        ),
-        'xl/_rels/workbook.xml.rels': strToU8(
-          `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
-        ),
-        'xl/styles.xml': strToU8(
-          `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles><dxfs count="0"/><tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/></styleSheet>`,
-        ),
-        'xl/worksheets/sheet1.xml': strToU8(sheet),
-        'docProps/core.xml': strToU8(
-          `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:creator>DB Mastermind</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified></cp:coreProperties>`,
-        ),
-        'docProps/app.xml': strToU8(
-          `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>DB Mastermind</Application></Properties>`,
-        ),
-      }
-      writeFileSync(path, zipSync(files, { level: 6 }))
+      writeFileSync(path, xlsxWorkbook([{ name: 'Data', fields, rows }]))
     },
+  }
+}
+
+/**
+ * Several results in one file: an Excel workbook with a sheet per result; other formats a ZIP with a file per result
+ * (named after the result, e.g. `Result 2.csv`).
+ */
+export async function exportResultSet(
+  path: string,
+  format: ExportFormat,
+  results: { name: string; fields: ResultField[]; rows: CellValue[][] }[],
+  options: { dialect?: Dialect; csvDelimiter?: string } = {},
+): Promise<void> {
+  if (format === 'xlsx') {
+    writeFileSync(path, xlsxWorkbook(results))
+    return
+  }
+  const dir = await mkdtemp(join(tmpdir(), 'dbm-export-'))
+  try {
+    const names = sheetNames(results.map((r) => r.name.replace(/[\\/:*?"<>|]/g, '_')))
+    const files: Record<string, Uint8Array> = {}
+    for (const [i, r] of results.entries()) {
+      const file = join(dir, String(i))
+      const writer = createExportWriter(file, format, r.fields, options)
+      await writer.writeRows(r.rows)
+      await writer.close()
+      files[`${names[i]}.${EXPORT_EXTENSIONS[format]}`] = await readFile(file)
+    }
+    writeFileSync(path, zipSync(files, { level: 6 }))
+  } finally {
+    await rm(dir, { recursive: true, force: true })
   }
 }
