@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ConnectionConfig, SchemaSnapshot, ServerInfo } from '@dbmastermind/core/browser'
+import { isUnreachableError, type ConnectionConfig, type SchemaSnapshot, type ServerInfo } from '@dbmastermind/core/browser'
 import type { StoredConnection } from '@shared/api'
 import { api } from '@/lib/api'
 import { errorMessage } from '@/lib/utils'
@@ -14,6 +14,8 @@ interface ConnectionRuntime {
   schema?: SchemaSnapshot
   schemaLoading?: boolean
   schemaError?: string
+  /** The server was unreachable (VPN down, offline): the app keeps trying in the background. */
+  retrying?: boolean
 }
 
 interface ConnectionsState {
@@ -30,13 +32,58 @@ interface ConnectionsState {
   disconnect(id: string): Promise<void>
   loadSchema(id: string, refresh?: boolean): Promise<SchemaSnapshot | undefined>
   get(id: string | undefined): StoredConnection | undefined
+  /** Main opened the connection itself (a query ran after the network came back). */
+  opened(id: string, serverInfo: ServerInfo): void
+  /** Tries unreachable connections again now (the network came back, the window got focus). */
+  retryNow(): void
 }
+
+/** Background reconnects back off up to a minute between attempts. */
+const RETRY_DELAYS = [5_000, 10_000, 20_000, 30_000, 60_000]
 
 export const useConnections = create<ConnectionsState>((set, get) => {
   const patch = (id: string, value: Partial<ConnectionRuntime>) =>
     set((s) => ({
       runtime: { ...s.runtime, [id]: { status: 'disconnected', ...s.runtime[id], ...value } },
     }))
+
+  const retries = new Map<string, { timer?: ReturnType<typeof setTimeout>; attempt: number; inFlight: boolean }>()
+  const stopRetry = (id: string) => {
+    const r = retries.get(id)
+    if (r?.timer) clearTimeout(r.timer)
+    retries.delete(id)
+  }
+  const scheduleRetry = (id: string) => {
+    const r = retries.get(id) ?? { attempt: 0, inFlight: false }
+    if (r.timer) clearTimeout(r.timer)
+    r.timer = setTimeout(() => void retry(id), RETRY_DELAYS[Math.min(r.attempt, RETRY_DELAYS.length - 1)])
+    r.attempt++
+    retries.set(id, r)
+  }
+  /** Quiet attempt: the sidebar keeps the error until it works; never asks for a password. */
+  const retry = async (id: string) => {
+    const r = retries.get(id)
+    const rt = get().runtime[id]
+    if (!r || r.inFlight) return
+    if (rt?.status === 'connected') return stopRetry(id)
+    if (rt?.status !== 'error' || !get().get(id)) return stopRetry(id)
+    r.inFlight = true
+    try {
+      const { serverInfo } = await api.connect(id)
+      stopRetry(id)
+      get().opened(id, serverInfo)
+    } catch (err) {
+      r.inFlight = false
+      if (retries.get(id) !== r) return
+      if (isUnreachableError(err)) {
+        patch(id, { error: errorMessage(err) })
+        scheduleRetry(id)
+      } else {
+        stopRetry(id)
+        patch(id, { error: errorMessage(err), retrying: false })
+      }
+    }
+  }
 
   return {
     list: [],
@@ -65,6 +112,7 @@ export const useConnections = create<ConnectionsState>((set, get) => {
       void api.setExplorerPrefs(id, { hiddenSchemas: schemas })
     },
     async remove(id) {
+      stopRetry(id)
       await api.deleteConnection(id)
       set((s) => {
         const runtime = { ...s.runtime }
@@ -81,7 +129,8 @@ export const useConnections = create<ConnectionsState>((set, get) => {
     async connect(id) {
       const current = get().runtime[id]
       if (current?.status === 'connected') return true
-      patch(id, { status: 'connecting', error: undefined })
+      stopRetry(id)
+      patch(id, { status: 'connecting', error: undefined, retrying: false })
       let password: PasswordAnswer | undefined
       for (;;) {
         try {
@@ -92,7 +141,11 @@ export const useConnections = create<ConnectionsState>((set, get) => {
           return true
         } catch (err) {
           if ((err as { code?: string }).code !== 'PASSWORD_REQUIRED') {
-            patch(id, { status: 'error', error: errorMessage(err) })
+            // A main-process query may have connected meanwhile (the 'connection:opened' event).
+            if (get().runtime[id]?.status === 'connected') return true
+            const unreachable = isUnreachableError(err)
+            patch(id, { status: 'error', error: errorMessage(err), retrying: unreachable })
+            if (unreachable) scheduleRetry(id)
             return false
           }
           // No saved password (imported connections have none) or a rejected one: ask, as other clients do.
@@ -108,6 +161,7 @@ export const useConnections = create<ConnectionsState>((set, get) => {
       }
     },
     async disconnect(id) {
+      stopRetry(id)
       await api.disconnect(id)
       patch(id, { status: 'disconnected', schema: undefined, serverInfo: undefined })
     },
@@ -122,6 +176,26 @@ export const useConnections = create<ConnectionsState>((set, get) => {
       } catch (err) {
         patch(id, { schemaLoading: false, schemaError: errorMessage(err) })
         return undefined
+      }
+    },
+    opened(id, serverInfo) {
+      stopRetry(id)
+      const rt = get().runtime[id]
+      if (rt?.status === 'connected' && rt.schema) return
+      patch(id, { status: 'connected', serverInfo, error: undefined, retrying: false })
+      // A schema that failed to load while the server was away loads now.
+      if (!rt?.schema) void get().loadSchema(id, !!rt?.schemaError)
+    },
+    retryNow() {
+      for (const [id, r] of retries) {
+        if (r.inFlight) continue
+        if (r.timer) clearTimeout(r.timer)
+        r.timer = undefined
+        void retry(id)
+      }
+      // Connected, but the schema failed while the server was away.
+      for (const [id, rt] of Object.entries(get().runtime)) {
+        if (rt.status === 'connected' && !rt.schema && !rt.schemaLoading && rt.schemaError && isUnreachableError(rt.schemaError)) void get().loadSchema(id, true)
       }
     },
     get(id) {

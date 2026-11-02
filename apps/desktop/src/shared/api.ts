@@ -315,6 +315,14 @@ export interface ExportRequest {
   connectionId?: string
 }
 
+/** Every result of a script at once: Excel gets a sheet per result, other formats a ZIP with a file per result. */
+export interface ExportResultsRequest {
+  format: ExportFormat
+  defaultName: string
+  results: (Pick<QueryResult, 'fields' | 'rows'> & { name: string })[]
+  connectionId?: string
+}
+
 export interface ExportTableRequest {
   format: ExportFormat
   connectionId: string
@@ -525,6 +533,7 @@ export interface MastermindApi {
   deleteDashboard(id: string): Promise<void>
 
   exportResult(request: ExportRequest): Promise<string | null>
+  exportResults(request: ExportResultsRequest): Promise<string | null>
   exportTable(request: ExportTableRequest): Promise<string | null>
   /** Runs one statement again and streams every row to a file (no row limit). */
   exportQuery(request: { format: ExportFormat; connectionId: string; sql: string; defaultName: string }): Promise<{ path: string; rows: number } | null>
@@ -579,6 +588,8 @@ export interface MainEvents {
   /** A self-updating install downloaded a new version; it installs on restart. */
   'update:ready': { version: string }
   'connection:lost': { connectionId: string; message: string }
+  /** Main opened a connection on its own (a query or export after the VPN came back): the sidebar shows it connected. */
+  'connection:opened': { connectionId: string; serverInfo: ServerInfo }
   'ai:event': AiEvent
   /** Files in the team folder changed: reload connections and saved queries. */
   'team:changed': undefined
@@ -663,6 +674,7 @@ export const API_METHODS = [
   'exportResult',
   'exportTable',
   'exportQuery',
+  'exportResults',
   'pickFile',
   'pickDirectory',
   'readTextFile',

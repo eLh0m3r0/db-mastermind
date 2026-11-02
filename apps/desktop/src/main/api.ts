@@ -50,7 +50,7 @@ import {
 } from '@dbmastermind/core'
 import type { ExportFormat, MastermindApi } from '@shared/api'
 import * as connections from './connections'
-import { createExportWriter, EXPORT_EXTENSIONS } from './export'
+import { createExportWriter, EXPORT_EXTENSIONS, exportResultSet } from './export'
 import { cancelChat, respondApproval, startChat } from './ai/assistant'
 import { completeText, extractJson } from './ai/complete'
 import { listModels, testProvider } from './ai/models'
@@ -126,7 +126,10 @@ async function csvOptions(path: string): Promise<string> {
 }
 
 export async function ensureConnected(id: string) {
-  if (!db.isOpen(id)) await db.connect(connections.getConnection(id))
+  if (db.isOpen(id)) return
+  const serverInfo = await db.connect(connections.getConnection(id))
+  // The window may still show the connection as failed (it was unreachable when it tried).
+  for (const w of BrowserWindow.getAllWindows()) w.webContents.send('connection:opened', { connectionId: id, serverInfo })
 }
 
 const FORMAT_NAMES: Record<ExportFormat, string> = {
@@ -139,13 +142,14 @@ const FORMAT_NAMES: Record<ExportFormat, string> = {
   xlsx: 'Excel',
 }
 
-async function askSavePath(format: ExportFormat, defaultName: string): Promise<string | null> {
-  const ext = EXPORT_EXTENSIONS[format]
+/** `zip`: several results in another format than Excel. */
+async function askSavePath(format: ExportFormat, defaultName: string, zip = false): Promise<string | null> {
+  const ext = zip ? 'zip' : EXPORT_EXTENSIONS[format]
   const window = BrowserWindow.getFocusedWindow()
   const options = {
     title: 'Export',
     defaultPath: `${defaultName.replace(/[\\/:*?"<>|]/g, '_')}.${ext}`,
-    filters: [{ name: FORMAT_NAMES[format], extensions: [ext] }],
+    filters: [{ name: zip ? `ZIP (${FORMAT_NAMES[format]})` : FORMAT_NAMES[format], extensions: [ext] }],
   }
   const result = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
   return result.canceled || !result.filePath ? null : result.filePath
@@ -678,6 +682,13 @@ export const api: MastermindApi = {
     const writer = createExportWriter(path, request.format, request.result.fields, { tableName: request.tableName, dialect, csvDelimiter: csvDelimiter() })
     await writer.writeRows(request.result.rows)
     await writer.close()
+    return path
+  },
+  async exportResults(request) {
+    const path = await askSavePath(request.format, request.defaultName, request.format !== 'xlsx')
+    if (!path) return null
+    const dialect = request.connectionId ? getDialect(connections.getConnection(request.connectionId).driver) : undefined
+    await exportResultSet(path, request.format, request.results, { dialect, csvDelimiter: csvDelimiter() })
     return path
   },
   async exportTable(request) {
