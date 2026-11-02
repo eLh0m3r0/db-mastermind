@@ -34,29 +34,34 @@ function tsv(fields: ResultField[], rows: CellValue[][]): string {
 
 /**
  * One result: just its rows. Several: TSV blocks separated by an empty line under the result's name (pasted into
- * Excel they land one below the other), a JSON array of `{ result, sql, rows }`, Markdown sections.
+ * Excel they land one below the other), a JSON array of `{ result, rows }`, Markdown sections.
+ * `withSql` adds each statement (JSON/Markdown only); off by default, a long script's SQL can dwarf a one-row result.
  */
-export function copyResultsAs(format: ResultCopyFormat, results: NamedResult[]): string {
+export function copyResultsAs(format: ResultCopyFormat, results: NamedResult[], { withSql = false } = {}): string {
+  const sqlOf = (r: NamedResult) => (withSql && r.sql?.trim()) || undefined
+  const objects = (r: NamedResult) => r.rows.map((row) => Object.fromEntries(r.fields.map((f, i) => [f.name, jsonValue(row[i] ?? null)])))
   if (results.length === 1) {
     const [r] = results as [NamedResult]
-    return format === 'tsv' ? tsv(r.fields, r.rows) : copyRowsAs(format, r.fields, r.rows, undefined)
+    const sql = sqlOf(r)
+    if (format === 'tsv') return tsv(r.fields, r.rows)
+    if (!sql) return copyRowsAs(format, r.fields, r.rows, undefined)
+    return format === 'json' ? JSON.stringify({ sql, rows: objects(r) }, null, 2) : ['```sql', sql, '```', '', copyRowsAs('markdown', r.fields, r.rows, undefined)].join('\n')
   }
   switch (format) {
     case 'tsv':
       return results.map((r) => `${r.name}\n${tsv(r.fields, r.rows)}`).join('\n\n')
     case 'json':
       return JSON.stringify(
-        results.map((r) => ({
-          result: r.name,
-          ...(r.sql ? { sql: r.sql.trim() } : {}),
-          rows: r.rows.map((row) => Object.fromEntries(r.fields.map((f, i) => [f.name, jsonValue(row[i] ?? null)]))),
-        })),
+        results.map((r) => ({ result: r.name, ...(sqlOf(r) ? { sql: sqlOf(r) } : {}), rows: objects(r) })),
         null,
         2,
       )
     case 'markdown':
       return results
-        .map((r) => [`## ${r.name}`, ...(r.sql ? ['```sql', r.sql.trim(), '```'] : []), '', copyRowsAs('markdown', r.fields, r.rows, undefined)].join('\n'))
+        .map((r) => {
+          const sql = sqlOf(r)
+          return [`## ${r.name}`, ...(sql ? ['```sql', sql, '```'] : []), '', copyRowsAs('markdown', r.fields, r.rows, undefined)].join('\n')
+        })
         .join('\n\n')
   }
 }

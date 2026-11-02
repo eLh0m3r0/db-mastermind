@@ -76,7 +76,7 @@ project's (AI) maintainer and updated with every release.
 ### SQL editor
 - ✅ CodeMirror 6 editor with dialect-aware highlighting
 - ✅ Schema-aware autocomplete (schemas, tables, columns, aliases, keywords, functions)
-- ✅ Run statement under cursor / selection / whole script; multiple result sets; Copy all (TSV / JSON / Markdown, with each statement) and Download all (Excel with a sheet per result, other formats as a ZIP) — unreleased
+- ✅ Run statement under cursor / selection / whole script; multiple result sets; Copy all (TSV / JSON / Markdown, optionally with each statement) and Download all (Excel with a sheet per result, other formats as a ZIP) — unreleased
 - ✅ Cancel running query; elapsed timer
 - ✅ Format SQL; comment toggle; multi-cursor
 - ✅ Query parameters (`:name`, `$1`, `?`) with prompt (bound, never inlined)

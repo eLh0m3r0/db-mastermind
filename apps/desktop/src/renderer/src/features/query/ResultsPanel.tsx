@@ -16,10 +16,13 @@ import { useSettings } from '@/store/settings'
 import { toast } from '@/store/ui'
 import { copyResultsAs, copyRowsAs, EXPORT_FORMATS, type NamedResult, type ResultCopyFormat } from '../results/copy'
 
-const COPY_FORMATS: { id: ResultCopyFormat; label: string }[] = [
+// With SQL is a separate choice: a long script's statements can dwarf a one-row result.
+const COPY_FORMATS: { id: ResultCopyFormat; label: string; withSql?: boolean }[] = [
   { id: 'tsv', label: 'TSV (Excel)' },
   { id: 'json', label: 'JSON' },
+  { id: 'json', label: 'JSON + SQL', withSql: true },
   { id: 'markdown', label: 'Markdown' },
+  { id: 'markdown', label: 'Markdown + SQL', withSql: true },
 ]
 import type { DriverId } from '@dbmastermind/core/browser'
 import { tp, useT } from '@/lib/i18n'
@@ -202,7 +205,7 @@ export function ResultsPanel({
     COPY_FORMATS.map((f) => ({
       label: f.label,
       onClick: () => {
-        const text = copyResultsAs(f.id, results())
+        const text = copyResultsAs(f.id, results(), { withSql: f.withSql })
         void copyText(text).then(() => toast({ kind: 'success', message: tr('Copied as {format}', { format: f.label }) }))
       },
     }))

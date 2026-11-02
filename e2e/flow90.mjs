@@ -27,12 +27,16 @@ const win = await app.firstWindow()
 win.on('pageerror', (e) => errors.push(e.message))
 const api = (fn, ...args) => win.evaluate(([fn, args]) => window.mastermind.api[fn](...args), [fn, args])
 const clipboard = () => app.evaluate(({ clipboard }) => clipboard.readText())
-const menuItem = (name) => win.getByRole('menuitem', { name }).or(win.locator('[role=menu] button', { hasText: name })).first()
+// Strings match the whole label ("JSON" must not pick "JSON + SQL").
+const menuItem = (name) => {
+  const label = typeof name === 'string' ? new RegExp(`^\\s*${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`) : name
+  return win.getByRole('menuitem', { name: label }).or(win.locator('[role=menu] button', { hasText: label })).first()
+}
 // The sidebar shows the current connection; others are picked from its header menu.
 const openBehindVpn = async () => {
   await win.getByRole('button', { name: /Demo coffee shop|Behind VPN/ }).first().click()
   await win.waitForTimeout(300)
-  await menuItem('Behind VPN').click()
+  await menuItem(/Behind VPN/).click()
   // The new tab's connection, not the demo's explorer still on screen.
   await win.getByRole('button', { name: /Behind VPN/ }).first().waitFor()
   await win.waitForTimeout(1000)
@@ -81,7 +85,13 @@ try {
   await menuItem('JSON').click()
   await win.waitForTimeout(300)
   const json = JSON.parse(await clipboard())
-  check('Copy all as JSON: every result with its statement', json.length === 2 && json[0].result === 'Result 1' && json[0].rows[0].name === 'Káva' && json[1].rows[0].n === 2 && /SELECT 2/.test(json[1].sql), JSON.stringify(json))
+  check('Copy all as JSON: every result, no SQL', json.length === 2 && json[0].result === 'Result 1' && json[0].rows[0].name === 'Káva' && json[1].rows[0].n === 2 && !('sql' in json[1]), JSON.stringify(json))
+
+  await group.getByRole('button', { name: 'Copy all' }).click()
+  await menuItem('JSON + SQL').click()
+  await win.waitForTimeout(300)
+  const withSql = JSON.parse(await clipboard())
+  check('Copy all as JSON + SQL: with each statement', withSql.length === 2 && /SELECT 2/.test(withSql[1].sql), JSON.stringify(withSql))
 
   await group.getByRole('button', { name: 'Copy all' }).click()
   await menuItem('TSV (Excel)').click()
