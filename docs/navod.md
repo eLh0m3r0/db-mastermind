@@ -50,6 +50,11 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
 - Našeptávání zná schéma. Po `JOIN` nabídne související tabulky i s celou podmínkou `ON`.
 - ⌘I / Ctrl+I: popište dotaz slovy a AI ho napíše. U chyby je tlačítko *Opravit pomocí AI*.
 - Výsledky můžete připnout, zobrazit jako graf a vložit do dashboardu.
+- **Kopírování výsledku:** TSV (pro Excel), JSON nebo Markdown (dobré pro vložení do AI chatu), volitelně i s SQL.
+- **Více výsledků najednou:** když skript vrátí víc výsledků, vpravo v liště jsou *Kopírovat vše* a *Stáhnout vše*
+  (Excel s listem pro každý výsledek, ostatní formáty jako ZIP).
+- **Výpadek VPN nebo sítě:** když server není dostupný, aplikace to na pozadí sama zkouší znovu a průzkumník tabulek
+  se připojí, jakmile server zase odpovídá.
 - **Rozdělené zobrazení:** ⌘\ / Ctrl+\ zobrazí dvě karty vedle sebe, třeba dotaz a tabulku.
 
 ## 5. Diagramy a návrh schématu
