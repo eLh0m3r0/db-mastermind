@@ -44,7 +44,8 @@ import { confirmAction } from '@/components/ui/ConfirmDialog'
 export function useCurrentConnectionId(): string | undefined {
   const tab = useActiveTab()
   const selected = useUi((s) => s.selectedConnectionId)
-  return tab?.connectionId ?? selected
+  // A model tab may have no database ('').
+  return tab?.connectionId || selected
 }
 
 export async function connectAndSelect(id: string): Promise<boolean> {

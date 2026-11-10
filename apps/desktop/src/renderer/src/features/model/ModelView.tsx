@@ -20,6 +20,8 @@ import { askAi, toast } from '@/store/ui'
 import { useWorkspace, type DiagramTab, type ModelTab } from '@/store/workspace'
 import { DiagramView } from '../diagram/DiagramView'
 import { describeDezignChanges, modelTabFromFile } from './open-model'
+import { rememberModelDatabase } from '@/lib/files'
+import { connectAndSelect } from '../sidebar/Sidebar'
 import { editorTheme } from '../query/SqlEditor'
 import { confirmAction } from '@/components/ui/ConfirmDialog'
 
@@ -133,6 +135,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const openTab = useWorkspace((s) => s.open)
   const newQuery = useWorkspace((s) => s.newQuery)
   const connection = useConnections((s) => s.list.find((c) => c.id === tab.connectionId))
+  const connections = useConnections((s) => s.list)
   const liveSchema = useConnections((s) => s.runtime[tab.connectionId]?.schema)
   const loadSchema = useConnections((s) => s.loadSchema)
   const [text, setText] = useState(tab.text)
@@ -189,6 +192,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
       if (!path) return
       // Saved as its own file, the model no longer follows the DeZign project it came from.
       updateTab(tab.id, { path, source: undefined, dirty: false, text, title: path.split(/[\\/]/).pop() ?? t('Model') })
+      if (connection) rememberModelDatabase(path, connection.id)
       toast({ kind: 'success', message: t('Model saved'), detail: path })
     } catch (err) {
       toast({ kind: 'error', message: t('Could not save the model'), detail: errorMessage(err) })
@@ -242,9 +246,26 @@ export function ModelView({ tab }: { tab: ModelTab }) {
       anchor,
       DRIVERS.map((d) => ({
         label: d.label,
-        onClick: () => newQuery(tab.connectionId, `-- ${t('Model as {db} DDL', { db: d.label })}\n${createScript(model.tables, getDialect(d.id), { translateTypes: true })}`, `DDL · ${d.label}`),
+        onClick: () => {
+          const script = `-- ${t('Model as {db} DDL', { db: d.label })}\n${createScript(model.tables, getDialect(d.id), { translateTypes: true })}`
+          // With a database the script opens in its editor; a model on its own saves it as a file.
+          if (connection) newQuery(tab.connectionId, script, `DDL · ${d.label}`)
+          else void api.saveSqlFile(script, `${fileName.replace(/\.\w+$/, '') || 'model'}-${d.id}.sql`).then((path) => path && toast({ kind: 'success', message: t('Script saved'), detail: path }), (err) => toast({ kind: 'error', message: t('Could not save the script'), detail: errorMessage(err) }))
+        },
       })),
     )
+
+  /** Links the model to a database: picked when it is first needed, remembered for this file. */
+  const linkDatabase = (connectionId: string) => {
+    updateTab(tab.id, { connectionId })
+    rememberModelDatabase(tab.path ?? tab.source?.path, connectionId)
+  }
+  const compareWithDatabase = async () => {
+    if (!connection) return
+    if (!liveSchema && !(await connectAndSelect(connection.id))) return
+    openTab({ kind: 'compare', connectionId: tab.connectionId, sourceModel: text, title: t('Model → {name}', { name: connection.name }) }, { reuse: false })
+  }
+  const fileName = (tab.path ?? tab.source?.path)?.split(/[\\/]/).pop() ?? ''
 
   const designWithAi = () =>
     askAi({
@@ -287,7 +308,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           {t('Save as…')}
         </Button>
         <div className="mx-1 h-4 w-px bg-line" />
-        <Button size="sm" variant="ghost" icon={<Database size={13} />} onClick={() => void fromDatabase()}>
+        <Button size="sm" variant="ghost" icon={<Database size={13} />} disabled={!connection} onClick={() => void fromDatabase()}>
           {t('From database')}
         </Button>
         <Button size="sm" variant="ghost" icon={<FileInput size={13} />} onClick={() => void importDdl()} title={t('Read tables from a SQL script (pg_dump, mysqldump, SSMS…) or a Prisma schema')}>
@@ -326,21 +347,36 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           </Select>
         )}
         <span className="text-[11.5px] text-fg-faint">{tp(model.tables.length, { one: '{n} table', many: '{n} tables' })}</span>
+        <Select
+          inputSize="sm"
+          className="w-44"
+          value={connection ? tab.connectionId : ''}
+          onChange={(e) => linkDatabase(e.target.value)}
+          title={t('The database this model is compared with. A model works without one; pick it when you need the ALTER script.')}
+          data-testid="model-database"
+        >
+          <option value="">{t('No database')}</option>
+          {connections.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </Select>
         <Button
           size="sm"
           variant="primary"
           icon={<GitCompare size={13} />}
-          disabled={model.errors.length > 0 || !model.tables.length}
-          onClick={() => openTab({ kind: 'compare', connectionId: tab.connectionId, sourceModel: text, title: t('Model → {name}', { name: connection?.name ?? '' }) }, { reuse: false })}
-          title={t('Compare the model with the database and generate the migration')}
+          disabled={!connection || model.errors.length > 0 || !model.tables.length}
+          onClick={() => void compareWithDatabase()}
+          title={connection ? t('Compare the model with the database and generate the migration') : t('Pick a database on the left first')}
         >
-          {t('Compare with {name}', { name: connection?.name ?? t('database') })}
+          {connection ? t('Compare with {name}', { name: connection.name }) : t('Compare with database')}
         </Button>
         <Button
           size="sm"
           variant="ghost"
           icon={<GitCompare size={13} />}
-          disabled={model.errors.length > 0}
+          disabled={!connection || model.errors.length > 0}
           title={t('What changed compared with another DBML file, e.g. an older version of this model')}
           onClick={() => void compareWithFile()}
         >

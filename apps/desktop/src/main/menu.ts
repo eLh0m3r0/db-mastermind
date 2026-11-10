@@ -17,6 +17,8 @@ const CS: Record<string, string> = {
   'Save Query': 'Uložit dotaz',
   'Export Results…': 'Exportovat výsledky…',
   Disconnect: 'Odpojit',
+  'New Model': 'Nový model',
+  'Open Model…': 'Otevřít model…',
   View: 'Zobrazení',
   'Command Palette…': 'Paleta příkazů…',
   'Quick Open Table…': 'Rychle otevřít tabulku…',
@@ -80,6 +82,9 @@ export function buildMenu(): void {
       submenu: [
         cmd(m('New Query Tab'), 'new-query', 'CmdOrCtrl+T'),
         cmd(m('New Connection…'), 'new-connection', 'CmdOrCtrl+Shift+N'),
+        { type: 'separator' },
+        cmd(m('New Model'), 'new-model'),
+        cmd(m('Open Model…'), 'open-model', 'CmdOrCtrl+O'),
         { type: 'separator' },
         cmd(m('Close Tab'), 'close-tab', 'CmdOrCtrl+W'),
         cmd(m('Reopen Closed Tab'), 'reopen-tab', 'CmdOrCtrl+Shift+T'),

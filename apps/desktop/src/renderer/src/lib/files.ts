@@ -5,6 +5,46 @@ import { errorMessage } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { toast, useUi } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
+import { modelTabFromFile } from '@/features/model/open-model'
+
+export const MODEL_FILE = /\.(dbml|dez|dezproj)$/i
+
+const LINKS = 'dbm.modelDatabase'
+const links = (): Record<string, string> => {
+  try {
+    return JSON.parse(localStorage.getItem(LINKS) ?? '{}') as Record<string, string>
+  } catch {
+    return {}
+  }
+}
+/** The database a model file was last worked against, so the next time it opens it is linked again. */
+export function rememberModelDatabase(path: string | undefined, connectionId: string): void {
+  if (path) localStorage.setItem(LINKS, JSON.stringify({ ...links(), [path]: connectionId }))
+}
+
+/**
+ * Opens a model file (.dbml, or a DeZign for Databases .dez / .dezproj) in a model tab. A model needs no database:
+ * it is linked to the one it was last used with, else to the current connection, else to none.
+ */
+export async function openModel(path?: string): Promise<void> {
+  try {
+    const connections = useConnections.getState()
+    const ws = useWorkspace.getState()
+    const current = ws.tabs.find((x) => x.id === ws.activeTabId)?.connectionId || useUi.getState().selectedConnectionId || ''
+    const file = await api.openModelFile(path, connections.list.find((c) => c.id === current)?.knowledgeBasePath)
+    if (!file) return
+    const remembered = links()[file.path]
+    const connectionId = remembered && connections.list.some((c) => c.id === remembered) ? remembered : current
+    ws.open({ kind: 'model', connectionId, ...modelTabFromFile(file, connections.runtime[connectionId]?.schema?.defaultSchema) }, { reuse: false })
+  } catch (err) {
+    toast({ kind: 'error', message: t('Could not open the model'), detail: errorMessage(err) })
+  }
+}
+
+/** A file handed to the app (double-click in the system, command line, drop): a model, or data to query. */
+export function openFile(path: string): void {
+  void (MODEL_FILE.test(path) ? openModel(path) : queryFile(path))
+}
 
 export const QUERYABLE_FILE = /\.(csv|tsv|txt|parquet|json|jsonl|ndjson|xlsx|db|sqlite|sqlite3|db3|duckdb)$/i
 

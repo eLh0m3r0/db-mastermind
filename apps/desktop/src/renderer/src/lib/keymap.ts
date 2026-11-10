@@ -7,6 +7,7 @@ import { useWorkspace } from '@/store/workspace'
  */
 const KEYMAP: Record<string, string> = {
   'Mod+t': 'new-query',
+  'Mod+o': 'open-model',
   'Mod+Shift+n': 'new-connection',
   'Mod+w': 'close-tab',
   'Mod+Shift+t': 'reopen-tab',

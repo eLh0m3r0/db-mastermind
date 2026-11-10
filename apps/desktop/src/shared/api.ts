@@ -547,6 +547,8 @@ export interface MastermindApi {
   saveSqlFile(text: string, name: string, defaultDir?: string): Promise<string | null>
   /** Saves a PNG/SVG data URL through a save dialog; null when cancelled. */
   saveImageFile(dataUrl: string, name: string): Promise<string | null>
+  /** Files the app was started with (command line, double-click); each is handed out once. */
+  takeOpenedFiles(): Promise<string[]>
   /** Writes an edited model back into the DeZign project it came from (draft: see ROADMAP 8.2). */
   saveDezignModel(request: DezignSaveRequest): Promise<DezignSaveOutcome>
   importDdlFile(): Promise<{ path: string; dbml: string; skipped: { sql: string; error: string }[] } | null>
@@ -636,6 +638,8 @@ export interface MainEvents {
   'ai:event': AiEvent
   /** Files in the team folder changed: reload connections and saved queries. */
   'team:changed': undefined
+  /** A file handed to the running app (double-click in the system, a second launch with a path). */
+  'file:open': string
 }
 
 export type IpcResult<T> = { ok: true; value: T } | { ok: false; error: { message: string; code?: string; name?: string } }
@@ -692,6 +696,7 @@ export const API_METHODS = [
   'openModelFile',
   'saveModelFile',
   'saveDezignModel',
+  'takeOpenedFiles',
   'importDdlFile',
   'saveSqlFile',
   'saveImageFile',

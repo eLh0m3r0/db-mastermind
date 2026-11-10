@@ -70,6 +70,8 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   - *Zkontrolovat migraci* ukáže SQL skript, kontroly nad daty a rollback. Jednotlivé změny lze vynechat.
 - **Modely v DBML:** text a diagram vedle sebe, vizuální úpravy se zapisují zpět do textu. Model porovnáte
   s databází nebo se starší verzí souboru.
+- **Model bez připojení:** model otevřete z úvodní stránky, přes *Soubor → Otevřít model* (⌘O / Ctrl+O), přetažením
+  souboru do okna nebo dvojklikem na `.dbml`. Databázi vyberete v liště modelu, až budete chtít porovnání.
 - **Modely z DeZign for Databases:** *Otevřít model* přijme i soubory `.dez` a složkové projekty `.dezproj`
   (DeZign 4 až 14) včetně rozložení hlavního diagramu. Z modelu pak vygenerujete DDL nebo ALTER skript proti
   živé databázi. *Uložit* zapíše změny zpět do projektu DeZignu (nejdřív je vypíše a ponechá zálohu; funkce je

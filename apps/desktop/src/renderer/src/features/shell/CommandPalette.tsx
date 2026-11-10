@@ -6,18 +6,17 @@ import { Kbd } from '@/components/ui/Input'
 import { api, modKey } from '@/lib/api'
 import { runCommand } from '@/lib/commands'
 import { exportDataDictionary } from '@/lib/dictionary'
-import { queryFile } from '@/lib/files'
+import { openModel, queryFile } from '@/lib/files'
 import { openDashboard } from '@/lib/dashboards'
 import { newTable } from '@/lib/newTable'
-import { errorMessage, fuzzyScore } from '@/lib/utils'
+import { fuzzyScore } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
-import { toast, useUi } from '@/store/ui'
+import { useUi } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
 import { DriverIcon } from '../connections/drivers'
 import { connectAndSelect, useCurrentConnectionId } from '../sidebar/Sidebar'
 import { useT } from '@/lib/i18n'
-import { modelTabFromFile } from '../model/open-model'
 
 export function CommandPalette() {
   const mode = useUi((s) => s.palette)
@@ -54,20 +53,13 @@ export function CommandPalette() {
     { id: 'dictionary-md', label: t('Export data dictionary (Markdown)…'), icon: <FileText size={14} />, run: () => connectionId && void exportDataDictionary(connectionId, 'markdown'), needsConnection: true },
     { id: 'datacompare', label: t('Compare table data…'), icon: <Rows3 size={14} />, run: () => connectionId && openTab({ kind: 'datacompare', connectionId, sourceId: connectionId, title: t('Data compare') }, { reuse: false }), needsConnection: true },
     { id: 'roles', label: t('Users & roles'), icon: <ShieldCheck size={14} />, run: () => connectionId && openTab({ kind: 'roles', connectionId, title: t('Users & roles') }), needsConnection: true },
-    { id: 'model-new', label: t('New model (DBML)'), icon: <FileCode2 size={14} />, run: () => connectionId && openTab({ kind: 'model', connectionId, title: t('Model'), text: '' }, { reuse: false }), needsConnection: true },
+    { id: 'model-new', label: t('New model (DBML)'), icon: <FileCode2 size={14} />, run: () => openTab({ kind: 'model', connectionId: connectionId ?? '', title: t('Model'), text: '' }, { reuse: false }) },
     {
       id: 'model-open',
       label: t('Open model (DBML, DeZign)…'),
       icon: <FileCode2 size={14} />,
-      run: () => {
-        if (!connectionId) return
-        const kb = useConnections.getState().list.find((c) => c.id === connectionId)?.knowledgeBasePath
-        void api
-          .openModelFile(undefined, kb)
-          .then((f) => f && openTab({ kind: 'model', connectionId, ...modelTabFromFile(f, useConnections.getState().runtime[connectionId]?.schema?.defaultSchema) }, { reuse: false }))
-          .catch((err) => toast({ kind: 'error', message: t('Could not open the model'), detail: errorMessage(err) }))
-      },
-      needsConnection: true,
+      shortcut: `${modKey}O`,
+      run: () => void openModel(),
     },
     { id: 'dashboards', label: t('Dashboards'), icon: <LayoutDashboard size={14} />, run: () => connectionId && openDashboard(connectionId), needsConnection: true },
     {

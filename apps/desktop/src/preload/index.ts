@@ -42,6 +42,10 @@ const bridge = {
   pathForFile(file: File): string {
     return webUtils.getPathForFile(file)
   },
+  /** The page is ready for files handed to the app after start (see main/opened-files.ts). */
+  listenForFiles() {
+    ipcRenderer.send('files:listening')
+  },
   setTheme(theme: 'system' | 'light' | 'dark') {
     ipcRenderer.send('theme:set', theme)
   },

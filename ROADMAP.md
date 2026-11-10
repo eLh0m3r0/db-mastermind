@@ -301,7 +301,10 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ What the model can't show yet (domains, views, procedures, sequences, triggers, check constraints,
   relationships without columns, other diagrams) is listed with counts when the file opens, never dropped silently
 - ✅ Opening never changes the DeZign file; Save as makes a `.dbml` model of it
-- ⬜ File → Open, drag & drop and double-click in Explorer/Finder; a model without any connection
+- ✅ A model needs no connection: File → Open Model (⌘O), "Open a model" on the start page, a file dropped on the
+  window, or the file itself (command line, double-click; `.dbml` is registered on macOS and Windows, DeZign files
+  on macOS only so that on Windows they stay with DeZign). DDL goes to a `.sql` file; the database is picked in the
+  model's toolbar when the ALTER script is wanted and remembered for that file
 - ⬜ Subdiagrams as subject areas with their own positions and colors (a table can be in several: needs 8.3's
   several diagrams per model)
 
@@ -330,8 +333,8 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ⬜ A model as a folder (one file per table, SQL files for the rest): small Git diffs, merges without conflicts
 
 ### 8.4 Easy on the first day ⬜
-- ⬜ Start page: "Open a model" and "New model" next to the connections; a model file opened from the system
-  goes straight to the designer with the connection sidebar out of the way
+- ✅ Start page: "Open a model" next to the connections; a model file opened from the system goes straight to the
+  designer with the connection sidebar out of the way
 - ⬜ Model checks that run by themselves (missing keys, orphan columns, duplicate indexes, type mismatches
   between a foreign key and its target, names that break the model's own prevailing convention): a quiet
   counter, click to jump, one-click fix where it is safe

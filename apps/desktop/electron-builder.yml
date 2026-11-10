@@ -23,6 +23,16 @@ publish:
   releaseType: release
 mac:
   category: public.app-category.developer-tools
+  # DeZign itself is Windows only, so on a Mac its models open here; on Windows they stay with DeZign (drop them
+  # on the window or use Open Model) and only our own .dbml is registered.
+  fileAssociations:
+    - ext: dbml
+      name: Database model (DBML)
+      role: Editor
+    - ext: [dez, dezproj]
+      name: DeZign for Databases model
+      role: Editor
+      rank: Alternate
   target:
     - target: dmg
       arch: [arm64, x64]
@@ -32,6 +42,10 @@ mac:
   # doesn't report the downloaded app as damaged.
   identity: null
 win:
+  fileAssociations:
+    - ext: dbml
+      name: dbml
+      description: Database model (DBML)
   target:
     - target: nsis
       arch: [x64, arm64]

@@ -1,9 +1,9 @@
-import { ArrowRight, BookOpen, Coffee, Database, Download, FileSpreadsheet, Keyboard, Plus, Sparkles } from 'lucide-react'
+import { ArrowRight, BookOpen, Coffee, Database, Download, FileSpreadsheet, Keyboard, Plus, Sparkles, FileCode2 } from 'lucide-react'
 import { isFileDriver } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { Kbd } from '@/components/ui/Input'
 import { api, modKey } from '@/lib/api'
-import { queryFile } from '@/lib/files'
+import { queryFile, openModel } from '@/lib/files'
 import { useConnections } from '@/store/connections'
 import { useUi } from '@/store/ui'
 import { DriverIcon } from '../connections/drivers'
@@ -42,6 +42,9 @@ export function HomeScreen() {
               </Button>
               <Button size="sm" variant="ghost" icon={<FileSpreadsheet size={13} />} onClick={() => void queryFile()} title={t('CSV, Parquet, JSON or Excel: query it with SQL, no import needed')}>
                 {t('Query a file')}
+              </Button>
+              <Button size="sm" variant="ghost" icon={<FileCode2 size={13} />} onClick={() => void openModel()} title={t('A database model: DBML, or a DeZign for Databases project (.dez, .dezproj). No connection needed')}>
+                {t('Open a model')}
               </Button>
               <Button size="sm" variant="ghost" icon={<Download size={13} />} onClick={(e) => void openImportMenu(e.currentTarget)} title={t('From Beekeeper, DBeaver, DataGrip, pgAdmin, SSMS, Workbench, HeidiSQL…')}>
                 {t('Import connections')}

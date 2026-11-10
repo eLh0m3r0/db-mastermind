@@ -1,3 +1,4 @@
+import { deliverOpenedFilesTo, filesFromArgs, openFileInApp } from './opened-files'
 import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron'
 import { describeError, sqliteWorkersAlive, useKnownHostsFile } from '@dbmastermind/core'
@@ -73,6 +74,12 @@ function createWindow() {
     if (/^https?:\/\//.test(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
+  // Once the page has asked for the files it was started with, later ones go straight to it.
+  const window = mainWindow
+  window.webContents.on('did-finish-load', () => deliverOpenedFilesTo(undefined))
+  ipcMain.removeAllListeners('files:listening')
+  ipcMain.on('files:listening', () => deliverOpenedFilesTo((path) => !window.isDestroyed() && window.webContents.send('file:open', path)))
+  window.on('closed', () => deliverOpenedFilesTo(undefined))
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (url !== mainWindow?.webContents.getURL()) event.preventDefault()
   })
@@ -104,10 +111,18 @@ function startApp() {
     nativeTheme.themeSource = theme
   })
 
-  app.on('second-instance', () => {
+  // Files handed to the app: on the command line (Windows, Linux, `open -a`), by macOS (double-click, Open With)
+  // or by a second launch, which passes its arguments to this instance.
+  for (const file of filesFromArgs(process.argv.slice(1))) openFileInApp(file)
+  app.on('open-file', (event, path) => {
+    event.preventDefault()
+    openFileInApp(path)
+  })
+  app.on('second-instance', (_event, argv, cwd) => {
     if (!mainWindow) return
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.focus()
+    for (const file of filesFromArgs(argv.slice(1), cwd)) openFileInApp(file)
   })
 
   app.whenReady().then(async () => {

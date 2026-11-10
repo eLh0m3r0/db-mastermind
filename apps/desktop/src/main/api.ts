@@ -58,6 +58,7 @@ import { deleteChat, deleteChatsOf, getChat, listChats, renameChat, saveChat } f
 import { detectImportSources, exportConnections, importConnections } from './importers'
 import { backupDatabase, restoreDatabase } from './backup'
 import { openDezignModel, saveDezignModel } from './dezign-file'
+import { takeOpenedFiles } from './opened-files'
 import { aiAccess, turnedOffCentrally } from './ai-access'
 import { managed } from './managed'
 import { checkNow, installUpdate } from './updates'
@@ -475,6 +476,7 @@ export const api: MastermindApi = {
     return { path, text: await readFile(path, 'utf8') }
   },
   saveDezignModel: (request) => saveDezignModel(request),
+  takeOpenedFiles: async () => takeOpenedFiles(),
   async saveSqlFile(text, name, defaultDir) {
     const window = BrowserWindow.getFocusedWindow()
     const options = { title: 'Save SQL', defaultPath: defaultDir ? join(defaultDir, name) : name, filters: [{ name: 'SQL', extensions: ['sql'] }] }
