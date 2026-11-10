@@ -298,6 +298,26 @@ class Project {
     return slot.path ? slot.path.slice(slot.path.lastIndexOf('/') + 1, -4) : ''
   }
 
+  /**
+   * The highest number used as an id anywhere in the working model. Files that number their objects share one
+   * counter between all kinds of them (tables, relationships, text areas, group boxes…), so the next id has to
+   * be above everything, not just above the kinds this writer knows.
+   */
+  highestNumber(): number {
+    let max = 0
+    const walk = (el: El) => {
+      for (const child of kids(el)) {
+        if (child.tag === 'ID') {
+          const value = child.children.filter((c) => typeof c === 'string').join('').trim()
+          if (/^\d{1,15}$/.test(value)) max = Math.max(max, Number(value))
+        } else walk(child)
+      }
+    }
+    if (this.version) walk(this.version)
+    for (const [path, doc] of this.docs) if (!this.deleted.has(path)) walk(doc.root)
+    return max
+  }
+
   result(): { files: DezignFile[]; deleted: string[] } {
     if (!this.folder) {
       const text = serializeDezignXml(this.doc!)
@@ -400,7 +420,7 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
   // --- ids --------------------------------------------------------------------------------------------------
   const allIds = [...project.list('ENT'), ...project.list('REL'), ...project.list('SUBCAT'), ...project.list('DIAGRAM')].map((s) => text(s.el, 'ID'))
   const numbered = allIds.length > 0 && allIds.every((id) => /^\d+$/.test(id))
-  let lastNumber = numbered ? Math.max(...allIds.map(Number)) : 0
+  let lastNumber = numbered ? project.highestNumber() : 0
   const randomId = options.newId ?? (() => globalThis.crypto.randomUUID().toUpperCase())
   const newObjectId = () => (numbered ? String(++lastNumber) : randomId())
   const newChildId = (siblings: string[]) => (siblings.length ? siblings.every((id) => /^\d+$/.test(id)) : numbered) ? String(Math.max(0, ...siblings.map(Number)) + 1) : randomId()

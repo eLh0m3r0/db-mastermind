@@ -737,6 +737,53 @@ ${ent('30', 'other', 'R1')}
     expect(readDezign(out).tables.map((t) => t.name)).toEqual(['person', 'other'])
   })
 
+  it('survives chains of random diagram edits: tables joining and leaving diagrams, new diagrams, notes, colors', { timeout: 120_000 }, () => {
+    type Wanted = NonNullable<NonNullable<Parameters<typeof saveToDezign>[3]>['diagrams']>
+    const done: Record<string, number> = {}
+    for (const [label, start] of [['file', single], ['folder', folder]] as const) {
+      for (let seed = 1; seed <= 20; seed++) {
+        const rnd = random(seed * 31)
+        const pick = <T,>(list: T[]) => list[Math.floor(rnd() * list.length)]
+        let files = start
+        const binary = () => (files.length > 1 ? assembleDezignProject(files) : files[0]!.text)
+        // What a tab that loaded the project would send back unchanged.
+        const asIs = (): Wanted => Object.fromEntries(readDezign(binary()).diagrams.map((d) => [d.id, d.main ? { notes: d.notes } : { exact: true, tables: d.tables, positions: d.positions, notes: d.notes }]))
+        for (let step = 0; step < 6; step++) {
+          const tables = model(files)
+          const keys = tables.map((t) => `${t.schema ?? ''}.${t.name}`)
+          const wanted = asIs()
+          const others = Object.entries(wanted).filter(([, w]) => w.exact)
+          const op = pick(['join', 'leave', 'new', 'note', 'unnote', 'renote', 'color', 'move'])!
+          const [, target] = pick(others) ?? []
+          const any = pick(Object.values(wanted))
+          if (op === 'join' && target) target.tables = [...new Set([...target.tables!, pick(keys)!])]
+          else if (op === 'leave' && target?.tables?.length) target.tables = target.tables.filter((k) => k !== pick(target.tables!))
+          else if (op === 'new') wanted[`new:${seed}:${step}`] = { name: `Diagram ${seed}.${step}`, exact: true, tables: keys.filter(() => rnd() < 0.6), positions: {} }
+          else if (op === 'note' && any) any.notes = [...(any.notes ?? []), { id: `tmp-${step}`, text: `Poznámka ${step} & <další>`, x: Math.round(rnd() * 500), y: Math.round(rnd() * 500) }]
+          else if (op === 'unnote' && any?.notes?.length) any.notes = any.notes.slice(1)
+          else if (op === 'renote' && any?.notes?.length) any.notes = any.notes.map((n, i) => (i ? n : { ...n, text: `${n.text} (upraveno)`, x: n.x + 40 }))
+          else if (op === 'color' && any) any.colors = { [pick(keys)!]: pick(['#cfe0f7', '#fbe3c5', null])! }
+          else if (op === 'move' && target?.tables?.length) target.positions = { ...target.positions, [target.tables[0]!]: { x: Math.round(rnd() * 900), y: Math.round(rnd() * 900) } }
+          const where = `${label} seed ${seed} step ${step} (${op})`
+          let saved
+          try {
+            saved = saveToDezign(files, tables, model(files), { normalize: viaDbml, diagrams: wanted })
+          } catch (err) {
+            throw new Error(`${where}: ${err instanceof Error ? err.message : String(err)}`)
+          }
+          files = applyDezignSave(files, saved)
+          expect(dezignIntegrity(binary()), where).toEqual([])
+          // The model itself is untouched by diagram edits, and sending the new state back changes nothing.
+          expect(model(files), where).toEqual(tables)
+          const again = saveToDezign(files, tables, model(files), { normalize: viaDbml, diagrams: asIs() })
+          expect(again.changes, where).toEqual([])
+          done[op] = (done[op] ?? 0) + 1
+        }
+      }
+    }
+    expect(Object.keys(done)).toHaveLength(8)
+  })
+
   it('finds references that point nowhere', () => {
     expect(dezignIntegrity(dez)).toEqual([])
     expect(dezignIntegrity(dez.replace('<KEYID>A1</KEYID>', '<KEYID>A9</KEYID>').replace('<ATTRIBUTEID>A2</ATTRIBUTEID>', '<ATTRIBUTEID>zz</ATTRIBUTEID>'))).toEqual([
