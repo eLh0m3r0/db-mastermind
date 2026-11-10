@@ -932,6 +932,7 @@ export const cs: Record<string, string> = {
   'dropped relationship': 'odstraněná vazba',
   'changed relationship': 'změněná vazba',
   'moved in the diagram': 'přesunuto v diagramu',
+  'changed note': 'změněná poznámka',
   'domains (their columns keep the base type): {n}': 'domény (sloupce mají jejich základní typ): {n}',
   'views: {n}': 'pohledy: {n}',
   'procedures: {n}': 'procedury: {n}',

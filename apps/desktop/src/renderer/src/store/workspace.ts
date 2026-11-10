@@ -89,6 +89,9 @@ export interface ModelTab extends BaseTab {
   source?: { kind: 'dezign'; path: string; hash: string }
   dirty?: boolean
   positions?: Record<string, { x: number; y: number }>
+  /** Table colors and sticky notes of the model's diagram. */
+  colors?: Record<string, number>
+  notes?: DiagramNote[]
   /** Named diagrams of the model (from the source): subsets of its tables with their own layout. */
   diagrams?: ModelDiagram[]
 }

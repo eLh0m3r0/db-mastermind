@@ -51,6 +51,7 @@ export type DezignChangeKind =
   | 'drop_relationship'
   | 'alter_relationship'
   | 'move_table'
+  | 'alter_note'
 
 export interface DezignChange {
   kind: DezignChangeKind
@@ -75,10 +76,11 @@ export interface SaveDezignOptions {
   /** Diagram positions keyed `schema.table`: new tables are placed there, moved tables follow. */
   positions?: Record<string, { x: number; y: number }>
   /**
-   * Other diagrams by id: the tables each should show (missing ones are added to it) and where they are. Tables
-   * are never taken off a diagram here.
+   * Diagrams by id: the tables each should show (missing ones are added to it) and where they are, for the
+   * diagrams other than the main one; and the text areas of any diagram (text and place of existing ones: text
+   * areas are not created or removed here). Tables are never taken off a diagram.
    */
-  diagrams?: Record<string, { tables?: string[]; positions?: Record<string, { x: number; y: number }> }>
+  diagrams?: Record<string, { tables?: string[]; positions?: Record<string, { x: number; y: number }>; notes?: { id: string; text: string; x: number; y: number }[] }>
   /** Ids for new objects (default: random GUIDs, or the next number in files that number their objects). */
   newId?: () => string
   /**
@@ -89,7 +91,7 @@ export interface SaveDezignOptions {
 }
 
 type El = DezignElement
-type Kind = 'ENT' | 'REL' | 'ENTC' | 'RELC' | 'DIAGRAM' | 'SUBCAT'
+type Kind = 'ENT' | 'REL' | 'ENTC' | 'RELC' | 'DIAGRAM' | 'SUBCAT' | 'TEXTAR' | 'TEXTC'
 
 interface Slot {
   el: El
@@ -104,6 +106,8 @@ const SINGLE: Record<Kind, string[]> = {
   DIAGRAM: ['DIAGRAMS'],
   ENTC: ['DIAGRAMS', 'CONTROLS', 'ENTITYCONTROLS'],
   RELC: ['DIAGRAMS', 'CONTROLS', 'RELATIONSHIPCONNECTORS'],
+  TEXTAR: ['DATADICT', 'TEXTAREAS'],
+  TEXTC: ['DIAGRAMS', 'CONTROLS', 'TEXTAREACONTROLS'],
 }
 const FOLDER: Record<Kind, string> = {
   ENT: 'data dictionary/entities',
@@ -112,6 +116,8 @@ const FOLDER: Record<Kind, string> = {
   DIAGRAM: 'diagrams',
   ENTC: 'diagrams/diagramobjects/entitycontrols',
   RELC: 'diagrams/diagramobjects/relationshipconnectors',
+  TEXTAR: 'data dictionary/textareas',
+  TEXTC: 'diagrams/diagramobjects/textareacontrols',
 }
 
 const lower = (s: string) => s.toLowerCase()
@@ -938,6 +944,27 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
       set(c.el, 'T', String(at.t))
       const name = text(entities.get(key!)!.el, 'NAME')
       if (!changes.some((x) => (x.kind === 'add_table' || x.kind === 'move_table') && x.table === name)) changes.push({ kind: 'move_table', table: name })
+    }
+  }
+
+  // Text areas: new text and a new place for the ones the project already has.
+  for (const [diagramId, wanted] of Object.entries(options.diagrams ?? {})) {
+    for (const note of wanted.notes ?? []) {
+      const area = project.list('TEXTAR').find((x) => text(x.el, 'ID') === note.id)
+      const control = project.list('TEXTC').find((c) => text(c.el, 'ID') === note.id && (!kid(c.el, 'DIAGRAMID') || text(c.el, 'DIAGRAMID') === diagramId))
+      if (!area || !control) continue
+      let changed = false
+      if (normText(text(area.el, 'TEXT')) !== normText(note.text)) {
+        set(area.el, 'TEXT', note.text)
+        changed = true
+      }
+      const at = toDiagram(diagramId, note)
+      if (Math.abs(at.l - Number(text(control.el, 'L'))) > 2 || Math.abs(at.t - Number(text(control.el, 'T'))) > 2) {
+        set(control.el, 'L', String(at.l))
+        set(control.el, 'T', String(at.t))
+        changed = true
+      }
+      if (changed) changes.push({ kind: 'alter_note', table: note.text.split(/\r?\n/)[0]!.slice(0, 40) })
     }
   }
 

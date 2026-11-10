@@ -44,6 +44,10 @@ export interface DezignDiagram {
   /** Keys (`schema.table`) of the tables on the diagram. */
   tables: string[]
   positions: Record<string, { x: number; y: number }>
+  /** Fill colors (`#rrggbb`) of the tables that don't have the project's default color. */
+  colors: Record<string, string>
+  /** Text areas on the diagram. */
+  notes: { id: string; text: string; x: number; y: number }[]
   /** `x = (L - originX) * scaleX`: lets a writer turn positions back into DeZign's coordinates. */
   layout: { originX: number; originY: number; scaleX: number; scaleY: number }
 }
@@ -293,11 +297,19 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const node = options.node
   const median = (values: number[]) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 1
   const allControls = kids(kid(kid(diagramsEl, 'CONTROLS'), 'ENTITYCONTROLS'), 'ENTC')
-    .map((c) => ({ diagram: kid(c, 'DIAGRAMID') ? text(c, 'DIAGRAMID') : mainId, entity: entities.get(text(c, 'ID')), x: Number(text(c, 'L')), y: Number(text(c, 'T')), w: Number(text(c, 'W')), h: Number(text(c, 'H')) }))
-    .filter((c): c is { diagram: string; entity: Entity; x: number; y: number; w: number; h: number } => !!c.entity && Number.isFinite(c.x) && Number.isFinite(c.y))
+    .map((c) => ({ diagram: kid(c, 'DIAGRAMID') ? text(c, 'DIAGRAMID') : mainId, entity: entities.get(text(c, 'ID')), x: Number(text(c, 'L')), y: Number(text(c, 'T')), w: Number(text(c, 'W')), h: Number(text(c, 'H')), fill: text(c, 'BRUSH').split(',')[1]?.trim() ?? '' }))
+    .filter((c): c is { diagram: string; entity: Entity; x: number; y: number; w: number; h: number; fill: string } => !!c.entity && Number.isFinite(c.x) && Number.isFinite(c.y))
+  // Delphi colors are 0x00BBGGRR.
+  const hex = (color: string) => {
+    const n = Number(color)
+    return Number.isInteger(n) && n >= 0 ? `#${[n & 255, (n >> 8) & 255, (n >> 16) & 255].map((v) => v.toString(16).padStart(2, '0')).join('')}` : ''
+  }
+  const defaultFill = text(kid(diagramsEl, 'DisplayPreferences'), 'DEFENTCOLOR')
+  const noteTexts = new Map(kids(kid(dict, 'TEXTAREAS')).map((n) => [text(n, 'ID'), text(n, 'TEXT')]))
+  const noteControls = kids(kid(kid(diagramsEl, 'CONTROLS'), 'TEXTAREACONTROLS'))
   const diagramOf = (id: string, name: string, main: boolean): DezignDiagram => {
     const controls = allControls.filter((c) => c.diagram === id)
-    const out: DezignDiagram = { id, name, main, tables: [], positions: {}, layout: { originX: 0, originY: 0, scaleX: 1, scaleY: 1 } }
+    const out: DezignDiagram = { id, name, main, tables: [], positions: {}, colors: {}, notes: [], layout: { originX: 0, originY: 0, scaleX: 1, scaleY: 1 } }
     if (!controls.length) return out
     // DeZign's tables are smaller than the target's: spread the layout by the typical size ratio.
     const sx = node ? Math.min(3, Math.max(1, median(controls.filter((c) => c.w > 0).map((c) => node.width / c.w)))) : 1
@@ -309,6 +321,12 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
       const key = `${c.entity.table.schema ?? ''}.${c.entity.table.name}`
       out.tables.push(key)
       out.positions[key] = { x: Math.round((c.x - minX) * sx), y: Math.round((c.y - minY) * sy) }
+      if (c.fill && c.fill !== defaultFill && hex(c.fill)) out.colors[key] = hex(c.fill)
+    }
+    for (const c of noteControls) {
+      if ((kid(c, 'DIAGRAMID') ? text(c, 'DIAGRAMID') : mainId) !== id || !noteTexts.get(text(c, 'ID'))) continue
+      const [x, y] = [Number(text(c, 'L')), Number(text(c, 'T'))]
+      if (Number.isFinite(x) && Number.isFinite(y)) out.notes.push({ id: text(c, 'ID'), text: noteTexts.get(text(c, 'ID'))!, x: Math.round((x - minX) * sx), y: Math.round((y - minY) * sy) })
     }
     return out
   }
@@ -328,6 +346,7 @@ const PROJECT_SECTIONS: [folder: string, element: string][] = [
   ['sequences', 'SEQUENCES'],
   ['procedures', 'PROCEDURES'],
   ['views', 'VIEWS'],
+  ['textareas', 'TEXTAREAS'],
   ['relationships', 'RELATIONSHIPS'],
 ]
 
@@ -350,6 +369,6 @@ export function assembleDezignProject(files: { path: string; text: string }[]): 
   if (!settings) throw new Error('The folder has no .dezproj file')
   const header = top('.dds').replace(/<\/?DATADICT>/g, '')
   const sections = PROJECT_SECTIONS.map(([folder, element]) => `<${element}>${inDir('data dictionary', folder)}</${element}>`).join('\n')
-  const controls = `<ENTITYCONTROLS>${inDir('diagrams', 'diagramobjects', 'entitycontrols')}</ENTITYCONTROLS>`
-  return `<?xml version="1.0" encoding="iso-8859-1"?><dezign>\n<VERSION>\n${settings}\n<DATADICT>${header}\n${sections}</DATADICT>\n<DIAGRAMS>${inDir('diagrams')}\n<CONTROLS>${controls}</CONTROLS></DIAGRAMS>\n</VERSION>\n</dezign>`
+  const controls = `<ENTITYCONTROLS>${inDir('diagrams', 'diagramobjects', 'entitycontrols')}</ENTITYCONTROLS>\n<TEXTAREACONTROLS>${inDir('diagrams', 'diagramobjects', 'textareacontrols')}</TEXTAREACONTROLS>`
+  return `<?xml version="1.0" encoding="iso-8859-1"?><dezign>\n<VERSION>\n${settings}\n<DATADICT>${header}\n${sections}</DATADICT>\n<DIAGRAMS>${top('.ddp')}\n${inDir('diagrams')}\n<CONTROLS>${controls}</CONTROLS></DIAGRAMS>\n</VERSION>\n</dezign>`
 }

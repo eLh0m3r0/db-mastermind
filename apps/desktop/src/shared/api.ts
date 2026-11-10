@@ -435,6 +435,9 @@ export interface OpenedModelFile {
     /** Table positions of the source's main diagram, keyed `schema.table`. */
     positions: Record<string, { x: number; y: number }>
     leftOut: DezignLeftOut
+    /** Colors and text areas of the main diagram. */
+    colors: Record<string, number>
+    notes: DiagramNote[]
     /** The source's other diagrams (subject areas): which tables each shows and where. */
     diagrams: ModelDiagram[]
     /** Fingerprint of the model as read: saving back is refused when the source has changed since. */
@@ -449,6 +452,9 @@ export interface ModelDiagram {
   /** Table keys, `schema.table`. */
   tables: string[]
   positions: Record<string, { x: number; y: number }>
+  /** Table colors (series palette index 1–8) by table key. */
+  colors?: Record<string, number>
+  notes?: DiagramNote[]
 }
 
 export interface DezignSaveRequest {
@@ -458,6 +464,8 @@ export interface DezignSaveRequest {
   text: string
   hash: string
   positions?: Record<string, { x: number; y: number }>
+  /** Text areas of the main diagram (edits of existing ones are saved). */
+  notes?: DiagramNote[]
   diagrams?: ModelDiagram[]
   /** Schema the window puts schema-less tables under (keys of `positions`). */
   defaultSchema?: string

@@ -301,12 +301,13 @@ function nodeHeight(t: TableInfo, keysOnly: boolean, fk: Set<string>, ref: Set<s
   return HEADER + visible * ROW + (keysOnly && visible < t.columns.length ? ROW : 0) + 2
 }
 
-function DiagramInner({ tab, model, onApplyModel, onPositions }: { tab: DiagramTab; model?: SchemaSnapshot; onApplyModel?: (tables: TableInfo[]) => void; onPositions?: (positions: Record<string, { x: number; y: number }> | undefined) => void }) {
+function DiagramInner({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors'>>) => void }) {
   const tr = useT()
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const loadSchema = useConnections((s) => s.loadSchema)
   const openTab = useWorkspace((s) => s.open)
   const updateTab = useWorkspace((s) => s.update)
+  const patchLayout = (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors'>>) => (onLayout ? onLayout(patch) : updateTab(tab.id, patch))
   const dark = useSettings((s) => s.dark)
   // A model (DBML) replaces the live schema; designing it writes the result back to the DBML text.
   const schema = model ?? runtime?.schema
@@ -669,8 +670,7 @@ function DiagramInner({ tab, model, onApplyModel, onPositions }: { tab: DiagramT
   }, [hovered, edges, setNodes])
 
   const resetLayout = () => {
-    if (onPositions) onPositions(undefined)
-    else updateTab(tab.id, { positions: undefined })
+    patchLayout({ positions: undefined })
     tab.positions = undefined
     void layout()
   }
@@ -815,7 +815,7 @@ function DiagramInner({ tab, model, onApplyModel, onPositions }: { tab: DiagramT
   const [noteNodes, setNoteNodes, onNoteNodesChange] = useNodesState<Node<NoteNodeData>>([])
   const latestNotes = useRef(tab.notes)
   latestNotes.current = tab.notes
-  const setNotes = (notes: DiagramNote[]) => updateTab(tab.id, { notes: notes.length ? notes : undefined })
+  const setNotes = (notes: DiagramNote[]) => patchLayout({ notes: notes.length ? notes : undefined })
   const newNote = useRef<string | null>(null)
   useEffect(() => {
     setNoteNodes(
@@ -1268,8 +1268,7 @@ function DiagramInner({ tab, model, onApplyModel, onPositions }: { tab: DiagramT
             // Pin the whole layout, not just this table: otherwise the others come back from the "new tables go in
             // a column" rule after a restart instead of where they were.
             const positions = { ...currentPositions(), ...(tab.positions ?? {}), [node.id]: node.position }
-            if (onPositions) onPositions(positions)
-            else updateTab(tab.id, { positions })
+            patchLayout({ positions })
           }}
           onNodeDoubleClick={(_, n) => !isNote(n.id) && openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name })}
           onNodeContextMenu={(e, n) =>
@@ -1281,12 +1280,12 @@ function DiagramInner({ tab, model, onApplyModel, onPositions }: { tab: DiagramT
               {
                 label: tr('Color'),
                 submenu: [
-                  { label: tr('Default'), checked: !tab.colors?.[n.id], onClick: () => updateTab(tab.id, { colors: Object.fromEntries(Object.entries(tab.colors ?? {}).filter(([k]) => k !== n.id)) }) },
+                  { label: tr('Default'), checked: !tab.colors?.[n.id], onClick: () => patchLayout({ colors: Object.fromEntries(Object.entries(tab.colors ?? {}).filter(([k]) => k !== n.id)) }) },
                   ...COLOR_NAMES.map((name, i) => ({
                     label: tr(name),
                     icon: <span className="block h-3 w-3 rounded-sm" style={{ background: `color-mix(in srgb, var(--series-${i + 1}) 78%, black)` }} />,
                     checked: tab.colors?.[n.id] === i + 1,
-                    onClick: () => updateTab(tab.id, { colors: { ...tab.colors, [n.id]: i + 1 } }),
+                    onClick: () => patchLayout({ colors: { ...tab.colors, [n.id]: i + 1 } }),
                   })),
                 ],
               },
@@ -1362,10 +1361,10 @@ function DiagramInner({ tab, model, onApplyModel, onPositions }: { tab: DiagramT
   )
 }
 
-export function DiagramView({ tab, model, onApplyModel, onPositions }: { tab: DiagramTab; model?: SchemaSnapshot; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing the layout (a model's named diagram keeps its own). */ onPositions?: (positions: Record<string, { x: number; y: number }> | undefined) => void }) {
+export function DiagramView({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors'>>) => void }) {
   return (
     <ReactFlowProvider>
-      <DiagramInner tab={tab} model={model} onApplyModel={onApplyModel} onPositions={onPositions} />
+      <DiagramInner tab={tab} model={model} onApplyModel={onApplyModel} onLayout={onLayout} />
     </ReactFlowProvider>
   )
 }

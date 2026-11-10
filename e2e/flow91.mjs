@@ -10,7 +10,7 @@ const el = (tag, body) => `<${tag}>\n${body}\n</${tag}>`
 const attr = (id, name, type, extra = '') => el('ATTR', `<NAME>${name}</NAME>\n<ID>${id}</ID>\n<DESC></DESC>\n<DOMAINID></DOMAINID>\n<DT>\n<DTLISTNAME>${type}</DTLISTNAME>\n<SD>1</SD>\n<INC>1</INC>\n</DT>\n${extra}`)
 const ent = (id, name, desc, pk, attrs) => el('ENT', `<NAME>${name}</NAME>\n<ID>${id}</ID>\n<SCHEMA>shop</SCHEMA>\n<DESC>${desc}</DESC>\n<PKCON>\n<ATTRIBUTEIDS>\n<ATTRIBUTEID>${pk}</ATTRIBUTEID>\n</ATTRIBUTEIDS>\n</PKCON>\n<ATTRIBUTES>\n${attrs.join('\n')}\n</ATTRIBUTES>`)
 const rel = (id, name, parent, child, key, fk) => el('REL', `<NAME>${name}</NAME>\n<ID>${id}</ID>\n<PARENTOBJECTID>${parent}</PARENTOBJECTID>\n<CHILDOBJECTID>${child}</CHILDOBJECTID>\n<UPDATERULE>0</UPDATERULE>\n<DELETERULE>2</DELETERULE>\n<PAIRS>\n<PAIR>\n<KEYID>${key}</KEYID>\n<FOREIGNKEYID>${fk}</FOREIGNKEYID>\n</PAIR>\n</PAIRS>`)
-const entc = (id, l, t) => el('ENTC', `<ID>${id}</ID>\n<DIAGRAMID>1</DIAGRAMID>\n<W>240</W>\n<H>100</H>\n<L>${l}</L>\n<T>${t}</T>`)
+const entc = (id, l, t, brush = '0,16119285') => el('ENTC', `<ID>${id}</ID>\n<DIAGRAMID>1</DIAGRAMID>\n<W>240</W>\n<H>100</H>\n<L>${l}</L>\n<T>${t}</T>\n<BRUSH>${brush}</BRUSH>`)
 const settings = el('PROJECTSETTINGS', el('COMMONSETTINGS', '<PROJECTNAME /></PROJECTNAME />\n<FILEFORMATVERSION>140</FILEFORMATVERSION>'))
 const diagram = el('DIAGRAM', '<ID>1</ID>\n<NAME>Main</NAME>\n<ISMAINDIAGRAM>1</ISMAINDIAGRAM>')
 const billing = el('DIAGRAM', '<ID>2</ID>\n<NAME>Billing</NAME>\n<ISMAINDIAGRAM>0</ISMAINDIAGRAM>')
@@ -21,12 +21,15 @@ const entities = [
   ent('30', 'payment', '', 'C1', [attr('C1', 'id', 'BIGINT'), attr('C2', 'invoice_id', 'BIGINT')]),
 ]
 const rels = [rel('40', 'customer_invoice', '10', '20', 'A1', 'B2'), rel('41', 'invoice_payment', '20', '30', 'B1', 'C2')]
-const controls = [entc('10', 0, 0), entc('20', 900, 0), entc('30', 900, 700)]
+// The invoice is light yellow in DeZign (BGR 0x80FFFF); a text area sits above the customer.
+const controls = [entc('10', 0, 0), entc('20', 900, 0, '0,8454143'), entc('30', 900, 700)]
+const textArea = el('TEXTAR', '<NAME>TextArea1</NAME>\n<ID>T1</ID>\n<TEXT>Prodej</TEXT>')
+const textControl = el('TEXTC', '<ID>T1</ID>\n<DIAGRAMID>1</DIAGRAMID>\n<W>200</W>\n<H>30</H>\n<L>300</L>\n<T>300</T>')
 // The Billing diagram shows two of the three tables, laid out differently.
 const billingControls = [entc('20', 50, 50), entc('30', 50, 500)].map((c) => c.replace('<DIAGRAMID>1</DIAGRAMID>', '<DIAGRAMID>2</DIAGRAMID>'))
 const head = '<?xml version="1.0" encoding="iso-8859-1"?>'
 const dez = join(dir, 'shop.dez')
-writeFileSync(dez, `${head}<dezign>\n<VERSION>\n${settings}\n<DATADICT>\n<DBID>postgresql16</DBID>\n<DOMAINS>\n</DOMAINS>\n<ENTITIES>\n${entities.join('\n')}\n</ENTITIES>\n<VIEWS>\n<VIEW>\n<NAME>v</NAME>\n</VIEW>\n</VIEWS>\n<RELATIONSHIPS>\n${rels.join('\n')}\n</RELATIONSHIPS>\n</DATADICT>\n<DIAGRAMS>\n${diagram}\n${billing}\n<CONTROLS>\n<ENTITYCONTROLS>\n${controls.join('\n')}\n${billingControls.join('\n')}\n</ENTITYCONTROLS>\n</CONTROLS>\n</DIAGRAMS>\n</VERSION>\n</dezign>\n`, 'latin1')
+writeFileSync(dez, `${head}<dezign>\n<VERSION>\n${settings}\n<DATADICT>\n<DBID>postgresql16</DBID>\n<DOMAINS>\n</DOMAINS>\n<TEXTAREAS>\n${textArea}\n</TEXTAREAS>\n<ENTITIES>\n${entities.join('\n')}\n</ENTITIES>\n<VIEWS>\n<VIEW>\n<NAME>v</NAME>\n</VIEW>\n</VIEWS>\n<RELATIONSHIPS>\n${rels.join('\n')}\n</RELATIONSHIPS>\n</DATADICT>\n<DIAGRAMS>\n<DisplayPreferences>\n<DEFENTCOLOR>16119285</DEFENTCOLOR>\n</DisplayPreferences>\n${diagram}\n${billing}\n<CONTROLS>\n<ENTITYCONTROLS>\n${controls.join('\n')}\n${billingControls.join('\n')}\n</ENTITYCONTROLS>\n<TEXTAREACONTROLS>\n${textControl}\n</TEXTAREACONTROLS>\n</CONTROLS>\n</DIAGRAMS>\n</VERSION>\n</dezign>\n`, 'latin1')
 const before = readFileSync(dez)
 
 const project = join(dir, 'ShopProject')
@@ -61,7 +64,9 @@ try {
   await openModel()
   const text = await win.locator('.cm-content:visible').first().innerText()
   const pos = await positions()
-  console.log('dez tables:', await win.locator('.react-flow__node').count(), 'edges:', await win.locator('.react-flow__edge').count())
+  console.log('dez tables:', await win.locator('.react-flow__node:not([data-id^="note:"])').count(), 'edges:', await win.locator('.react-flow__edge').count())
+  const noteNode = win.locator('.react-flow__node[data-id^="note:"]')
+  console.log('text area as a note:', await noteNode.count(), JSON.stringify(await noteNode.first().evaluate((n) => (n.querySelector('textarea')?.value ?? n.innerText).trim())), 'invoice colored:', await win.locator('.react-flow__node[data-id="shop.invoice"]').evaluate((n) => /series-4/.test(n.innerHTML)))
   console.log('dez dbml:', text.includes('Table shop.customer'), text.includes('Ref: shop.invoice.customer_id > shop.customer.id [delete: cascade]'), 'czech note:', text.includes('Zákazník, který platí řádně'))
   console.log('dez layout kept:', JSON.stringify(pos['shop.customer']), JSON.stringify(pos['shop.invoice']), JSON.stringify(pos['shop.payment']))
   console.log('toast:', await win.getByText(/Opened a DeZign for Databases model: 3 tables/).count(), await win.getByText(/views: 1/).count(), 'title:', await win.getByText('shop.dez', { exact: true }).count())

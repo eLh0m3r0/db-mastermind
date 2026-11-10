@@ -108,7 +108,7 @@ ${pairs}</PAIRS>
 </REL>`
 const pair = '<PAIR>\n<KEYID>A1</KEYID>\n<FOREIGNKEYID>B2</FOREIGNKEYID>\n</PAIR>\n'
 
-const control = (id: string, diagram: string, l: number, t: number) => `<ENTC>\n<ID>${id}</ID>\n<DIAGRAMID>${diagram}</DIAGRAMID>\n<W>120</W>\n<H>44</H>\n<L>${l}</L>\n<T>${t}</T>\n</ENTC>`
+const control = (id: string, diagram: string, l: number, t: number, brush = '0,16119285') => `<ENTC>\n<ID>${id}</ID>\n<DIAGRAMID>${diagram}</DIAGRAMID>\n<W>120</W>\n<H>44</H>\n<L>${l}</L>\n<T>${t}</T>\n<BRUSH>${brush}</BRUSH>\n</ENTC>`
 const diagram = (id: string, main: 0 | 1) => `<DIAGRAM>\n<ID>${id}</ID>\n<NAME>d${id}</NAME>\n<ISMAINDIAGRAM>${main}</ISMAINDIAGRAM>\n</DIAGRAM>`
 
 // The settings block repeats DeZign's own malformed form for empty values.
@@ -132,6 +132,13 @@ ${domain}
 ${customer}
 ${invoice}
 </ENTITIES>
+<TEXTAREAS>
+<TEXTAR>
+<NAME>TextArea1</NAME>
+<ID>T1</ID>
+<TEXT>Prodej</TEXT>
+</TEXTAR>
+</TEXTAREAS>
 <VIEWS>
 <VIEW>
 <NAME>v_open</NAME>
@@ -143,14 +150,27 @@ ${rel('31', 'drawn_only', '', '')}
 </RELATIONSHIPS>
 </DATADICT>
 <DIAGRAMS>
+<DisplayPreferences>
+<DEFENTCOLOR>16119285</DEFENTCOLOR>
+</DisplayPreferences>
 ${diagram('1', 1)}
 ${diagram('2', 0)}
 <CONTROLS>
 <ENTITYCONTROLS>
 ${control('10', '1', 100, 50)}
-${control('20', '1', 400, 250)}
+${control('20', '1', 400, 250, '0,8454143')}
 ${control('10', '2', 900, 900)}
 </ENTITYCONTROLS>
+<TEXTAREACONTROLS>
+<TEXTC>
+<ID>T1</ID>
+<DIAGRAMID>1</DIAGRAMID>
+<W>200</W>
+<H>30</H>
+<L>90</L>
+<T>10</T>
+</TEXTC>
+</TEXTAREACONTROLS>
 </CONTROLS>
 </DIAGRAMS>
 </VERSION>
@@ -224,6 +244,10 @@ describe('DeZign for Databases models', () => {
       ['2', 'd2', false, ['shop.customer']],
     ])
     expect(diagrams[1]!.positions).toEqual({ 'shop.customer': { x: 0, y: 0 } })
+    // Colors other than the project's default (Delphi BGR 0x80FFFF = light yellow) and the diagram's text areas.
+    expect(diagrams[0]!.colors).toEqual({ 'shop.invoice': '#ffff80' })
+    expect(diagrams[0]!.notes).toEqual([{ id: 'T1', text: 'Prodej', x: -10, y: -40 }])
+    expect(diagrams[1]!.notes).toEqual([])
     expect(diagrams[1]!.layout).toMatchObject({ originX: 900, originY: 900 })
   })
 
@@ -424,6 +448,13 @@ describe('saving back into a DeZign project', () => {
     expect(r.files[0]!.text).toMatch(/<ID>20<\/ID>\s*<DIAGRAMID>2<\/DIAGRAMID>\s*<W>120<\/W>\s*<H>44<\/H>\s*<L>1200<\/L>\s*<T>1020<\/T>/)
     // The main diagram is not touched.
     expect(readDezign(r.files[0]!.text).positions).toEqual(readDezign(dez).positions)
+  })
+
+  it('saves the text and place of an edited text area', () => {
+    const tables = model(single)
+    const r = saveToDezign(single, tables, model(single), { normalize: viaDbml, diagrams: { '1': { notes: [{ id: 'T1', text: 'Prodej a fakturace', x: 40, y: -40 }, { id: 'unknown', text: 'x', x: 0, y: 0 }] } } })
+    expect(r.changes).toEqual([{ kind: 'alter_note', table: 'Prodej a fakturace' }])
+    expect(changedLines(dez, r.files[0]!.text)).toEqual(['<TEXT>Prodej a fakturace</TEXT>', '<L>140</L>'])
   })
 
   it('works on a folder project: one file per touched object, files named like their neighbours', () => {

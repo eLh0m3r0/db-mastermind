@@ -162,7 +162,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
 
   /** A model opened from a DeZign project goes back into it: the changes are listed first, the old files are kept. */
   const saveToSource = async (source: NonNullable<ModelTab['source']>) => {
-    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, diagrams: tab.diagrams, defaultSchema: liveSchema?.defaultSchema }
+    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, notes: tab.notes, diagrams: tab.diagrams, defaultSchema: liveSchema?.defaultSchema }
     const name = source.path.split(/[\\/]/).pop() ?? ''
     try {
       const preview = await api.saveDezignModel({ ...request, dryRun: true })
@@ -329,9 +329,9 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const keyOf = (x: { schema?: string; name: string }) => `${x.schema ?? ''}.${x.name}`
   const inArea = (x: { schema?: string; name: string }) => (diagram ? diagram.tables.includes(keyOf(x)) : group ? group.includes(x.name) : true)
   const shown = useMemo<SchemaSnapshot>(() => (diagram || group ? { ...snapshot, tables: snapshot.tables.filter(inArea) } : snapshot), [area, snapshot, model.groups, tab.diagrams])
-  const diagramTab = { ...tab, kind: 'diagram', colors: groupColors, positions: diagram ? diagram.positions : tab.positions } as unknown as DiagramTab
+  const diagramTab = { ...tab, kind: 'diagram', colors: { ...groupColors, ...(diagram ? diagram.colors : tab.colors) }, notes: diagram ? diagram.notes : tab.notes, positions: diagram ? diagram.positions : tab.positions } as unknown as DiagramTab
   const patchDiagram = (id: string, patch: (d: NonNullable<ModelTab['diagrams']>[number]) => Partial<NonNullable<ModelTab['diagrams']>[number]>) =>
-    updateTab(tab.id, { dirty: true, diagrams: tab.diagrams?.map((d) => (d.id === id ? { ...d, ...patch(d) } : d)) })
+    updateTab(tab.id, { dirty: tab.source ? true : tab.dirty, diagrams: tab.diagrams?.map((d) => (d.id === id ? { ...d, ...patch(d) } : d)) })
 
   // A renamed table keeps its place: when exactly one table disappears and one appears, layouts follow the new name.
   const tableKeys = useMemo(() => model.tables.map(keyOf), [model])
@@ -482,7 +482,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
               tab={diagramTab}
               key={area}
               model={shown}
-              onPositions={diagram ? (positions) => patchDiagram(diagram.id, () => ({ positions: positions ?? {} })) : undefined}
+              onLayout={(patch) => (diagram ? patchDiagram(diagram.id, () => ({ ...patch, ...('positions' in patch ? { positions: patch.positions ?? {} } : {}) })) : updateTab(tab.id, { ...patch, dirty: tab.source ? true : tab.dirty }))}
               onApplyModel={(tables) => {
                 // Editing one area keeps the model's other tables; tables added there join the area.
                 const others = model.tables.filter((x) => !inArea(x))
