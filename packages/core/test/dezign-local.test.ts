@@ -1,13 +1,15 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { appendFileSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { assembleDezignProject, parseDbml, readDezign, toDbml } from '../src/index.js'
+import { applyDezignSave, assembleDezignProject, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 /**
  * Real models stay out of the repository. Point DBM_DEZ_SAMPLES at a folder with `.dez` files and/or folder
  * projects to check the reader against them; only counts are printed, never names from the models.
  */
 const root = process.env.DBM_DEZ_SAMPLES
+// Passing tests print nothing: DBM_DEZ_REPORT=<file> collects the count lines.
+const report = (line: string) => (process.env.DBM_DEZ_REPORT ? appendFileSync(process.env.DBM_DEZ_REPORT, `${line}\n`) : console.log(line))
 
 function find(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -38,7 +40,7 @@ describe.skipIf(!root)('DeZign models on this machine', () => {
       const model = readDezign(binary, { node: { width: 240, header: 32, row: 22 } })
       const back = parseDbml(toDbml(model.tables))
       const count = (f: (t: (typeof model.tables)[number]) => number) => model.tables.reduce((sum, t) => sum + f(t), 0)
-      console.log(
+      report(
         `#${n + 1} ${/\.dezproj$/i.test(file) ? 'folder' : 'file'} format=${model.formatVersion} db=${model.targetDatabase} ${model.encoding} tables=${model.tables.length} columns=${count((t) => t.columns.length)} fks=${count((t) => t.foreignKeys.length)} indexes=${count((t) => t.indexes.length)} positions=${Object.keys(model.positions).length} leftOut=${JSON.stringify(model.leftOut)} dbmlErrors=${back.errors.length}`,
       )
       expect(model.tables.length).toBeGreaterThan(0)
@@ -47,6 +49,43 @@ describe.skipIf(!root)('DeZign models on this machine', () => {
       expect(back.tables.length).toBe(model.tables.length)
       expect(back.tables.reduce((s, t) => s + t.columns.length, 0)).toBe(count((t) => t.columns.length))
       expect(back.tables.reduce((s, t) => s + t.foreignKeys.length, 0)).toBe(count((t) => t.foreignKeys.filter((fk) => !fk.virtual).length))
+    })
+  })
+
+  it('saves nothing when nothing changed, and saves edits that read back as edited', () => {
+    const viaDbml = (tables: TableInfo[]) => parseDbml(toDbml(tables)).tables
+    find(root!).forEach((file, n) => {
+      const folder = /\.dezproj$/i.test(file)
+      const project: DezignFile[] = folder ? projectFiles(join(file, '..')) : [{ path: 'model.dez', text: readFileSync(file, 'latin1') }]
+      const read = (files: DezignFile[]) => readDezign(folder ? assembleDezignProject(files) : files[0]!.text)
+      const base = viaDbml(read(project).tables)
+      const same = saveToDezign(project, base, viaDbml(read(project).tables), { normalize: viaDbml })
+      expect(same.files.length + same.deleted.length + same.changes.length).toBe(0)
+
+      // A typical editing session: rename, add, drop, retype, comment, a new table with a relationship, a dropped table.
+      const edited = viaDbml(read(project).tables)
+      const first = edited.find((t) => t.columns.length > 2 && t.primaryKey.length === 1) ?? edited.find((t) => t.primaryKey.length === 1)
+      if (!first) return report(`#${n + 1} no table with a single-column key: edits skipped`)
+      const victim = edited.filter((t) => t !== first).at(-1)
+      const loose = first.columns.filter((c) => !c.isPrimaryKey && !edited.some((t) => t.foreignKeys.some((f) => (t === first && f.columns.includes(c.name)) || (f.refTable === first.name && f.refColumns.includes(c.name)))) && !first.indexes.some((ix) => ix.columns.includes(c.name)))
+      if (loose[0]) loose[0].name = 'dbm_renamed'
+      if (loose[1]) first.columns.splice(first.columns.indexOf(loose[1]), 1)
+      first.columns.push({ name: 'dbm_added', ordinal: first.columns.length + 1, dataType: 'varchar(40)', nullable: false, defaultValue: "'x'", isPrimaryKey: false, isIdentity: false, comment: 'Přidáno & <ověřeno>' })
+      first.comment = 'Upravená tabulka'
+      const pk = first.columns.find((c) => c.isPrimaryKey)!
+      edited.push({ schema: first.schema, name: 'dbm_new_table', type: 'table', comment: null, columns: [{ name: 'id', ordinal: 1, dataType: 'bigint', nullable: false, isPrimaryKey: true, isIdentity: false }, { name: 'parent_id', ordinal: 2, dataType: pk.dataType, nullable: true, isPrimaryKey: false, isIdentity: false }], primaryKey: ['id'], foreignKeys: [{ name: 'fk', columns: ['parent_id'], refSchema: first.schema, refTable: first.name, refColumns: [pk.name], onDelete: 'CASCADE' }], indexes: [{ name: 'ix', columns: ['parent_id'], unique: false, primary: false }] })
+      const kept = victim && edited.length > 3 ? edited.filter((t) => t !== victim).map((t) => ({ ...t, foreignKeys: t.foreignKeys.filter((f) => f.refTable !== victim.name) })) : edited
+      const target = viaDbml(kept)
+      const saved = saveToDezign(project, base, target, { normalize: viaDbml })
+      const after = viaDbml(read(applyDezignSave(project, saved)).tables)
+      const kinds = saved.changes.reduce<Record<string, number>>((all, c) => ({ ...all, [c.kind]: (all[c.kind] ?? 0) + 1 }), {})
+      report(`#${n + 1} ${folder ? 'folder' : 'file'} written=${saved.files.length} deleted=${saved.deleted.length} changes=${JSON.stringify(kinds)}`)
+      expect(after.length).toBe(target.length)
+      expect(after.some((t) => t.name === 'dbm_new_table' && t.foreignKeys.length === 1 && t.indexes.filter((ix) => !ix.primary).length === 1)).toBe(true)
+      expect(after.find((t) => t.name === first.name)!.columns.map((c) => c.name)).toEqual(target.find((t) => t.name === first.name)!.columns.map((c) => c.name))
+      // Saving the saved project again changes nothing.
+      const again = saveToDezign(applyDezignSave(project, saved), target, viaDbml(after), { normalize: viaDbml })
+      expect(again.files.length + again.deleted.length + again.changes.length).toBe(0)
     })
   })
 })

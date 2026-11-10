@@ -45,6 +45,8 @@ export interface DezignModel {
   tables: TableInfo[]
   /** Table positions in the main diagram, keyed `schema.table` (empty schema: `.table`). */
   positions: Record<string, { x: number; y: number }>
+  /** How `positions` were derived from the main diagram: `x = (L - originX) * scaleX`. Lets a writer turn them back. */
+  layout: { diagramId: string; originX: number; originY: number; scaleX: number; scaleY: number }
   leftOut: DezignLeftOut
 }
 
@@ -112,19 +114,23 @@ export function detectDezignEncoding(binary: string, fallback: Exclude<DezignEnc
 }
 
 const ENTITIES: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" }
-const unescapeXml = (s: string) =>
+export const unescapeDezignText = (s: string) =>
   s.replace(/&(#\d+|#x[0-9a-f]+|[a-z]+);/gi, (whole, name: string) => {
     if (name[0] !== '#') return ENTITIES[name.toLowerCase()] ?? whole
     const code = name[1] === 'x' || name[1] === 'X' ? parseInt(name.slice(2), 16) : Number(name.slice(1))
     return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole
   })
 
-const kids = (el: DezignElement | undefined, tag?: string): DezignElement[] =>
+export const dezignChildren = (el: DezignElement | undefined, tag?: string): DezignElement[] =>
   el ? el.children.filter((k): k is DezignElement => typeof k !== 'string' && (!tag || k.tag === tag)) : []
-const kid = (el: DezignElement | undefined, tag: string): DezignElement | undefined => kids(el, tag)[0]
+export const dezignChild = (el: DezignElement | undefined, tag: string): DezignElement | undefined => dezignChildren(el, tag)[0]
+const kids = dezignChildren
+const kid = dezignChild
+const unescapeXml = unescapeDezignText
 
 // 0 is "none"; 1 and 2 are confirmed by SQL that DeZign generated from a public model, 3 and 4 follow its dialog order.
-const RULES = [undefined, 'RESTRICT', 'CASCADE', 'SET NULL', 'SET DEFAULT']
+export const DEZIGN_RULES = [undefined, 'RESTRICT', 'CASCADE', 'SET NULL', 'SET DEFAULT']
+const RULES = DEZIGN_RULES
 
 export interface ReadDezignOptions {
   /** Overrides the detected code page. */
@@ -272,6 +278,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
     .map((c) => ({ entity: entities.get(text(c, 'ID')), x: Number(text(c, 'L')), y: Number(text(c, 'T')), w: Number(text(c, 'W')), h: Number(text(c, 'H')) }))
     .filter((c): c is { entity: Entity; x: number; y: number; w: number; h: number } => !!c.entity && Number.isFinite(c.x) && Number.isFinite(c.y))
   const positions: Record<string, { x: number; y: number }> = {}
+  const layout = { diagramId: mainId, originX: 0, originY: 0, scaleX: 1, scaleY: 1 }
   if (controls.length) {
     const median = (values: number[]) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 1
     const node = options.node
@@ -280,10 +287,11 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
     const sy = node ? Math.min(3, Math.max(1, median(controls.filter((c) => c.h > 0).map((c) => (node.header + node.row * c.entity.table.columns.length) / c.h)))) : 1
     const minX = Math.min(...controls.map((c) => c.x))
     const minY = Math.min(...controls.map((c) => c.y))
+    Object.assign(layout, { originX: minX, originY: minY, scaleX: sx, scaleY: sy })
     for (const c of controls) positions[`${c.entity.table.schema ?? ''}.${c.entity.table.name}`] = { x: Math.round((c.x - minX) * sx), y: Math.round((c.y - minY) * sy) }
   }
 
-  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, leftOut }
+  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, leftOut }
 }
 
 const PROJECT_SECTIONS: [folder: string, element: string][] = [

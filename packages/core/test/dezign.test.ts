@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { assembleDezignProject, detectDezignEncoding, parseDbml, parseDezignXml, readDezign, serializeDezignXml, toDbml } from '../src/index.js'
+import { applyDezignSave, assembleDezignProject, detectDezignEncoding, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 // Hand-written models in DeZign's layout (no file from a real project is kept in the repository).
 const attr = (id: string, name: string, type: string, extra = '', more = '') =>
@@ -252,5 +252,167 @@ describe('DeZign for Databases models', () => {
 
   it('rejects files that are not DeZign models', () => {
     expect(() => readDezign('<project><table/></project>')).toThrow(/not a DeZign/)
+  })
+})
+
+describe('saving back into a DeZign project', () => {
+  const viaDbml = (tables: TableInfo[]) => parseDbml(toDbml(tables)).tables
+  const single: DezignFile[] = [{ path: 'shop.dez', text: dez }]
+  const xml = (body: string) => `<?xml version="1.0" encoding="iso-8859-1"?>\r\n${body.replaceAll('\n', '\r\n')}\r\n`
+  const folder: DezignFile[] = [
+    { path: 'Shop.dezproj', text: xml(settings) },
+    { path: 'Shop.dds', text: xml('<DATADICT>\n<DBID>postgresql16</DBID>\n</DATADICT>') },
+    { path: 'data dictionary/entities/shop.customer.xml', text: xml(customer) },
+    { path: 'data dictionary/entities/shop.invoice.xml', text: xml(invoice) },
+    { path: 'data dictionary/domains/country_code.xml', text: xml(domain) },
+    { path: 'data dictionary/relationships/customer_invoice.xml', text: xml(rel('30', 'customer_invoice', pair)) },
+    { path: 'diagrams/1.xml', text: xml(diagram('1', 1)) },
+    { path: 'diagrams/diagramobjects/entitycontrols/entc-1-10.xml', text: xml(control('10', '1', 100, 50)) },
+    { path: 'diagrams/diagramobjects/entitycontrols/entc-1-20.xml', text: xml(control('20', '1', 400, 250)) },
+  ]
+  const model = (files: DezignFile[]) => viaDbml(readDezign(files.length > 1 ? assembleDezignProject(files) : files[0]!.text).tables)
+  let seq = 0
+  const save = (files: DezignFile[], edit: (tables: TableInfo[]) => TableInfo[] | void, positions?: Record<string, { x: number; y: number }>) => {
+    const tables = model(files)
+    const target = viaDbml(edit(tables) ?? tables)
+    seq = 0
+    return saveToDezign(files, model(files), target, { normalize: viaDbml, positions, newId: () => `NEW-${++seq}` })
+  }
+  const changedLines = (a: string, b: string) => {
+    const before = new Set(a.split('\n'))
+    return b.split('\n').filter((l) => !before.has(l))
+  }
+  const column = (name: string, dataType: string, more: Partial<TableInfo['columns'][number]> = {}) => ({ name, ordinal: 99, dataType, nullable: true, isPrimaryKey: false, isIdentity: false, ...more })
+
+  it('writes nothing when the model was not edited', () => {
+    expect(save(single, () => {})).toEqual({ files: [], deleted: [], changes: [] })
+    expect(save(folder, () => {})).toEqual({ files: [], deleted: [], changes: [] })
+  })
+
+  it('renames a column by touching one line and keeps its id, checks and everything else', () => {
+    const r = save(single, (t) => void (t[0]!.columns[2]!.name = 'balance'))
+    expect(r.changes).toEqual([{ kind: 'rename_column', table: 'customer', name: 'credit → balance' }])
+    expect(changedLines(dez, r.files[0]!.text)).toEqual(['<NAME>balance</NAME>'])
+    expect(r.files[0]!.text).toContain('<VALUE>credit &gt;= 0</VALUE>')
+    expect(r.files[0]!.text.length - dez.length).toBe('balance'.length - 'credit'.length)
+  })
+
+  it('changes type, nullability, default and comment in place, in the file\'s code page', () => {
+    const r = save(single, (t) => {
+      Object.assign(t[0]!.columns[1]!, { dataType: 'varchar(200)', nullable: true, defaultValue: "'x'", comment: 'Přihlašovací e-mail <"hlavní">' })
+      t[0]!.comment = 'Odběratel'
+    })
+    expect(r.changes).toEqual([{ kind: 'alter_table', table: 'customer' }, { kind: 'alter_column', table: 'customer', name: 'email' }])
+    const out = r.files[0]!.text
+    expect(out).toContain('<DTLISTNAME>VARCHAR</DTLISTNAME>\n<LE>200</LE>')
+    expect(out).toContain('<DESC>P\xf8ihla\x9aovac\xed e-mail &lt;&quot;hlavn\xed&quot;&gt;</DESC>')
+    expect(out).toContain('<DESC>Odb\xecratel</DESC>')
+    const email = readDezign(out).tables[0]!.columns[1]!
+    expect(email).toMatchObject({ dataType: 'varchar(200)', nullable: true, defaultValue: "'x'", comment: 'Přihlašovací e-mail <"hlavní">' })
+    // The archived version in the same file is untouched.
+    expect(out.slice(out.indexOf('<VERSIONINFO>'))).toBe(dez.slice(dez.indexOf('<VERSIONINFO>')))
+  })
+
+  it('adds and drops columns, keeping keys and indexes consistent', () => {
+    const r = save(single, (t) => {
+      t[1]!.columns = t[1]!.columns.filter((c) => c.name !== 'issued')
+      t[1]!.indexes = []
+      t[1]!.columns.push(column('total', 'numeric(12,2)', { nullable: false, defaultValue: '0' }))
+    })
+    expect(r.changes.map((c) => `${c.kind} ${c.name}`)).toEqual(['drop_column issued', 'add_column total', 'drop_index customer_id, issued'])
+    const invoiceAfter = readDezign(r.files[0]!.text).tables[1]!
+    expect(invoiceAfter.columns.map((c) => `${c.name} ${c.dataType} ${c.nullable} ${c.defaultValue}`)).toEqual(['id bigserial false null', 'customer_id bigint false null', 'total numeric(12,2) false 0'])
+    expect(invoiceAfter.indexes).toEqual([])
+    expect(invoiceAfter.foreignKeys).toHaveLength(1)
+    // The new column is a copy of a neighbour with its own ids.
+    expect(r.files[0]!.text).toContain('<ID>NEW-1</ID>')
+    expect(r.files[0]!.text).not.toContain('<ATTRIBUTEID>B3</ATTRIBUTEID>')
+  })
+
+  it('adds a table with a relationship, a place in the diagram and a connector', () => {
+    const r = save(
+      single,
+      (t) => [
+        ...t,
+        { schema: 'shop', name: 'payment', type: 'table', comment: 'Platba', columns: [column('id', 'bigint', { nullable: false, isPrimaryKey: true }), column('invoice_id', 'bigint', { nullable: false })], primaryKey: ['id'], foreignKeys: [{ name: 'x', columns: ['invoice_id'], refSchema: 'shop', refTable: 'invoice', refColumns: ['id'], onDelete: 'CASCADE' }], indexes: [{ name: 'payment_invoice', columns: ['invoice_id'], unique: false, primary: false }] },
+      ],
+      { 'shop.payment': { x: 700, y: 100 } },
+    )
+    expect(r.changes.map((c) => c.kind)).toEqual(['add_table', 'add_relationship'])
+    const after = readDezign(r.files[0]!.text)
+    const payment = after.tables[2]!
+    expect(payment).toMatchObject({ schema: 'shop', name: 'payment', comment: 'Platba', primaryKey: ['id'] })
+    expect(payment.foreignKeys).toEqual([{ name: 'invoice_payment', columns: ['invoice_id'], refSchema: 'shop', refTable: 'invoice', refColumns: ['id'], onDelete: 'CASCADE' }])
+    expect(payment.indexes.map((ix) => ix.columns)).toEqual([['invoice_id']])
+    // Positions are diagram coordinates: 700,100 from the origin of the main diagram (100,50).
+    expect(after.positions['shop.payment']).toEqual({ x: 700, y: 100 })
+    expect(after.positions['shop.customer']).toEqual({ x: 0, y: 0 })
+    // This file numbers its objects (10, 20, 30, 31): new ones continue the numbering.
+    expect(r.files[0]!.text).toMatch(/<RELATIONSHIPCONNECTORS>\s*<RELC>\s*<ID>33<\/ID>\s*<DIAGRAMID>1<\/DIAGRAMID>/)
+    expect(r.files[0]!.text).toMatch(/<ENTC>\s*<ID>32<\/ID>\s*<DIAGRAMID>1<\/DIAGRAMID>\s*<W>120<\/W>\s*<H>44<\/H>\s*<L>800<\/L>\s*<T>150<\/T>/)
+  })
+
+  it('drops a table with its relationships and diagram objects, and changes relationship rules', () => {
+    const dropped = save(single, (t) => t.filter((x) => x.name !== 'invoice'))
+    expect(dropped.changes).toEqual([{ kind: 'drop_table', table: 'invoice' }])
+    const out = dropped.files[0]!.text
+    expect(out).not.toContain('<NAME>invoice</NAME>')
+    expect(out).not.toContain('<NAME>customer_invoice</NAME>')
+    // The relationship that never had columns belongs to the dropped table too; the control of the kept table stays.
+    expect(out).not.toContain('drawn_only')
+    expect(out.match(/<ENTC>/g)).toHaveLength(2)
+
+    const ruled = save(single, (t) => void (t[1]!.foreignKeys[0]!.onDelete = 'SET NULL'))
+    expect(ruled.changes).toEqual([{ kind: 'alter_relationship', table: 'invoice', name: 'customer' }])
+    expect(changedLines(dez, ruled.files[0]!.text)).toEqual(['<DELETERULE>3</DELETERULE>'])
+  })
+
+  it('renames a table without losing its relationships', () => {
+    const r = save(single, (t) => {
+      t[0]!.name = 'client'
+      for (const fk of t[1]!.foreignKeys) fk.refTable = 'client'
+    })
+    expect(r.changes).toEqual([{ kind: 'rename_table', table: 'client', name: 'customer → client' }])
+    // The key's name is somebody's own here (no name template), so it stays.
+    expect(changedLines(dez, r.files[0]!.text)).toEqual(['<NAME>client</NAME>'])
+    expect(readDezign(r.files[0]!.text).tables[1]!.foreignKeys[0]).toMatchObject({ refTable: 'client', refColumns: ['id'] })
+  })
+
+  it('moves tables that were moved in the diagram and nothing else', () => {
+    const r = save(single, () => {}, { 'shop.customer': { x: 0, y: 0 }, 'shop.invoice': { x: 500, y: 200 } })
+    expect(r.changes).toEqual([{ kind: 'move_table', table: 'invoice' }])
+    expect(changedLines(dez, r.files[0]!.text)).toEqual(['<L>600</L>'])
+  })
+
+  it('works on a folder project: one file per touched object, files named like their neighbours', () => {
+    const r = save(folder, (t) => {
+      t[0]!.columns[1]!.comment = 'Kontakt'
+      t[0]!.name = 'client'
+      for (const fk of t[1]!.foreignKeys) fk.refTable = 'client'
+      return [...t, { schema: 'shop', name: 'payment', type: 'table', comment: null, columns: [column('id', 'bigint', { nullable: false, isPrimaryKey: true }), column('invoice_id', 'bigint')], primaryKey: ['id'], foreignKeys: [{ name: 'x', columns: ['invoice_id'], refSchema: 'shop', refTable: 'invoice', refColumns: ['id'] }], indexes: [] }]
+    })
+    expect(r.deleted).toEqual(['data dictionary/entities/shop.customer.xml'])
+    expect(r.files.map((f) => f.path).sort()).toEqual([
+      'data dictionary/entities/shop.client.xml',
+      'data dictionary/entities/shop.payment.xml',
+      'data dictionary/relationships/invoice_payment.xml',
+      'diagrams/diagramobjects/entitycontrols/entc-1-31.xml',
+      'diagrams/diagramobjects/relationshipconnectors/relc-1-32.xml',
+    ])
+    // New files look like DeZign's: declaration, CRLF, one object.
+    const payment = r.files.find((f) => f.path.endsWith('shop.payment.xml'))!.text
+    expect(payment.startsWith('<?xml version="1.0" encoding="iso-8859-1"?>\r\n<ENT>\r\n<NAME>payment</NAME>\r\n<ID>31</ID>')).toBe(true)
+    expect(payment.endsWith('</ENT>\r\n')).toBe(true)
+    expect(payment).not.toMatch(/[^\r]\n/)
+    const after = readDezign(assembleDezignProject(applyDezignSave(folder, r)))
+    expect(after.tables.map((t) => t.name)).toEqual(['client', 'invoice', 'payment'])
+    expect(after.tables[1]!.foreignKeys[0]!.refTable).toBe('client')
+    expect(after.tables[2]!.foreignKeys[0]!.refTable).toBe('invoice')
+    expect(after.leftOut.domains).toBe(1)
+  })
+
+  it('refuses a result that would not read back as edited', () => {
+    // A column typed with something the file cannot hold round-trips differently: nothing is returned.
+    expect(() => saveToDezign(single, model(single), model(single), { normalize: () => [] })).toThrow(/could not be written safely/)
   })
 })
