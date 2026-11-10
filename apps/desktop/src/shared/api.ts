@@ -3,6 +3,7 @@ import type {
   AiPermissions,
   DataCompareResult,
   DesignTable,
+  DezignChange,
   DezignLeftOut,
   Grant,
   Principal,
@@ -434,7 +435,32 @@ export interface OpenedModelFile {
     /** Table positions of the source's main diagram, keyed `schema.table`. */
     positions: Record<string, { x: number; y: number }>
     leftOut: DezignLeftOut
+    /** Fingerprint of the model as read: saving back is refused when the source has changed since. */
+    hash: string
   }
+}
+
+export interface DezignSaveRequest {
+  /** The `.dez` or `.dezproj` the model was opened from. */
+  path: string
+  /** The edited model (DBML). */
+  text: string
+  hash: string
+  positions?: Record<string, { x: number; y: number }>
+  /** Schema the window puts schema-less tables under (keys of `positions`). */
+  defaultSchema?: string
+  /** Only report what would change. */
+  dryRun?: boolean
+}
+
+export interface DezignSaveOutcome {
+  changes: DezignChange[]
+  written: number
+  deleted: number
+  /** Folder with copies of the files as they were before this save. */
+  backup?: string
+  /** Fingerprint of the saved model, for the next save. */
+  hash: string
 }
 
 /** Everything the renderer can ask the main process to do. */
@@ -521,6 +547,8 @@ export interface MastermindApi {
   saveSqlFile(text: string, name: string, defaultDir?: string): Promise<string | null>
   /** Saves a PNG/SVG data URL through a save dialog; null when cancelled. */
   saveImageFile(dataUrl: string, name: string): Promise<string | null>
+  /** Writes an edited model back into the DeZign project it came from (draft: see ROADMAP 8.2). */
+  saveDezignModel(request: DezignSaveRequest): Promise<DezignSaveOutcome>
   importDdlFile(): Promise<{ path: string; dbml: string; skipped: { sql: string; error: string }[] } | null>
   /** A data file opens in the built-in DuckDB with a first SELECT; a SQLite/DuckDB database file as its own connection (`database`). */
   queryFile(path?: string): Promise<{ connectionId: string; sql: string; title: string; database?: boolean } | null>
@@ -663,6 +691,7 @@ export const API_METHODS = [
   'queryFile',
   'openModelFile',
   'saveModelFile',
+  'saveDezignModel',
   'importDdlFile',
   'saveSqlFile',
   'saveImageFile',

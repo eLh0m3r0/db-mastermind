@@ -1,7 +1,7 @@
 // DeZign for Databases models: open a .dez and a folder project (.dezproj) as a model, with the source's layout.
 // The models are written here; no real project is used.
 import { _electron as electron } from '@playwright/test'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -61,8 +61,38 @@ try {
   console.log('dez tables:', await win.locator('.react-flow__node').count(), 'edges:', await win.locator('.react-flow__edge').count())
   console.log('dez dbml:', text.includes('Table shop.customer'), text.includes('Ref: shop.invoice.customer_id > shop.customer.id [delete: cascade]'), 'czech note:', text.includes('Zákazník, který platí řádně'))
   console.log('dez layout kept:', JSON.stringify(pos['shop.customer']), JSON.stringify(pos['shop.invoice']), JSON.stringify(pos['shop.payment']))
-  console.log('toast:', await win.getByText(/Opened a DeZign for Databases model: 3 tables/).count(), await win.getByText(/views: 1/).count(), 'unsaved:', await win.getByText('shop.dez').count() === 0 || (await win.getByText('Unsaved model').count()) > 0)
-  console.log('source untouched:', readFileSync(dez).equals(before))
+  console.log('toast:', await win.getByText(/Opened a DeZign for Databases model: 3 tables/).count(), await win.getByText(/views: 1/).count(), 'title:', await win.getByText('shop.dez', { exact: true }).count())
+  console.log('source untouched by opening:', readFileSync(dez).equals(before))
+
+  // Save with no edits writes nothing.
+  await win.getByRole('button', { name: 'Save', exact: true }).click()
+  await win.getByText(/Nothing to save/).waitFor({ timeout: 10000 })
+  console.log('no-op save untouched:', readFileSync(dez).equals(before))
+
+  // Edit in the DBML editor: rename a column, add a column; Save lists the changes and writes them into the .dez.
+  const editor = win.locator('.cm-content:visible').first()
+  const edited = (await editor.innerText()).replace('  name text', "  full_name text\n  vat_id varchar(20) [note: 'DIČ plátce']")
+  await editor.click()
+  await win.keyboard.press('Meta+a')
+  await win.keyboard.insertText(edited)
+  await win.waitForTimeout(900)
+  await win.getByRole('button', { name: 'Save', exact: true }).click()
+  await win.getByText(/Write these changes into shop\.dez\?/).waitFor({ timeout: 10000 })
+  const listed = await win.locator('[role="dialog"], .fixed').filter({ hasText: 'Write these changes' }).last().innerText()
+  console.log('confirm lists:', /renamed column: customer \(name → full_name\)/.test(listed), /new column: customer \(vat_id\)/.test(listed), 'draft warning:', /not been checked in DeZign/.test(listed))
+  await win.getByRole('button', { name: 'Write to the DeZign file' }).click()
+  await win.getByText(/Saved to shop\.dez/).waitFor({ timeout: 10000 })
+  const after = readFileSync(dez, 'latin1')
+  const beforeLines = new Set(before.toString('latin1').split('\n'))
+  const changed = after.split('\n').filter((l) => !beforeLines.has(l))
+  console.log('written:', after.includes('<NAME>full_name</NAME>'), after.includes('<NAME>vat_id</NAME>'), after.includes('<DESC>DI\xc8 pl\xe1tce</DESC>'), 'kept:', after.includes('<VIEW>'), after.includes('<PROJECTNAME /></PROJECTNAME />'), 'changed lines:', changed.length)
+  const backupRoot = join(dir, 'data', 'dezign-backups')
+  const backups = readdirSync(backupRoot)
+  console.log('backup:', backups.length, readFileSync(join(backupRoot, backups[0], 'shop.dez')).equals(before))
+  // Saving again right away: nothing to do, and the file is not touched.
+  await win.getByRole('button', { name: 'Save', exact: true }).click()
+  await win.getByText(/Nothing to save/).last().waitFor({ timeout: 10000 })
+  console.log('second save untouched:', readFileSync(dez, 'latin1') === after)
 
   await pick(join(project, 'Shop.dezproj'))
   await openModel()

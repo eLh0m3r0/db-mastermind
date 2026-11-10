@@ -19,7 +19,7 @@ import { useSettings } from '@/store/settings'
 import { askAi, toast } from '@/store/ui'
 import { useWorkspace, type DiagramTab, type ModelTab } from '@/store/workspace'
 import { DiagramView } from '../diagram/DiagramView'
-import { modelTabFromFile } from './open-model'
+import { describeDezignChanges, modelTabFromFile } from './open-model'
 import { editorTheme } from '../query/SqlEditor'
 import { confirmAction } from '@/components/ui/ConfirmDialog'
 
@@ -156,11 +156,39 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     updateTab(tab.id, { text: value, ...patch })
   }
 
+  /** A model opened from a DeZign project goes back into it: the changes are listed first, the old files are kept. */
+  const saveToSource = async (source: NonNullable<ModelTab['source']>) => {
+    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, defaultSchema: liveSchema?.defaultSchema }
+    const name = source.path.split(/[\\/]/).pop() ?? ''
+    try {
+      const preview = await api.saveDezignModel({ ...request, dryRun: true })
+      if (!preview.changes.length) {
+        updateTab(tab.id, { dirty: false, text })
+        return toast({ kind: 'info', message: t('Nothing to save: the model is the same as {file}', { file: name }) })
+      }
+      const ok = await confirmAction({
+        title: t('Write these changes into {file}?', { file: name }),
+        message: t('Only the listed objects are changed; everything else in the DeZign project stays as it is. The files as they are now are copied to a backup folder first.'),
+        items: describeDezignChanges(preview.changes),
+        warning: t('Saving to DeZign files is new and has not been checked in DeZign itself yet. Keep the backup until you have opened the result there.'),
+        confirmLabel: t('Write to the DeZign file'),
+      })
+      if (!ok) return
+      const done = await api.saveDezignModel(request)
+      updateTab(tab.id, { dirty: false, text, source: { ...source, hash: done.hash } })
+      toast({ kind: 'success', message: t('Saved to {file}', { file: name }), detail: done.backup ? t('Backup of the previous files: {dir}', { dir: done.backup }) : undefined })
+    } catch (err) {
+      toast({ kind: 'error', message: t('Could not save the model'), detail: errorMessage(err) })
+    }
+  }
+
   const save = async (as = false) => {
+    if (!as && !tab.path && tab.source) return saveToSource(tab.source)
     try {
       const path = await api.saveModelFile(text, as ? undefined : tab.path, connection?.knowledgeBasePath)
       if (!path) return
-      updateTab(tab.id, { path, dirty: false, text, title: path.split(/[\\/]/).pop() ?? t('Model') })
+      // Saved as its own file, the model no longer follows the DeZign project it came from.
+      updateTab(tab.id, { path, source: undefined, dirty: false, text, title: path.split(/[\\/]/).pop() ?? t('Model') })
       toast({ kind: 'success', message: t('Model saved'), detail: path })
     } catch (err) {
       toast({ kind: 'error', message: t('Could not save the model'), detail: errorMessage(err) })
@@ -245,8 +273,8 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-2 py-1.5">
         <FileCode2 size={15} className="ml-1 text-accent" />
-        <span className="mr-2 max-w-[260px] truncate text-[12.5px] font-medium" title={tab.path}>
-          {tab.path ? tab.path.split(/[\\/]/).pop() : t('Unsaved model')}
+        <span className="mr-2 max-w-[260px] truncate text-[12.5px] font-medium" title={tab.path ?? tab.source?.path}>
+          {(tab.path ?? tab.source?.path)?.split(/[\\/]/).pop() ?? t('Unsaved model')}
           {tab.dirty && ' •'}
         </span>
         <Button size="sm" variant="ghost" icon={<FolderOpen size={13} />} onClick={() => void open()}>

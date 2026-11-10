@@ -300,18 +300,26 @@ Not a clone: their features, rethought and connected to live databases, the know
   compare with a `.dbml` or another DeZign file, data dictionary, AI review
 - ✅ What the model can't show yet (domains, views, procedures, sequences, triggers, check constraints,
   relationships without columns, other diagrams) is listed with counts when the file opens, never dropped silently
-- ✅ The DeZign file is only read; saving writes a new `.dbml` model (until 8.2)
+- ✅ Opening never changes the DeZign file; Save as makes a `.dbml` model of it
 - ⬜ File → Open, drag & drop and double-click in Explorer/Finder; a model without any connection
 - ⬜ Subdiagrams as subject areas with their own positions and colors (a table can be in several: needs 8.3's
   several diagrams per model)
 
-### 8.2 Save it back ⬜
-- ⬜ Save to the same `.dez`: only the touched elements change, everything else stays byte for byte, the file
-  keeps its format version (so the DeZign that wrote it opens it)
-- ⬜ First: rename, comments, types, nullability, defaults, add/remove column, keys and indexes
-- ⬜ Then: new tables and relationships, with a place in the diagram
-- ⬜ Every kind of edit checked by opening the result in DeZign (14-day trial on Windows, or a colleague's license)
-- ⬜ Folder projects (`.dezproj`)
+### 8.2 Save it back 🚧 (draft: works end to end, not yet opened in DeZign itself)
+- ✅ Save writes the edited model into the same `.dez` or folder project: only the touched elements change,
+  everything else stays byte for byte, the file keeps its format version, code page and line ends
+- ✅ Rename, comments, types, nullability, defaults, identity, add/remove/reorder columns, primary key, unique
+  constraints and indexes; new and dropped tables; new, dropped and changed relationships; tables moved in the diagram
+- ✅ New objects are copies of a neighbour of the same kind (so they have the element layout of the DeZign version
+  that wrote the file), with ids in the file's own style and names from its name templates; folder projects get
+  files named like their neighbours
+- ✅ Before anything is written: the changes are listed for confirmation, the result is read back and compared with
+  the edited model (a mismatch writes nothing), the files as they were are copied to `<data>/dezign-backups`
+- ✅ A project that changed on disk since it was opened (a colleague, Git, DeZign) is not overwritten
+- ⬜ Verified in DeZign: open saved files of every kind of edit (14-day trial on Windows, or a colleague's license).
+  Unknown until then: whether DeZign accepts the straight connector of a new relationship, GUID ids next to its
+  own id style, and character references for letters outside the file's code page
+- ⬜ Subtype clusters, domains and checks edited from the model (today they are kept, not editable)
 
 ### 8.3 The model holds a whole database ⬜
 - ⬜ DBML as it is today: check constraints, `TablePartial` (reusable column sets, e.g. audit columns), custom

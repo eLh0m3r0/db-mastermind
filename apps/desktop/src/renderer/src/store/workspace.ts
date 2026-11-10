@@ -85,6 +85,8 @@ export interface ModelTab extends BaseTab {
   text: string
   /** File the model is saved to (.dbml). */
   path?: string
+  /** The DeZign for Databases project the model was opened from: Save writes the changes back into it. */
+  source?: { kind: 'dezign'; path: string; hash: string }
   dirty?: boolean
   positions?: Record<string, { x: number; y: number }>
 }

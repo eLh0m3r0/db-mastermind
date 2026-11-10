@@ -72,7 +72,8 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   s databází nebo se starší verzí souboru.
 - **Modely z DeZign for Databases:** *Otevřít model* přijme i soubory `.dez` a složkové projekty `.dezproj`
   (DeZign 4 až 14) včetně rozložení hlavního diagramu. Z modelu pak vygenerujete DDL nebo ALTER skript proti
-  živé databázi. Původní soubor se jen čte; uložením vznikne nový model `.dbml`.
+  živé databázi. *Uložit* zapíše změny zpět do projektu DeZignu (nejdřív je vypíše a ponechá zálohu; funkce je
+  zatím v náhledu), *Uložit jako* vytvoří samostatný model `.dbml`.
 - **Porovnání:** schéma dvou databází (dev → prod) s migrací, nebo data dvou tabulek se synchronizačním skriptem.
 
 ## 6. AI asistent
