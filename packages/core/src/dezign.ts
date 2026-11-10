@@ -369,6 +369,91 @@ export function assembleDezignProject(files: { path: string; text: string }[]): 
   if (!settings) throw new Error('The folder has no .dezproj file')
   const header = top('.dds').replace(/<\/?DATADICT>/g, '')
   const sections = PROJECT_SECTIONS.map(([folder, element]) => `<${element}>${inDir('data dictionary', folder)}</${element}>`).join('\n')
-  const controls = `<ENTITYCONTROLS>${inDir('diagrams', 'diagramobjects', 'entitycontrols')}</ENTITYCONTROLS>\n<TEXTAREACONTROLS>${inDir('diagrams', 'diagramobjects', 'textareacontrols')}</TEXTAREACONTROLS>`
+  const controls = `<ENTITYCONTROLS>${inDir('diagrams', 'diagramobjects', 'entitycontrols')}</ENTITYCONTROLS>\n<TEXTAREACONTROLS>${inDir('diagrams', 'diagramobjects', 'textareacontrols')}</TEXTAREACONTROLS>\n<RELATIONSHIPCONNECTORS>${inDir('diagrams', 'diagramobjects', 'relationshipconnectors')}</RELATIONSHIPCONNECTORS>`
   return `<?xml version="1.0" encoding="iso-8859-1"?><dezign>\n<VERSION>\n${settings}\n<DATADICT>${header}\n${sections}</DATADICT>\n<DIAGRAMS>${top('.ddp')}\n${inDir('diagrams')}\n<CONTROLS>${controls}</CONTROLS></DIAGRAMS>\n</VERSION>\n</dezign>`
+}
+
+/**
+ * References inside a project that point nowhere, and ids used twice: what would make DeZign lose a relationship
+ * or refuse the file. Each problem is one line naming element kinds and ids only (no names from the model), so
+ * two runs can be compared. An empty list means every reference resolves.
+ */
+export function dezignIntegrity(binary: string): string[] {
+  const dezign = kid(parseDezignXml(binary), 'dezign')
+  const versions = kids(dezign, 'VERSION')
+  const version = versions.find((v) => !kid(v, 'VERSIONINFO')) ?? versions[0]
+  const dict = kid(version, 'DATADICT')
+  if (!dict) return ['no data dictionary']
+  const raw = (el: DezignElement | undefined, tag: string) => (kid(el, tag)?.children.filter((c) => typeof c === 'string').join('') ?? '').trim()
+  const idsOf = (el: DezignElement | undefined) => kids(kid(el, 'ATTRIBUTEIDS'), 'ATTRIBUTEID').map((a) => a.children.filter((c) => typeof c === 'string').join('').trim())
+  const problems: string[] = []
+  const seen = new Map<string, string>()
+  const claim = (kind: string, id: string) => {
+    if (!id) return
+    if (seen.has(id)) problems.push(`duplicate id ${id} (${seen.get(id)}, ${kind})`)
+    else seen.set(id, kind)
+  }
+  const domains = new Set(kids(kid(dict, 'DOMAINS'), 'DOMAIN').map((d) => raw(d, 'ID')))
+  const entities = new Map<string, Set<string>>()
+  for (const ent of kids(kid(dict, 'ENTITIES'), 'ENT')) {
+    const id = raw(ent, 'ID')
+    claim('entity', id)
+    const attrs = new Set<string>()
+    for (const attr of kids(kid(ent, 'ATTRIBUTES'), 'ATTR')) {
+      const attrId = raw(attr, 'ID')
+      if (attrs.has(attrId)) problems.push(`duplicate attribute id ${attrId} in entity ${id}`)
+      attrs.add(attrId)
+      const domain = raw(attr, 'DOMAINID')
+      if (domain && domain !== '0' && !domains.has(domain)) problems.push(`attribute ${attrId}: unknown domain ${domain}`)
+    }
+    entities.set(id, attrs)
+    for (const con of [kid(ent, 'PKCON'), ...kids(kid(ent, 'CONSTRAINTS'), 'CONSTRAINT')]) {
+      for (const ref of idsOf(con)) if (!attrs.has(ref)) problems.push(`entity ${id}: ${con!.tag} lists unknown attribute ${ref}`)
+    }
+    for (const ix of kids(kid(ent, 'INDEXES'), 'INDEX')) {
+      for (const col of kids(kid(ix, 'IDXCOLS'), 'IDXCOL')) if (!attrs.has(raw(col, 'IDXCOLATTRID'))) problems.push(`entity ${id}: index column of unknown attribute ${raw(col, 'IDXCOLATTRID')}`)
+    }
+  }
+  const subcategories = new Map(kids(kid(dict, 'SUBCATEGORIES'), 'SUBCAT').map((x) => [raw(x, 'ID'), raw(x, 'AOID')]))
+  const relationships = new Set<string>()
+  for (const [id, owner] of subcategories) if (!entities.has(owner)) problems.push(`subtype cluster ${id}: unknown supertype ${owner}`)
+  for (const link of kids(kid(dict, 'SUBCATEGORYCONNECTIONS'))) {
+    if (!entities.has(raw(link, 'PARENTOBJECTID')) || !subcategories.has(raw(link, 'CHILDOBJECTID'))) problems.push(`subtype link ${raw(link, 'ID')}: unknown end`)
+  }
+  for (const rel of kids(kid(dict, 'RELATIONSHIPS'), 'REL')) {
+    const id = raw(rel, 'ID')
+    claim('relationship', id)
+    relationships.add(id)
+    const parentId = raw(rel, 'PARENTOBJECTID')
+    const parent = entities.get(parentId) ?? entities.get(subcategories.get(parentId) ?? '')
+    const child = entities.get(raw(rel, 'CHILDOBJECTID'))
+    if (!parent) problems.push(`relationship ${id}: unknown parent ${parentId}`)
+    if (!child) problems.push(`relationship ${id}: unknown child ${raw(rel, 'CHILDOBJECTID')}`)
+    for (const pair of kids(kid(rel, 'PAIRS'), 'PAIR')) {
+      if (parent && !parent.has(raw(pair, 'KEYID'))) problems.push(`relationship ${id}: key ${raw(pair, 'KEYID')} is not in the parent`)
+      if (child && !child.has(raw(pair, 'FOREIGNKEYID'))) problems.push(`relationship ${id}: foreign key ${raw(pair, 'FOREIGNKEYID')} is not in the child`)
+    }
+    for (const ref of idsOf(kid(rel, 'CONSTRAINT'))) if (child && !child.has(ref)) problems.push(`relationship ${id}: constraint lists unknown attribute ${ref}`)
+  }
+  const diagramsEl = kid(version, 'DIAGRAMS')
+  const diagrams = new Set(kids(diagramsEl, 'DIAGRAM').map((d) => raw(d, 'ID')))
+  const views = new Set(kids(kid(dict, 'VIEWS'), 'VIEW').map((x) => raw(x, 'ID')))
+  const texts = new Set(kids(kid(dict, 'TEXTAREAS')).map((x) => raw(x, 'ID')))
+  const controls = kid(diagramsEl, 'CONTROLS')
+  const placed = new Set<string>()
+  const check = (list: string, known: (id: string) => boolean, kind: string) => {
+    for (const c of kids(kid(controls, list))) {
+      const id = raw(c, 'ID')
+      const diagram = raw(c, 'DIAGRAMID')
+      if (!known(id)) problems.push(`${kind} control of unknown object ${id}`)
+      if (diagram && diagrams.size && !diagrams.has(diagram)) problems.push(`${kind} control ${id} on unknown diagram ${diagram}`)
+      if (placed.has(`${kind}|${diagram}|${id}`)) problems.push(`${kind} ${id} is twice on diagram ${diagram}`)
+      placed.add(`${kind}|${diagram}|${id}`)
+    }
+  }
+  check('ENTITYCONTROLS', (id) => entities.has(id) || views.has(id), 'entity')
+  check('RELATIONSHIPCONNECTORS', (id) => relationships.has(id), 'relationship')
+  check('TEXTAREACONTROLS', (id) => texts.has(id), 'text area')
+  check('SUBCATEGORYCONTROLS', (id) => subcategories.has(id), 'subtype cluster')
+  return problems
 }

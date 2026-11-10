@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { applyDezignSave, assembleDezignProject, detectDezignEncoding, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
+import { mutate, random } from './dezign-fuzz.js'
+import { applyDezignSave, assembleDezignProject, detectDezignEncoding, dezignIntegrity, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 // Hand-written models in DeZign's layout (no file from a real project is kept in the repository).
 const attr = (id: string, name: string, type: string, extra = '', more = '') =>
@@ -482,6 +483,129 @@ describe('saving back into a DeZign project', () => {
     expect(after.tables[1]!.foreignKeys[0]!.refTable).toBe('client')
     expect(after.tables[2]!.foreignKeys[0]!.refTable).toBe('invoice')
     expect(after.leftOut.domains).toBe(1)
+  })
+
+  it('survives chains of random edits: each save reads back as edited, keeps every reference valid and is final', () => {
+    const counts: Record<string, number> = {}
+    for (const [label, start] of [['file', single], ['folder', folder]] as const) {
+      for (let seed = 1; seed <= 40; seed++) {
+        const rnd = random(seed)
+        let files = start
+        for (let step = 0; step < 6; step++) {
+          const base = model(files)
+          const edited = model(files)
+          const op = mutate(edited, rnd, seed * 10 + step)
+          const target = viaDbml(edited)
+          const where = `${label} seed ${seed} step ${step} (${op})`
+          let saved
+          try {
+            saved = saveToDezign(files, base, target, { normalize: viaDbml })
+          } catch (err) {
+            throw new Error(`${where}: ${err instanceof Error ? err.message : String(err)}`)
+          }
+          files = applyDezignSave(files, saved)
+          expect(dezignIntegrity(files.length > 1 ? assembleDezignProject(files) : files[0]!.text), where).toEqual([])
+          // Saving what was just saved changes nothing.
+          const again = saveToDezign(files, model(files), model(files), { normalize: viaDbml })
+          expect(again.files.length + again.deleted.length + again.changes.length, where).toBe(0)
+          counts[op] = (counts[op] ?? 0) + 1
+        }
+      }
+    }
+    // Every kind of edit took part.
+    expect(Object.keys(counts).filter((k) => k !== 'nothing').length).toBeGreaterThanOrEqual(14)
+  })
+
+  it('drops a supertype together with its subtype cluster', () => {
+    // The invoice hangs on a subtype cluster of the customer instead of on the customer itself.
+    const clustered = dez
+      .replace('<RELATIONSHIPS>', '<SUBCATEGORIES>\n<SUBCAT>\n<NAME>kinds</NAME>\n<ID>40</ID>\n<AOID>10</AOID>\n</SUBCAT>\n</SUBCATEGORIES>\n<SUBCATEGORYCONNECTIONS>\n<SUBCATEGORYCONNECTION>\n<ID>41</ID>\n<PARENTOBJECTID>10</PARENTOBJECTID>\n<CHILDOBJECTID>40</CHILDOBJECTID>\n</SUBCATEGORYCONNECTION>\n</SUBCATEGORYCONNECTIONS>\n<RELATIONSHIPS>')
+      .replace('<ID>30</ID>\n<PARENTOBJECTID>10</PARENTOBJECTID>', '<ID>30</ID>\n<PARENTOBJECTID>40</PARENTOBJECTID>')
+      .replace('</ENTITYCONTROLS>', '</ENTITYCONTROLS>\n<SUBCATEGORYCONTROLS>\n<SUBCATC>\n<ID>40</ID>\n<DIAGRAMID>1</DIAGRAMID>\n</SUBCATC>\n</SUBCATEGORYCONTROLS>\n<SUBCATEGORYCONNECTORS>\n<SUBCATEGORYCONNECTOR>\n<ID>41</ID>\n<DIAGRAMID>1</DIAGRAMID>\n</SUBCATEGORYCONNECTOR>\n</SUBCATEGORYCONNECTORS>')
+    const files = [{ path: 'shop.dez', text: clustered }]
+    expect(dezignIntegrity(clustered)).toEqual([])
+    expect(model(files)[1]!.foreignKeys[0]).toMatchObject({ refTable: 'customer' })
+    const r = save(files, (t) => t.filter((x) => x.name !== 'customer').map((x) => ({ ...x, foreignKeys: [] })))
+    const out = r.files[0]!.text
+    expect(dezignIntegrity(out)).toEqual([])
+    for (const gone of ['<SUBCAT>', '<SUBCATEGORYCONNECTION>', '<SUBCATC>', '<SUBCATEGORYCONNECTOR>', 'customer_invoice']) expect(out).not.toContain(gone)
+    expect(readDezign(out).tables.map((t) => t.name)).toEqual(['invoice'])
+  })
+
+  it('drops a supertype together with its subtype cluster', () => {
+    // party (10) is the supertype; cluster 50 hangs off it through link 51, and person (20) is its subtype.
+    const ent = (id: string, name: string, attrId: string) => `<ENT>\n<NAME>${name}</NAME>\n<ID>${id}</ID>\n<PKCON>\n<ATTRIBUTEIDS>\n<ATTRIBUTEID>${attrId}</ATTRIBUTEID>\n</ATTRIBUTEIDS>\n</PKCON>\n<ATTRIBUTES>\n${attr(attrId, 'id', 'INTEGER', '', notNull)}\n</ATTRIBUTES>\n</ENT>`
+    const file = `<?xml version="1.0" encoding="iso-8859-1"?><dezign>
+<VERSION>
+<DATADICT>
+<DBID>postgresql16</DBID>
+<ENTITIES>
+${ent('10', 'party', 'P1')}
+${ent('20', 'person', 'Q1')}
+${ent('30', 'other', 'R1')}
+</ENTITIES>
+<SUBCATEGORIES>
+<SUBCAT>
+<NAME>SubCategory1</NAME>
+<ID>50</ID>
+<AOID>10</AOID>
+</SUBCAT>
+</SUBCATEGORIES>
+<RELATIONSHIPS>
+<REL>
+<NAME>party_person</NAME>
+<ID>60</ID>
+<PARENTOBJECTID>50</PARENTOBJECTID>
+<CHILDOBJECTID>20</CHILDOBJECTID>
+<RELTYPE>2</RELTYPE>
+<PAIRS>
+<PAIR>
+<KEYID>P1</KEYID>
+<FOREIGNKEYID>Q1</FOREIGNKEYID>
+</PAIR>
+</PAIRS>
+</REL>
+</RELATIONSHIPS>
+<SUBCATEGORYCONNECTIONS>
+<SUBCATEGORYCONNECTION>
+<ID>51</ID>
+<PARENTOBJECTID>10</PARENTOBJECTID>
+<CHILDOBJECTID>50</CHILDOBJECTID>
+</SUBCATEGORYCONNECTION>
+</SUBCATEGORYCONNECTIONS>
+</DATADICT>
+<DIAGRAMS>
+<CONTROLS>
+<SUBCATEGORYCONTROLS>
+<SUBCATC>
+<ID>50</ID>
+</SUBCATC>
+</SUBCATEGORYCONTROLS>
+<SUBCATEGORYCONNECTORS>
+<SUBCATEGORYCONNECTOR>
+<ID>51</ID>
+</SUBCATEGORYCONNECTOR>
+</SUBCATEGORYCONNECTORS>
+</CONTROLS>
+</DIAGRAMS>
+</VERSION>
+</dezign>`
+    const files = [{ path: 'm.dez', text: file }]
+    expect(model(files)[1]!.foreignKeys).toHaveLength(1)
+    const r = save(files, (t) => t.filter((x) => x.name !== 'party').map((x) => ({ ...x, foreignKeys: [] })))
+    expect(r.changes).toEqual([{ kind: 'drop_table', table: 'party' }])
+    const out = r.files[0]!.text
+    for (const gone of ['<SUBCAT>', '<SUBCATC>', '<SUBCATEGORYCONNECTION>', '<SUBCATEGORYCONNECTOR>', '<REL>', 'party']) expect(out).not.toContain(gone)
+    expect(dezignIntegrity(out)).toEqual([])
+    expect(readDezign(out).tables.map((t) => t.name)).toEqual(['person', 'other'])
+  })
+
+  it('finds references that point nowhere', () => {
+    expect(dezignIntegrity(dez)).toEqual([])
+    expect(dezignIntegrity(dez.replace('<KEYID>A1</KEYID>', '<KEYID>A9</KEYID>').replace('<ATTRIBUTEID>A2</ATTRIBUTEID>', '<ATTRIBUTEID>zz</ATTRIBUTEID>'))).toEqual([
+      'entity 10: CONSTRAINT lists unknown attribute zz',
+      'relationship 30: key A9 is not in the parent',
+    ])
   })
 
   it('refuses a result that would not read back as edited', () => {

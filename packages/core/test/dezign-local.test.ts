@@ -1,7 +1,8 @@
 import { appendFileSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { applyDezignSave, assembleDezignProject, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
+import { mutate, random } from './dezign-fuzz.js'
+import { applyDezignSave, assembleDezignProject, dezignIntegrity, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 /**
  * Real models stay out of the repository. Point DBM_DEZ_SAMPLES at a folder with `.dez` files and/or folder
@@ -86,6 +87,44 @@ describe.skipIf(!root)('DeZign models on this machine', () => {
       // Saving the saved project again changes nothing.
       const again = saveToDezign(applyDezignSave(project, saved), target, viaDbml(after), { normalize: viaDbml })
       expect(again.files.length + again.deleted.length + again.changes.length).toBe(0)
+    })
+  })
+
+  it('survives chains of random edits without breaking a reference', { timeout: 600_000 }, () => {
+    const viaDbml = (tables: TableInfo[]) => parseDbml(toDbml(tables)).tables
+    find(root!).forEach((file, n) => {
+      const folder = /\.dezproj$/i.test(file)
+      const start: DezignFile[] = folder ? projectFiles(join(file, '..')) : [{ path: 'model.dez', text: readFileSync(file, 'latin1') }]
+      const binary = (files: DezignFile[]) => (folder ? assembleDezignProject(files) : files[0]!.text)
+      const read = (files: DezignFile[]) => viaDbml(readDezign(binary(files)).tables)
+      // What the file had wrong before anybody touched it is not the writer's doing.
+      const known = new Set(dezignIntegrity(binary(start)))
+      const ops: Record<string, number> = {}
+      let failed = ''
+      for (let seed = 1; seed <= 3 && !failed; seed++) {
+        const rnd = random(seed * 7919 + n)
+        let files = start
+        for (let step = 0; step < 5; step++) {
+          const base = read(files)
+          const edited = read(files)
+          const op = mutate(edited, rnd, seed * 100 + step)
+          try {
+            const saved = saveToDezign(files, base, viaDbml(edited), { normalize: viaDbml })
+            files = applyDezignSave(files, saved)
+            const broken = dezignIntegrity(binary(files)).filter((p) => !known.has(p))
+            if (broken.length) throw new Error(`${broken.length} broken references`)
+            const again = saveToDezign(files, read(files), read(files), { normalize: viaDbml })
+            if (again.files.length + again.deleted.length + again.changes.length) throw new Error('a second save changed something')
+            ops[op] = (ops[op] ?? 0) + 1
+          } catch (err) {
+            // Only the kind of edit and the kind of failure: no names from the model.
+            failed = `seed ${seed} step ${step} ${op}: ${(err instanceof Error ? err.message : String(err)).replace(/"[^"]*"/g, '"…"').slice(0, 120)}`
+            break
+          }
+        }
+      }
+      report(`#${n + 1} ${folder ? 'folder' : 'file'} random edits=${Object.values(ops).reduce((a, b) => a + b, 0)} known problems=${known.size} ${failed ? `FAILED ${failed}` : 'ok'}`)
+      expect(failed).toBe('')
     })
   })
 })

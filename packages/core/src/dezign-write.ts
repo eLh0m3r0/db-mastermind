@@ -1,6 +1,7 @@
 import {
   assembleDezignProject,
   DEZIGN_RULES,
+  dezignIntegrity,
   dezignChild as kid,
   dezignChildren as kids,
   parseDezignXml,
@@ -91,7 +92,7 @@ export interface SaveDezignOptions {
 }
 
 type El = DezignElement
-type Kind = 'ENT' | 'REL' | 'ENTC' | 'RELC' | 'DIAGRAM' | 'SUBCAT' | 'TEXTAR' | 'TEXTC'
+type Kind = 'ENT' | 'REL' | 'ENTC' | 'RELC' | 'DIAGRAM' | 'SUBCAT' | 'SUBCONN' | 'SUBCATC' | 'SUBCONNC' | 'TEXTAR' | 'TEXTC'
 
 interface Slot {
   el: El
@@ -103,6 +104,9 @@ const SINGLE: Record<Kind, string[]> = {
   ENT: ['DATADICT', 'ENTITIES'],
   REL: ['DATADICT', 'RELATIONSHIPS'],
   SUBCAT: ['DATADICT', 'SUBCATEGORIES'],
+  SUBCONN: ['DATADICT', 'SUBCATEGORYCONNECTIONS'],
+  SUBCATC: ['DIAGRAMS', 'CONTROLS', 'SUBCATEGORYCONTROLS'],
+  SUBCONNC: ['DIAGRAMS', 'CONTROLS', 'SUBCATEGORYCONNECTORS'],
   DIAGRAM: ['DIAGRAMS'],
   ENTC: ['DIAGRAMS', 'CONTROLS', 'ENTITYCONTROLS'],
   RELC: ['DIAGRAMS', 'CONTROLS', 'RELATIONSHIPCONNECTORS'],
@@ -113,6 +117,9 @@ const FOLDER: Record<Kind, string> = {
   ENT: 'data dictionary/entities',
   REL: 'data dictionary/relationships',
   SUBCAT: 'data dictionary/subcategories',
+  SUBCONN: 'data dictionary/subcategoryconnections',
+  SUBCATC: 'diagrams/diagramobjects/subcategorycontrols',
+  SUBCONNC: 'diagrams/diagramobjects/subcategoryconnectors',
   DIAGRAM: 'diagrams',
   ENTC: 'diagrams/diagramobjects/entitycontrols',
   RELC: 'diagrams/diagramobjects/relationshipconnectors',
@@ -338,10 +345,27 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     fill(el, children)
     return el
   }
+  /**
+   * A copy of an element with its own id changed. Only the fields that hold that id are touched (the element's
+   * `ID`, the ids derived from it such as `…-PK`, and its self-references in `ATTRIBUTEID`): files that number
+   * their objects have ids like `1`, which a textual replace would also find inside lengths and type codes.
+   */
   const clone = (el: El, replace: [string, string][] = []): El => {
-    let s = serializeDezignXml(el)
-    for (const [from, to] of replace) if (from) s = s.replaceAll(from, to)
-    return kids(parseDezignXml(s))[0]!
+    const copy = kids(parseDezignXml(serializeDezignXml(el)))[0]!
+    const walk = (node: El) => {
+      for (const child of kids(node)) walk(child)
+      if (node.tag !== 'ID' && node.tag !== 'ATTRIBUTEID') return
+      const value = node.children.filter((c) => typeof c === 'string').join('').trim()
+      for (const [from, to] of replace) {
+        if (!from) continue
+        if (value === from) node.children = [to]
+        else if (value.startsWith(`${from}-`)) node.children = [to + value.slice(from.length)]
+        else continue
+        break
+      }
+    }
+    walk(copy)
+    return copy
   }
   const idsOf = (constraint: El | undefined) => kids(kid(constraint, 'ATTRIBUTEIDS'), 'ATTRIBUTEID').map((a) => a.children.filter((c) => typeof c === 'string').join('').trim())
   const setIds = (constraint: El, ids: string[]) => {
@@ -716,8 +740,19 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     if (!entity) continue
     project.remove('ENT', entity.slot)
     for (const c of project.list('ENTC')) if (text(c.el, 'ID') === entity.id) project.remove('ENTC', c)
+    // A supertype takes its subtype cluster along: the cluster, its link to the entity and their diagram objects.
+    const clusters = project.list('SUBCAT').filter((x) => text(x.el, 'AOID') === entity.id)
+    const clusterIds = new Set(clusters.map((x) => text(x.el, 'ID')))
+    for (const cluster of clusters) project.remove('SUBCAT', cluster)
+    for (const c of project.list('SUBCATC')) if (clusterIds.has(text(c.el, 'ID'))) project.remove('SUBCATC', c)
+    for (const link of project.list('SUBCONN')) {
+      if (text(link.el, 'PARENTOBJECTID') !== entity.id && !clusterIds.has(text(link.el, 'CHILDOBJECTID'))) continue
+      const linkId = text(link.el, 'ID')
+      project.remove('SUBCONN', link)
+      for (const c of project.list('SUBCONNC')) if (text(c.el, 'ID') === linkId) project.remove('SUBCONNC', c)
+    }
     for (const r of project.list('REL')) {
-      if (text(r.el, 'PARENTOBJECTID') !== entity.id && text(r.el, 'CHILDOBJECTID') !== entity.id) continue
+      if (text(r.el, 'PARENTOBJECTID') !== entity.id && text(r.el, 'CHILDOBJECTID') !== entity.id && !clusterIds.has(text(r.el, 'PARENTOBJECTID'))) continue
       const relId = text(r.el, 'ID')
       project.remove('REL', r)
       for (const c of project.list('RELC')) if (text(c.el, 'ID') === relId) project.remove('RELC', c)
@@ -987,8 +1022,13 @@ function verify(files: DezignFile[], result: { files: DezignFile[]; deleted: str
   const after = applyDezignSave(files, result)
   const folder = after.some((f) => /\.dezproj$/i.test(f.path) && !/[\\/]/.test(f.path))
   let model: DezignModel
+  const binary = (set: DezignFile[]) => (folder ? assembleDezignProject(set) : set[0]!.text)
   try {
-    model = readDezign(folder ? assembleDezignProject(after) : after[0]!.text, { encoding: options.encoding })
+    model = readDezign(binary(after), { encoding: options.encoding })
+    // Nothing may point nowhere that did not before (a relationship of a dropped column, a control of a dropped table…).
+    const before = new Set(dezignIntegrity(binary(files)))
+    const broken = dezignIntegrity(binary(after)).filter((p) => !before.has(p))
+    if (broken.length) throw new Error(broken[0])
   } catch (err) {
     throw new Error(`The DeZign file could not be written safely (${err instanceof Error ? err.message : String(err)}). Nothing was changed.`)
   }
