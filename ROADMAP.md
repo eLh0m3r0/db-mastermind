@@ -170,7 +170,8 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 - ✅ **Impact analysis** before running: data-loss warnings (narrowing types, dropping columns, NOT NULL on
   columns with NULLs; counts are checked live), lock/rewrite warnings for large tables, dependent views
 - ✅ Rollback script generated alongside the forward script
-- ✅ Execute in the SQL editor (review first) or save as a migration file (plain SQL, Flyway `V…__name.sql`)
+- ✅ Execute in the SQL editor (review first) or save as a migration file (plain SQL, Flyway `V…__name.sql`, or a
+  Liquibase changelog in formatted SQL with its rollback)
 - ✅ A migration can be opened for another connection of the same engine (dev → test → prod); named change sets saved and loaded in the designer
 - ✅ AI in the live designer: "add soft delete to all customer tables", "move the address into its own table". The AI
   proposes DBML, *Apply to design* turns it into pending changes (ALTERs, not recreates) reviewed as a migration
@@ -384,7 +385,7 @@ Not a clone: their features, rethought and connected to live databases, the know
 - Logical model: one model, several target databases
 - Test data generated in foreign-key order
 - Command line for CI: check a model, diff it against a database, write the documentation
-- Liquibase / Alembic output next to Flyway
+- Alembic output next to Flyway and Liquibase
 - Enterprise Architect repositories, read-only (`.qea` is SQLite; server repositories are ordinary connections)
 - Other modelers' files (MySQL Workbench, PowerDesigner, pgModeler, erwin XML) when someone brings one
 

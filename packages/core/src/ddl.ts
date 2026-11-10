@@ -876,6 +876,21 @@ export function compareSchemas(source: TableInfo[], target: TableInfo[], options
   return diffTables(target, drafts)
 }
 
+/**
+ * The migration as a Liquibase changelog in formatted SQL (one changeset with its rollback), for teams that
+ * deploy with Liquibase. Liquibase opens and commits the transaction itself, so the statements go in bare.
+ */
+export function liquibaseChangelog(migration: Migration, options: { id: string; author?: string; comment?: string }): string {
+  const author = (options.author || 'dbmastermind').replace(/[\s:]+/g, '_')
+  const id = options.id.replace(/[\s:]+/g, '_')
+  const lines = ['--liquibase formatted sql', '', `--changeset ${author}:${id}${migration.transactional ? '' : ' runInTransaction:false'}`]
+  if (options.comment) lines.push(`--comment: ${options.comment.replace(/\s+/g, ' ')}`)
+  for (const statement of migration.statements) lines.push(`${statement.replace(/;\s*$/, '')};`)
+  // Every line of the rollback carries the marker: a statement may span several.
+  for (const statement of migration.rollback) lines.push(...`${statement.replace(/;\s*$/, '')};`.split('\n').map((l) => `--rollback ${l}`))
+  return `${lines.join('\n')}\n`
+}
+
 /** CREATE script for a whole model (forward engineering), in any dialect. */
 export function createScript(tables: TableInfo[], dialect: Dialect, options: { translateTypes?: boolean } = {}): string {
   const source = options.translateTypes ? translateTables(tables, dialect.id) : tables

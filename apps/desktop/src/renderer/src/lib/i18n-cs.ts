@@ -871,6 +871,7 @@ export const cs: Record<string, string> = {
   'A database model: DBML, or a DeZign for Databases project (.dez, .dezproj). No connection needed': 'Databázový model: DBML nebo projekt z DeZign for Databases (.dez, .dezproj). Připojení není potřeba',
   'Drop a model (DBML, DeZign) to open it, or a CSV, Parquet, JSON or Excel file to query it with SQL': 'Přetáhněte model (DBML, DeZign) a otevře se, nebo soubor CSV, Parquet, JSON či Excel a dotazujte se na něj v SQL',
   'No database': 'Bez databáze',
+  'Liquibase changelog (formatted SQL)…': 'Changelog pro Liquibase (formátované SQL)…',
   'The model already matches {name}': 'Model už odpovídá databázi {name}',
   'Model updated from {name}': 'Model aktualizován z {name}',
   'Tables: {a} added, {b} removed. Columns: {c} added, {d} removed, {e} changed. Relationships changed: {f}. Indexes changed: {g}.': 'Tabulky: {a} přidáno, {b} odebráno. Sloupce: {c} přidáno, {d} odebráno, {e} změněno. Změněné vazby: {f}. Změněné indexy: {g}.',

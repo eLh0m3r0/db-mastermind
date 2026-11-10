@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createScript, designId, diffTable, generateMigration, getDialect, impactChecks, migrationScript, parseDbml, toDesignTable, type TableInfo } from '../src/index.js'
+import { createScript, designId, diffTable, generateMigration, getDialect, impactChecks, liquibaseChangelog, migrationScript, parseDbml, toDesignTable, type TableInfo } from '../src/index.js'
 
 const orders: TableInfo = {
   schema: 'public',
@@ -131,5 +131,19 @@ describe('compareSchemas', () => {
     expect(sql).toContain('CONSTRAINT "price_not_negative" CHECK (price >= 0)')
     expect(sql).toContain('  CHECK (price < 1000000)')
     expect(createScript(tables, getDialect('mssql'), { translateTypes: true })).toContain('CONSTRAINT [price_not_negative] CHECK (price >= 0)')
+  })
+
+  it('writes a migration as a Liquibase changelog with its rollback', () => {
+    const { tables } = parseDbml('Table customers {\n  id int [pk]\n  email varchar(120)\n}')
+    const draft = toDesignTable(tables[0]!)
+    draft.columns.push({ id: designId('c'), name: 'vat_id', dataType: 'varchar(20)', nullable: true })
+    const migration = generateMigration(diffTable(tables[0], draft), getDialect('postgres'), tables)
+    const changelog = liquibaseChangelog(migration, { id: '20261111 customers', author: 'Jana Nová', comment: 'VAT id\nfor invoices' })
+    expect(changelog.split('\n').slice(0, 4)).toEqual(['--liquibase formatted sql', '', '--changeset Jana_Nová:20261111_customers', '--comment: VAT id for invoices'])
+    expect(changelog).toContain('ALTER TABLE "customers" ADD COLUMN "vat_id" varchar(20);')
+    expect(changelog).toContain('--rollback ALTER TABLE "customers" DROP COLUMN "vat_id";')
+    // No BEGIN / COMMIT of our own: Liquibase runs the changeset in its transaction.
+    expect(changelog).not.toMatch(/^(BEGIN|COMMIT)/m)
+    expect(liquibaseChangelog({ ...migration, transactional: false }, { id: 'x' })).toContain('--changeset dbmastermind:x runInTransaction:false')
   })
 })
