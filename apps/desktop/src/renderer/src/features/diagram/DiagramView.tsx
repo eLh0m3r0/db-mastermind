@@ -697,6 +697,27 @@ function DiagramInner({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab;
     }
   }
 
+  /** PDF for paper: the whole diagram on one page, or at readable size on as many A4 pages as it takes. */
+  const exportPdf = async (pages: 'one' | 'many') => {
+    const root = wrapper.current?.querySelector<HTMLElement>('.react-flow')
+    if (!root) return
+    try {
+      flow.fitView({ padding: 0.05 })
+      await new Promise((r) => setTimeout(r, 350))
+      const zoom = flow.getZoom() || 1
+      const svg = await toSvg(root, {
+        // Paper is white whatever the theme.
+        backgroundColor: '#ffffff',
+        filter: (node: HTMLElement) => !node.classList?.contains('react-flow__minimap') && !node.classList?.contains('react-flow__controls') && !node.classList?.contains('react-flow__panel') && !node.classList?.contains('react-flow__background'),
+        includeStyleProperties: EXPORT_STYLE_PROPERTIES,
+      })
+      const path = await api.saveDiagramPdf({ svg, name: tab.title, width: Math.round(root.clientWidth / zoom), height: Math.round(root.clientHeight / zoom), pages })
+      if (path) toast({ kind: 'success', message: tr('Diagram saved'), detail: path, action: { label: tr('Show in folder'), run: () => void api.showItemInFolder(path) } })
+    } catch (err) {
+      toast({ kind: 'error', message: tr('Export failed'), detail: errorMessage(err) })
+    }
+  }
+
   const exportMermaid = () => {
     void navigator.clipboard.writeText(toMermaid(tables))
     toast({ kind: 'success', message: tr('Mermaid diagram copied to clipboard') })
@@ -1058,6 +1079,8 @@ function DiagramInner({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab;
             openMenu(e.currentTarget, [
               { label: tr('PNG image'), onClick: () => void exportImage('png') },
               { label: tr('SVG image'), onClick: () => void exportImage('svg') },
+              { label: tr('PDF, one page'), onClick: () => void exportPdf('one') },
+              { label: tr('PDF, readable size on several pages'), onClick: () => void exportPdf('many') },
               'separator',
               { label: tr('Copy as Mermaid'), onClick: exportMermaid },
               { label: tr('Copy as PlantUML'), onClick: exportPlantUml },

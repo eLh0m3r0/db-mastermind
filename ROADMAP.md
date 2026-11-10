@@ -348,7 +348,8 @@ Not a clone: their features, rethought and connected to live databases, the know
   grouped by kind, a click goes to the table, safe fixes are one click (or one click for all of a kind)
 - ✅ Undeclared relationships are suggested from names and types (`customer_id` next to `customers`, or a column
   named like another table's key); adding one checks the real rows first when the model's database has both tables
-- ⬜ Print / PDF of a diagram on several pages
+- ✅ Diagram to PDF from the Export menu: the whole diagram on one page, or at readable size on as many A4 sheets
+  as it needs (each marked with its row and column)
 
 ### Later, when the pilot asks for it 💡
 - Naming rules and a glossary of abbreviations kept in the knowledge base (logical name ↔ physical name)

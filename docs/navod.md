@@ -72,6 +72,8 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   s databází nebo se starší verzí souboru.
 - **Model bez připojení:** model otevřete z úvodní stránky, přes *Soubor → Otevřít model* (⌘O / Ctrl+O), přetažením
   souboru do okna nebo dvojklikem na `.dbml`. Databázi vyberete v liště modelu, až budete chtít porovnání.
+- **Diagram do PDF:** *Export → PDF* uloží diagram na jednu stránku, nebo v čitelné velikosti na více listů A4
+  (každý list má v rohu číslo řádku a sloupce).
 - **Kontroly modelu:** počítadlo v liště modelu ukazuje, co stojí za pozornost (tabulky bez klíče, nesoulad typů
   cizího klíče, duplicitní indexy, cizí klíče bez indexu, názvy mimo styl, vazby, které nikdo nedeklaroval).
   Kliknutím přejdete na tabulku; bezpečné opravy jsou na jedno kliknutí.

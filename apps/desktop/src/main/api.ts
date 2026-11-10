@@ -59,6 +59,7 @@ import { detectImportSources, exportConnections, importConnections } from './imp
 import { backupDatabase, restoreDatabase } from './backup'
 import { openDezignModel, saveDezignModel } from './dezign-file'
 import { takeOpenedFiles } from './opened-files'
+import { saveDiagramPdf } from './diagram-pdf'
 import { aiAccess, turnedOffCentrally } from './ai-access'
 import { managed } from './managed'
 import { checkNow, installUpdate } from './updates'
@@ -486,6 +487,7 @@ export const api: MastermindApi = {
     await writeFile(r.filePath, text, 'utf8')
     return r.filePath
   },
+  saveDiagramPdf: (request) => saveDiagramPdf(request),
   async saveImageFile(dataUrl, name) {
     const ext = extname(name).slice(1).toLowerCase() === 'svg' ? 'svg' : 'png'
     const window = BrowserWindow.getFocusedWindow()

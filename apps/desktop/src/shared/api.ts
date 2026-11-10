@@ -457,6 +457,17 @@ export interface ModelDiagram {
   notes?: DiagramNote[]
 }
 
+export interface DiagramPdfRequest {
+  /** The diagram as an SVG data URL (as exported for an SVG file). */
+  svg: string
+  name: string
+  /** Size of the whole diagram in CSS pixels at 100 % zoom. */
+  width: number
+  height: number
+  /** One page (shrunk to fit), or as many A4 pages as the diagram needs at full size. */
+  pages: 'one' | 'many'
+}
+
 export interface DezignSaveRequest {
   /** The `.dez` or `.dezproj` the model was opened from. */
   path: string
@@ -567,6 +578,8 @@ export interface MastermindApi {
   saveSqlFile(text: string, name: string, defaultDir?: string): Promise<string | null>
   /** Saves a PNG/SVG data URL through a save dialog; null when cancelled. */
   saveImageFile(dataUrl: string, name: string): Promise<string | null>
+  /** Prints a diagram to a PDF file; returns the path, or null if cancelled. */
+  saveDiagramPdf(request: DiagramPdfRequest): Promise<string | null>
   /** Files the app was started with (command line, double-click); each is handed out once. */
   takeOpenedFiles(): Promise<string[]>
   /** Writes an edited model back into the DeZign project it came from (draft: see ROADMAP 8.2). */
@@ -720,6 +733,7 @@ export const API_METHODS = [
   'importDdlFile',
   'saveSqlFile',
   'saveImageFile',
+  'saveDiagramPdf',
   'fetchTable',
   'countTable',
   'importPreview',

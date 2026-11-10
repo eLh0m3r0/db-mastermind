@@ -871,6 +871,8 @@ export const cs: Record<string, string> = {
   'A database model: DBML, or a DeZign for Databases project (.dez, .dezproj). No connection needed': 'Databázový model: DBML nebo projekt z DeZign for Databases (.dez, .dezproj). Připojení není potřeba',
   'Drop a model (DBML, DeZign) to open it, or a CSV, Parquet, JSON or Excel file to query it with SQL': 'Přetáhněte model (DBML, DeZign) a otevře se, nebo soubor CSV, Parquet, JSON či Excel a dotazujte se na něj v SQL',
   'No database': 'Bez databáze',
+  'PDF, one page': 'PDF, jedna stránka',
+  'PDF, readable size on several pages': 'PDF, čitelná velikost na více stránkách',
   'Checks that run by themselves: keys, foreign keys, indexes, names, undeclared relationships': 'Kontroly, které běží samy: klíče, cizí klíče, indexy, názvy, nedeklarované vazby',
   '{n} problem': '{n} problém',
   '{n} problems': '{n} problémů',
