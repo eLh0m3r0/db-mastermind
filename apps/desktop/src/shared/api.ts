@@ -251,6 +251,16 @@ export interface ChangeSet {
   createdAt: string
 }
 
+/** A captioned frame behind the tables of a diagram (read from the model's source; not edited here). */
+export interface DiagramBox {
+  id: string
+  title: string
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
 /** A sticky note on an ER diagram. */
 export interface DiagramNote {
   id: string
@@ -439,6 +449,7 @@ export interface OpenedModelFile {
     /** Colors and text areas of the main diagram. */
     colors: Record<string, number>
     notes: DiagramNote[]
+    boxes: DiagramBox[]
     /** The source's other diagrams (subject areas): which tables each shows and where. */
     diagrams: ModelDiagram[]
     /** Fingerprint of the model as read: saving back is refused when the source has changed since. */
@@ -456,6 +467,7 @@ export interface ModelDiagram {
   /** Table colors (series palette index 1–8) by table key. */
   colors?: Record<string, number>
   notes?: DiagramNote[]
+  boxes?: DiagramBox[]
 }
 
 export interface DiagramPdfRequest {

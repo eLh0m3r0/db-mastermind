@@ -370,7 +370,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const keyOf = (x: { schema?: string; name: string }) => `${x.schema ?? ''}.${x.name}`
   const inArea = (x: { schema?: string; name: string }) => (diagram ? diagram.tables.includes(keyOf(x)) : group ? group.includes(x.name) : true)
   const shown = useMemo<SchemaSnapshot>(() => (diagram || group ? { ...snapshot, tables: snapshot.tables.filter(inArea) } : snapshot), [area, snapshot, model.groups, tab.diagrams])
-  const diagramTab = { ...tab, kind: 'diagram', colors: { ...groupColors, ...(diagram ? diagram.colors : tab.colors) }, notes: diagram ? diagram.notes : tab.notes, positions: diagram ? diagram.positions : tab.positions, tables: diagram ? diagram.tables : undefined } as unknown as DiagramTab
+  const diagramTab = { ...tab, kind: 'diagram', colors: { ...groupColors, ...(diagram ? diagram.colors : tab.colors) }, notes: diagram ? diagram.notes : tab.notes, boxes: diagram ? diagram.boxes : tab.boxes, positions: diagram ? diagram.positions : tab.positions, tables: diagram ? diagram.tables : undefined } as unknown as DiagramTab
   /** A new diagram of the project the model came from: empty at first, tables are added from the search above the canvas. */
   const newDiagram = async () => {
     const name = (await askText({ title: t('New diagram'), message: t('A diagram shows a part of the model: add tables with the search above the canvas, take them off from their menu. The tables stay in the model.'), placeholder: t('Name of the diagram'), confirmLabel: t('Create') }))?.trim()

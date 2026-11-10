@@ -312,7 +312,8 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ Diagrams are managed here: "New diagram…" makes one in the project, tables are added to a diagram from the
   search above the canvas and taken off from their menu (they stay in the model), and relationship lines follow
   the tables on each diagram
-- ⬜ Group boxes and stamps (kept in the file, not shown)
+- ✅ Group boxes are drawn as captioned frames behind their tables (not edited here; stamps are kept in the file
+  and not shown)
 
 ### 8.2 Save it back 🚧 (draft: works end to end, not yet opened in DeZign itself)
 - ✅ Save writes the edited model into the same `.dez` or folder project: only the touched elements change,

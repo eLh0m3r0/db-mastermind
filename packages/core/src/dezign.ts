@@ -48,6 +48,8 @@ export interface DezignDiagram {
   colors: Record<string, string>
   /** Text areas on the diagram. */
   notes: { id: string; text: string; x: number; y: number }[]
+  /** Group boxes: captioned frames drawn behind the tables they hold together. */
+  boxes: { id: string; title: string; x: number; y: number; w: number; h: number }[]
   /** `x = (L - originX) * scaleX`: lets a writer turn positions back into DeZign's coordinates. */
   layout: { originX: number; originY: number; scaleX: number; scaleY: number }
 }
@@ -309,9 +311,12 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const defaultFill = text(kid(diagramsEl, 'DisplayPreferences'), 'DEFENTCOLOR')
   const noteTexts = new Map(kids(kid(dict, 'TEXTAREAS')).map((n) => [text(n, 'ID'), text(n, 'TEXT')]))
   const noteControls = kids(kid(kid(diagramsEl, 'CONTROLS'), 'TEXTAREACONTROLS'))
+  const boxTitles = new Map(kids(kid(dict, 'GROUPBOXES')).map((b) => [text(b, 'ID'), text(b, 'OBJECTCAPTION') || text(b, 'NAME')]))
+  // The single file calls the list GROUPBOXESCONTROLS; a folder project's folder is groupboxcontrols.
+  const boxControls = [...kids(kid(kid(diagramsEl, 'CONTROLS'), 'GROUPBOXESCONTROLS')), ...kids(kid(kid(diagramsEl, 'CONTROLS'), 'GROUPBOXCONTROLS'))]
   const diagramOf = (id: string, name: string, main: boolean): DezignDiagram => {
     const controls = allControls.filter((c) => c.diagram === id)
-    const out: DezignDiagram = { id, name, main, tables: [], positions: {}, colors: {}, notes: [], layout: { originX: 0, originY: 0, scaleX: 1, scaleY: 1 } }
+    const out: DezignDiagram = { id, name, main, tables: [], positions: {}, colors: {}, notes: [], boxes: [], layout: { originX: 0, originY: 0, scaleX: 1, scaleY: 1 } }
     if (!controls.length) return out
     // DeZign's tables are smaller than the target's: spread the layout by the typical size ratio.
     const sx = node ? Math.min(3, Math.max(1, median(controls.filter((c) => c.w > 0).map((c) => node.width / c.w)))) : 1
@@ -329,6 +334,11 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
       if ((kid(c, 'DIAGRAMID') ? text(c, 'DIAGRAMID') : mainId) !== id || !noteTexts.get(text(c, 'ID'))) continue
       const [x, y] = [Number(text(c, 'L')), Number(text(c, 'T'))]
       if (Number.isFinite(x) && Number.isFinite(y)) out.notes.push({ id: text(c, 'ID'), text: noteTexts.get(text(c, 'ID'))!, x: Math.round((x - minX) * sx), y: Math.round((y - minY) * sy) })
+    }
+    for (const c of boxControls) {
+      if ((kid(c, 'DIAGRAMID') ? text(c, 'DIAGRAMID') : mainId) !== id) continue
+      const [x, y, w, h] = [Number(text(c, 'L')), Number(text(c, 'T')), Number(text(c, 'W')), Number(text(c, 'H'))]
+      if ([x, y, w, h].every(Number.isFinite) && w > 0 && h > 0) out.boxes.push({ id: text(c, 'ID'), title: boxTitles.get(text(c, 'ID')) ?? '', x: Math.round((x - minX) * sx), y: Math.round((y - minY) * sy), w: Math.round(w * sx), h: Math.round(h * sy) })
     }
     return out
   }
@@ -349,6 +359,7 @@ const PROJECT_SECTIONS: [folder: string, element: string][] = [
   ['procedures', 'PROCEDURES'],
   ['views', 'VIEWS'],
   ['textareas', 'TEXTAREAS'],
+  ['groupboxes', 'GROUPBOXES'],
   ['relationships', 'RELATIONSHIPS'],
 ]
 
@@ -371,7 +382,7 @@ export function assembleDezignProject(files: { path: string; text: string }[]): 
   if (!settings) throw new Error('The folder has no .dezproj file')
   const header = top('.dds').replace(/<\/?DATADICT>/g, '')
   const sections = PROJECT_SECTIONS.map(([folder, element]) => `<${element}>${inDir('data dictionary', folder)}</${element}>`).join('\n')
-  const controls = `<ENTITYCONTROLS>${inDir('diagrams', 'diagramobjects', 'entitycontrols')}</ENTITYCONTROLS>\n<TEXTAREACONTROLS>${inDir('diagrams', 'diagramobjects', 'textareacontrols')}</TEXTAREACONTROLS>\n<RELATIONSHIPCONNECTORS>${inDir('diagrams', 'diagramobjects', 'relationshipconnectors')}</RELATIONSHIPCONNECTORS>`
+  const controls = `<ENTITYCONTROLS>${inDir('diagrams', 'diagramobjects', 'entitycontrols')}</ENTITYCONTROLS>\n<TEXTAREACONTROLS>${inDir('diagrams', 'diagramobjects', 'textareacontrols')}</TEXTAREACONTROLS>\n<GROUPBOXESCONTROLS>${inDir('diagrams', 'diagramobjects', 'groupboxcontrols')}</GROUPBOXESCONTROLS>\n<RELATIONSHIPCONNECTORS>${inDir('diagrams', 'diagramobjects', 'relationshipconnectors')}</RELATIONSHIPCONNECTORS>`
   return `<?xml version="1.0" encoding="iso-8859-1"?><dezign>\n<VERSION>\n${settings}\n<DATADICT>${header}\n${sections}</DATADICT>\n<DIAGRAMS>${top('.ddp')}\n${inDir('diagrams')}\n<CONTROLS>${controls}</CONTROLS></DIAGRAMS>\n</VERSION>\n</dezign>`
 }
 

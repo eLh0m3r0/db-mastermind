@@ -197,7 +197,16 @@ const NoteNode = memo(function NoteNode({ data }: NodeProps<Node<NoteNodeData>>)
   )
 })
 
-const nodeTypes = { table: TableNode, note: NoteNode }
+/** A captioned frame behind the tables: it shows what belongs together and takes no clicks. */
+const BoxNode = memo(function BoxNode({ data }: NodeProps<Node<{ title: string; w: number; h: number }>>) {
+  return (
+    <div style={{ width: data.w, height: data.h }} className="pointer-events-none rounded-lg border-2 border-dashed border-fg-faint/50 bg-accent/5" data-testid="diagram-box">
+      {data.title && <div className="px-3 py-1.5 text-[13px] font-semibold text-fg-muted">{data.title}</div>}
+    </div>
+  )
+})
+
+const nodeTypes = { table: TableNode, note: NoteNode, box: BoxNode }
 
 /** CSS properties kept when the diagram is exported as an image (see exportImage). */
 const EXPORT_STYLE_PROPERTIES = [
@@ -834,6 +843,11 @@ function DiagramInner({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab;
 
   // Sticky notes live in their own node list so table re-layouts never drop them.
   const [noteNodes, setNoteNodes, onNoteNodesChange] = useNodesState<Node<NoteNodeData>>([])
+  // Their ids start like a note's, so nothing that acts on tables takes them for one.
+  const boxNodes = useMemo(
+    () => (tab.boxes ?? []).map((box) => ({ id: `note:box:${box.id}`, type: 'box', position: { x: box.x, y: box.y }, data: { title: box.title, w: box.w, h: box.h }, draggable: false, selectable: false, focusable: false, zIndex: -1 })),
+    [tab.boxes],
+  )
   const latestNotes = useRef(tab.notes)
   latestNotes.current = tab.notes
   const setNotes = (notes: DiagramNote[]) => patchLayout({ notes: notes.length ? notes : undefined })
@@ -1264,7 +1278,7 @@ function DiagramInner({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab;
           </defs>
         </svg>
         <ReactFlow
-          nodes={[...nodes, ...(noteNodes as unknown as typeof nodes)]}
+          nodes={[...(boxNodes as unknown as typeof nodes), ...nodes, ...(noteNodes as unknown as typeof nodes)]}
           edges={edges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { DesignTable, FilterNode, SortSpec, TableRef } from '@dbmastermind/core/browser'
-import type { DiagramNote, ModelDiagram } from '@shared/api'
+import type { DiagramNote, ModelDiagram, DiagramBox } from '@shared/api'
 import { api } from '@/lib/api'
 import { debounce, uid } from '@/lib/utils'
 import { t, tp } from '@/lib/i18n'
@@ -49,6 +49,8 @@ export interface DiagramTab extends BaseTab {
   design?: Record<string, DesignTable>
   /** Sticky notes on the canvas. */
   notes?: DiagramNote[]
+  /** Frames behind the tables (from a model's source). */
+  boxes?: DiagramBox[]
 }
 
 export interface KnowledgeTab extends BaseTab {
@@ -93,6 +95,7 @@ export interface ModelTab extends BaseTab {
   /** Table colors and sticky notes of the model's diagram. */
   colors?: Record<string, number>
   notes?: DiagramNote[]
+  boxes?: DiagramBox[]
   /** Named diagrams of the model (from the source): subsets of its tables with their own layout. */
   diagrams?: ModelDiagram[]
 }

@@ -140,6 +140,13 @@ ${invoice}
 <TEXT>Prodej</TEXT>
 </TEXTAR>
 </TEXTAREAS>
+<GROUPBOXES>
+<GROUPBOX>
+<NAME>GroupBox1</NAME>
+<ID>G1</ID>
+<OBJECTCAPTION>Fakturace</OBJECTCAPTION>
+</GROUPBOX>
+</GROUPBOXES>
 <VIEWS>
 <VIEW>
 <NAME>v_open</NAME>
@@ -172,6 +179,16 @@ ${control('10', '2', 900, 900)}
 <T>10</T>
 </TEXTC>
 </TEXTAREACONTROLS>
+<GROUPBOXESCONTROLS>
+<GROUPBOXC>
+<ID>G1</ID>
+<DIAGRAMID>1</DIAGRAMID>
+<W>500</W>
+<H>300</H>
+<L>80</L>
+<T>30</T>
+</GROUPBOXC>
+</GROUPBOXESCONTROLS>
 </CONTROLS>
 </DIAGRAMS>
 </VERSION>
@@ -253,6 +270,7 @@ describe('DeZign for Databases models', () => {
     expect(diagrams[0]!.colors).toEqual({ 'shop.invoice': '#ffff80' })
     expect(diagrams[0]!.notes).toEqual([{ id: 'T1', text: 'Prodej', x: -10, y: -40 }])
     expect(diagrams[1]!.notes).toEqual([])
+    expect(diagrams[0]!.boxes).toEqual([{ id: 'G1', title: 'Fakturace', x: -20, y: -20, w: 500, h: 300 }])
     expect(diagrams[1]!.layout).toMatchObject({ originX: 900, originY: 900 })
   })
 

@@ -60,7 +60,8 @@ export async function openDezignModel(path: string): Promise<OpenedModelFile> {
       leftOut: model.leftOut,
       colors: paletteColors(model.diagrams.find((d) => d.main)?.colors ?? {}),
       notes: model.diagrams.find((d) => d.main)?.notes ?? [],
-      diagrams: model.diagrams.filter((d) => !d.main && d.tables.length).map(({ id, name, tables, positions, colors, notes }) => ({ id, name, tables, positions, colors: paletteColors(colors), notes })),
+      boxes: model.diagrams.find((d) => d.main)?.boxes ?? [],
+      diagrams: model.diagrams.filter((d) => !d.main && d.tables.length).map(({ id, name, tables, positions, colors, notes, boxes }) => ({ id, name, tables, positions, colors: paletteColors(colors), notes, boxes })),
       hash: fingerprint(text),
     },
   }
