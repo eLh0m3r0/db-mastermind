@@ -70,6 +70,8 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   - *Zkontrolovat migraci* ukáže SQL skript, kontroly nad daty a rollback. Jednotlivé změny lze vynechat.
 - **Modely v DBML:** text a diagram vedle sebe, vizuální úpravy se zapisují zpět do textu. Model porovnáte
   s databází nebo se starší verzí souboru.
+- **Nový model od nuly:** na úvodní stránce zvolte *Nový model* a *Přidat první tabulku*. Tabulka se otevře
+  v návrháři, kde přidáte sloupce, klíče, další tabulky a vazby. DBML psát nemusíte.
 - **Model bez připojení:** model otevřete z úvodní stránky, přes *Soubor → Otevřít model* (⌘O / Ctrl+O), přetažením
   souboru do okna nebo dvojklikem na `.dbml`. Databázi vyberete v liště modelu, až budete chtít porovnání.
 - **Diagram do PDF:** *Export → PDF* uloží diagram na jednu stránku, nebo v čitelné velikosti na více listů A4

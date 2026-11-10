@@ -1,6 +1,7 @@
-import { ArrowRight, BookOpen, Coffee, Database, Download, FileSpreadsheet, Keyboard, Plus, Sparkles, FileCode2 } from 'lucide-react'
+import { ArrowRight, BookOpen, Coffee, Database, Download, FileSpreadsheet, Keyboard, Plus, Sparkles, FileCode2, FilePlus2 } from 'lucide-react'
 import { isFileDriver } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
+import { runCommand } from '@/lib/commands'
 import { Kbd } from '@/components/ui/Input'
 import { api, modKey } from '@/lib/api'
 import { queryFile, openModel } from '@/lib/files'
@@ -42,6 +43,9 @@ export function HomeScreen() {
               </Button>
               <Button size="sm" variant="ghost" icon={<FileSpreadsheet size={13} />} onClick={() => void queryFile()} title={t('CSV, Parquet, JSON or Excel: query it with SQL, no import needed')}>
                 {t('Query a file')}
+              </Button>
+              <Button size="sm" variant="ghost" icon={<FilePlus2 size={13} />} onClick={() => runCommand('new-model')} title={t('Design a database from scratch: draw the tables, then get the SQL for any database. No connection needed')}>
+                {t('New model')}
               </Button>
               <Button size="sm" variant="ghost" icon={<FileCode2 size={13} />} onClick={() => void openModel()} title={t('A database model: DBML, or a DeZign for Databases project (.dez, .dezproj). No connection needed')}>
                 {t('Open a model')}

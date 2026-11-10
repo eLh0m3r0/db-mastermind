@@ -350,8 +350,10 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ⬜ A model as a folder (one file per table, SQL files for the rest): small Git diffs, merges without conflicts
 
 ### 8.4 Easy on the first day ✅
-- ✅ Start page: "Open a model" next to the connections; a model file opened from the system goes straight to the
-  designer with the connection sidebar out of the way
+- ✅ Start page: "New model" and "Open a model" next to the connections; a model file opened from the system goes
+  straight to the designer with the connection sidebar out of the way
+- ✅ A model from scratch without knowing DBML: an empty model offers "Add the first table", which opens it in the
+  designer; more tables, columns and relationships are added there (e2e/flow94)
 - ✅ Model checks that run by themselves (instant, also on 300 tables): tables without a key, foreign keys to
   columns that are not unique or of another type, indexes that repeat or cover each other, foreign keys without
   an index, names in a different style than nearly all others. A quiet counter in the toolbar; the list is

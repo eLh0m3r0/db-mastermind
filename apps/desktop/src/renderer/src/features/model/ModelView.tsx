@@ -4,7 +4,7 @@ import { bracketMatching, StreamLanguage } from '@codemirror/language'
 import { Compartment, EditorState } from '@codemirror/state'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
-import { AlertTriangle, Database, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare } from 'lucide-react'
+import { AlertTriangle, Database, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare, Plus } from 'lucide-react'
 import { checkModel, createScript, fixModelIssue, getDialect, parseDbml, toDbml, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
@@ -257,6 +257,13 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           ),
       })),
     ])
+  }
+
+  /** An empty model starts with one table open in the designer: nobody has to know DBML to begin. */
+  const addFirstTable = () => {
+    replaceText('Table table_1 {\n  id integer [pk, increment]\n  name varchar(100) [not null]\n}\n', { dirty: true, startDesign: `${liveSchema?.defaultSchema ?? ''}.table_1` } as Partial<ModelTab>)
+    // Only this once: the next time the diagram is shown it opens as usual.
+    setTimeout(() => updateTab(tab.id, { startDesign: undefined } as Partial<ModelTab>), 1500)
   }
 
   const importDdl = async () => {
@@ -522,8 +529,11 @@ export function ModelView({ tab }: { tab: ModelTab }) {
               }}
             />
           ) : (
-            <div className="flex h-full items-center justify-center p-8 text-center text-[12.5px] text-fg-muted">
-              {t('Write tables in DBML on the left, start from the database, or let AI design it. The diagram follows as you type.')}
+            <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center text-[12.5px] text-fg-muted">
+              <Button variant="primary" icon={<Plus size={14} />} onClick={addFirstTable} data-testid="model-first-table">
+                {t('Add the first table')}
+              </Button>
+              <span className="max-w-md">{t('It opens in the designer: add columns, keys and more tables there, and draw relationships between them. Or write tables in DBML on the left, start from the database, or let AI design it.')}</span>
             </div>
           )}
         </div>
