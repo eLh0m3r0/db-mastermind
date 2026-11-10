@@ -78,6 +78,8 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   (každý list má v rohu číslo řádku a sloupce).
 - **Diagramy projektu DeZignu:** v liště modelu přepínáte mezi celým modelem a jeho diagramy. *Nový diagram…*
   založí další; tabulku do diagramu přidáte hledáním nad plátnem a odeberete z její nabídky (v modelu zůstane).
+- **Aktualizace modelu z databáze:** *Z databáze → Aktualizovat model* doplní do modelu, co v databázi přibylo
+  nebo se změnilo; komentáře, domény a rozložení modelu zůstanou.
 - **Porovnání s archivovanou verzí:** u modelu z DeZignu nabídne *Porovnat s verzí…* verze uložené v projektu;
   uvidíte změny od té doby a ALTER skript pro databázi modelu.
 - **Export do DeZignu:** model vytvořený tady uložíte přes *Uložit jako…* i jako nový projekt DeZign for Databases

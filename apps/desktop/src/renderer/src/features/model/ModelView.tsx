@@ -5,7 +5,7 @@ import { Compartment, EditorState } from '@codemirror/state'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
 import { AlertTriangle, Database, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare, Plus } from 'lucide-react'
-import { checkModel, createScript, fixModelIssue, getDialect, parseDbml, toDbml, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
+import { checkModel, createScript, fixModelIssue, getDialect, parseDbml, toDbml, updateModelFromDatabase, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { DRIVERS } from '../connections/drivers'
@@ -232,6 +232,36 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     replaceText(toDbml(snap.tables, { defaultSchema: snap.defaultSchema }), { dirty: true })
   }
 
+  /**
+   * The database is right: what it has and the model lacks is added, what differs follows it, and what only the
+   * model knows (comments, domains, checks, layout) stays.
+   */
+  const updateFromDatabase = async (removeMissing: boolean) => {
+    if (!connection) return
+    const snap = liveSchema ?? ((await connectAndSelect(connection.id)) ? await loadSchema(tab.connectionId) : undefined)
+    if (!snap) return
+    // The schemas the model is about, when the database has them; all of it otherwise.
+    const schemas = new Set(model.tables.map((x) => (x.schema ?? snap.defaultSchema ?? '').toLowerCase()))
+    const scoped = snap.tables.filter((x) => schemas.has((x.schema ?? snap.defaultSchema ?? '').toLowerCase()))
+    const { tables, summary: n } = updateModelFromDatabase(model.tables, scoped.length ? scoped : snap.tables, { removeMissing })
+    if (!Object.values(n).some(Boolean)) return toast({ kind: 'success', message: t('The model already matches {name}', { name: connection.name }) })
+    replaceText(toDbml(tables, { defaultSchema: snap.defaultSchema, enums: model.enums, groups: model.groups, extras: model.extras }), { dirty: true })
+    toast({
+      kind: 'success',
+      message: t('Model updated from {name}', { name: connection.name }),
+      detail: t('Tables: {a} added, {b} removed. Columns: {c} added, {d} removed, {e} changed. Relationships changed: {f}. Indexes changed: {g}.', { a: String(n.tablesAdded), b: String(n.tablesRemoved), c: String(n.columnsAdded), d: String(n.columnsRemoved), e: String(n.columnsChanged), f: String(n.relationshipsChanged), g: String(n.indexesChanged) }),
+    })
+  }
+  const fromDatabaseMenu = (anchor: HTMLElement) => {
+    if (!model.tables.length) return void fromDatabase()
+    openMenu(anchor, [
+      { label: t('Update the model (keeps its comments, domains and layout)'), onClick: () => void updateFromDatabase(false) },
+      { label: t('Update, and remove tables the database does not have'), onClick: () => void updateFromDatabase(true) },
+      'separator',
+      { label: t('Replace the model with the database'), onClick: () => void fromDatabase() },
+    ])
+  }
+
   /** Versions: this model against another .dbml file (older copy, another branch…). */
   const compareWithFile = async () => {
     try {
@@ -417,7 +447,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           {t('Save as…')}
         </Button>
         <div className="mx-1 h-4 w-px bg-line" />
-        <Button size="sm" variant="ghost" icon={<Database size={13} />} disabled={!connection} onClick={() => void fromDatabase()}>
+        <Button size="sm" variant="ghost" icon={<Database size={13} />} disabled={!connection} onClick={(e) => fromDatabaseMenu(e.currentTarget)} title={t('Bring changes made in the database into the model, or start the model from the database')}>
           {t('From database')}
         </Button>
         <Button size="sm" variant="ghost" icon={<FileInput size={13} />} onClick={() => void importDdl()} title={t('Read tables from a SQL script (pg_dump, mysqldump, SSMS…) or a Prisma schema')}>

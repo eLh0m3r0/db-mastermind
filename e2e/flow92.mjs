@@ -66,6 +66,14 @@ try {
   await win.getByRole('button', { name: 'Compare', exact: true }).click()
   await win.getByText(/Create table/).first().waitFor({ timeout: 20000 })
   console.log('compare with the linked database:', await win.getByText(/Create table/).count() >= 2)
+  // The other way round: tables of the database come into the model, the model's own tables and notes stay.
+  await win.getByText('exported.dez', { exact: true }).first().click()
+  await win.getByRole('button', { name: 'From database' }).click()
+  await win.getByText('Update the model (keeps its comments, domains and layout)').click()
+  await win.getByText(/Model updated from Demo coffee shop/).waitFor({ timeout: 20000 })
+  const summary = (await win.getByText(/Tables: \d+ added/).first().innerText()).replace(/\s+/g, ' ')
+  await win.waitForTimeout(700)
+  console.log('updated from the database:', summary.slice(0, 60), '| own tables kept:', await win.getByText(/^\d+ tables$/).first().innerText())
   console.log('remembered:', await win.evaluate((model) => JSON.parse(localStorage.getItem('dbm.modelDatabase') ?? '{}')[model] !== undefined, dezFile))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow92.png') })
 } catch (err) {

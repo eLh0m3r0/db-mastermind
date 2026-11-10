@@ -362,6 +362,10 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ⬜ A model as a folder (one file per table, SQL files for the rest): small Git diffs, merges without conflicts
 
 ### 8.4 Easy on the first day ✅
+- ✅ Update a model from its database ("From database" → Update the model): what the database has and the model
+  lacks is added, what differs follows the database, and what only the model knows stays (comments, domains,
+  checks, virtual relationships, layout); tables only the model has stay unless asked. DeZign's "compare model
+  to database and update model"
 - ✅ Start page: "New model" and "Open a model" next to the connections; a model file opened from the system goes
   straight to the designer with the connection sidebar out of the way
 - ✅ A model from scratch without knowing DBML: an empty model offers "Add the first table", which opens it in the
