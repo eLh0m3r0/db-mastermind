@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { paletteIndex } from '../src/main/palette'
+import { paletteFill, paletteIndex } from '../src/main/palette'
 
 describe('free colors of an imported diagram on the series palette', () => {
   it('goes to the nearest hue', () => {
@@ -17,5 +17,11 @@ describe('free colors of an imported diagram on the series palette', () => {
     expect(paletteIndex('#c0c0c0')).toBeUndefined()
     expect(paletteIndex('#f5f5f5')).toBeUndefined()
     expect(paletteIndex('')).toBeUndefined()
+  })
+
+  it('gives each palette color a light fill that maps back to the same color', () => {
+    for (let index = 1; index <= 8; index++) expect(paletteIndex(paletteFill(index)!)).toBe(index)
+    expect(paletteFill(1)).toBe('#bfd7f3')
+    expect(paletteFill(9)).toBeUndefined()
   })
 })

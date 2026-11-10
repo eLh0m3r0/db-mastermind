@@ -32,7 +32,7 @@ export function modelTabFromFile(file: OpenedModelFile, defaultSchema?: string, 
     message: tp(file.imported.tables, { one: 'Opened a DeZign for Databases model: {n} table', many: 'Opened a DeZign for Databases model: {n} tables' }),
     detail: [leftOut.length ? `${t('Not in the model yet:')} ${leftOut.join(' · ')}` : '', t('Save writes your changes back into the DeZign file (a backup is kept); Save as makes a .dbml model.')].filter(Boolean).join('\n'),
   })
-  return { text: file.text, path: undefined, source: { kind: 'dezign', path: file.path, hash: file.imported.hash }, dirty: false, title: name, positions, diagrams: diagrams.length ? diagrams : undefined, colors: Object.keys(colors).length ? colors : undefined, notes: file.imported.notes.length ? file.imported.notes : undefined }
+  return { text: file.text, path: undefined, source: { kind: 'dezign', path: file.path, hash: file.imported.hash, layout: true }, dirty: false, title: name, positions, diagrams: diagrams.length ? diagrams : undefined, colors: Object.keys(colors).length ? colors : undefined, notes: file.imported.notes.length ? file.imported.notes : undefined }
 }
 
 const CHANGE_LABELS: Record<DezignChange['kind'], string> = {
@@ -54,6 +54,9 @@ const CHANGE_LABELS: Record<DezignChange['kind'], string> = {
   alter_relationship: 'changed relationship',
   move_table: 'moved in the diagram',
   alter_note: 'changed note',
+  add_note: 'new note',
+  drop_note: 'removed note',
+  color_table: 'table color',
 }
 
 /** One line per change for the confirmation before a model is written back to its DeZign file. */

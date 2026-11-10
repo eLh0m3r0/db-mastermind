@@ -497,8 +497,14 @@ export interface DezignSaveRequest {
   text: string
   hash: string
   positions?: Record<string, { x: number; y: number }>
-  /** Text areas of the main diagram (edits of existing ones are saved). */
+  /** Text areas and table colors (palette index) of the main diagram. */
   notes?: DiagramNote[]
+  colors?: Record<string, number>
+  /**
+   * The notes and colors given are everything the diagrams should have (a tab that loaded them from the source).
+   * Without it only edits of existing notes are saved: a tab from before they were loaded has none to compare.
+   */
+  layout?: boolean
   diagrams?: ModelDiagram[]
   /** Schema the window puts schema-less tables under (keys of `positions`). */
   defaultSchema?: string

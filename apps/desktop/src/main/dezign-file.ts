@@ -5,7 +5,7 @@ import { app } from 'electron'
 import { assembleDezignProject, dezignDatabaseFor, listDezignVersions, newDezignProject, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '@dbmastermind/core'
 import type { DezignSaveOutcome, DezignSaveRequest, ModelExportLayout, ModelVersion, OpenedModelFile } from '@shared/api'
 import { dataPath } from './storage'
-import { paletteIndex } from './palette'
+import { paletteFill, paletteIndex } from './palette'
 
 // Size of a table in the diagram (DiagramView): DeZign's layout is spread to fit it.
 const NODE = { width: 240, header: 32, row: 22 }
@@ -90,7 +90,29 @@ export async function saveDezignModel(request: DezignSaveRequest): Promise<Dezig
   const diagrams: NonNullable<Parameters<typeof saveToDezign>[3]>['diagrams'] = Object.fromEntries(
     (request.diagrams ?? []).map((d) => [d.id, { tables: d.tables.flatMap((key) => [key, ...(bare(key) ? [bare(key)!] : [])]), positions: Object.fromEntries(withBare(Object.entries(d.positions))), notes: d.notes }]),
   )
-  if (request.notes?.length && model.layout.diagramId) diagrams[model.layout.diagramId] = { notes: request.notes }
+  // Colors go to the file only where the palette color differs from what the file's own color maps to.
+  const colorChanges = (diagramId: string, wanted: Record<string, number> | undefined) => {
+    const current = paletteColors(model.diagrams.find((d) => d.id === diagramId)?.colors ?? {})
+    const asked = Object.fromEntries(Object.entries(wanted ?? {}).map(([key, index]) => [(bare(key) ?? key).toLowerCase(), index]))
+    const out: Record<string, string | null> = {}
+    for (const key of new Set([...Object.keys(current).map((k) => k.toLowerCase()), ...Object.keys(asked)])) {
+      const was = Object.entries(current).find(([k]) => k.toLowerCase() === key)?.[1]
+      if (was !== asked[key]) out[key] = asked[key] ? (paletteFill(asked[key]!) ?? null) : null
+    }
+    return out
+  }
+  // A tab from before notes and colors were loaded cannot say which ones are gone: every note of the file stays,
+  // and only the ones the tab has an edited copy of change.
+  const keepingAll = (diagramId: string, edited: { id: string; text: string; x: number; y: number }[] | undefined) => {
+    const known = model.diagrams.find((d) => d.id === diagramId)?.notes ?? []
+    return known.map((o) => edited?.find((n) => n.id === o.id) ?? o)
+  }
+  for (const d of request.diagrams ?? []) {
+    if (request.layout) Object.assign(diagrams[d.id]!, { notes: d.notes ?? [], colors: colorChanges(d.id, d.colors) })
+    else diagrams[d.id]!.notes = keepingAll(d.id, d.notes)
+  }
+  const main = model.layout.diagramId
+  if (main) diagrams[main] = request.layout ? { notes: request.notes ?? [], colors: colorChanges(main, request.colors) } : { notes: keepingAll(main, request.notes) }
   const result = saveToDezign(files, viaDbml(model.tables), edited.tables, { node: NODE, fallbackEncoding, positions, diagrams, normalize: viaDbml })
   const outcome: DezignSaveOutcome = { changes: result.changes, written: result.files.length, deleted: result.deleted.length, hash: request.hash }
   if (request.dryRun || (!result.files.length && !result.deleted.length)) return outcome

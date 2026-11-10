@@ -53,6 +53,9 @@ export type DezignChangeKind =
   | 'alter_relationship'
   | 'move_table'
   | 'alter_note'
+  | 'add_note'
+  | 'drop_note'
+  | 'color_table'
 
 export interface DezignChange {
   kind: DezignChangeKind
@@ -78,10 +81,20 @@ export interface SaveDezignOptions {
   positions?: Record<string, { x: number; y: number }>
   /**
    * Diagrams by id: the tables each should show (missing ones are added to it) and where they are, for the
-   * diagrams other than the main one; and the text areas of any diagram (text and place of existing ones: text
-   * areas are not created or removed here). Tables are never taken off a diagram.
+   * diagrams other than the main one; and the text areas and table colors of any diagram. Tables are never
+   * taken off a diagram.
    */
-  diagrams?: Record<string, { tables?: string[]; positions?: Record<string, { x: number; y: number }>; notes?: { id: string; text: string; x: number; y: number }[] }>
+  diagrams?: Record<
+    string,
+    {
+      tables?: string[]
+      positions?: Record<string, { x: number; y: number }>
+      /** All the text areas the diagram should have: others are removed from it, unknown ids are new ones. */
+      notes?: { id: string; text: string; x: number; y: number }[]
+      /** Fill colors to change, by table key: `#rrggbb`, or null for the project's usual color. */
+      colors?: Record<string, string | null>
+    }
+  >
   /** Ids for new objects (default: random GUIDs, or the next number in files that number their objects). */
   newId?: () => string
   /**
@@ -982,24 +995,90 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     }
   }
 
-  // Text areas: new text and a new place for the ones the project already has.
+  /** A file name like the neighbours': theirs with the diagram and object ids swapped for the new ones. */
+  const controlNameLike = (kind: Kind, prefix: string, diagramId: string, id: string) => {
+    const neighbour = project.list(kind).find((x) => x.path && text(x.el, 'DIAGRAMID') && project.fileStem(x).includes(text(x.el, 'ID')))
+    if (!neighbour) return controlFileName(prefix, diagramId, id)
+    return project.fileStem(neighbour).replace(text(neighbour.el, 'DIAGRAMID'), diagramId).replace(text(neighbour.el, 'ID'), id)
+  }
+  const firstLine = (value: string) => value.split(/\r?\n/)[0]!.slice(0, 40)
+
+  // Text areas of each diagram whose list was given: changed text or place, new ones, and the ones taken away.
   for (const [diagramId, wanted] of Object.entries(options.diagrams ?? {})) {
-    for (const note of wanted.notes ?? []) {
-      const area = project.list('TEXTAR').find((x) => text(x.el, 'ID') === note.id)
-      const control = project.list('TEXTC').find((c) => text(c.el, 'ID') === note.id && (!kid(c.el, 'DIAGRAMID') || text(c.el, 'DIAGRAMID') === diagramId))
-      if (!area || !control) continue
+    if (!wanted.notes) continue
+    const onDiagram = (c: Slot) => !kid(c.el, 'DIAGRAMID') || text(c.el, 'DIAGRAMID') === diagramId
+    const keep = new Set(wanted.notes.map((n) => n.id))
+    for (const control of project.list('TEXTC').filter(onDiagram)) {
+      const id = text(control.el, 'ID')
+      if (keep.has(id)) continue
+      const area = project.list('TEXTAR').find((x) => text(x.el, 'ID') === id)
+      project.remove('TEXTC', control)
+      // The text itself goes when no other diagram shows it.
+      if (area && !project.list('TEXTC').some((c) => text(c.el, 'ID') === id)) project.remove('TEXTAR', area)
+      changes.push({ kind: 'drop_note', table: firstLine(area ? text(area.el, 'TEXT') : id) })
+    }
+    for (const note of wanted.notes) {
+      const at = toDiagram(diagramId, note)
+      let area = project.list('TEXTAR').find((x) => text(x.el, 'ID') === note.id)
+      let control = project.list('TEXTC').find((c) => text(c.el, 'ID') === note.id && onDiagram(c))
+      if (!area || !control) {
+        if (!note.text.trim()) continue
+        const id = area ? note.id : newObjectId()
+        if (!area) {
+          const template = project.list('TEXTAR')[0]?.el
+          const el = template ? clone(template, [[text(template, 'ID'), id]]) : container('TEXTAR', [leaf('NAME'), leaf('ID', id), leaf('TEXT')])
+          for (const tag of ['DESC', 'NOTE']) if (kid(el, tag)) set(el, tag, '')
+          const name = `TextArea${project.list('TEXTAR').length + 1}`
+          set(el, 'NAME', name)
+          set(el, 'TEXT', note.text)
+          const sample = project.list('TEXTAR')[0]
+          area = project.add('TEXTAR', el, sample && project.fileStem(sample) === text(sample.el, 'ID') ? id : name)
+        }
+        const template = project.list('TEXTC')[0]?.el
+        const el = template
+          ? clone(template)
+          : container('TEXTC', [leaf('ID'), leaf('DIAGRAMID'), leaf('W', '200'), leaf('H', '60'), leaf('L'), leaf('T'), leaf('BRUSH', '0,16777215'), leaf('PEN', '0,1,4,0'), leaf('FONT', 'Arial,8,,0,clWindowText,0'), leaf('TR', '0'), leaf('AS', '1')])
+        set(el, 'ID', id)
+        if (kid(el, 'DIAGRAMID') || diagramId) set(el, 'DIAGRAMID', diagramId, ['W'])
+        set(el, 'L', String(at.l))
+        set(el, 'T', String(at.t))
+        control = project.add('TEXTC', el, controlNameLike('TEXTC', 'textc', diagramId, id))
+        changes.push({ kind: 'add_note', table: firstLine(note.text) })
+        continue
+      }
       let changed = false
       if (normText(text(area.el, 'TEXT')) !== normText(note.text)) {
         set(area.el, 'TEXT', note.text)
         changed = true
       }
-      const at = toDiagram(diagramId, note)
       if (Math.abs(at.l - Number(text(control.el, 'L'))) > 2 || Math.abs(at.t - Number(text(control.el, 'T'))) > 2) {
         set(control.el, 'L', String(at.l))
         set(control.el, 'T', String(at.t))
         changed = true
       }
-      if (changed) changes.push({ kind: 'alter_note', table: note.text.split(/\r?\n/)[0]!.slice(0, 40) })
+      if (changed) changes.push({ kind: 'alter_note', table: firstLine(note.text) })
+    }
+  }
+
+  // Table colors that were changed: the fill of the table's control on that diagram.
+  for (const [diagramId, wanted] of Object.entries(options.diagrams ?? {})) {
+    if (!wanted.colors) continue
+    const controls = controlsOf(diagramId)
+    const fills = controls.map((c) => text(c.el, 'BRUSH').split(',')[1]?.trim() ?? '').filter(Boolean)
+    // The usual color is the one most tables on the diagram have.
+    const usual = [...new Set(fills)].sort((a, b) => fills.filter((f) => f === b).length - fills.filter((f) => f === a).length)[0] ?? '16119285'
+    for (const [key, color] of Object.entries(wanted.colors)) {
+      const entity = entities.get(lower(key))
+      const control = entity && controls.find((c) => text(c.el, 'ID') === entity.id)
+      if (!entity || !control) continue
+      const rgb = color ? /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color) : null
+      if (color && !rgb) continue
+      // Delphi colors are 0x00BBGGRR.
+      const fill = rgb ? String(parseInt(rgb[3]!, 16) * 65536 + parseInt(rgb[2]!, 16) * 256 + parseInt(rgb[1]!, 16)) : usual
+      const [style] = text(control.el, 'BRUSH').split(',')
+      if (text(control.el, 'BRUSH').split(',')[1]?.trim() === fill) continue
+      set(control.el, 'BRUSH', `${style?.trim() || '0'},${fill}`, ['PEN', 'FONT', 'TR', 'AS'])
+      changes.push({ kind: 'color_table', table: text(entity.el, 'NAME') })
     }
   }
 

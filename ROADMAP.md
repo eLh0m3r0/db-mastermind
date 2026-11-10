@@ -307,9 +307,9 @@ Not a clone: their features, rethought and connected to live databases, the know
   model's toolbar when the ALTER script is wanted and remembered for that file
 - ✅ The project's other diagrams are subject areas of the model: each shows its own tables in its own layout, a
   table can be on several, tables added or moved there are saved back to that diagram
-- ✅ Table colors (mapped to the nearest of the diagram's eight colors) and text areas (as notes) of every diagram;
-  a text area's new text or place is saved back. Recoloring, new and deleted notes are not saved to the DeZign
-  file yet; group boxes and stamps are kept in the file and not shown ⬜
+- ✅ Table colors (mapped to the nearest of the diagram's eight colors) and text areas (as notes) of every diagram.
+  Edited, new and removed notes and recolored tables are saved back to that diagram
+- ⬜ Group boxes and stamps (kept in the file, not shown)
 
 ### 8.2 Save it back 🚧 (draft: works end to end, not yet opened in DeZign itself)
 - ✅ Save writes the edited model into the same `.dez` or folder project: only the touched elements change,

@@ -468,9 +468,38 @@ describe('saving back into a DeZign project', () => {
 
   it('saves the text and place of an edited text area', () => {
     const tables = model(single)
-    const r = saveToDezign(single, tables, model(single), { normalize: viaDbml, diagrams: { '1': { notes: [{ id: 'T1', text: 'Prodej a fakturace', x: 40, y: -40 }, { id: 'unknown', text: 'x', x: 0, y: 0 }] } } })
+    const r = saveToDezign(single, tables, model(single), { normalize: viaDbml, diagrams: { '1': { notes: [{ id: 'T1', text: 'Prodej a fakturace', x: 40, y: -40 }] } } })
     expect(r.changes).toEqual([{ kind: 'alter_note', table: 'Prodej a fakturace' }])
     expect(changedLines(dez, r.files[0]!.text)).toEqual(['<TEXT>Prodej a fakturace</TEXT>', '<L>140</L>'])
+  })
+
+  it('adds, removes and recolors what is on a diagram', () => {
+    const tables = model(single)
+    seq = 0
+    const r = saveToDezign(single, tables, model(single), {
+      normalize: viaDbml,
+      newId: () => `NEW-${++seq}`,
+      diagrams: { '1': { notes: [{ id: 'fresh', text: 'Fakturace\nod roku 2026', x: 300, y: 400 }], colors: { 'shop.customer': '#cfe0f7', 'shop.invoice': null, 'shop.unknown': '#ffffff' } } },
+    })
+    // The old text area is not in the list any more; the new one is; the customer gets a color and the invoice loses its own.
+    expect(r.changes).toEqual([
+      { kind: 'drop_note', table: 'Prodej' },
+      { kind: 'add_note', table: 'Fakturace' },
+      { kind: 'color_table', table: 'customer' },
+      { kind: 'color_table', table: 'invoice' },
+    ])
+    const out = r.files[0]!.text
+    expect(out).not.toContain('<TEXT>Prodej</TEXT>')
+    expect(out).toMatch(/<TEXTAR>\s*<NAME>TextArea1<\/NAME>\s*<ID>32<\/ID>\s*<TEXT>Fakturace\nod roku 2026<\/TEXT>/)
+    const after = readDezign(out).diagrams[0]!
+    expect(after.notes).toEqual([{ id: '32', text: 'Fakturace\nod roku 2026', x: 300, y: 400 }])
+    // #cfe0f7 as a Delphi color is 0xF7E0CF; the invoice went back to the fill the other tables have.
+    expect(after.colors).toEqual({ 'shop.customer': '#cfe0f7' })
+    expect(out).toContain('<BRUSH>0,16244943</BRUSH>')
+    expect(dezignIntegrity(out)).toEqual([])
+    // Saying the same again changes nothing.
+    const again = saveToDezign([{ path: 'shop.dez', text: out }], tables, tables, { normalize: viaDbml, diagrams: { '1': { notes: after.notes, colors: { 'shop.customer': '#cfe0f7' } } } })
+    expect(again.changes).toEqual([])
   })
 
   it('works on a folder project: one file per touched object, files named like their neighbours', () => {

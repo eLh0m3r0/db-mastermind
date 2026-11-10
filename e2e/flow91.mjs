@@ -110,6 +110,17 @@ try {
   await win.getByText(/Nothing to save/).last().waitFor({ timeout: 10000 })
   console.log('second save untouched:', readFileSync(dez, 'latin1') === after)
 
+  // Notes and colors of the diagram are saved too: a recolored table and a new note are listed as changes, and a
+  // tab that never loaded the file's notes (an older build) cannot remove them.
+  const state = await win.evaluate(async (path) => {
+    const file = await window.mastermind.api.openModelFile(path)
+    const base = { path, text: file.text, hash: file.imported.hash, positions: file.imported.positions, dryRun: true }
+    const full = await window.mastermind.api.saveDezignModel({ ...base, layout: true, notes: [...file.imported.notes, { id: 'n1', text: 'Nová poznámka', x: 10, y: 600 }], colors: { 'shop.customer': 1 } })
+    const old = await window.mastermind.api.saveDezignModel({ ...base, notes: [] })
+    return { full: full.changes.map((c) => c.kind).sort().join(','), old: old.changes.length }
+  }, dez)
+  console.log('layout changes:', state.full, '| tab without loaded notes removes nothing:', state.old === 0)
+
   // What changed since a version archived in the project: the payment table came after "First release".
   await win.getByTestId('model-compare-versions').click()
   await win.getByText('v1 · First release · 2026-01-15').click()
