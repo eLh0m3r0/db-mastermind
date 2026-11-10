@@ -270,6 +270,77 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 
 ---
 
+## Milestone 8 — Modeling without a license
+
+Teams that design databases in DeZign for Databases (and similar paid modelers) can open their models here,
+keep working, and get what those tools charge extra for (ALTER scripts against a live database) for free.
+Not a clone: their features, rethought and connected to live databases, the knowledge base and AI.
+
+**Rules for everything in this milestone** (the owner's requirement: obvious at first sight, nothing to explain):
+
+1. **A model is a document.** Open the file, edit, save. It saves back in the format it came in. No import
+   wizard, no project setup, no conversion step.
+2. **No connection needed.** A model opens without any database. A database is picked at the moment it is
+   needed ("Compare with database", "Generate ALTER") and remembered for that model.
+3. **No new settings.** Checks and conventions ship with sensible defaults. What a team wants to change lives
+   in a file next to the model, not in a settings page.
+4. **One screen.** Canvas, table editor, issues. Everything else sits behind one menu and the command palette.
+5. **Agents get the model like everything else**: the same tools and permissions as the connection it is linked
+   to; nothing extra to configure.
+
+### 8.1 Open a DeZign model and use it ⬜ (next)
+- ⬜ Open `.dez` files (DeZign 4 to 14, file formats 41–140) as model documents: File → Open, drag & drop,
+  double-click in Explorer/Finder. Tables, columns, types, keys, relationships, indexes, defaults, comments, schemas
+- ⬜ The DeZign diagrams come along: subdiagrams become subject areas with their original positions and colors
+- ⬜ Everything a model already does works on it: DDL for any database, ALTER script against a live database,
+  compare with an older version, data dictionary, AI review
+- ⬜ What the model can't show yet (domains, triggers, procedures, sequences) is listed, never dropped silently
+- ⬜ Folder projects (`.dezproj`, one file per object) — needs a sample from the owner's company
+- ⬜ Czech names and comments read correctly — needs a sample saved on a Czech Windows
+
+### 8.2 Save it back ⬜
+- ⬜ Save to the same `.dez`: only the touched elements change, everything else stays byte for byte, the file
+  keeps its format version (so the DeZign that wrote it opens it)
+- ⬜ First: rename, comments, types, nullability, defaults, add/remove column, keys and indexes
+- ⬜ Then: new tables and relationships, with a place in the diagram
+- ⬜ Every kind of edit checked by opening the result in DeZign (14-day trial on Windows, or a colleague's license)
+- ⬜ Folder projects (`.dezproj`)
+
+### 8.3 The model holds a whole database ⬜
+- ⬜ DBML as it is today: check constraints, `TablePartial` (reusable column sets, e.g. audit columns), custom
+  properties, sample records
+- ⬜ Views, sequences, triggers and procedures in the model, kept as plain SQL
+- ⬜ Domains (named reusable types)
+- ⬜ Several diagrams per model with their own layout, notes and group boxes
+- ⬜ A model as a folder (one file per table, SQL files for the rest): small Git diffs, merges without conflicts
+
+### 8.4 Easy on the first day ⬜
+- ⬜ Start page: "Open a model" and "New model" next to the connections; a model file opened from the system
+  goes straight to the designer with the connection sidebar out of the way
+- ⬜ Model checks that run by themselves (missing keys, orphan columns, duplicate indexes, type mismatches
+  between a foreign key and its target, names that break the model's own prevailing convention): a quiet
+  counter, click to jump, one-click fix where it is safe
+- ⬜ "Find relationships": undeclared foreign keys suggested from names and, when a database is linked, checked
+  against the real data
+- ⬜ Print / PDF of a diagram on several pages
+
+### Later, when the pilot asks for it 💡
+- Naming rules and a glossary of abbreviations kept in the knowledge base (logical name ↔ physical name)
+- Logical model: one model, several target databases
+- Test data generated in foreign-key order
+- Command line for CI: check a model, diff it against a database, write the documentation
+- Liquibase / Alembic output next to Flyway
+- Enterprise Architect repositories, read-only (`.qea` is SQLite; server repositories are ordinary connections)
+- Other modelers' files (MySQL Workbench, PowerDesigner, pgModeler, erwin XML) when someone brings one
+
+### Not planned
+- UML / BPMN, NoSQL document modeling, an own model server (Git and the team folder do that), a stored
+  procedure debugger, a report designer
+- A separate modeler application: the designer is its own module in the code and opens like a stand-alone
+  tool, but one install and one update channel stay
+
+---
+
 ## Comparison target
 
 What Beekeeper Studio's free edition limits or lacks, and what DB Mastermind ships for free:
