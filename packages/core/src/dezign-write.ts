@@ -53,6 +53,9 @@ export type DezignChangeKind =
   | 'alter_relationship'
   | 'move_table'
   | 'alter_note'
+  | 'add_diagram'
+  | 'add_to_diagram'
+  | 'remove_from_diagram'
   | 'add_note'
   | 'drop_note'
   | 'color_table'
@@ -87,7 +90,11 @@ export interface SaveDezignOptions {
   diagrams?: Record<
     string,
     {
+      /** Given for a diagram that is not in the project yet: it is created with this name. */
+      name?: string
       tables?: string[]
+      /** `tables` is the whole list: tables not on it are taken off the diagram (never out of the model). */
+      exact?: boolean
       positions?: Record<string, { x: number; y: number }>
       /** All the text areas the diagram should have: others are removed from it, unknown ids are new ones. */
       notes?: { id: string; text: string; x: number; y: number }[]
@@ -823,24 +830,82 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     changes.push({ kind: 'add_table', table: table.name })
   }
 
-  // Tables put on other diagrams (a new table drawn in a subject area belongs to it as well as to the main diagram).
-  for (const [diagramId, wanted] of Object.entries(options.diagrams ?? {})) {
-    if (diagramId === layout.diagramId) continue
+  // Diagrams that are asked for and not in the project yet are made like a neighbour; from here on every diagram
+  // goes by its id in the file.
+  const diagramRequests: [id: string, wanted: NonNullable<SaveDezignOptions['diagrams']>[string]][] = []
+  for (const [key, wanted] of Object.entries(options.diagrams ?? {})) {
+    const existing = project.list('DIAGRAM')
+    if (key === layout.diagramId || existing.some((d) => text(d.el, 'ID') === key) || wanted.name === undefined) {
+      diagramRequests.push([key, wanted])
+      continue
+    }
+    const id = newObjectId()
+    const template = (existing.find((d) => text(d.el, 'ISMAINDIAGRAM') !== '1') ?? existing[0])?.el
+    const el = template ? clone(template, [[text(template, 'ID'), id]]) : container('DIAGRAM', [leaf('ID', id), leaf('NAME'), leaf('ISMAINDIAGRAM', '0')])
+    for (const tag of ['DESC', 'TODO']) if (kid(el, tag)) set(el, tag, '')
+    set(el, 'NAME', wanted.name)
+    set(el, 'ISMAINDIAGRAM', '0', ['BGCOLOR', 'DISPLAYLEVEL'])
+    if (kid(el, 'POSNR')) set(el, 'POSNR', String(existing.length))
+    project.add('DIAGRAM', el, id)
+    diagramRequests.push([id, wanted])
+    changes.push({ kind: 'add_diagram', table: wanted.name })
+  }
+  const diagramName = (id: string) => text(project.list('DIAGRAM').find((d) => text(d.el, 'ID') === id)?.el, 'NAME')
+
+  // Which tables the other diagrams show (a new table drawn in a subject area belongs to it as well as to the main
+  // diagram). A table taken off a diagram takes the relationship lines that ended at it along.
+  const membershipChanged = new Set<string>()
+  for (const [diagramId, wanted] of diagramRequests) {
+    if (diagramId === layout.diagramId || !wanted.tables) continue
     const shown = new Set(controlsOf(diagramId).map((c) => text(c.el, 'ID')))
     const positions = new Map(Object.entries(wanted.positions ?? {}).map(([key, p]) => [lower(key), p]))
-    for (const key of (wanted.tables ?? []).map(lower)) {
+    const keep = new Set<string>()
+    for (const key of wanted.tables.map(lower)) {
       const entity = entities.get(key)
       const table = targetByKey.get(key)
-      if (!entity || !table || shown.has(entity.id)) continue
+      if (!entity || !table) continue
+      keep.add(entity.id)
+      if (shown.has(entity.id)) continue
       addControl(entity, table, diagramId, positions.get(key))
       shown.add(entity.id)
-      if (!changes.some((x) => x.kind === 'add_table' && x.table === table.name)) changes.push({ kind: 'move_table', table: table.name })
+      membershipChanged.add(diagramId)
+      if (!changes.some((x) => x.kind === 'add_table' && x.table === table.name)) changes.push({ kind: 'add_to_diagram', table: table.name, name: diagramName(diagramId) })
+    }
+    if (!wanted.exact) continue
+    const entityNames = new Map([...entities.values()].map((e) => [e.id, text(e.el, 'NAME')]))
+    for (const control of controlsOf(diagramId)) {
+      const id = text(control.el, 'ID')
+      // Only tables of the model: views and whatever else sits on the diagram are not ours to take off.
+      if (keep.has(id) || !entityNames.has(id)) continue
+      project.remove('ENTC', control)
+      membershipChanged.add(diagramId)
+      changes.push({ kind: 'remove_from_diagram', table: entityNames.get(id)!, name: diagramName(diagramId) })
     }
   }
 
   for (const [key, entity] of entities) {
     entityIds.set(key, entity.id)
     attrIds.set(key, new Map([...entity.attrs].map(([name, a]) => [name, text(a, 'ID')])))
+  }
+
+  /** Draws a relationship on a diagram that shows both its tables and does not have the line yet: straight, between their middles. */
+  const addConnector = (relId: string, diagramId: string, childId: string, parentId: string) => {
+    const controls = project.list('ENTC')
+    const of = (entityId: string) => controls.find((c) => text(c.el, 'ID') === entityId && text(c.el, 'DIAGRAMID') === diagramId)?.el
+    const from = of(childId)
+    const to = of(parentId)
+    if (!from || !to || project.list('RELC').some((c) => text(c.el, 'ID') === relId && text(c.el, 'DIAGRAMID') === diagramId)) return
+    const connectorTemplate = project.list('RELC')[0]?.el
+    const middle = (c: El) => ({ x: Math.round(Number(text(c, 'L')) + Number(text(c, 'W')) / 2) || 0, y: Math.round(Number(text(c, 'T')) + Number(text(c, 'H')) / 2) || 0 })
+    const connector = connectorTemplate ? clone(connectorTemplate) : container('RELC', [leaf('ID'), leaf('DIAGRAMID'), leaf('FONT', 'Arial,8,,0,clWindowText,0'), leaf('PEN', '1,1,4,0'), container('POINTS', [])])
+    remove(connector, kid(connector, 'ROUTING'))
+    set(connector, 'ID', relId)
+    if (kid(connector, 'DIAGRAMID') || diagramId) set(connector, 'DIAGRAMID', diagramId, ['FONT', 'PEN', 'HIDDEN', 'POINTS'])
+    if (kid(connector, 'HIDDEN')) set(connector, 'HIDDEN', '0')
+    let points = kid(connector, 'POINTS')
+    if (!points) insert(connector, (points = container('POINTS', [])))
+    fill(points, [middle(from), middle(to)].map((p) => container('POINT', [leaf('X', String(p.x)), leaf('Y', String(p.y))])))
+    project.add('RELC', connector, controlFileName('relc', diagramId, relId))
   }
 
   // --- apply: relationships ---------------------------------------------------------------------------
@@ -938,26 +1003,23 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
       }),
     )
     project.add('REL', el, relFileName(el))
-    // A connector in every diagram that shows both tables, as a straight line between their middles.
-    const connectorTemplate = project.list('RELC')[0]?.el
-    const controls = project.list('ENTC')
-    for (const diagramId of new Set(controls.map((c) => text(c.el, 'DIAGRAMID')))) {
-      const of = (entityId: string) => controls.find((c) => text(c.el, 'ID') === entityId && text(c.el, 'DIAGRAMID') === diagramId)?.el
-      const from = of(child.id)
-      const to = of(parent.id)
-      if (!from || !to) continue
-      const middle = (c: El) => ({ x: Math.round(Number(text(c, 'L')) + Number(text(c, 'W')) / 2) || 0, y: Math.round(Number(text(c, 'T')) + Number(text(c, 'H')) / 2) || 0 })
-      const connector = connectorTemplate ? clone(connectorTemplate) : container('RELC', [leaf('ID'), leaf('DIAGRAMID'), leaf('FONT', 'Arial,8,,0,clWindowText,0'), leaf('PEN', '1,1,4,0'), container('POINTS', [])])
-      remove(connector, kid(connector, 'ROUTING'))
-      set(connector, 'ID', id)
-      if (kid(connector, 'DIAGRAMID') || diagramId) set(connector, 'DIAGRAMID', diagramId, ['FONT', 'PEN', 'HIDDEN', 'POINTS'])
-      if (kid(connector, 'HIDDEN')) set(connector, 'HIDDEN', '0')
-      let points = kid(connector, 'POINTS')
-      if (!points) insert(connector, (points = container('POINTS', [])))
-      fill(points, [middle(from), middle(to)].map((p) => container('POINT', [leaf('X', String(p.x)), leaf('Y', String(p.y))])))
-      project.add('RELC', connector, controlFileName('relc', diagramId, id))
-    }
+    // A connector in every diagram that shows both tables.
+    for (const diagramId of new Set(project.list('ENTC').map((c) => text(c.el, 'DIAGRAMID')))) addConnector(id, diagramId, child.id, parent.id)
     changes.push({ kind: 'add_relationship', table: table.name, name: fk.refTable })
+  }
+
+  // Diagrams that gained or lost tables: every relationship between two tables on the diagram is drawn there, and
+  // no line is left that ends at a table that is not.
+  for (const diagramId of membershipChanged) {
+    const onDiagram = new Set(controlsOf(diagramId).map((c) => text(c.el, 'ID')))
+    const clusters = new Map(project.list('SUBCAT').map((x) => [text(x.el, 'ID'), text(x.el, 'AOID')]))
+    const ends = new Map(project.list('REL').map((r) => [text(r.el, 'ID'), { child: text(r.el, 'CHILDOBJECTID'), parent: text(r.el, 'PARENTOBJECTID') }]))
+    for (const c of project.list('RELC')) {
+      if (text(c.el, 'DIAGRAMID') !== diagramId) continue
+      const rel = ends.get(text(c.el, 'ID'))
+      if (rel && (!onDiagram.has(rel.child) || !onDiagram.has(clusters.get(rel.parent) ?? rel.parent))) project.remove('RELC', c)
+    }
+    for (const [relId, rel] of ends) if (!clusters.has(rel.parent)) addConnector(relId, diagramId, rel.child, rel.parent)
   }
 
   // --- apply: positions of tables moved in the diagram ----------------------------------------------------
@@ -978,7 +1040,7 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     }
   }
 
-  for (const [diagramId, wanted] of Object.entries(options.diagrams ?? {})) {
+  for (const [diagramId, wanted] of diagramRequests) {
     if (diagramId === layout.diagramId || !wanted.positions) continue
     const idToKey = new Map([...entities].map(([key, e]) => [e.id, key]))
     const positions = new Map(Object.entries(wanted.positions).map(([key, p]) => [lower(key), p]))
@@ -1004,7 +1066,7 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
   const firstLine = (value: string) => value.split(/\r?\n/)[0]!.slice(0, 40)
 
   // Text areas of each diagram whose list was given: changed text or place, new ones, and the ones taken away.
-  for (const [diagramId, wanted] of Object.entries(options.diagrams ?? {})) {
+  for (const [diagramId, wanted] of diagramRequests) {
     if (!wanted.notes) continue
     const onDiagram = (c: Slot) => !kid(c.el, 'DIAGRAMID') || text(c.el, 'DIAGRAMID') === diagramId
     const keep = new Set(wanted.notes.map((n) => n.id))
@@ -1061,7 +1123,7 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
   }
 
   // Table colors that were changed: the fill of the table's control on that diagram.
-  for (const [diagramId, wanted] of Object.entries(options.diagrams ?? {})) {
+  for (const [diagramId, wanted] of diagramRequests) {
     if (!wanted.colors) continue
     const controls = controlsOf(diagramId)
     const fills = controls.map((c) => text(c.el, 'BRUSH').split(',')[1]?.trim() ?? '').filter(Boolean)

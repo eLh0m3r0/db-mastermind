@@ -301,13 +301,13 @@ function nodeHeight(t: TableInfo, keysOnly: boolean, fk: Set<string>, ref: Set<s
   return HEADER + visible * ROW + (keysOnly && visible < t.columns.length ? ROW : 0) + 2
 }
 
-function DiagramInner({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors'>>) => void }) {
+function DiagramInner({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables'>>) => void }) {
   const tr = useT()
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const loadSchema = useConnections((s) => s.loadSchema)
   const openTab = useWorkspace((s) => s.open)
   const updateTab = useWorkspace((s) => s.update)
-  const patchLayout = (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors'>>) => (onLayout ? onLayout(patch) : updateTab(tab.id, patch))
+  const patchLayout = (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables'>>) => (onLayout ? onLayout(patch) : updateTab(tab.id, patch))
   const dark = useSettings((s) => s.dark)
   // A model (DBML) replaces the live schema; designing it writes the result back to the DBML text.
   const schema = model ?? runtime?.schema
@@ -629,7 +629,7 @@ function DiagramInner({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab;
       setNodes(display.map((d) => ({ id: d.key, type: 'table', position: positions[d.key]!, data: nodeData(d) })))
       requestAnimationFrame(() => flow.fitView({ padding: 0.15, duration: 300, maxZoom: 1 }))
       // In a custom diagram, pin the layout so adding a table doesn't rearrange the others.
-      if (tab.tables && display.some((d) => !saved[d.key])) updateTab(tab.id, { positions: { ...saved, ...positions } })
+      if (tab.tables && display.some((d) => !saved[d.key])) patchLayout({ positions: { ...saved, ...positions } })
     } finally {
       setLayouting(false)
     }
@@ -819,7 +819,7 @@ function DiagramInner({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab;
   /** Search result: adds the table to a custom diagram, otherwise focuses on it. */
   const pickTable = (t: TableInfo) => {
     if (tab.tables && !focusName) {
-      if (!tab.tables.includes(keyOf(t))) updateTab(tab.id, { tables: [...tab.tables, keyOf(t)] })
+      if (!tab.tables.includes(keyOf(t))) patchLayout({ tables: [...tab.tables, keyOf(t)] })
     } else setFocusName(t.name)
     setSearch('')
   }
@@ -827,7 +827,7 @@ function DiagramInner({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab;
   const addRelated = (t: TableInfo) => {
     if (!schema || !tab.tables) return
     const keys = neighbourhood(schema, t, 1)
-    updateTab(tab.id, { tables: [...new Set([...tab.tables, ...keys])] })
+    patchLayout({ tables: [...new Set([...tab.tables, ...keys])] })
   }
 
   const currentPositions = () => Object.fromEntries(nodes.map((n) => [n.id, { x: Math.round(n.position.x), y: Math.round(n.position.y) }]))
@@ -1316,7 +1316,7 @@ function DiagramInner({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab;
                 ? [
                     'separator' as const,
                     { label: tr('Add related tables'), icon: <Plus size={13} />, onClick: () => addRelated(n.data.table) },
-                    { label: tr('Remove from diagram'), onClick: () => updateTab(tab.id, { tables: tab.tables!.filter((k) => k !== keyOf(n.data.table)) }) },
+                    { label: tr('Remove from diagram'), onClick: () => patchLayout({ tables: tab.tables!.filter((k) => k !== keyOf(n.data.table)) }) },
                   ]
                 : []),
             ])
@@ -1384,7 +1384,7 @@ function DiagramInner({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab;
   )
 }
 
-export function DiagramView({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors'>>) => void }) {
+export function DiagramView({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables'>>) => void }) {
   return (
     <ReactFlowProvider>
       <DiagramInner tab={tab} model={model} onApplyModel={onApplyModel} onLayout={onLayout} />

@@ -24,7 +24,7 @@ import { IssuesChip, IssuesPanel } from './ModelIssues'
 import { rememberModelDatabase } from '@/lib/files'
 import { connectAndSelect } from '../sidebar/Sidebar'
 import { editorTheme } from '../query/SqlEditor'
-import { confirmAction } from '@/components/ui/ConfirmDialog'
+import { askText, confirmAction } from '@/components/ui/ConfirmDialog'
 
 /** One-click AI tasks on the model: [menu label, request]. */
 const MODEL_TASKS: [string, string][] = [
@@ -179,7 +179,12 @@ export function ModelView({ tab }: { tab: ModelTab }) {
       })
       if (!ok) return
       const done = await api.saveDezignModel(request)
-      updateTab(tab.id, { dirty: false, text, source: { ...source, hash: done.hash } })
+      // What was new has ids of its own in the file now (diagrams, notes): the tab takes the layout back from there,
+      // and keeps the text as it was typed.
+      const selected = diagram?.name
+      const { text: _saved, title: _title, dirty: _dirty, ...fresh } = modelTabFromFile(await api.openModelFile(source.path).then((f) => f!), liveSchema?.defaultSchema, { quiet: true })
+      updateTab(tab.id, { ...fresh, dirty: false, text, source: { ...source, hash: done.hash, layout: true } })
+      if (diagram) setArea(fresh.diagrams?.find((d) => d.name === selected) ? `d:${fresh.diagrams.find((d) => d.name === selected)!.id}` : '')
       toast({ kind: 'success', message: t('Saved to {file}', { file: name }), detail: done.backup ? t('Backup of the previous files: {dir}', { dir: done.backup }) : undefined })
     } catch (err) {
       toast({ kind: 'error', message: t('Could not save the model'), detail: errorMessage(err) })
@@ -365,7 +370,15 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const keyOf = (x: { schema?: string; name: string }) => `${x.schema ?? ''}.${x.name}`
   const inArea = (x: { schema?: string; name: string }) => (diagram ? diagram.tables.includes(keyOf(x)) : group ? group.includes(x.name) : true)
   const shown = useMemo<SchemaSnapshot>(() => (diagram || group ? { ...snapshot, tables: snapshot.tables.filter(inArea) } : snapshot), [area, snapshot, model.groups, tab.diagrams])
-  const diagramTab = { ...tab, kind: 'diagram', colors: { ...groupColors, ...(diagram ? diagram.colors : tab.colors) }, notes: diagram ? diagram.notes : tab.notes, positions: diagram ? diagram.positions : tab.positions } as unknown as DiagramTab
+  const diagramTab = { ...tab, kind: 'diagram', colors: { ...groupColors, ...(diagram ? diagram.colors : tab.colors) }, notes: diagram ? diagram.notes : tab.notes, positions: diagram ? diagram.positions : tab.positions, tables: diagram ? diagram.tables : undefined } as unknown as DiagramTab
+  /** A new diagram of the project the model came from: empty at first, tables are added from the search above the canvas. */
+  const newDiagram = async () => {
+    const name = (await askText({ title: t('New diagram'), message: t('A diagram shows a part of the model: add tables with the search above the canvas, take them off from their menu. The tables stay in the model.'), placeholder: t('Name of the diagram'), confirmLabel: t('Create') }))?.trim()
+    if (!name) return
+    const id = `new:${crypto.randomUUID()}`
+    updateTab(tab.id, { dirty: true, diagrams: [...(tab.diagrams ?? []), { id, name, tables: [], positions: {} }] })
+    setArea(`d:${id}`)
+  }
   const patchDiagram = (id: string, patch: (d: NonNullable<ModelTab['diagrams']>[number]) => Partial<NonNullable<ModelTab['diagrams']>[number]>) =>
     updateTab(tab.id, { dirty: tab.source ? true : tab.dirty, diagrams: tab.diagrams?.map((d) => (d.id === id ? { ...d, ...patch(d) } : d)) })
 
@@ -432,9 +445,9 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           {t('Design with AI')}
         </Button>
         <div className="flex-1" />
-        {(areaNames.length > 0 || !!tab.diagrams?.length) && (
-          <Select inputSize="sm" className="w-44" value={area} onChange={(e) => setArea(e.target.value)} title={t('Subject areas: the model’s TableGroups and the diagrams of the project it came from')} data-testid="model-area">
-            <option value="">{tab.diagrams?.length ? t('Whole model') : t('All areas')}</option>
+        {(areaNames.length > 0 || !!tab.diagrams?.length || !!tab.source) && (
+          <Select inputSize="sm" className="w-44" value={area} onChange={(e) => (e.target.value === '+' ? void newDiagram() : setArea(e.target.value))} title={t('Subject areas: the model’s TableGroups and the diagrams of the project it came from')} data-testid="model-area">
+            <option value="">{tab.source ? t('Whole model') : t('All areas')}</option>
             {areaNames.map((g) => (
               <option key={`g:${g}`} value={`g:${g}`}>
                 {g}
@@ -445,6 +458,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
                 {d.name || t('Diagram')} ({d.tables.length})
               </option>
             ))}
+            {tab.source && <option value="+">{t('New diagram…')}</option>}
           </Select>
         )}
         <IssuesChip issues={issues} open={showIssues} onToggle={() => setShowIssues((v) => !v)} />
@@ -518,7 +532,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
             <DiagramView
               tab={diagramTab}
               key={area}
-              model={shown}
+              model={diagram ? snapshot : shown}
               onLayout={(patch) => (diagram ? patchDiagram(diagram.id, () => ({ ...patch, ...('positions' in patch ? { positions: patch.positions ?? {} } : {}) })) : updateTab(tab.id, { ...patch, dirty: tab.source ? true : tab.dirty }))}
               onApplyModel={(tables) => {
                 // Editing one area keeps the model's other tables; tables added there join the area.

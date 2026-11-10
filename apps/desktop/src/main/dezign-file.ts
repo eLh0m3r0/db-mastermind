@@ -88,7 +88,8 @@ export async function saveDezignModel(request: DezignSaveRequest): Promise<Dezig
   const withBare = <T>(entries: [string, T][]): [string, T][] => entries.flatMap(([key, v]) => (bare(key) ? [[key, v], [bare(key)!, v]] : [[key, v]]))
   const positions = Object.fromEntries(withBare(Object.entries(request.positions ?? {})))
   const diagrams: NonNullable<Parameters<typeof saveToDezign>[3]>['diagrams'] = Object.fromEntries(
-    (request.diagrams ?? []).map((d) => [d.id, { tables: d.tables.flatMap((key) => [key, ...(bare(key) ? [bare(key)!] : [])]), positions: Object.fromEntries(withBare(Object.entries(d.positions))), notes: d.notes }]),
+    // A tab that loaded the source's diagrams knows them whole: what it lists is what each diagram shows.
+    (request.diagrams ?? []).map((d) => [d.id, { name: d.name, exact: !!request.layout, tables: d.tables.flatMap((key) => [key, ...(bare(key) ? [bare(key)!] : [])]), positions: Object.fromEntries(withBare(Object.entries(d.positions))), notes: d.notes }]),
   )
   // Colors go to the file only where the palette color differs from what the file's own color maps to.
   const colorChanges = (diagramId: string, wanted: Record<string, number> | undefined) => {

@@ -309,6 +309,9 @@ Not a clone: their features, rethought and connected to live databases, the know
   table can be on several, tables added or moved there are saved back to that diagram
 - ✅ Table colors (mapped to the nearest of the diagram's eight colors) and text areas (as notes) of every diagram.
   Edited, new and removed notes and recolored tables are saved back to that diagram
+- ✅ Diagrams are managed here: "New diagram…" makes one in the project, tables are added to a diagram from the
+  search above the canvas and taken off from their menu (they stay in the model), and relationship lines follow
+  the tables on each diagram
 - ⬜ Group boxes and stamps (kept in the file, not shown)
 
 ### 8.2 Save it back 🚧 (draft: works end to end, not yet opened in DeZign itself)

@@ -456,7 +456,9 @@ describe('saving back into a DeZign project', () => {
     seq = 0
     const tables = model(single)
     const r = saveToDezign(single, tables, model(single), { normalize: viaDbml, diagrams: { '2': { tables: ['shop.customer', 'shop.invoice'], positions: { 'shop.customer': { x: 40, y: 0 }, 'shop.invoice': { x: 300, y: 120 } } } } })
-    expect(r.changes).toEqual([{ kind: 'move_table', table: 'invoice' }, { kind: 'move_table', table: 'customer' }])
+    expect(r.changes).toEqual([{ kind: 'add_to_diagram', table: 'invoice', name: 'd2' }, { kind: 'move_table', table: 'customer' }])
+    // Both ends of the relationship are on the diagram now: its line is drawn there too.
+    expect(r.files[0]!.text).toMatch(/<RELC>\s*<ID>30<\/ID>\s*<DIAGRAMID>2<\/DIAGRAMID>/)
     const second = readDezign(r.files[0]!.text).diagrams[1]!
     expect(second.tables).toEqual(['shop.customer', 'shop.invoice'])
     // The diagram's origin was the customer at 900,900: it moved 40 right, the invoice went to 300,120 from there.
@@ -471,6 +473,35 @@ describe('saving back into a DeZign project', () => {
     const r = saveToDezign(single, tables, model(single), { normalize: viaDbml, diagrams: { '1': { notes: [{ id: 'T1', text: 'Prodej a fakturace', x: 40, y: -40 }] } } })
     expect(r.changes).toEqual([{ kind: 'alter_note', table: 'Prodej a fakturace' }])
     expect(changedLines(dez, r.files[0]!.text)).toEqual(['<TEXT>Prodej a fakturace</TEXT>', '<L>140</L>'])
+  })
+
+  it('makes a new diagram, and takes a table off a diagram together with its relationship lines', () => {
+    const tables = model(single)
+    seq = 0
+    const made = saveToDezign(single, tables, model(single), { normalize: viaDbml, diagrams: { 'new:1': { name: 'Fakturace', exact: true, tables: ['shop.customer', 'shop.invoice'], positions: { 'shop.customer': { x: 0, y: 0 }, 'shop.invoice': { x: 400, y: 0 } } } } })
+    expect(made.changes).toEqual([
+      { kind: 'add_diagram', table: 'Fakturace' },
+      { kind: 'add_to_diagram', table: 'customer', name: 'Fakturace' },
+      { kind: 'add_to_diagram', table: 'invoice', name: 'Fakturace' },
+    ])
+    const afterMade = [{ path: 'shop.dez', text: made.files[0]!.text }]
+    // Objects are numbered in this file (…, 30, 31): the diagram is 32.
+    const third = readDezign(afterMade[0]!.text).diagrams[2]!
+    expect(third).toMatchObject({ id: '32', name: 'Fakturace', main: false, tables: ['shop.customer', 'shop.invoice'], positions: { 'shop.invoice': { x: 400, y: 0 } } })
+    expect(afterMade[0]!.text).toMatch(/<RELC>\s*<ID>30<\/ID>\s*<DIAGRAMID>32<\/DIAGRAMID>/)
+    expect(dezignIntegrity(afterMade[0]!.text)).toEqual([])
+
+    // The invoice leaves the new diagram: its control and the line go, the table stays in the model and on the main diagram.
+    const left = saveToDezign(afterMade, model(afterMade), model(afterMade), { normalize: viaDbml, diagrams: { '32': { exact: true, tables: ['shop.customer'] } } })
+    expect(left.changes).toEqual([{ kind: 'remove_from_diagram', table: 'invoice', name: 'Fakturace' }])
+    const out = left.files[0]!.text
+    expect(out).not.toMatch(/<DIAGRAMID>32<\/DIAGRAMID>\s*<W>\d+<\/W>[\s\S]{0,80}<ID>20<\/ID>/)
+    expect(out).not.toMatch(/<RELC>\s*<ID>30<\/ID>\s*<DIAGRAMID>32<\/DIAGRAMID>/)
+    expect(readDezign(out).diagrams.map((d) => d.tables.length)).toEqual([2, 1, 1])
+    expect(readDezign(out).tables).toHaveLength(2)
+    expect(dezignIntegrity(out)).toEqual([])
+    // Without `exact` a shorter list takes nothing away.
+    expect(saveToDezign(afterMade, model(afterMade), model(afterMade), { normalize: viaDbml, diagrams: { '32': { tables: ['shop.customer'] } } }).changes).toEqual([])
   })
 
   it('adds, removes and recolors what is on a diagram', () => {
