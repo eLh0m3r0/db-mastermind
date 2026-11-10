@@ -435,9 +435,20 @@ export interface OpenedModelFile {
     /** Table positions of the source's main diagram, keyed `schema.table`. */
     positions: Record<string, { x: number; y: number }>
     leftOut: DezignLeftOut
+    /** The source's other diagrams (subject areas): which tables each shows and where. */
+    diagrams: ModelDiagram[]
     /** Fingerprint of the model as read: saving back is refused when the source has changed since. */
     hash: string
   }
+}
+
+/** A named diagram of a model: a subset of its tables with their own layout. */
+export interface ModelDiagram {
+  id: string
+  name: string
+  /** Table keys, `schema.table`. */
+  tables: string[]
+  positions: Record<string, { x: number; y: number }>
 }
 
 export interface DezignSaveRequest {
@@ -447,6 +458,7 @@ export interface DezignSaveRequest {
   text: string
   hash: string
   positions?: Record<string, { x: number; y: number }>
+  diagrams?: ModelDiagram[]
   /** Schema the window puts schema-less tables under (keys of `positions`). */
   defaultSchema?: string
   /** Only report what would change. */

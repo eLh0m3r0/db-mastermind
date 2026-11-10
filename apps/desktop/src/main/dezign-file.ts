@@ -50,7 +50,14 @@ export async function openDezignModel(path: string): Promise<OpenedModelFile> {
   return {
     path,
     text,
-    imported: { from: 'dezign', tables: model.tables.length, positions: model.positions, leftOut: model.leftOut, hash: fingerprint(text) },
+    imported: {
+      from: 'dezign',
+      tables: model.tables.length,
+      positions: model.positions,
+      leftOut: model.leftOut,
+      diagrams: model.diagrams.filter((d) => !d.main && d.tables.length).map(({ id, name, tables, positions }) => ({ id, name, tables, positions })),
+      hash: fingerprint(text),
+    },
   }
 }
 
@@ -72,8 +79,11 @@ export async function saveDezignModel(request: DezignSaveRequest): Promise<Dezig
   const edited = parseDbml(request.text)
   if (edited.errors.length) throw new Error(`The model has errors (line ${edited.errors[0]!.line}): fix them before saving.`)
   // Tables without a schema sit under the connection's default schema in the window's diagram.
-  const positions = Object.fromEntries(Object.entries(request.positions ?? {}).flatMap(([key, p]) => (request.defaultSchema && key.startsWith(`${request.defaultSchema}.`) ? [[key, p], [key.slice(request.defaultSchema.length), p]] : [[key, p]])))
-  const result = saveToDezign(files, viaDbml(model.tables), edited.tables, { node: NODE, fallbackEncoding, positions, normalize: viaDbml })
+  const bare = (key: string) => (request.defaultSchema && key.startsWith(`${request.defaultSchema}.`) ? key.slice(request.defaultSchema.length) : undefined)
+  const withBare = <T>(entries: [string, T][]): [string, T][] => entries.flatMap(([key, v]) => (bare(key) ? [[key, v], [bare(key)!, v]] : [[key, v]]))
+  const positions = Object.fromEntries(withBare(Object.entries(request.positions ?? {})))
+  const diagrams = Object.fromEntries((request.diagrams ?? []).map((d) => [d.id, { tables: d.tables.flatMap((key) => [key, ...(bare(key) ? [bare(key)!] : [])]), positions: Object.fromEntries(withBare(Object.entries(d.positions))) }]))
+  const result = saveToDezign(files, viaDbml(model.tables), edited.tables, { node: NODE, fallbackEncoding, positions, diagrams, normalize: viaDbml })
   const outcome: DezignSaveOutcome = { changes: result.changes, written: result.files.length, deleted: result.deleted.length, hash: request.hash }
   if (request.dryRun || (!result.files.length && !result.deleted.length)) return outcome
 

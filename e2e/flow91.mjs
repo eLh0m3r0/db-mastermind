@@ -13,6 +13,7 @@ const rel = (id, name, parent, child, key, fk) => el('REL', `<NAME>${name}</NAME
 const entc = (id, l, t) => el('ENTC', `<ID>${id}</ID>\n<DIAGRAMID>1</DIAGRAMID>\n<W>240</W>\n<H>100</H>\n<L>${l}</L>\n<T>${t}</T>`)
 const settings = el('PROJECTSETTINGS', el('COMMONSETTINGS', '<PROJECTNAME /></PROJECTNAME />\n<FILEFORMATVERSION>140</FILEFORMATVERSION>'))
 const diagram = el('DIAGRAM', '<ID>1</ID>\n<NAME>Main</NAME>\n<ISMAINDIAGRAM>1</ISMAINDIAGRAM>')
+const billing = el('DIAGRAM', '<ID>2</ID>\n<NAME>Billing</NAME>\n<ISMAINDIAGRAM>0</ISMAINDIAGRAM>')
 // "Zákazník" in Windows-1250 bytes under DeZign's Latin-1 declaration.
 const entities = [
   ent('10', 'customer', 'Z\xe1kazn\xedk, kter\xfd plat\xed \xf8\xe1dn\xec', 'A1', [attr('A1', 'id', 'BIGINT', '<NNCON>\n<VALUE>1</VALUE>\n</NNCON>'), attr('A2', 'name', 'TEXT')]),
@@ -21,9 +22,11 @@ const entities = [
 ]
 const rels = [rel('40', 'customer_invoice', '10', '20', 'A1', 'B2'), rel('41', 'invoice_payment', '20', '30', 'B1', 'C2')]
 const controls = [entc('10', 0, 0), entc('20', 900, 0), entc('30', 900, 700)]
+// The Billing diagram shows two of the three tables, laid out differently.
+const billingControls = [entc('20', 50, 50), entc('30', 50, 500)].map((c) => c.replace('<DIAGRAMID>1</DIAGRAMID>', '<DIAGRAMID>2</DIAGRAMID>'))
 const head = '<?xml version="1.0" encoding="iso-8859-1"?>'
 const dez = join(dir, 'shop.dez')
-writeFileSync(dez, `${head}<dezign>\n<VERSION>\n${settings}\n<DATADICT>\n<DBID>postgresql16</DBID>\n<DOMAINS>\n</DOMAINS>\n<ENTITIES>\n${entities.join('\n')}\n</ENTITIES>\n<VIEWS>\n<VIEW>\n<NAME>v</NAME>\n</VIEW>\n</VIEWS>\n<RELATIONSHIPS>\n${rels.join('\n')}\n</RELATIONSHIPS>\n</DATADICT>\n<DIAGRAMS>\n${diagram}\n<CONTROLS>\n<ENTITYCONTROLS>\n${controls.join('\n')}\n</ENTITYCONTROLS>\n</CONTROLS>\n</DIAGRAMS>\n</VERSION>\n</dezign>\n`, 'latin1')
+writeFileSync(dez, `${head}<dezign>\n<VERSION>\n${settings}\n<DATADICT>\n<DBID>postgresql16</DBID>\n<DOMAINS>\n</DOMAINS>\n<ENTITIES>\n${entities.join('\n')}\n</ENTITIES>\n<VIEWS>\n<VIEW>\n<NAME>v</NAME>\n</VIEW>\n</VIEWS>\n<RELATIONSHIPS>\n${rels.join('\n')}\n</RELATIONSHIPS>\n</DATADICT>\n<DIAGRAMS>\n${diagram}\n${billing}\n<CONTROLS>\n<ENTITYCONTROLS>\n${controls.join('\n')}\n${billingControls.join('\n')}\n</ENTITYCONTROLS>\n</CONTROLS>\n</DIAGRAMS>\n</VERSION>\n</dezign>\n`, 'latin1')
 const before = readFileSync(dez)
 
 const project = join(dir, 'ShopProject')
@@ -63,6 +66,14 @@ try {
   console.log('dez layout kept:', JSON.stringify(pos['shop.customer']), JSON.stringify(pos['shop.invoice']), JSON.stringify(pos['shop.payment']))
   console.log('toast:', await win.getByText(/Opened a DeZign for Databases model: 3 tables/).count(), await win.getByText(/views: 1/).count(), 'title:', await win.getByText('shop.dez', { exact: true }).count())
   console.log('source untouched by opening:', readFileSync(dez).equals(before))
+
+  // The source's second diagram is a subject area with its own tables and layout.
+  await win.getByTestId('model-area').selectOption({ label: 'Billing (2)' })
+  await win.waitForTimeout(1500)
+  const area = await positions()
+  console.log('billing diagram:', Object.keys(area).sort().join(','), JSON.stringify(area['shop.invoice']), JSON.stringify(area['shop.payment']))
+  await win.getByTestId('model-area').selectOption({ label: 'Whole model' })
+  await win.waitForTimeout(1200)
 
   // Save with no edits writes nothing.
   await win.getByRole('button', { name: 'Save', exact: true }).click()

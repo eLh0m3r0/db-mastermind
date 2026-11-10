@@ -12,25 +12,26 @@ const LEFT_OUT: [keyof NonNullable<OpenedModelFile['imported']>['leftOut'], stri
   ['triggers', 'triggers: {n}'],
   ['checks', 'check constraints: {n}'],
   ['relationshipsWithoutColumns', 'relationships without columns: {n}'],
-  ['subdiagrams', 'other diagrams: {n}'],
 ]
 
 /**
  * What a model tab takes from an opened file. Another tool's model (DeZign for Databases) keeps its source and
  * layout: Save writes the changes back into that file, Save as makes a .dbml model of it.
  */
-export function modelTabFromFile(file: OpenedModelFile, defaultSchema?: string): Pick<ModelTab, 'text' | 'path' | 'source' | 'dirty' | 'title' | 'positions'> {
+export function modelTabFromFile(file: OpenedModelFile, defaultSchema?: string): Pick<ModelTab, 'text' | 'path' | 'source' | 'dirty' | 'title' | 'positions' | 'diagrams'> {
   const name = file.path.split(/[\\/]/).pop() ?? t('Model')
-  if (!file.imported) return { text: file.text, path: file.path, source: undefined, dirty: false, title: name, positions: undefined }
+  if (!file.imported) return { text: file.text, path: file.path, source: undefined, dirty: false, title: name, positions: undefined, diagrams: undefined }
   // Tables without a schema land in the connection's default schema when the DBML is read.
-  const positions = Object.fromEntries(Object.entries(file.imported.positions).map(([key, p]) => [key.startsWith('.') ? `${defaultSchema ?? ''}${key}` : key, p]))
+  const keyed = (key: string) => (key.startsWith('.') ? `${defaultSchema ?? ''}${key}` : key)
+  const positions = Object.fromEntries(Object.entries(file.imported.positions).map(([key, p]) => [keyed(key), p]))
+  const diagrams = file.imported.diagrams.map((d) => ({ ...d, tables: d.tables.map(keyed), positions: Object.fromEntries(Object.entries(d.positions).map(([key, p]) => [keyed(key), p])) }))
   const leftOut = LEFT_OUT.filter(([key]) => file.imported!.leftOut[key] > 0).map(([key, label]) => t(label, { n: String(file.imported!.leftOut[key]) }))
   toast({
     kind: leftOut.length ? 'warning' : 'success',
     message: tp(file.imported.tables, { one: 'Opened a DeZign for Databases model: {n} table', many: 'Opened a DeZign for Databases model: {n} tables' }),
     detail: [leftOut.length ? `${t('Not in the model yet:')} ${leftOut.join(' · ')}` : '', t('Save writes your changes back into the DeZign file (a backup is kept); Save as makes a .dbml model.')].filter(Boolean).join('\n'),
   })
-  return { text: file.text, path: undefined, source: { kind: 'dezign', path: file.path, hash: file.imported.hash }, dirty: false, title: name, positions }
+  return { text: file.text, path: undefined, source: { kind: 'dezign', path: file.path, hash: file.imported.hash }, dirty: false, title: name, positions, diagrams: diagrams.length ? diagrams : undefined }
 }
 
 const CHANGE_LABELS: Record<DezignChange['kind'], string> = {

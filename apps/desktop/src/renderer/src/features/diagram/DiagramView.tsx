@@ -301,7 +301,7 @@ function nodeHeight(t: TableInfo, keysOnly: boolean, fk: Set<string>, ref: Set<s
   return HEADER + visible * ROW + (keysOnly && visible < t.columns.length ? ROW : 0) + 2
 }
 
-function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: SchemaSnapshot; onApplyModel?: (tables: TableInfo[]) => void }) {
+function DiagramInner({ tab, model, onApplyModel, onPositions }: { tab: DiagramTab; model?: SchemaSnapshot; onApplyModel?: (tables: TableInfo[]) => void; onPositions?: (positions: Record<string, { x: number; y: number }> | undefined) => void }) {
   const tr = useT()
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const loadSchema = useConnections((s) => s.loadSchema)
@@ -669,7 +669,8 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
   }, [hovered, edges, setNodes])
 
   const resetLayout = () => {
-    updateTab(tab.id, { positions: undefined })
+    if (onPositions) onPositions(undefined)
+    else updateTab(tab.id, { positions: undefined })
     tab.positions = undefined
     void layout()
   }
@@ -1267,7 +1268,8 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
             // Pin the whole layout, not just this table: otherwise the others come back from the "new tables go in
             // a column" rule after a restart instead of where they were.
             const positions = { ...currentPositions(), ...(tab.positions ?? {}), [node.id]: node.position }
-            updateTab(tab.id, { positions })
+            if (onPositions) onPositions(positions)
+            else updateTab(tab.id, { positions })
           }}
           onNodeDoubleClick={(_, n) => !isNote(n.id) && openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name })}
           onNodeContextMenu={(e, n) =>
@@ -1360,10 +1362,10 @@ function DiagramInner({ tab, model, onApplyModel }: { tab: DiagramTab; model?: S
   )
 }
 
-export function DiagramView({ tab, model, onApplyModel }: { tab: DiagramTab; model?: SchemaSnapshot; onApplyModel?: (tables: TableInfo[]) => void }) {
+export function DiagramView({ tab, model, onApplyModel, onPositions }: { tab: DiagramTab; model?: SchemaSnapshot; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing the layout (a model's named diagram keeps its own). */ onPositions?: (positions: Record<string, { x: number; y: number }> | undefined) => void }) {
   return (
     <ReactFlowProvider>
-      <DiagramInner tab={tab} model={model} onApplyModel={onApplyModel} />
+      <DiagramInner tab={tab} model={model} onApplyModel={onApplyModel} onPositions={onPositions} />
     </ReactFlowProvider>
   )
 }

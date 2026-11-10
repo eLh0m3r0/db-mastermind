@@ -72,6 +72,11 @@ export interface SaveDezignOptions {
   node?: { width: number; header: number; row: number }
   /** Diagram positions keyed `schema.table`: new tables are placed there, moved tables follow. */
   positions?: Record<string, { x: number; y: number }>
+  /**
+   * Other diagrams by id: the tables each should show (missing ones are added to it) and where they are. Tables
+   * are never taken off a diagram here.
+   */
+  diagrams?: Record<string, { tables?: string[]; positions?: Record<string, { x: number; y: number }> }>
   /** Ids for new objects (default: random GUIDs, or the next number in files that number their objects). */
   newId?: () => string
   /**
@@ -645,22 +650,26 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
   const { layout } = source
   const toDezign = (p: { x: number; y: number }) => ({ l: Math.round(p.x / layout.scaleX + layout.originX), t: Math.round(p.y / layout.scaleY + layout.originY) })
   const mainControls = () => project.list('ENTC').filter((s) => !kid(s.el, 'DIAGRAMID') || !layout.diagramId || text(s.el, 'DIAGRAMID') === layout.diagramId)
-  const addControl = (entity: Entity, table: TableInfo) => {
-    const controls = mainControls()
+  const controlsOf = (diagramId: string) => (diagramId === layout.diagramId ? mainControls() : project.list('ENTC').filter((c) => text(c.el, 'DIAGRAMID') === diagramId))
+  const toDiagram = (diagramId: string, p: { x: number; y: number }) => {
+    const l = diagramId === layout.diagramId ? layout : (source.diagrams.find((d) => d.id === diagramId)?.layout ?? { originX: 0, originY: 0, scaleX: 1, scaleY: 1 })
+    return { l: Math.round(p.x / l.scaleX + l.originX), t: Math.round(p.y / l.scaleY + l.originY) }
+  }
+  const addControl = (entity: Entity, table: TableInfo, diagramId = layout.diagramId, wanted = options.positions?.[`${table.schema ?? ''}.${table.name}`]) => {
+    const controls = controlsOf(diagramId)
     const template = controls[0]?.el ?? project.list('ENTC')[0]?.el
-    const wanted = options.positions?.[`${table.schema ?? ''}.${table.name}`]
     const right = Math.max(0, ...controls.map((c) => Number(text(c.el, 'L')) + Number(text(c.el, 'W')) || 0))
     const top = controls.length ? Math.min(...controls.map((c) => Number(text(c.el, 'T')) || 0)) : 40
-    const at = wanted ? toDezign(wanted) : { l: right + 60, t: top }
+    const at = wanted ? toDiagram(diagramId, wanted) : { l: right + 60, t: top }
     const el = template
       ? clone(template)
-      : container('ENTC', [leaf('ID'), leaf('DIAGRAMID', layout.diagramId), leaf('W', '200'), leaf('H', '120'), leaf('L'), leaf('T'), leaf('AS', '1')])
+      : container('ENTC', [leaf('ID'), leaf('DIAGRAMID', diagramId), leaf('W', '200'), leaf('H', '120'), leaf('L'), leaf('T'), leaf('AS', '1')])
     for (const tag of ['HIDDENATTR', 'ATTRCLIST', 'HEADERCOLOR']) if (kid(el, tag)) set(el, tag, '')
     set(el, 'ID', entity.id)
-    if (kid(el, 'DIAGRAMID') || layout.diagramId) set(el, 'DIAGRAMID', layout.diagramId, ['W'])
+    if (kid(el, 'DIAGRAMID') || diagramId) set(el, 'DIAGRAMID', diagramId, ['W'])
     set(el, 'L', String(at.l))
     set(el, 'T', String(at.t))
-    project.add('ENTC', el, controlFileName('entc', layout.diagramId, entity.id))
+    project.add('ENTC', el, controlFileName('entc', diagramId, entity.id))
   }
 
   // --- apply: tables ------------------------------------------------------------------------------------
@@ -726,6 +735,21 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     entities.set(tableKey(table), entity)
     addControl(entity, table)
     changes.push({ kind: 'add_table', table: table.name })
+  }
+
+  // Tables put on other diagrams (a new table drawn in a subject area belongs to it as well as to the main diagram).
+  for (const [diagramId, wanted] of Object.entries(options.diagrams ?? {})) {
+    if (diagramId === layout.diagramId) continue
+    const shown = new Set(controlsOf(diagramId).map((c) => text(c.el, 'ID')))
+    const positions = new Map(Object.entries(wanted.positions ?? {}).map(([key, p]) => [lower(key), p]))
+    for (const key of (wanted.tables ?? []).map(lower)) {
+      const entity = entities.get(key)
+      const table = targetByKey.get(key)
+      if (!entity || !table || shown.has(entity.id)) continue
+      addControl(entity, table, diagramId, positions.get(key))
+      shown.add(entity.id)
+      if (!changes.some((x) => x.kind === 'add_table' && x.table === table.name)) changes.push({ kind: 'move_table', table: table.name })
+    }
   }
 
   for (const [key, entity] of entities) {
@@ -865,6 +889,23 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
       set(c.el, 'T', String(at.t))
       const name = text(entities.get(key!)!.el, 'NAME')
       if (!changes.some((x) => x.kind === 'add_table' && x.table === name)) changes.push({ kind: 'move_table', table: name })
+    }
+  }
+
+  for (const [diagramId, wanted] of Object.entries(options.diagrams ?? {})) {
+    if (diagramId === layout.diagramId || !wanted.positions) continue
+    const idToKey = new Map([...entities].map(([key, e]) => [e.id, key]))
+    const positions = new Map(Object.entries(wanted.positions).map(([key, p]) => [lower(key), p]))
+    for (const c of controlsOf(diagramId)) {
+      const key = idToKey.get(text(c.el, 'ID'))
+      const p = key ? positions.get(key) : undefined
+      if (!p) continue
+      const at = toDiagram(diagramId, p)
+      if (Math.abs(at.l - Number(text(c.el, 'L'))) <= 2 && Math.abs(at.t - Number(text(c.el, 'T'))) <= 2) continue
+      set(c.el, 'L', String(at.l))
+      set(c.el, 'T', String(at.t))
+      const name = text(entities.get(key!)!.el, 'NAME')
+      if (!changes.some((x) => (x.kind === 'add_table' || x.kind === 'move_table') && x.table === name)) changes.push({ kind: 'move_table', table: name })
     }
   }
 

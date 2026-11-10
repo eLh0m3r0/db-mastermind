@@ -215,6 +215,16 @@ describe('DeZign for Databases models', () => {
     expect(spread['shop.invoice']!.y).toBeGreaterThan(400)
   })
 
+  it('lists every diagram with its tables and their places', () => {
+    const { diagrams } = readDezign(dez)
+    expect(diagrams.map((d) => [d.id, d.name, d.main, d.tables])).toEqual([
+      ['1', 'd1', true, ['shop.customer', 'shop.invoice']],
+      ['2', 'd2', false, ['shop.customer']],
+    ])
+    expect(diagrams[1]!.positions).toEqual({ 'shop.customer': { x: 0, y: 0 } })
+    expect(diagrams[1]!.layout).toMatchObject({ originX: 900, originY: 900 })
+  })
+
   it('becomes DBML that reads back the same', () => {
     const model = readDezign(dez)
     const dbml = toDbml(model.tables)
@@ -382,6 +392,20 @@ describe('saving back into a DeZign project', () => {
     const r = save(single, () => {}, { 'shop.customer': { x: 0, y: 0 }, 'shop.invoice': { x: 500, y: 200 } })
     expect(r.changes).toEqual([{ kind: 'move_table', table: 'invoice' }])
     expect(changedLines(dez, r.files[0]!.text)).toEqual(['<L>600</L>'])
+  })
+
+  it('puts a table on another diagram and moves tables there', () => {
+    seq = 0
+    const tables = model(single)
+    const r = saveToDezign(single, tables, model(single), { normalize: viaDbml, diagrams: { '2': { tables: ['shop.customer', 'shop.invoice'], positions: { 'shop.customer': { x: 40, y: 0 }, 'shop.invoice': { x: 300, y: 120 } } } } })
+    expect(r.changes).toEqual([{ kind: 'move_table', table: 'invoice' }, { kind: 'move_table', table: 'customer' }])
+    const second = readDezign(r.files[0]!.text).diagrams[1]!
+    expect(second.tables).toEqual(['shop.customer', 'shop.invoice'])
+    // The diagram's origin was the customer at 900,900: it moved 40 right, the invoice went to 300,120 from there.
+    expect(r.files[0]!.text).toMatch(/<ID>10<\/ID>\s*<DIAGRAMID>2<\/DIAGRAMID>\s*<W>120<\/W>\s*<H>44<\/H>\s*<L>940<\/L>\s*<T>900<\/T>/)
+    expect(r.files[0]!.text).toMatch(/<ID>20<\/ID>\s*<DIAGRAMID>2<\/DIAGRAMID>\s*<W>120<\/W>\s*<H>44<\/H>\s*<L>1200<\/L>\s*<T>1020<\/T>/)
+    // The main diagram is not touched.
+    expect(readDezign(r.files[0]!.text).positions).toEqual(readDezign(dez).positions)
   })
 
   it('works on a folder project: one file per touched object, files named like their neighbours', () => {

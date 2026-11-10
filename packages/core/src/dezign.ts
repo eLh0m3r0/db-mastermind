@@ -36,6 +36,17 @@ export interface DezignLeftOut {
   subdiagrams: number
 }
 
+export interface DezignDiagram {
+  id: string
+  name: string
+  main: boolean
+  /** Keys (`schema.table`) of the tables on the diagram. */
+  tables: string[]
+  positions: Record<string, { x: number; y: number }>
+  /** `x = (L - originX) * scaleX`: lets a writer turn positions back into DeZign's coordinates. */
+  layout: { originX: number; originY: number; scaleX: number; scaleY: number }
+}
+
 export interface DezignModel {
   /** `FILEFORMATVERSION`: 41, 51, 60, 120, 140… (the DeZign version times ten). */
   formatVersion: string
@@ -47,6 +58,8 @@ export interface DezignModel {
   positions: Record<string, { x: number; y: number }>
   /** How `positions` were derived from the main diagram: `x = (L - originX) * scaleX`. Lets a writer turn them back. */
   layout: { diagramId: string; originX: number; originY: number; scaleX: number; scaleY: number }
+  /** Every diagram of the project (the main one included) with the tables it shows and where. */
+  diagrams: DezignDiagram[]
   leftOut: DezignLeftOut
 }
 
@@ -273,25 +286,35 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const diagrams = kids(diagramsEl, 'DIAGRAM')
   leftOut.subdiagrams = Math.max(0, diagrams.length - 1)
   const mainId = text(diagrams.find((d) => text(d, 'ISMAINDIAGRAM') === '1') ?? diagrams[0], 'ID')
-  const controls = kids(kid(kid(diagramsEl, 'CONTROLS'), 'ENTITYCONTROLS'), 'ENTC')
-    .filter((c) => !kid(c, 'DIAGRAMID') || !mainId || text(c, 'DIAGRAMID') === mainId)
-    .map((c) => ({ entity: entities.get(text(c, 'ID')), x: Number(text(c, 'L')), y: Number(text(c, 'T')), w: Number(text(c, 'W')), h: Number(text(c, 'H')) }))
-    .filter((c): c is { entity: Entity; x: number; y: number; w: number; h: number } => !!c.entity && Number.isFinite(c.x) && Number.isFinite(c.y))
-  const positions: Record<string, { x: number; y: number }> = {}
-  const layout = { diagramId: mainId, originX: 0, originY: 0, scaleX: 1, scaleY: 1 }
-  if (controls.length) {
-    const median = (values: number[]) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 1
-    const node = options.node
+  const node = options.node
+  const median = (values: number[]) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 1
+  const allControls = kids(kid(kid(diagramsEl, 'CONTROLS'), 'ENTITYCONTROLS'), 'ENTC')
+    .map((c) => ({ diagram: kid(c, 'DIAGRAMID') ? text(c, 'DIAGRAMID') : mainId, entity: entities.get(text(c, 'ID')), x: Number(text(c, 'L')), y: Number(text(c, 'T')), w: Number(text(c, 'W')), h: Number(text(c, 'H')) }))
+    .filter((c): c is { diagram: string; entity: Entity; x: number; y: number; w: number; h: number } => !!c.entity && Number.isFinite(c.x) && Number.isFinite(c.y))
+  const diagramOf = (id: string, name: string, main: boolean): DezignDiagram => {
+    const controls = allControls.filter((c) => c.diagram === id)
+    const out: DezignDiagram = { id, name, main, tables: [], positions: {}, layout: { originX: 0, originY: 0, scaleX: 1, scaleY: 1 } }
+    if (!controls.length) return out
     // DeZign's tables are smaller than the target's: spread the layout by the typical size ratio.
     const sx = node ? Math.min(3, Math.max(1, median(controls.filter((c) => c.w > 0).map((c) => node.width / c.w)))) : 1
     const sy = node ? Math.min(3, Math.max(1, median(controls.filter((c) => c.h > 0).map((c) => (node.header + node.row * c.entity.table.columns.length) / c.h)))) : 1
     const minX = Math.min(...controls.map((c) => c.x))
     const minY = Math.min(...controls.map((c) => c.y))
-    Object.assign(layout, { originX: minX, originY: minY, scaleX: sx, scaleY: sy })
-    for (const c of controls) positions[`${c.entity.table.schema ?? ''}.${c.entity.table.name}`] = { x: Math.round((c.x - minX) * sx), y: Math.round((c.y - minY) * sy) }
+    out.layout = { originX: minX, originY: minY, scaleX: sx, scaleY: sy }
+    for (const c of controls) {
+      const key = `${c.entity.table.schema ?? ''}.${c.entity.table.name}`
+      out.tables.push(key)
+      out.positions[key] = { x: Math.round((c.x - minX) * sx), y: Math.round((c.y - minY) * sy) }
+    }
+    return out
   }
+  // Old single-diagram files have controls without a diagram to belong to.
+  const described = diagrams.length ? diagrams.map((d) => diagramOf(text(d, 'ID'), text(d, 'NAME'), text(d, 'ID') === mainId)) : allControls.length ? [diagramOf(mainId, '', true)] : []
+  const main = described.find((d) => d.main)
+  const positions = main?.positions ?? {}
+  const layout = { diagramId: mainId, ...(main?.layout ?? { originX: 0, originY: 0, scaleX: 1, scaleY: 1 }) }
 
-  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, leftOut }
+  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, diagrams: described, leftOut }
 }
 
 const PROJECT_SECTIONS: [folder: string, element: string][] = [

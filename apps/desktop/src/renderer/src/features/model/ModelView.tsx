@@ -161,7 +161,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
 
   /** A model opened from a DeZign project goes back into it: the changes are listed first, the old files are kept. */
   const saveToSource = async (source: NonNullable<ModelTab['source']>) => {
-    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, defaultSchema: liveSchema?.defaultSchema }
+    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, diagrams: tab.diagrams, defaultSchema: liveSchema?.defaultSchema }
     const name = source.path.split(/[\\/]/).pop() ?? ''
     try {
       const preview = await api.saveDezignModel({ ...request, dryRun: true })
@@ -283,12 +283,34 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     })
     return out
   }, [model])
-  // Subject areas: a model's TableGroups can each be shown on their own.
+  // Subject areas: a model's TableGroups and the named diagrams of its source can each be shown on their own.
   const [area, setArea] = useState('')
   const areaNames = Object.keys(model.groups)
-  const inArea = (name: string) => !area || (model.groups[area] ?? []).includes(name)
-  const shown = useMemo<SchemaSnapshot>(() => (area && model.groups[area] ? { ...snapshot, tables: snapshot.tables.filter((x) => model.groups[area]!.includes(x.name)) } : snapshot), [area, snapshot, model.groups])
-  const diagramTab = { ...tab, kind: 'diagram', colors: groupColors } as unknown as DiagramTab
+  const diagram = area.startsWith('d:') ? tab.diagrams?.find((d) => d.id === area.slice(2)) : undefined
+  const group = area.startsWith('g:') ? model.groups[area.slice(2)] : undefined
+  const keyOf = (x: { schema?: string; name: string }) => `${x.schema ?? ''}.${x.name}`
+  const inArea = (x: { schema?: string; name: string }) => (diagram ? diagram.tables.includes(keyOf(x)) : group ? group.includes(x.name) : true)
+  const shown = useMemo<SchemaSnapshot>(() => (diagram || group ? { ...snapshot, tables: snapshot.tables.filter(inArea) } : snapshot), [area, snapshot, model.groups, tab.diagrams])
+  const diagramTab = { ...tab, kind: 'diagram', colors: groupColors, positions: diagram ? diagram.positions : tab.positions } as unknown as DiagramTab
+  const patchDiagram = (id: string, patch: (d: NonNullable<ModelTab['diagrams']>[number]) => Partial<NonNullable<ModelTab['diagrams']>[number]>) =>
+    updateTab(tab.id, { dirty: true, diagrams: tab.diagrams?.map((d) => (d.id === id ? { ...d, ...patch(d) } : d)) })
+
+  // A renamed table keeps its place: when exactly one table disappears and one appears, layouts follow the new name.
+  const tableKeys = useMemo(() => model.tables.map(keyOf), [model])
+  const previousKeys = useRef(tableKeys)
+  useEffect(() => {
+    const before = previousKeys.current
+    previousKeys.current = tableKeys
+    const gone = before.filter((k) => !tableKeys.includes(k))
+    const come = tableKeys.filter((k) => !before.includes(k))
+    if (gone.length !== 1 || come.length !== 1 || model.errors.length) return
+    const [from, to] = [gone[0]!, come[0]!]
+    const moved = <T,>(map: Record<string, T> | undefined) => (map && from in map ? Object.fromEntries(Object.entries(map).map(([k, v]) => [k === from ? to : k, v])) : map)
+    updateTab(tab.id, {
+      positions: moved(tab.positions),
+      diagrams: tab.diagrams?.map((d) => ({ ...d, tables: d.tables.map((k) => (k === from ? to : k)), positions: moved(d.positions) ?? {} })),
+    })
+  }, [tableKeys])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -336,12 +358,17 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           {t('Design with AI')}
         </Button>
         <div className="flex-1" />
-        {areaNames.length > 0 && (
-          <Select inputSize="sm" className="w-40" value={area} onChange={(e) => setArea(e.target.value)} title={t('Subject areas come from the model’s TableGroups')}>
-            <option value="">{t('All areas')}</option>
+        {(areaNames.length > 0 || !!tab.diagrams?.length) && (
+          <Select inputSize="sm" className="w-44" value={area} onChange={(e) => setArea(e.target.value)} title={t('Subject areas: the model’s TableGroups and the diagrams of the project it came from')} data-testid="model-area">
+            <option value="">{tab.diagrams?.length ? t('Whole model') : t('All areas')}</option>
             {areaNames.map((g) => (
-              <option key={g} value={g}>
+              <option key={`g:${g}`} value={`g:${g}`}>
                 {g}
+              </option>
+            ))}
+            {tab.diagrams?.map((d) => (
+              <option key={`d:${d.id}`} value={`d:${d.id}`}>
+                {d.name || t('Diagram')} ({d.tables.length})
               </option>
             ))}
           </Select>
@@ -415,11 +442,13 @@ export function ModelView({ tab }: { tab: ModelTab }) {
               tab={diagramTab}
               key={area}
               model={shown}
+              onPositions={diagram ? (positions) => patchDiagram(diagram.id, () => ({ positions: positions ?? {} })) : undefined}
               onApplyModel={(tables) => {
                 // Editing one area keeps the model's other tables; tables added there join the area.
-                const others = model.tables.filter((x) => !inArea(x.name))
-                const groups = area ? { ...model.groups, [area]: [...new Set([...(model.groups[area] ?? []), ...tables.map((x) => x.name)])] } : model.groups
-                replaceText(toDbml([...others, ...tables], { defaultSchema: snapshot.defaultSchema, enums: model.enums, groups }), { dirty: true })
+                const others = model.tables.filter((x) => !inArea(x))
+                const groups = group ? { ...model.groups, [area.slice(2)]: [...new Set([...group, ...tables.map((x) => x.name)])] } : model.groups
+                const diagrams = diagram ? tab.diagrams?.map((d) => (d.id === diagram.id ? { ...d, tables: [...new Set([...d.tables, ...tables.map(keyOf)])] } : d)) : tab.diagrams
+                replaceText(toDbml([...others, ...tables], { defaultSchema: snapshot.defaultSchema, enums: model.enums, groups }), { dirty: true, diagrams })
               }}
             />
           ) : (

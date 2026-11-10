@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { DesignTable, FilterNode, SortSpec, TableRef } from '@dbmastermind/core/browser'
-import type { DiagramNote } from '@shared/api'
+import type { DiagramNote, ModelDiagram } from '@shared/api'
 import { api } from '@/lib/api'
 import { debounce, uid } from '@/lib/utils'
 import { t, tp } from '@/lib/i18n'
@@ -89,6 +89,8 @@ export interface ModelTab extends BaseTab {
   source?: { kind: 'dezign'; path: string; hash: string }
   dirty?: boolean
   positions?: Record<string, { x: number; y: number }>
+  /** Named diagrams of the model (from the source): subsets of its tables with their own layout. */
+  diagrams?: ModelDiagram[]
 }
 
 /** Pinned query results; without `dashboardId` it lists the connection's dashboards. */

@@ -299,14 +299,15 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ Everything a model already does works on it: DDL for any database, ALTER script against a live database,
   compare with a `.dbml` or another DeZign file, data dictionary, AI review
 - ✅ What the model can't show yet (domains, views, procedures, sequences, triggers, check constraints,
-  relationships without columns, other diagrams) is listed with counts when the file opens, never dropped silently
+  relationships without columns) is listed with counts when the file opens, never dropped silently
 - ✅ Opening never changes the DeZign file; Save as makes a `.dbml` model of it
 - ✅ A model needs no connection: File → Open Model (⌘O), "Open a model" on the start page, a file dropped on the
   window, or the file itself (command line, double-click; `.dbml` is registered on macOS and Windows, DeZign files
   on macOS only so that on Windows they stay with DeZign). DDL goes to a `.sql` file; the database is picked in the
   model's toolbar when the ALTER script is wanted and remembered for that file
-- ⬜ Subdiagrams as subject areas with their own positions and colors (a table can be in several: needs 8.3's
-  several diagrams per model)
+- ✅ The project's other diagrams are subject areas of the model: each shows its own tables in its own layout, a
+  table can be on several, tables added or moved there are saved back to that diagram
+- ⬜ Diagram colors, text areas, group boxes and stamps (kept in the file, not shown)
 
 ### 8.2 Save it back 🚧 (draft: works end to end, not yet opened in DeZign itself)
 - ✅ Save writes the edited model into the same `.dez` or folder project: only the touched elements change,
