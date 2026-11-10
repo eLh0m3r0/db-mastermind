@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { designId, diffTable, generateMigration, getDialect, impactChecks, migrationScript, toDesignTable, type TableInfo } from '../src/index.js'
+import { createScript, designId, diffTable, generateMigration, getDialect, impactChecks, migrationScript, parseDbml, toDesignTable, type TableInfo } from '../src/index.js'
 
 const orders: TableInfo = {
   schema: 'public',
@@ -123,5 +123,13 @@ describe('compareSchemas', () => {
     expect(changes.map((c) => c.kind)).toEqual(['drop_table', 'add_column'])
     expect(compareSchemas([orders], [target, extra], { keepExtra: true }).map((c) => c.kind)).toEqual(['add_column'])
     expect(compareSchemas([orders], [orders])).toEqual([])
+  })
+
+  it('creates tables with their check constraints', () => {
+    const { tables } = parseDbml("Table products {\n  id int [pk]\n  price numeric(10,2)\n\n  checks {\n    `price >= 0` [name: 'price_not_negative']\n    `price < 1000000`\n  }\n}")
+    const sql = createScript(tables, getDialect('postgres'), { translateTypes: true })
+    expect(sql).toContain('CONSTRAINT "price_not_negative" CHECK (price >= 0)')
+    expect(sql).toContain('  CHECK (price < 1000000)')
+    expect(createScript(tables, getDialect('mssql'), { translateTypes: true })).toContain('CONSTRAINT [price_not_negative] CHECK (price >= 0)')
   })
 })

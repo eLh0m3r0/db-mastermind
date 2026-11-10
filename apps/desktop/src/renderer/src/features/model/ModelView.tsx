@@ -290,7 +290,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     }
     let tables = model.tables
     for (const issue of list) tables = fixModelIssue(tables, issue) ?? tables
-    if (tables !== model.tables) replaceText(toDbml(tables, { defaultSchema: snapshot.defaultSchema, enums: model.enums, groups: model.groups }), { dirty: true })
+    if (tables !== model.tables) replaceText(toDbml(tables, { defaultSchema: snapshot.defaultSchema, enums: model.enums, groups: model.groups, extras: model.extras }), { dirty: true })
   }
 
   /** Links the model to a database: picked when it is first needed, remembered for this file. */
@@ -488,7 +488,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
                 const others = model.tables.filter((x) => !inArea(x))
                 const groups = group ? { ...model.groups, [area.slice(2)]: [...new Set([...group, ...tables.map((x) => x.name)])] } : model.groups
                 const diagrams = diagram ? tab.diagrams?.map((d) => (d.id === diagram.id ? { ...d, tables: [...new Set([...d.tables, ...tables.map(keyOf)])] } : d)) : tab.diagrams
-                replaceText(toDbml([...others, ...tables], { defaultSchema: snapshot.defaultSchema, enums: model.enums, groups }), { dirty: true, diagrams })
+                replaceText(toDbml([...others, ...tables], { defaultSchema: snapshot.defaultSchema, enums: model.enums, groups, extras: model.extras }), { dirty: true, diagrams })
               }}
             />
           ) : (

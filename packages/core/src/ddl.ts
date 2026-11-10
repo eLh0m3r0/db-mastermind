@@ -1,6 +1,6 @@
 import { qualify, type Dialect } from './dialect.js'
 import { translateTables } from './type-map.js'
-import type { ColumnInfo, DriverId, ForeignKeyInfo, IndexInfo, TableInfo, TableRef } from './types.js'
+import type { ColumnInfo, DriverId, ForeignKeyInfo, IndexInfo, TableInfo, TableRef, CheckInfo } from './types.js'
 
 /**
  * Schema design: the designer edits a draft copy of tables; `diffTables` turns the difference into
@@ -53,6 +53,8 @@ export interface DesignTable {
   primaryKey: string[]
   foreignKeys: DesignForeignKey[]
   indexes: DesignIndex[]
+  /** Check constraints: created with a new table; changes to an existing table's checks are not migrated yet. */
+  checks?: CheckInfo[]
   /** Diagram position, kept with the draft. */
   position?: { x: number; y: number }
 }
@@ -122,6 +124,7 @@ export function toDesignTable(t: TableInfo): DesignTable {
     indexes: t.indexes
       .filter((i) => !i.primary)
       .map((i) => ({ id: designId('i'), name: i.name, originalName: i.name, columns: [...i.columns], unique: i.unique })),
+    ...(t.checks?.length ? { checks: t.checks.map((c) => ({ ...c })) } : {}),
   }
 }
 
@@ -364,6 +367,7 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
         // SQLite and DuckDB can't add foreign keys later: declare them in the table.
         const inlineFks = d.id === 'sqlite' || d.id === 'duckdb'
         if (inlineFks) for (const fk of t.foreignKeys) lines.push(`  ${fkClause(fk, t.name, d)}`)
+        for (const check of t.checks ?? []) lines.push(`  ${check.name ? `CONSTRAINT ${id(check.name)} ` : ''}CHECK (${check.expression})`)
         let sql = `CREATE TABLE ${q(ref)} (\n${lines.join(',\n')}\n)`
         if (isMy && t.comment) sql += ` COMMENT=${literalComment(t.comment, d.id)}`
         statements.push(sql)
@@ -738,6 +742,7 @@ export function designToTableInfo(t: DesignTable): TableInfo {
       onUpdate: f.onUpdate,
     })),
     indexes: t.indexes.map((i) => ({ name: i.name ?? i.id, columns: i.columns, unique: i.unique, primary: false })),
+    ...(t.checks?.length ? { checks: t.checks.map((c) => ({ ...c })) } : {}),
   }
 }
 

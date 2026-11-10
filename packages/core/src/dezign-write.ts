@@ -45,6 +45,8 @@ export type DezignChangeKind =
   | 'set_primary_key'
   | 'add_index'
   | 'drop_index'
+  | 'add_check'
+  | 'drop_check'
   | 'add_relationship'
   | 'drop_relationship'
   | 'alter_relationship'
@@ -591,6 +593,36 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
       addIndex(entity, label, ix)
       if (base) changes.push({ kind: 'add_index', table: label, name: ix.columns.join(', ') })
     }
+    // Check constraints, compared by their condition. A column's own check that changed becomes a table check
+    // (the same thing to the database); new ones list the columns their condition names.
+    const exprKey = (e: string) => e.replace(/\s+/g, ' ').trim().toLowerCase()
+    const baseChecks = new Set((base?.checks ?? []).map((c) => exprKey(c.expression)))
+    const nextChecks = new Map((next.checks ?? []).map((c) => [exprKey(c.expression), c]))
+    for (const key of baseChecks) {
+      if (nextChecks.has(key)) continue
+      const constraints = kid(entity.el, 'CONSTRAINTS')
+      const tableCheck = kids(constraints, 'CONSTRAINT').find((c) => text(c, 'CONTYPE') === '1' && exprKey(text(c, 'VALUE')) === key)
+      const columnCheck = kids(kid(entity.el, 'ATTRIBUTES'), 'ATTR').map((a) => kid(a, 'CCON')).find((c) => c && exprKey(text(c, 'VALUE')) === key)
+      if (tableCheck) remove(constraints, tableCheck)
+      else if (columnCheck) remove(columnCheck, kid(columnCheck, 'VALUE'))
+      else continue
+      changes.push({ kind: 'drop_check', table: label, name: key })
+    }
+    for (const [key, check] of nextChecks) {
+      if (baseChecks.has(key)) continue
+      let list = kid(entity.el, 'CONSTRAINTS')
+      if (!list) insert(entity.el, (list = container('CONSTRAINTS', [])))
+      const id = newChildId(kids(list, 'CONSTRAINT').map((c) => text(c, 'ID')))
+      const template = anyOf((e) => kids(kid(e, 'CONSTRAINTS'), 'CONSTRAINT').find((c) => text(c, 'CONTYPE') === '1'))
+      const con = template ? clone(template, [[text(template, 'ID'), id]]) : container('CONSTRAINT', [leaf('NAME'), leaf('ID', id), leaf('VALUE'), leaf('CONLEVEL', '2'), leaf('CONTYPE', '1'), container('ATTRIBUTEIDS', [])])
+      for (const tag of ['DESC', 'NOTE']) if (kid(con, tag)) set(con, tag, '')
+      set(con, 'NAME', check.name || `TCC_${label}_${kids(list, 'CONSTRAINT').length + 1}`)
+      set(con, 'VALUE', check.expression, ['CONLEVEL', 'CONTYPE', 'ATTRIBUTEIDS'])
+      const mentioned = new Set((check.expression.toLowerCase().match(/[a-z_][\w$]*/g) ?? []))
+      setIds(con, next.columns.filter((c) => mentioned.has(lower(c.name))).map((c) => idOf(c.name)).filter(Boolean))
+      insert(list, con)
+      if (base) changes.push({ kind: 'add_check', table: label, name: check.expression })
+    }
     // A dropped column also leaves whatever else listed it (automatic indexes, keys the model does not show).
     for (const id of droppedIds) {
       for (const con of [kid(entity.el, 'PKCON'), ...kids(kid(entity.el, 'CONSTRAINTS'), 'CONSTRAINT')]) if (con && idsOf(con).includes(id)) setIds(con, idsOf(con).filter((x) => x !== id))
@@ -940,7 +972,8 @@ function verify(files: DezignFile[], result: { files: DezignFile[]; deleted: str
         const cols = t.columns.map((c) => `${lower(c.name)} ${normType(c.dataType)}${c.nullable ? '' : ' nn'}${c.isIdentity ? ' id' : ''}${normText(c.defaultValue) ? ` =${normText(c.defaultValue)}` : ''}${normText(c.comment) ? ` #${normText(c.comment)}` : ''}`)
         const fks = t.foreignKeys.filter((f) => !f.virtual).map((f) => `${f.columns.map(lower).join(',')}>${lower(f.refTable)}(${f.refColumns.map(lower).join(',')})`)
         const indexes = t.indexes.filter((ix) => !ix.primary).map(indexKey)
-        return [tableKey(t), `pk(${t.primaryKey.map(lower).join(',')})`, normText(t.comment), ...cols, ...fks.sort(), ...indexes.sort()].join('\n  ')
+        const checks = (t.checks ?? []).map((c) => `check ${c.expression.replace(/\s+/g, ' ').trim().toLowerCase()}`)
+        return [tableKey(t), `pk(${t.primaryKey.map(lower).join(',')})`, normText(t.comment), ...cols, ...fks.sort(), ...indexes.sort(), ...checks.sort()].join('\n  ')
       })
       .sort()
   const want = describe(target)

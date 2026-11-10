@@ -1,4 +1,4 @@
-import type { ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfo } from './types.js'
+import type { CheckInfo, ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfo } from './types.js'
 
 /**
  * Reader for DeZign for Databases models: single-file projects (`.dez`, file formats 41 to 140, i.e. DeZign 4
@@ -29,6 +29,7 @@ export interface DezignLeftOut {
   procedures: number
   sequences: number
   triggers: number
+  /** Kept for callers of older versions: check constraints are part of the model now, so this stays 0. */
   checks: number
   /** Relationships drawn without column pairs: there is no foreign key to create. */
   relationshipsWithoutColumns: number
@@ -200,6 +201,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   for (const ent of kids(kid(dict, 'ENTITIES'), 'ENT')) {
     const pkIds = idsOf(kid(ent, 'PKCON'))
     const columnNames = new Map<string, string>()
+    const checks: CheckInfo[] = []
     const columns: ColumnInfo[] = kids(kid(ent, 'ATTRIBUTES'), 'ATTR').map((attr, i) => {
       const id = text(attr, 'ID')
       const name = text(attr, 'NAME')
@@ -208,7 +210,8 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
       const ownType = kid(attr, 'DT')
       const dt = ownType && text(ownType, 'DTLISTNAME') ? ownType : (kid(domain, 'DT') ?? ownType)
       const isPrimaryKey = pkIds.includes(id)
-      if (text(kid(attr, 'CCON'), 'VALUE')) leftOut.checks++
+      const check = text(kid(attr, 'CCON'), 'VALUE')
+      if (check) checks.push({ expression: check, ...(text(kid(attr, 'CCON'), 'NAME') ? { name: text(kid(attr, 'CCON'), 'NAME') } : {}) })
       const defaultValue = text(kid(attr, 'DEFCON'), 'VALUE') || text(kid(domain, 'DEFCON'), 'VALUE')
       return {
         name,
@@ -227,7 +230,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
     for (const con of kids(kid(ent, 'CONSTRAINTS'), 'CONSTRAINT')) {
       // Constraint types: 1 check, 2 unique, 3 primary key, 4 foreign key, 5 not null, 6 default.
       if (text(con, 'CONTYPE') !== '2') {
-        if (text(con, 'CONTYPE') === '1') leftOut.checks++
+        if (text(con, 'CONTYPE') === '1' && text(con, 'VALUE')) checks.push({ expression: text(con, 'VALUE'), ...(text(con, 'NAME') ? { name: text(con, 'NAME') } : {}) })
         continue
       }
       const cols = idsOf(con).map((id) => columnNames.get(id)).filter((c): c is string => !!c)
@@ -249,6 +252,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
       primaryKey,
       foreignKeys: [],
       indexes,
+      ...(checks.length ? { checks } : {}),
     }
     tables.push(table)
     entities.set(text(ent, 'ID'), { table, columns: columnNames })

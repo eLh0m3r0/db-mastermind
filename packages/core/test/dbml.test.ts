@@ -161,4 +161,83 @@ Ref: orders.customer_id > customers.id
     // Lines after a multi-line string keep their numbers.
     expect(parseDbml("Table t {\n  a int [note: '''one\ntwo\nthree''']\n  ???\n}").errors).toEqual([{ line: 5, message: "Can't read column: ???" }])
   })
+
+  it('reads and writes check constraints', () => {
+    const dbml = "Table products {\n  id int [pk]\n  price numeric(10,2) [not null, check: `price >= 0`]\n  stock int\n\n  checks {\n    `stock >= 0 and price < 1000000` [name: 'sane_values']\n    `stock < 5000`\n  }\n}"
+    const model = parseDbml(dbml)
+    expect(model.errors).toEqual([])
+    expect(model.tables[0]!.checks).toEqual([{ expression: 'price >= 0' }, { expression: 'stock >= 0 and price < 1000000', name: 'sane_values' }, { expression: 'stock < 5000' }])
+    const written = toDbml(model.tables)
+    expect(written).toContain("  checks {\n    `price >= 0`\n    `stock >= 0 and price < 1000000` [name: 'sane_values']\n    `stock < 5000`\n  }")
+    expect(parseDbml(written).tables[0]!.checks).toEqual(model.tables[0]!.checks)
+  })
+
+  it('expands TablePartial into the tables that use it', () => {
+    const dbml = `
+Table orders {
+  id int [pk]
+  ~audit
+  note text
+  created_by varchar(80) [note: 'own definition wins']
+}
+TablePartial audit {
+  created_at timestamp [not null, default: \`now()\`]
+  created_by int
+  indexes {
+    created_at
+  }
+}
+Table customers {
+  ~audit
+  id int [pk]
+  ~missing
+}`
+    const model = parseDbml(dbml)
+    expect(model.errors).toEqual([{ line: 18, message: 'Unknown TablePartial: missing' }])
+    expect(model.tables[0]!.columns.map((c) => `${c.ordinal} ${c.name} ${c.dataType}`)).toEqual(['1 id int', '2 created_at timestamp', '3 note text', '4 created_by varchar(80)'])
+    expect(model.tables[0]!.indexes.filter((ix) => !ix.primary).map((ix) => ix.columns)).toEqual([['created_at']])
+    expect(model.tables[1]!.columns.map((c) => c.name)).toEqual(['created_at', 'created_by', 'id'])
+    expect(model.tables[1]!.columns[0]).toMatchObject({ nullable: false, defaultValue: 'now()' })
+  })
+
+  it('keeps the blocks it does not model when the model is written again', () => {
+    const dbml = `Project shop {
+  database_type: 'PostgreSQL'
+  Note: '''
+    Orders of the shop
+    // not a comment
+  '''
+}
+
+Table orders {
+  id int [pk]
+  ~audit
+}
+
+TablePartial audit {
+  created_at timestamp
+}
+
+Records orders(id) {
+  1
+  2
+}
+
+Note reminder {
+  'Ask about VAT'
+}
+`
+    const model = parseDbml(dbml)
+    expect(model.errors).toEqual([])
+    expect(model.extras).toHaveLength(4)
+    expect(model.extras[0]).toContain("    Orders of the shop\n    // not a comment")
+    const written = toDbml(model.tables, { extras: model.extras })
+    // The table now lists the partial's column itself; the blocks are there as written.
+    expect(written).toContain('Table orders {\n  id int [pk]\n  created_at timestamp\n}')
+    for (const extra of model.extras) expect(written).toContain(extra)
+    const again = parseDbml(written)
+    expect(again.errors).toEqual([])
+    expect(again.extras).toEqual(model.extras)
+    expect(again.tables[0]!.columns.map((c) => c.name)).toEqual(['id', 'created_at'])
+  })
 })

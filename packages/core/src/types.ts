@@ -146,6 +146,13 @@ export interface IndexInfo {
   constraint?: boolean
 }
 
+/** A CHECK constraint of a table (a column's check is one that names only that column). */
+export interface CheckInfo {
+  name?: string
+  /** The condition, without the CHECK keyword and its parentheses. */
+  expression: string
+}
+
 export interface TableInfo {
   schema?: string
   name: string
@@ -158,6 +165,8 @@ export interface TableInfo {
   primaryKey: string[]
   foreignKeys: ForeignKeyInfo[]
   indexes: IndexInfo[]
+  /** Check constraints, where the source knows them (models; not read from live databases yet). */
+  checks?: CheckInfo[]
 }
 
 export interface RoutineInfo {

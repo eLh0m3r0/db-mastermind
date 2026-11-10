@@ -6,7 +6,9 @@ import { designId, toDesignTable, type DesignTable } from './ddl.js'
  * in the knowledge base, be diffed against a live database and turned into a migration.
  * Supported: Table (schema-qualified, aliases, Note), columns with [pk, increment, not null, null, unique,
  * default, note, ref], indexes blocks, Ref lines (>, <, -) with delete/update actions, Enum (as types).
- * Project, TableGroup and Note blocks are accepted and ignored.
+ * Also: `checks` blocks and column `check:` settings, `TablePartial` with `~name` injection (expanded into the
+ * tables). Project, Note, Records and TablePartial blocks are kept as written (`extras`) so rewriting the model
+ * from the canvas does not lose them.
  */
 
 export interface DbmlError {
@@ -19,6 +21,8 @@ export interface DbmlModel {
   enums: Record<string, string[]>
   /** TableGroup name → table names, in file order. */
   groups: Record<string, string[]>
+  /** Blocks the table model does not hold (Project, notes, TablePartial, Records), as written: `toDbml` puts them back. */
+  extras: string[]
   errors: DbmlError[]
 }
 
@@ -135,6 +139,9 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
   const tables: TableInfo[] = []
   const enums: Record<string, string[]> = {}
   const groups: Record<string, string[]> = {}
+  const extras: string[] = []
+  // Line for line the same as `lines`, with comments and multi-line strings as written.
+  const original = text.split('\n')
   const errors: DbmlError[] = []
   const aliases = new Map<string, TableInfo>()
   const refs: { line: number; from: string; op: string; to: string; settings: string }[] = []
@@ -152,6 +159,116 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
       }
     }
     return lines.length - 1
+  }
+
+  // TablePartial blocks can be used before they are defined.
+  const partials = new Map<string, { start: number; end: number }>()
+  for (let k = 0; k < lines.length; k++) {
+    const m = /^TablePartial\s+("[^"]+"|[\w$]+)[^{]*\{\s*$/i.exec(lines[k]!.trim())
+    if (m) partials.set(ident(m[1]!).toLowerCase(), { start: k, end: blockEnd(k) })
+  }
+  const depth: number[] = []
+  /** Reads the rows of a table body (or of a partial injected into it) between two lines. */
+  const parseRows = (t: TableInfo, from: number, to: number): void => {
+    for (let j = from; j < to; j++) {
+      const row = lines[j]!.trim()
+      if (!row) continue
+      // `~name` brings in the columns, indexes and checks of a TablePartial.
+      const inject = /^~\s*("[^"]+"|[\w$]+)$/.exec(row)
+      if (inject) {
+        const partial = partials.get(ident(inject[1]!).toLowerCase())
+        if (!partial) errors.push({ line: j + 1, message: `Unknown TablePartial: ${inject[1]}` })
+        else if (!depth.includes(partial.start)) {
+          depth.push(partial.start)
+          parseRows(t, partial.start + 1, partial.end)
+          depth.pop()
+        }
+        continue
+      }
+      if (/^checks\s*\{/i.test(row)) {
+        const close = blockEnd(j)
+        for (let k = j + 1; k < close; k++) {
+          const m = /^`([^`]*)`\s*(\[(.*)\])?$/.exec(lines[k]!.trim())
+          const named = /name\s*:\s*('[^']*'|"[^"]*")/i.exec(m?.[3] ?? '')
+          if (m) (t.checks ??= []).push({ expression: m[1]!.trim(), ...(named ? { name: unquoteString(named[1]!) } : {}) })
+          else if (lines[k]!.trim()) errors.push({ line: k + 1, message: `Can't read check: ${lines[k]!.trim()}` })
+        }
+        j = close
+        continue
+      }
+      const note = /^Note\s*:\s*(.+)$/i.exec(row)
+      if (note) {
+        t.comment = unquoteString(note[1]!.trim())
+        continue
+      }
+      if (/^Note\s*\{/i.test(row)) {
+        const close = blockEnd(j)
+        t.comment = unquoteString(lines.slice(j + 1, close).join('\n').trim())
+        j = close
+        continue
+      }
+      if (/^indexes\s*\{/i.test(row)) {
+        const close = blockEnd(j)
+        for (let k = j + 1; k < close; k++) {
+          const ix = lines[k]!.trim()
+          if (!ix) continue
+          const m = /^(\([^)]*\)|"[^"]+"|`[^`]+`|[\w$]+)\s*(\[(.*)\])?$/.exec(ix)
+          if (!m) {
+            errors.push({ line: k + 1, message: `Can't read index: ${ix}` })
+            continue
+          }
+          const columns = m[1]!.startsWith('(') ? m[1]!.slice(1, -1).split(',').map((c) => ident(c.trim())) : [ident(m[1]!)]
+          const settings = (m[3] ?? '').toLowerCase()
+          const name = /name\s*:\s*('[^']*'|"[^"]*")/i.exec(m[3] ?? '')?.[1]
+          if (/\bpk\b/.test(settings)) {
+            t.primaryKey = columns
+            continue
+          }
+          t.indexes.push({ name: name ? unquoteString(name) : `ix_${t.name}_${columns.join('_')}`, columns, unique: /\bunique\b/.test(settings), primary: false })
+        }
+        j = close
+        continue
+      }
+      const col = /^("[^"]+"|`[^`]+`|[\w$]+)\s+("[^"]+"|[\w$.]+(?:\([^)]*\))?(?:\[\])?)\s*(\[(.*)\])?\s*$/.exec(row)
+      if (!col) {
+        errors.push({ line: j + 1, message: `Can't read column: ${row}` })
+        continue
+      }
+      const name = ident(col[1]!)
+      const settings = splitTop(col[4] ?? '')
+      const has = (s: string) => settings.some((x) => x.toLowerCase() === s)
+      const value = (key: string) => {
+        const s = settings.find((x) => new RegExp(`^${key}\\s*:`, 'i').test(x))
+        return s ? s.slice(s.indexOf(':') + 1).trim() : undefined
+      }
+      const def = value('default')
+      const column: ColumnInfo = {
+        name,
+        ordinal: t.columns.length + 1,
+        dataType: ident(col[2]!),
+        nullable: !(has('not null') || has('pk') || has('primary key')),
+        defaultValue: def === undefined ? null : def.startsWith('`') ? def.slice(1, -1) : def,
+        isPrimaryKey: has('pk') || has('primary key'),
+        isIdentity: has('increment'),
+        comment: value('note') !== undefined ? unquoteString(value('note')!) : null,
+      }
+      // A table's own column wins over an injected one of the same name; so does a later partial.
+      const earlier = t.columns.findIndex((c) => c.name.toLowerCase() === name.toLowerCase())
+      if (earlier !== -1) {
+        t.columns.splice(earlier, 1)
+        t.primaryKey = t.primaryKey.filter((c) => c !== name)
+      }
+      t.columns.push(column)
+      if (column.isPrimaryKey) t.primaryKey.push(name)
+      const check = value('check')
+      if (check) (t.checks ??= []).push({ expression: check.replace(/^`|`$/g, '').trim() })
+      if (has('unique')) t.indexes.push({ name: `ux_${t.name}_${name}`, columns: [name], unique: true, primary: false, constraint: true })
+      const ref = value('ref')
+      if (ref) {
+        const m = /^([<>-])\s*(.+)$/.exec(ref)
+        if (m) refs.push({ line: j + 1, from: `${t.schema ? `${t.schema}.` : ''}${t.name}.${name}`, op: m[1]!, to: m[2]!, settings: '' })
+      }
+    }
   }
 
   while (i < lines.length) {
@@ -176,74 +293,8 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
         indexes: [],
       }
       if (table[2]) aliases.set(table[2], t)
-      for (let j = i + 1; j < end; j++) {
-        const row = lines[j]!.trim()
-        if (!row) continue
-        const note = /^Note\s*:\s*(.+)$/i.exec(row)
-        if (note) {
-          t.comment = unquoteString(note[1]!.trim())
-          continue
-        }
-        if (/^Note\s*\{/i.test(row)) {
-          const close = blockEnd(j)
-          t.comment = unquoteString(lines.slice(j + 1, close).join('\n').trim())
-          j = close
-          continue
-        }
-        if (/^indexes\s*\{/i.test(row)) {
-          const close = blockEnd(j)
-          for (let k = j + 1; k < close; k++) {
-            const ix = lines[k]!.trim()
-            if (!ix) continue
-            const m = /^(\([^)]*\)|"[^"]+"|`[^`]+`|[\w$]+)\s*(\[(.*)\])?$/.exec(ix)
-            if (!m) {
-              errors.push({ line: k + 1, message: `Can't read index: ${ix}` })
-              continue
-            }
-            const columns = m[1]!.startsWith('(') ? m[1]!.slice(1, -1).split(',').map((c) => ident(c.trim())) : [ident(m[1]!)]
-            const settings = (m[3] ?? '').toLowerCase()
-            const name = /name\s*:\s*('[^']*'|"[^"]*")/i.exec(m[3] ?? '')?.[1]
-            if (/\bpk\b/.test(settings)) {
-              t.primaryKey = columns
-              continue
-            }
-            t.indexes.push({ name: name ? unquoteString(name) : `ix_${t.name}_${columns.join('_')}`, columns, unique: /\bunique\b/.test(settings), primary: false })
-          }
-          j = close
-          continue
-        }
-        const col = /^("[^"]+"|`[^`]+`|[\w$]+)\s+("[^"]+"|[\w$.]+(?:\([^)]*\))?(?:\[\])?)\s*(\[(.*)\])?\s*$/.exec(row)
-        if (!col) {
-          errors.push({ line: j + 1, message: `Can't read column: ${row}` })
-          continue
-        }
-        const name = ident(col[1]!)
-        const settings = splitTop(col[4] ?? '')
-        const has = (s: string) => settings.some((x) => x.toLowerCase() === s)
-        const value = (key: string) => {
-          const s = settings.find((x) => new RegExp(`^${key}\\s*:`, 'i').test(x))
-          return s ? s.slice(s.indexOf(':') + 1).trim() : undefined
-        }
-        const def = value('default')
-        const column: ColumnInfo = {
-          name,
-          ordinal: t.columns.length + 1,
-          dataType: ident(col[2]!),
-          nullable: !(has('not null') || has('pk') || has('primary key')),
-          defaultValue: def === undefined ? null : def.startsWith('`') ? def.slice(1, -1) : def,
-          isPrimaryKey: has('pk') || has('primary key'),
-          isIdentity: has('increment'),
-          comment: value('note') !== undefined ? unquoteString(value('note')!) : null,
-        }
-        t.columns.push(column)
-        if (column.isPrimaryKey) t.primaryKey.push(name)
-        if (has('unique')) t.indexes.push({ name: `ux_${t.name}_${name}`, columns: [name], unique: true, primary: false, constraint: true })
-        const ref = value('ref')
-        if (ref) {
-          const m = /^([<>-])\s*(.+)$/.exec(ref)
-          if (m) refs.push({ line: j + 1, from: `${t.schema ? `${t.schema}.` : ''}${t.name}.${name}`, op: m[1]!, to: m[2]!, settings: '' })
-        }
-      }
+      parseRows(t, i + 1, end)
+      t.columns.forEach((c, n) => (c.ordinal = n + 1))
       for (const c of t.columns) c.isPrimaryKey = t.primaryKey.includes(c.name)
       if (t.primaryKey.length) t.indexes.unshift({ name: `pk_${t.name}`, columns: t.primaryKey, unique: true, primary: true })
       tables.push(t)
@@ -274,8 +325,10 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
       i = end + 1
       continue
     }
-    if (/^(Project|TableGroup|Note|Records)\b[^{]*\{/i.test(line)) {
-      i = blockEnd(i) + 1
+    if (/^(Project|Note|Records|TablePartial)\b[^{]*\{/i.test(line)) {
+      const close = blockEnd(i)
+      extras.push(original.slice(i, close + 1).join('\n').trim())
+      i = close + 1
       continue
     }
     errors.push({ line: lineNo, message: `Unexpected: ${line}` })
@@ -326,11 +379,11 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
   }
   // Aliases in groups mean their tables.
   for (const [g, names] of Object.entries(groups)) groups[g] = names.map((n) => aliases.get(n)?.name ?? n)
-  return { tables, enums, groups, errors }
+  return { tables, enums, groups, extras, errors }
 }
 
 /** DBML for tables (round-trips through `parseDbml`), with the model's enums and table groups when given. */
-export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; enums?: Record<string, string[]>; groups?: Record<string, string[]> } = {}): string {
+export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; enums?: Record<string, string[]>; groups?: Record<string, string[]>; /** Blocks kept as written (`DbmlModel.extras`). */ extras?: string[] } = {}): string {
   const out: string[] = []
   for (const [name, values] of Object.entries(options.enums ?? {})) {
     out.push(`Enum ${quoteName(name)} {`, ...values.map((v) => `  ${quoteName(v)}`), '}', '')
@@ -365,6 +418,9 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
       }
       out.push('  }')
     }
+    if (t.checks?.length) {
+      out.push('', '  checks {', ...t.checks.map((c) => `    \`${c.expression.replaceAll('`', "'").replace(/\s*\n\s*/g, ' ')}\`${c.name ? ` [name: '${c.name.replaceAll("'", '')}']` : ''}`), '  }')
+    }
     if (t.comment) out.push('', `  Note: ${noteText(t.comment)}`)
     out.push('}', '')
   }
@@ -382,6 +438,7 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
     if (!kept.length) continue
     out.push('', `TableGroup ${quoteName(group)} {`, ...kept.map((m) => `  ${tableName(tables.find((t) => t.name === m)!)}`), '}')
   }
+  for (const extra of options.extras ?? []) out.push('', extra)
   return `${out.join('\n').trim()}\n`
 }
 

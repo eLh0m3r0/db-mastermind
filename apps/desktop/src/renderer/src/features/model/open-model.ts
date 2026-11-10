@@ -10,7 +10,6 @@ const LEFT_OUT: [keyof NonNullable<OpenedModelFile['imported']>['leftOut'], stri
   ['procedures', 'procedures: {n}'],
   ['sequences', 'sequences: {n}'],
   ['triggers', 'triggers: {n}'],
-  ['checks', 'check constraints: {n}'],
   ['relationshipsWithoutColumns', 'relationships without columns: {n}'],
 ]
 
@@ -46,6 +45,8 @@ const CHANGE_LABELS: Record<DezignChange['kind'], string> = {
   set_primary_key: 'primary key',
   add_index: 'new index',
   drop_index: 'dropped index',
+  add_check: 'new check',
+  drop_check: 'dropped check',
   add_relationship: 'new relationship',
   drop_relationship: 'dropped relationship',
   alter_relationship: 'changed relationship',

@@ -192,7 +192,9 @@ describe('DeZign for Databases models', () => {
   })
 
   it('says what it left out instead of dropping it silently', () => {
-    expect(readDezign(dez).leftOut).toEqual({ domains: 1, views: 1, procedures: 0, sequences: 0, triggers: 0, checks: 1, relationshipsWithoutColumns: 1, subdiagrams: 1 })
+    expect(readDezign(dez).leftOut).toEqual({ domains: 1, views: 1, procedures: 0, sequences: 0, triggers: 0, checks: 0, relationshipsWithoutColumns: 1, subdiagrams: 1 })
+    // The column's check constraint is part of the model.
+    expect(readDezign(dez).tables[0]!.checks).toEqual([{ expression: 'credit >= 0' }])
   })
 
   it('decodes Windows-1250 text under the Latin-1 declaration', () => {
@@ -360,6 +362,22 @@ describe('saving back into a DeZign project', () => {
     // This file numbers its objects (10, 20, 30, 31): new ones continue the numbering.
     expect(r.files[0]!.text).toMatch(/<RELATIONSHIPCONNECTORS>\s*<RELC>\s*<ID>33<\/ID>\s*<DIAGRAMID>1<\/DIAGRAMID>/)
     expect(r.files[0]!.text).toMatch(/<ENTC>\s*<ID>32<\/ID>\s*<DIAGRAMID>1<\/DIAGRAMID>\s*<W>120<\/W>\s*<H>44<\/H>\s*<L>800<\/L>\s*<T>150<\/T>/)
+  })
+
+  it('writes changed check constraints: a column check that changed becomes a table check', () => {
+    const r = save(single, (t) => {
+      t[0]!.checks = [{ expression: 'credit >= 0 and credit < 1000000', name: 'credit_range' }]
+      t[1]!.checks = [{ expression: 'issued > DATE \'2020-01-01\'' }]
+    })
+    expect(r.changes.map((c) => `${c.kind} ${c.table}`)).toEqual(['drop_check customer', 'add_check customer', 'add_check invoice'])
+    const out = r.files[0]!.text
+    expect(out).not.toContain('<VALUE>credit &gt;= 0</VALUE>')
+    expect(out).toMatch(/<NAME>credit_range<\/NAME>\s*<ID>[^<]+<\/ID>\s*<VALUE>credit &gt;= 0 and credit &lt; 1000000<\/VALUE>\s*<CONLEVEL>2<\/CONLEVEL>\s*<CONTYPE>1<\/CONTYPE>\s*<ATTRIBUTEIDS>\s*<ATTRIBUTEID>A3<\/ATTRIBUTEID>/)
+    const after = readDezign(out).tables
+    expect(after[0]!.checks).toEqual([{ expression: 'credit >= 0 and credit < 1000000', name: 'credit_range' }])
+    expect(after[1]!.checks).toEqual([{ expression: "issued > DATE '2020-01-01'", name: 'TCC_invoice_1' }])
+    // The unique constraint that shares the list with the new check is still there.
+    expect(after[0]!.indexes).toHaveLength(1)
   })
 
   it('drops a table with its relationships and diagram objects, and changes relationship rules', () => {

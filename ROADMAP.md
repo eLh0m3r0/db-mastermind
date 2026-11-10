@@ -298,8 +298,8 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ Text in the Windows code page DeZign wrote it in (Czech reads correctly; the file's own `iso-8859-1` label is wrong)
 - ✅ Everything a model already does works on it: DDL for any database, ALTER script against a live database,
   compare with a `.dbml` or another DeZign file, data dictionary, AI review
-- ✅ What the model can't show yet (domains, views, procedures, sequences, triggers, check constraints,
-  relationships without columns) is listed with counts when the file opens, never dropped silently
+- ✅ What the model can't show yet (domains, views, procedures, sequences, triggers, relationships without
+  columns) is listed with counts when the file opens, never dropped silently
 - ✅ Opening never changes the DeZign file; Save as makes a `.dbml` model of it
 - ✅ A model needs no connection: File → Open Model (⌘O), "Open a model" on the start page, a file dropped on the
   window, or the file itself (command line, double-click; `.dbml` is registered on macOS and Windows, DeZign files
@@ -323,11 +323,15 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ⬜ Verified in DeZign: open saved files of every kind of edit (14-day trial on Windows, or a colleague's license).
   Unknown until then: whether DeZign accepts the straight connector of a new relationship, GUID ids next to its
   own id style, and character references for letters outside the file's code page
-- ⬜ Subtype clusters, domains and checks edited from the model (today they are kept, not editable)
+- ⬜ Subtype clusters and domains edited from the model (today they are kept, not editable)
 
 ### 8.3 The model holds a whole database ⬜
-- ⬜ DBML as it is today: check constraints, `TablePartial` (reusable column sets, e.g. audit columns), custom
-  properties, sample records
+- ✅ Check constraints in the model: DBML `checks` blocks and column `check:`, written into CREATE TABLE for any
+  database, read from DeZign models and saved back to them (ALTER for a changed check on an existing table ⬜)
+- ✅ DBML `TablePartial` (reusable column sets, e.g. audit columns) with `~name` injection
+- ✅ Blocks the model does not hold (Project, notes, Records, TablePartial) stay as written when the model is
+  rewritten from the canvas or by a fix
+- ⬜ Custom properties on tables and columns; DeZign attribute packages as `TablePartial`
 - ⬜ Views, sequences, triggers and procedures in the model, kept as plain SQL
 - ⬜ Domains (named reusable types)
 - ⬜ Several diagrams per model with their own layout, notes and group boxes
