@@ -5,7 +5,7 @@ import { Compartment, EditorState } from '@codemirror/state'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
 import { AlertTriangle, Database, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare } from 'lucide-react'
-import { createScript, getDialect, parseDbml, toDbml, type SchemaSnapshot } from '@dbmastermind/core/browser'
+import { checkModel, createScript, fixModelIssue, getDialect, parseDbml, toDbml, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { DRIVERS } from '../connections/drivers'
@@ -20,6 +20,7 @@ import { askAi, toast } from '@/store/ui'
 import { useWorkspace, type DiagramTab, type ModelTab } from '@/store/workspace'
 import { DiagramView } from '../diagram/DiagramView'
 import { describeDezignChanges, modelTabFromFile } from './open-model'
+import { IssuesChip, IssuesPanel } from './ModelIssues'
 import { rememberModelDatabase } from '@/lib/files'
 import { connectAndSelect } from '../sidebar/Sidebar'
 import { editorTheme } from '../query/SqlEditor'
@@ -255,6 +256,43 @@ export function ModelView({ tab }: { tab: ModelTab }) {
       })),
     )
 
+  // Checks that run by themselves on a model that parses.
+  const issues = useMemo(() => (model.errors.length ? [] : checkModel(model.tables)), [model])
+  const [showIssues, setShowIssues] = useState(false)
+  const jumpToIssue = (issue: ModelIssue) => {
+    const name = issue.table.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const line = text.split('\n').findIndex((l) => new RegExp(`^\\s*Table\\s+(?:(?:"[^"]+"|[\\w$]+)\\.)?"?${name}"?(?:\\s|\\{|$)`, 'i').test(l))
+    if (line !== -1) setJumpTo({ line: line + 1, n: Date.now() })
+  }
+  /** How many rows of the child have no parent row, when the linked database has both tables; null when it can't tell. */
+  const orphans = async (issue: ModelIssue): Promise<number | null> => {
+    const fk = issue.relationship
+    const child = liveSchema?.tables.find((x) => x.name.toLowerCase() === issue.table.toLowerCase())
+    const parent = fk && liveSchema?.tables.find((x) => x.name.toLowerCase() === fk.refTable.toLowerCase())
+    if (!connection || !fk || !child || !parent) return null
+    const q = getDialect(connection.driver).quoteIdent
+    const ref = (x: { schema?: string; name: string }) => (x.schema ? `${q(x.schema)}.` : '') + q(x.name)
+    const sql = `SELECT COUNT(*) FROM ${ref(child)} c WHERE c.${q(fk.columns[0]!)} IS NOT NULL AND NOT EXISTS (SELECT 1 FROM ${ref(parent)} p WHERE p.${q(fk.refColumns[0]!)} = c.${q(fk.columns[0]!)})`
+    try {
+      const [outcome] = await api.runQuery({ connectionId: connection.id, sql, runId: crypto.randomUUID(), maxRows: 1 })
+      const n = Number(outcome?.results?.[0]?.rows[0]?.[0])
+      return outcome?.error || !Number.isFinite(n) ? null : n
+    } catch {
+      return null
+    }
+  }
+  const fixIssues = async (list: ModelIssue[]) => {
+    // One suggested relationship is checked against the real rows first, when the model's database has them.
+    if (list.length === 1 && list[0]!.kind === 'missing_relationship') {
+      const n = await orphans(list[0]!)
+      if (n && !(await confirmAction({ title: t('{n} rows of {table}.{column} have no row in {target}', { n: String(n), table: list[0]!.table, column: list[0]!.column ?? '', target: list[0]!.detail ?? '' }), message: t('The database would refuse this foreign key until those rows are fixed. Add the relationship to the model anyway?'), confirmLabel: t('Add anyway') }))) return
+      if (n === 0) toast({ kind: 'success', message: t('Checked against {name}: every row has its parent', { name: connection?.name ?? '' }) })
+    }
+    let tables = model.tables
+    for (const issue of list) tables = fixModelIssue(tables, issue) ?? tables
+    if (tables !== model.tables) replaceText(toDbml(tables, { defaultSchema: snapshot.defaultSchema, enums: model.enums, groups: model.groups }), { dirty: true })
+  }
+
   /** Links the model to a database: picked when it is first needed, remembered for this file. */
   const linkDatabase = (connectionId: string) => {
     updateTab(tab.id, { connectionId })
@@ -373,6 +411,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
             ))}
           </Select>
         )}
+        <IssuesChip issues={issues} open={showIssues} onToggle={() => setShowIssues((v) => !v)} />
         <span className="text-[11.5px] text-fg-faint">{tp(model.tables.length, { one: '{n} table', many: '{n} tables' })}</span>
         <Select
           inputSize="sm"
@@ -424,6 +463,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
               onSave={() => void save()}
             />
           </div>
+          {showIssues && issues.length > 0 && <IssuesPanel issues={issues} onJump={jumpToIssue} onFix={(list) => void fixIssues(list)} />}
           {model.errors.length > 0 && (
             <div className="max-h-32 shrink-0 overflow-auto border-t border-line bg-warning-soft px-3 py-1.5 text-[12px] text-warning">
               {model.errors.map((e, i) => (

@@ -336,11 +336,12 @@ Not a clone: their features, rethought and connected to live databases, the know
 ### 8.4 Easy on the first day ⬜
 - ✅ Start page: "Open a model" next to the connections; a model file opened from the system goes straight to the
   designer with the connection sidebar out of the way
-- ⬜ Model checks that run by themselves (missing keys, orphan columns, duplicate indexes, type mismatches
-  between a foreign key and its target, names that break the model's own prevailing convention): a quiet
-  counter, click to jump, one-click fix where it is safe
-- ⬜ "Find relationships": undeclared foreign keys suggested from names and, when a database is linked, checked
-  against the real data
+- ✅ Model checks that run by themselves (instant, also on 300 tables): tables without a key, foreign keys to
+  columns that are not unique or of another type, indexes that repeat or cover each other, foreign keys without
+  an index, names in a different style than nearly all others. A quiet counter in the toolbar; the list is
+  grouped by kind, a click goes to the table, safe fixes are one click (or one click for all of a kind)
+- ✅ Undeclared relationships are suggested from names and types (`customer_id` next to `customers`, or a column
+  named like another table's key); adding one checks the real rows first when the model's database has both tables
 - ⬜ Print / PDF of a diagram on several pages
 
 ### Later, when the pilot asks for it 💡
