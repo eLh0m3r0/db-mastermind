@@ -37,6 +37,16 @@ export interface DezignLeftOut {
   subdiagrams: number
 }
 
+export interface DezignSqlObject {
+  kind: 'view' | 'sequence' | 'procedure' | 'trigger'
+  name: string
+  schema?: string
+  /** The table a trigger belongs to. */
+  table?: string
+  /** One statement, without its terminator. */
+  sql: string
+}
+
 export interface DezignDiagram {
   id: string
   name: string
@@ -67,6 +77,8 @@ export interface DezignModel {
   layout: { diagramId: string; originX: number; originY: number; scaleX: number; scaleY: number }
   /** Every diagram of the project (the main one included) with the tables it shows and where. */
   diagrams: DezignDiagram[]
+  /** Views, sequences, procedures and triggers as the SQL the project holds for them (in its target database's dialect). */
+  sqlObjects: DezignSqlObject[]
   leftOut: DezignLeftOut
 }
 
@@ -294,6 +306,40 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
     child.table.foreignKeys.push(fk)
   }
 
+  // What the model does not hold as structure is kept as the SQL the project has for it. DeZign's code carries
+  // placeholders for the object's own name.
+  const sqlObjects: DezignSqlObject[] = []
+  const code = (el: DezignElement, names: Record<string, string>) =>
+    text(el, 'CODE')
+      .replace(/%(\w+)%/g, (whole, key: string) => names[key.toLowerCase()] ?? whole)
+      .replace(/[;/\s]+$/, '')
+  const qualified = (el: DezignElement) => {
+    const schema = text(el, 'SCHEMA') || text(el, 'SCHEMANAME')
+    return { schema: schema || undefined, name: text(el, 'NAME'), full: (schema ? `${schema}.` : '') + text(el, 'NAME') }
+  }
+  for (const seq of kids(kid(dict, 'SEQUENCES'))) {
+    const q = qualified(seq)
+    const part = (tag: string, sql: string) => (/^-?\d+$/.test(text(seq, tag)) ? ` ${sql} ${text(seq, tag)}` : '')
+    if (q.name) sqlObjects.push({ kind: 'sequence', name: q.name, schema: q.schema, sql: `CREATE SEQUENCE ${q.full}${part('INCREMENT', 'INCREMENT BY')}${part('SEED', 'START WITH')}${part('MIN', 'MINVALUE')}${part('MAX', 'MAXVALUE')}${text(seq, 'CYCLE') === '1' ? ' CYCLE' : ''}` })
+  }
+  for (const view of kids(kid(dict, 'VIEWS'), 'VIEW')) {
+    const q = qualified(view)
+    const sql = code(view, { viewname: q.full, name: q.full })
+    if (sql) sqlObjects.push({ kind: 'view', name: q.name, schema: q.schema, sql: /^\s*create\b/i.test(sql) ? sql : `CREATE VIEW ${q.full} AS\n${sql}` })
+  }
+  for (const proc of kids(kid(dict, 'PROCEDURES'))) {
+    const q = qualified(proc)
+    const sql = code(proc, { procname: q.full, procedurename: q.full, name: q.full })
+    if (sql) sqlObjects.push({ kind: 'procedure', name: q.name, schema: q.schema, sql })
+  }
+  for (const ent of kids(kid(dict, 'ENTITIES'), 'ENT')) {
+    const table = qualified(ent)
+    for (const trigger of kids(kid(ent, 'TRIGGERS'))) {
+      const sql = code(trigger, { triggername: text(trigger, 'NAME'), name: text(trigger, 'NAME'), tablename: table.full, table: table.full })
+      if (sql) sqlObjects.push({ kind: 'trigger', name: text(trigger, 'NAME'), schema: table.schema, table: table.name, sql })
+    }
+  }
+
   const diagramsEl = kid(version, 'DIAGRAMS')
   const diagrams = kids(diagramsEl, 'DIAGRAM')
   leftOut.subdiagrams = Math.max(0, diagrams.length - 1)
@@ -348,7 +394,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const positions = main?.positions ?? {}
   const layout = { diagramId: mainId, ...(main?.layout ?? { originX: 0, originY: 0, scaleX: 1, scaleY: 1 }) }
 
-  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, diagrams: described, leftOut }
+  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, diagrams: described, sqlObjects, leftOut }
 }
 
 const PROJECT_SECTIONS: [folder: string, element: string][] = [

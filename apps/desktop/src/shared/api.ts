@@ -5,6 +5,7 @@ import type {
   DesignTable,
   DezignChange,
   DezignLeftOut,
+  DezignSqlObject,
   DriverId,
   Grant,
   Principal,
@@ -450,6 +451,9 @@ export interface OpenedModelFile {
     colors: Record<string, number>
     notes: DiagramNote[]
     boxes: DiagramBox[]
+    /** Views, sequences, procedures and triggers of the source as SQL, and the database they are written for. */
+    sqlObjects: DezignSqlObject[]
+    targetDatabase: string
     /** The source's other diagrams (subject areas): which tables each shows and where. */
     diagrams: ModelDiagram[]
     /** Fingerprint of the model as read: saving back is refused when the source has changed since. */

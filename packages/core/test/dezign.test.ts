@@ -147,9 +147,22 @@ ${invoice}
 <OBJECTCAPTION>Fakturace</OBJECTCAPTION>
 </GROUPBOX>
 </GROUPBOXES>
+<SEQUENCES>
+<SEQUENCE>
+<NAME>invoice_no</NAME>
+<SCHEMANAME>shop</SCHEMANAME>
+<INCREMENT>1</INCREMENT>
+<SEED>1000</SEED>
+<MAX></MAX>
+<CYCLE></CYCLE>
+</SEQUENCE>
+</SEQUENCES>
 <VIEWS>
 <VIEW>
 <NAME>v_open</NAME>
+<SCHEMA>shop</SCHEMA>
+<CODE>CREATE VIEW %viewname% AS
+SELECT id FROM shop.invoice WHERE issued IS NULL;</CODE>
 </VIEW>
 </VIEWS>
 <RELATIONSHIPS>
@@ -234,7 +247,7 @@ describe('DeZign for Databases models', () => {
   })
 
   it('says what it left out instead of dropping it silently', () => {
-    expect(readDezign(dez).leftOut).toEqual({ domains: 1, views: 1, procedures: 0, sequences: 0, triggers: 0, checks: 0, relationshipsWithoutColumns: 1, subdiagrams: 1 })
+    expect(readDezign(dez).leftOut).toEqual({ domains: 1, views: 1, procedures: 0, sequences: 1, triggers: 0, checks: 0, relationshipsWithoutColumns: 1, subdiagrams: 1 })
     // The column's check constraint is part of the model.
     expect(readDezign(dez).tables[0]!.checks).toEqual([{ expression: 'credit >= 0' }])
   })
@@ -272,6 +285,13 @@ describe('DeZign for Databases models', () => {
     expect(diagrams[1]!.notes).toEqual([])
     expect(diagrams[0]!.boxes).toEqual([{ id: 'G1', title: 'Fakturace', x: -20, y: -20, w: 500, h: 300 }])
     expect(diagrams[1]!.layout).toMatchObject({ originX: 900, originY: 900 })
+  })
+
+  it('keeps views and sequences as the SQL the project has for them', () => {
+    expect(readDezign(dez).sqlObjects).toEqual([
+      { kind: 'sequence', name: 'invoice_no', schema: 'shop', sql: 'CREATE SEQUENCE shop.invoice_no INCREMENT BY 1 START WITH 1000' },
+      { kind: 'view', name: 'v_open', schema: 'shop', sql: 'CREATE VIEW shop.v_open AS\nSELECT id FROM shop.invoice WHERE issued IS NULL' },
+    ])
   })
 
   it('becomes DBML that reads back the same', () => {

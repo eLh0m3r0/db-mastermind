@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { DesignTable, FilterNode, SortSpec, TableRef } from '@dbmastermind/core/browser'
+import type { DesignTable, FilterNode, SortSpec, TableRef, DezignSqlObject } from '@dbmastermind/core/browser'
 import type { DiagramNote, ModelDiagram, DiagramBox } from '@shared/api'
 import { api } from '@/lib/api'
 import { debounce, uid } from '@/lib/utils'
@@ -90,6 +90,9 @@ export interface ModelTab extends BaseTab {
   /** The DeZign for Databases project the model was opened from: Save writes the changes back into it. */
   /** `layout`: the tab holds the source's notes and colors, so what it has now is all there should be. */
   source?: { kind: 'dezign'; path: string; hash: string; layout?: boolean }
+  /** Views, sequences, procedures and triggers of the source, as SQL for `sqlDatabase`: added to generated DDL. */
+  sqlObjects?: DezignSqlObject[]
+  sqlDatabase?: string
   dirty?: boolean
   positions?: Record<string, { x: number; y: number }>
   /** Table colors and sticky notes of the model's diagram. */

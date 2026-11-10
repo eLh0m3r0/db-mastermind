@@ -29,7 +29,7 @@ const textControl = el('TEXTC', '<ID>T1</ID>\n<DIAGRAMID>1</DIAGRAMID>\n<W>200</
 const billingControls = [entc('20', 50, 50), entc('30', 50, 500)].map((c) => c.replace('<DIAGRAMID>1</DIAGRAMID>', '<DIAGRAMID>2</DIAGRAMID>'))
 const head = '<?xml version="1.0" encoding="iso-8859-1"?>'
 const dez = join(dir, 'shop.dez')
-writeFileSync(dez, `${head}<dezign>\n<VERSION>\n${settings}\n<DATADICT>\n<DBID>postgresql16</DBID>\n<DOMAINS>\n</DOMAINS>\n<TEXTAREAS>\n${textArea}\n</TEXTAREAS>\n<GROUPBOXES>\n<GROUPBOX>\n<NAME>GroupBox1</NAME>\n<ID>G1</ID>\n<OBJECTCAPTION>Billing</OBJECTCAPTION>\n</GROUPBOX>\n</GROUPBOXES>\n<ENTITIES>\n${entities.join('\n')}\n</ENTITIES>\n<VIEWS>\n<VIEW>\n<NAME>v</NAME>\n</VIEW>\n</VIEWS>\n<RELATIONSHIPS>\n${rels.join('\n')}\n</RELATIONSHIPS>\n</DATADICT>\n<DIAGRAMS>\n<DisplayPreferences>\n<DEFENTCOLOR>16119285</DEFENTCOLOR>\n</DisplayPreferences>\n${diagram}\n${billing}\n<CONTROLS>\n<ENTITYCONTROLS>\n${controls.join('\n')}\n${billingControls.join('\n')}\n</ENTITYCONTROLS>\n<TEXTAREACONTROLS>\n${textControl}\n</TEXTAREACONTROLS>\n<GROUPBOXESCONTROLS>\n<GROUPBOXC>\n<ID>G1</ID>\n<DIAGRAMID>1</DIAGRAMID>\n<W>420</W>\n<H>980</H>\n<L>840</L>\n<T>-60</T>\n</GROUPBOXC>\n</GROUPBOXESCONTROLS>\n</CONTROLS>\n</DIAGRAMS>\n</VERSION>\n<VERSION>\n<VERSIONINFO>\n<VERSIONNUMBER>1</VERSIONNUMBER>\n<VERSIONLABEL>First release</VERSIONLABEL>\n<VERSIONDATE>2026-01-15</VERSIONDATE>\n</VERSIONINFO>\n<DATADICT>\n<DBID>postgresql16</DBID>\n<ENTITIES>\n${entities.slice(0, 2).join('\n')}\n</ENTITIES>\n<RELATIONSHIPS>\n${rels[0]}\n</RELATIONSHIPS>\n</DATADICT>\n</VERSION>\n</dezign>\n`, 'latin1')
+writeFileSync(dez, `${head}<dezign>\n<VERSION>\n${settings}\n<DATADICT>\n<DBID>postgresql16</DBID>\n<DOMAINS>\n</DOMAINS>\n<TEXTAREAS>\n${textArea}\n</TEXTAREAS>\n<GROUPBOXES>\n<GROUPBOX>\n<NAME>GroupBox1</NAME>\n<ID>G1</ID>\n<OBJECTCAPTION>Billing</OBJECTCAPTION>\n</GROUPBOX>\n</GROUPBOXES>\n<ENTITIES>\n${entities.join('\n')}\n</ENTITIES>\n<VIEWS>\n<VIEW>\n<NAME>v_unpaid</NAME>\n<SCHEMA>shop</SCHEMA>\n<CODE>CREATE VIEW %viewname% AS\nSELECT id FROM shop.invoice;</CODE>\n</VIEW>\n</VIEWS>\n<RELATIONSHIPS>\n${rels.join('\n')}\n</RELATIONSHIPS>\n</DATADICT>\n<DIAGRAMS>\n<DisplayPreferences>\n<DEFENTCOLOR>16119285</DEFENTCOLOR>\n</DisplayPreferences>\n${diagram}\n${billing}\n<CONTROLS>\n<ENTITYCONTROLS>\n${controls.join('\n')}\n${billingControls.join('\n')}\n</ENTITYCONTROLS>\n<TEXTAREACONTROLS>\n${textControl}\n</TEXTAREACONTROLS>\n<GROUPBOXESCONTROLS>\n<GROUPBOXC>\n<ID>G1</ID>\n<DIAGRAMID>1</DIAGRAMID>\n<W>420</W>\n<H>980</H>\n<L>840</L>\n<T>-60</T>\n</GROUPBOXC>\n</GROUPBOXESCONTROLS>\n</CONTROLS>\n</DIAGRAMS>\n</VERSION>\n<VERSION>\n<VERSIONINFO>\n<VERSIONNUMBER>1</VERSIONNUMBER>\n<VERSIONLABEL>First release</VERSIONLABEL>\n<VERSIONDATE>2026-01-15</VERSIONDATE>\n</VERSIONINFO>\n<DATADICT>\n<DBID>postgresql16</DBID>\n<ENTITIES>\n${entities.slice(0, 2).join('\n')}\n</ENTITIES>\n<RELATIONSHIPS>\n${rels[0]}\n</RELATIONSHIPS>\n</DATADICT>\n</VERSION>\n</dezign>\n`, 'latin1')
 const before = readFileSync(dez)
 
 const project = join(dir, 'ShopProject')
@@ -71,7 +71,7 @@ try {
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow91-open.png') })
   console.log('dez dbml:', text.includes('Table shop.customer'), text.includes('Ref: shop.invoice.customer_id > shop.customer.id [delete: cascade]'), 'czech note:', text.includes('Zákazník, který platí řádně'))
   console.log('dez layout kept:', JSON.stringify(pos['shop.customer']), JSON.stringify(pos['shop.invoice']), JSON.stringify(pos['shop.payment']))
-  console.log('toast:', await win.getByText(/Opened a DeZign for Databases model: 3 tables/).count(), await win.getByText(/views: 1/).count(), 'title:', await win.getByText('shop.dez', { exact: true }).count())
+  console.log('toast:', await win.getByText(/Opened a DeZign for Databases model: 3 tables/).count(), await win.getByText(/Views, sequences, procedures and triggers of the project \(1\) go into the SQL DDL/).count(), 'title:', await win.getByText('shop.dez', { exact: true }).count())
   console.log('source untouched by opening:', readFileSync(dez).equals(before))
 
   // The source's second diagram is a subject area with its own tables and layout.
@@ -154,6 +154,19 @@ try {
   await win.getByRole('button', { name: 'Compare', exact: true }).click()
   await win.getByText(/Create table/).first().waitFor({ timeout: 20000 })
   console.log('compare with an archived version:', await win.getByText(/Changes since v1/).count() > 0, 'changes:', await win.getByText(/Create table/).count())
+
+  // The view the project holds as SQL is part of the generated script (PostgreSQL is the project's own database).
+  await win.getByText('shop.dez', { exact: true }).first().click()
+  await win.getByRole('button', { name: 'SQL DDL' }).click()
+  await win.getByText('PostgreSQL', { exact: true }).first().click()
+  await win.waitForTimeout(1200)
+  const ddlTop = await win.locator('.cm-content:visible').first().innerText()
+  // The editor draws only the lines in view: go to the end for the rest.
+  await win.locator('.cm-content:visible').first().click()
+  await win.keyboard.press('Meta+ArrowDown')
+  await win.waitForTimeout(400)
+  const ddlEnd = await win.locator('.cm-content:visible').first().innerText()
+  console.log('ddl has the tables and the view:', /CREATE TABLE/.test(ddlTop), /CREATE VIEW shop\.v_unpaid AS/.test(ddlEnd), /from the DeZign project/.test(ddlEnd))
 
   await pick(join(project, 'Shop.dezproj'))
   await openModel()

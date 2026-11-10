@@ -19,7 +19,7 @@ import { useSettings } from '@/store/settings'
 import { askAi, toast } from '@/store/ui'
 import { useWorkspace, type DiagramTab, type ModelTab } from '@/store/workspace'
 import { DiagramView } from '../diagram/DiagramView'
-import { describeDezignChanges, modelTabFromFile } from './open-model'
+import { describeDezignChanges, modelTabFromFile, sqlObjectsScript } from './open-model'
 import { IssuesChip, IssuesPanel } from './ModelIssues'
 import { rememberModelDatabase } from '@/lib/files'
 import { connectAndSelect } from '../sidebar/Sidebar'
@@ -289,7 +289,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
       DRIVERS.map((d) => ({
         label: d.label,
         onClick: () => {
-          const script = `-- ${t('Model as {db} DDL', { db: d.label })}\n${createScript(model.tables, getDialect(d.id), { translateTypes: true })}`
+          const script = `-- ${t('Model as {db} DDL', { db: d.label })}\n${createScript(model.tables, getDialect(d.id), { translateTypes: true })}${sqlObjectsScript(tab.sqlObjects, tab.sqlDatabase, d.id)}`
           // With a database the script opens in its editor; a model on its own saves it as a file.
           if (connection) newQuery(tab.connectionId, script, `DDL · ${d.label}`)
           else void api.saveSqlFile(script, `${fileName.replace(/\.\w+$/, '') || 'model'}-${d.id}.sql`).then((path) => path && toast({ kind: 'success', message: t('Script saved'), detail: path }), (err) => toast({ kind: 'error', message: t('Could not save the script'), detail: errorMessage(err) }))

@@ -1,4 +1,4 @@
-import type { DezignChange } from '@dbmastermind/core/browser'
+import type { DezignChange, DezignSqlObject } from '@dbmastermind/core/browser'
 import type { OpenedModelFile } from '@shared/api'
 import { t, tp } from '@/lib/i18n'
 import { toast } from '@/store/ui'
@@ -6,10 +6,6 @@ import type { ModelTab } from '@/store/workspace'
 
 const LEFT_OUT: [keyof NonNullable<OpenedModelFile['imported']>['leftOut'], string][] = [
   ['domains', 'domains (their columns keep the base type): {n}'],
-  ['views', 'views: {n}'],
-  ['procedures', 'procedures: {n}'],
-  ['sequences', 'sequences: {n}'],
-  ['triggers', 'triggers: {n}'],
   ['relationshipsWithoutColumns', 'relationships without columns: {n}'],
 ]
 
@@ -17,9 +13,9 @@ const LEFT_OUT: [keyof NonNullable<OpenedModelFile['imported']>['leftOut'], stri
  * What a model tab takes from an opened file. Another tool's model (DeZign for Databases) keeps its source and
  * layout: Save writes the changes back into that file, Save as makes a .dbml model of it.
  */
-export function modelTabFromFile(file: OpenedModelFile, defaultSchema?: string, options: { /** No notice about what was opened (the caller says its own). */ quiet?: boolean } = {}): Pick<ModelTab, 'text' | 'path' | 'source' | 'dirty' | 'title' | 'positions' | 'diagrams' | 'colors' | 'notes' | 'boxes'> {
+export function modelTabFromFile(file: OpenedModelFile, defaultSchema?: string, options: { /** No notice about what was opened (the caller says its own). */ quiet?: boolean } = {}): Pick<ModelTab, 'text' | 'path' | 'source' | 'dirty' | 'title' | 'positions' | 'diagrams' | 'colors' | 'notes' | 'boxes' | 'sqlObjects' | 'sqlDatabase'> {
   const name = file.path.split(/[\\/]/).pop() ?? t('Model')
-  if (!file.imported) return { text: file.text, path: file.path, source: undefined, dirty: false, title: name, positions: undefined, diagrams: undefined, colors: undefined, notes: undefined, boxes: undefined }
+  if (!file.imported) return { text: file.text, path: file.path, source: undefined, dirty: false, title: name, positions: undefined, diagrams: undefined, colors: undefined, notes: undefined, boxes: undefined, sqlObjects: undefined, sqlDatabase: undefined }
   // Tables without a schema land in the connection's default schema when the DBML is read.
   const keyed = (key: string) => (key.startsWith('.') ? `${defaultSchema ?? ''}${key}` : key)
   const rekey = <T,>(map: Record<string, T> | undefined) => Object.fromEntries(Object.entries(map ?? {}).map(([key, v]) => [keyed(key), v]))
@@ -30,9 +26,9 @@ export function modelTabFromFile(file: OpenedModelFile, defaultSchema?: string, 
   if (!options.quiet) toast({
     kind: leftOut.length ? 'warning' : 'success',
     message: tp(file.imported.tables, { one: 'Opened a DeZign for Databases model: {n} table', many: 'Opened a DeZign for Databases model: {n} tables' }),
-    detail: [leftOut.length ? `${t('Not in the model yet:')} ${leftOut.join(' · ')}.` : '', t('Save writes your changes back into the DeZign file (a backup is kept); Save as makes a .dbml model.')].filter(Boolean).join('\n'),
+    detail: [leftOut.length ? `${t('Not in the model yet:')} ${leftOut.join(' · ')}.` : '', file.imported.sqlObjects?.length ? t('Views, sequences, procedures and triggers of the project ({n}) go into the SQL DDL script as the project has them.', { n: String(file.imported.sqlObjects.length) }) : '', t('Save writes your changes back into the DeZign file (a backup is kept); Save as makes a .dbml model.')].filter(Boolean).join('\n'),
   })
-  return { text: file.text, path: undefined, source: { kind: 'dezign', path: file.path, hash: file.imported.hash, layout: true }, dirty: false, title: name, positions, diagrams: diagrams.length ? diagrams : undefined, colors: Object.keys(colors).length ? colors : undefined, notes: file.imported.notes.length ? file.imported.notes : undefined, boxes: file.imported.boxes?.length ? file.imported.boxes : undefined }
+  return { text: file.text, path: undefined, source: { kind: 'dezign', path: file.path, hash: file.imported.hash, layout: true }, dirty: false, title: name, positions, diagrams: diagrams.length ? diagrams : undefined, colors: Object.keys(colors).length ? colors : undefined, notes: file.imported.notes.length ? file.imported.notes : undefined, boxes: file.imported.boxes?.length ? file.imported.boxes : undefined, sqlObjects: file.imported.sqlObjects?.length ? file.imported.sqlObjects : undefined, sqlDatabase: file.imported.targetDatabase }
 }
 
 const CHANGE_LABELS: Record<DezignChange['kind'], string> = {
@@ -66,4 +62,28 @@ const CHANGE_LABELS: Record<DezignChange['kind'], string> = {
 export function describeDezignChanges(changes: DezignChange[], limit = 40): string[] {
   const lines = changes.map((c) => `${t(CHANGE_LABELS[c.kind])}: ${c.table}${c.name ? ` (${c.name})` : ''}`)
   return lines.length > limit ? [...lines.slice(0, limit), t('… and {n} more', { n: String(lines.length - limit) })] : lines
+}
+
+const FAMILIES: [RegExp, string[]][] = [
+  [/^postgres/i, ['postgres']],
+  [/^(mssql|sqlserver|azure)/i, ['mssql']],
+  [/^(mysql|maria)/i, ['mysql', 'mariadb']],
+  [/^oracle/i, ['oracle']],
+  [/^sqlite/i, ['sqlite']],
+]
+
+/**
+ * The source's views, sequences, procedures and triggers as a block for a DDL script. They are written in the
+ * dialect of the project's own database: for another one they are left in as comments, to be rewritten by hand.
+ */
+export function sqlObjectsScript(objects: DezignSqlObject[] | undefined, database: string | undefined, driver: string): string {
+  if (!objects?.length) return ''
+  const same = FAMILIES.some(([pattern, drivers]) => pattern.test(database ?? '') && drivers.includes(driver))
+  const order = ['sequence', 'view', 'procedure', 'trigger']
+  const body = [...objects]
+    .sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))
+    .map((o) => `${o.sql};`)
+    .join('\n\n')
+  const head = same ? t('Views, sequences, procedures and triggers from the DeZign project') : t('Views, sequences, procedures and triggers from the DeZign project, written for {db}: rewrite them for this database', { db: database ?? '?' })
+  return `\n\n-- ${head}\n${same ? body : body.split('\n').map((l) => `-- ${l}`).join('\n')}\n`
 }

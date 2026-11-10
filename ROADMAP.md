@@ -298,8 +298,10 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ Text in the Windows code page DeZign wrote it in (Czech reads correctly; the file's own `iso-8859-1` label is wrong)
 - ✅ Everything a model already does works on it: DDL for any database, ALTER script against a live database,
   compare with a `.dbml` or another DeZign file, data dictionary, AI review
-- ✅ What the model can't show yet (domains, views, procedures, sequences, triggers, relationships without
-  columns) is listed with counts when the file opens, never dropped silently
+- ✅ Views, sequences, procedures and triggers of the project are kept as the SQL it holds for them and added to
+  the generated DDL script (as comments when the script is for another database than the project's)
+- ✅ What the model can't show yet (domains: their columns have the base type; relationships without columns) is
+  listed with counts when the file opens, never dropped silently
 - ✅ Opening never changes the DeZign file; Save as makes a `.dbml` model of it
 - ✅ A model needs no connection: File → Open Model (⌘O), "Open a model" on the start page, a file dropped on the
   window, or the file itself (command line, double-click; `.dbml` is registered on macOS and Windows, DeZign files
@@ -348,7 +350,8 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ Blocks the model does not hold (Project, notes, Records, TablePartial) stay as written when the model is
   rewritten from the canvas or by a fix
 - ⬜ Custom properties on tables and columns; DeZign attribute packages as `TablePartial`
-- ⬜ Views, sequences, triggers and procedures in the model, kept as plain SQL
+- ⬜ Views, sequences, triggers and procedures edited in the model (a DeZign project's are carried into the DDL
+  as they are; a model made here has none yet)
 - ⬜ Domains (named reusable types)
 - ⬜ Several diagrams per model with their own layout, notes and group boxes
 - ⬜ A model as a folder (one file per table, SQL files for the rest): small Git diffs, merges without conflicts
