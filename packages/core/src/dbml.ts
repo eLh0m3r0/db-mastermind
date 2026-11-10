@@ -24,7 +24,11 @@ export interface DbmlModel {
 
 const ident = (s: string) => s.replace(/^"(.*)"$/, '$1').replace(/^`(.*)`$/, '$1')
 const quoteName = (s: string) => (/^[A-Za-z_][\w]*$/.test(s) ? s : `"${s.replaceAll('"', '\\"')}"`)
-const noteText = (s: string) => `'${s.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`
+// A note with line breaks is a DBML multi-line string ('''…'''); `foldStrings` reads it back.
+const noteText = (s: string) => {
+  const escaped = s.replaceAll('\\', '\\\\').replaceAll("'", "\\'").replace(/\r\n?/g, '\n')
+  return escaped.includes('\n') ? `'''${escaped}'''` : `'${escaped}'`
+}
 
 /** Splits `a, b, 'c, d', e` at top-level commas. */
 function splitTop(s: string, sep = ','): string[] {
@@ -60,7 +64,30 @@ function splitTop(s: string, sep = ','): string[] {
 
 function unquoteString(v: string): string {
   const m = /^'''([\s\S]*)'''$/.exec(v) ?? /^'([\s\S]*)'$/.exec(v) ?? /^"([\s\S]*)"$/.exec(v)
-  return m ? m[1]!.replace(/\\(['"\\])/g, '$1') : v
+  return m ? m[1]!.replace(/\\(['"\\n])/g, (_, c: string) => (c === 'n' ? '\n' : c)) : v
+}
+
+/**
+ * The parser works line by line, so a multi-line string ('''…''') is folded onto its first line with `\n`
+ * escapes; the lines it took are given back as empty ones, which keeps the line numbers of everything after it.
+ */
+function foldStrings(text: string): string {
+  let out = ''
+  let folded = 0
+  for (let i = 0; i < text.length; i++) {
+    if (text.startsWith("'''", i)) {
+      let end = i + 3
+      while (end < text.length && !text.startsWith("'''", end)) end += text[end] === '\\' ? 2 : 1
+      const body = text.slice(i + 3, Math.min(end, text.length))
+      folded += body.split('\n').length - 1
+      out += `'''${body.replace(/\r?\n/g, '\\n')}'''`
+      i = end + 2
+    } else if (text[i] === '\n') {
+      out += '\n'.repeat(folded + 1)
+      folded = 0
+    } else out += text[i]
+  }
+  return out
 }
 
 /** Removes // and /* *\/ comments outside of strings. */
@@ -104,7 +131,7 @@ function parseRefTarget(s: string, defaultSchema?: string): { schema?: string; t
 const ACTION = /(delete|update)\s*:\s*(cascade|restrict|set null|set default|no action)/gi
 
 export function parseDbml(text: string, options: { defaultSchema?: string; /** Database type for columns typed with a DBML Enum. */ enumType?: string } = {}): DbmlModel {
-  const lines = stripComments(text).split('\n')
+  const lines = foldStrings(stripComments(text)).split('\n')
   const tables: TableInfo[] = []
   const enums: Record<string, string[]> = {}
   const groups: Record<string, string[]> = {}

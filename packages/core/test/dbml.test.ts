@@ -147,4 +147,18 @@ Ref: orders.customer_id > customers.id
     expect(changes).toHaveLength(1)
     expect(changes[0]).toMatchObject({ kind: 'create_table', table: { name: 'addresses', foreignKeys: [{ refTable: 'customers' }] } })
   })
+
+  it('keeps notes with line breaks, quotes and backslashes through a round trip', () => {
+    const note = "0 = off;\n1 = on, it's {final}\nC:\\new [x]"
+    const table = { schema: undefined, name: 't', type: 'table' as const, comment: `About\n${note}`, columns: [{ name: 'state', ordinal: 1, dataType: 'int', nullable: true, isPrimaryKey: false, isIdentity: false, comment: note }, { name: 'after', ordinal: 2, dataType: 'int', nullable: true, isPrimaryKey: false, isIdentity: false }], primaryKey: [], foreignKeys: [], indexes: [] }
+    const dbml = toDbml([table])
+    expect(dbml).toContain("note: '''0 = off;\n1 = on")
+    const back = parseDbml(dbml)
+    expect(back.errors).toEqual([])
+    expect(back.tables[0]!.columns.map((c) => c.name)).toEqual(['state', 'after'])
+    expect(back.tables[0]!.columns[0]!.comment).toBe(note)
+    expect(back.tables[0]!.comment).toBe(`About\n${note}`)
+    // Lines after a multi-line string keep their numbers.
+    expect(parseDbml("Table t {\n  a int [note: '''one\ntwo\nthree''']\n  ???\n}").errors).toEqual([{ line: 5, message: "Can't read column: ???" }])
+  })
 })

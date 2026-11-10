@@ -57,6 +57,7 @@ import { listModels, testProvider } from './ai/models'
 import { deleteChat, deleteChatsOf, getChat, listChats, renameChat, saveChat } from './ai/chat-store'
 import { detectImportSources, exportConnections, importConnections } from './importers'
 import { backupDatabase, restoreDatabase } from './backup'
+import { openDezignModel } from './dezign-file'
 import { aiAccess, turnedOffCentrally } from './ai-access'
 import { managed } from './managed'
 import { checkNow, installUpdate } from './updates'
@@ -463,12 +464,14 @@ export const api: MastermindApi = {
   async openModelFile(path, defaultDir) {
     if (!path) {
       const window = BrowserWindow.getFocusedWindow()
-      const options = { title: 'Open model', defaultPath: defaultDir, properties: ['openFile' as const], filters: [{ name: 'DBML', extensions: ['dbml'] }] }
+      const options = { title: 'Open model', defaultPath: defaultDir, properties: ['openFile' as const], filters: [{ name: 'Models (DBML, DeZign for Databases)', extensions: ['dbml', 'dez', 'dezproj'] }] }
       const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
       if (r.canceled || !r.filePaths[0]) return null
       path = r.filePaths[0]
     }
-    if (extname(path).toLowerCase() !== '.dbml') throw new Error('Models are .dbml files')
+    const ext = extname(path).toLowerCase()
+    if (ext === '.dez' || ext === '.dezproj') return openDezignModel(path)
+    if (ext !== '.dbml') throw new Error('Models are .dbml files, or DeZign for Databases models (.dez, .dezproj)')
     return { path, text: await readFile(path, 'utf8') }
   },
   async saveSqlFile(text, name, defaultDir) {

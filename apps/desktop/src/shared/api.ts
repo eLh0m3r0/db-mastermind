@@ -3,6 +3,7 @@ import type {
   AiPermissions,
   DataCompareResult,
   DesignTable,
+  DezignLeftOut,
   Grant,
   Principal,
   ExplainResult,
@@ -422,6 +423,20 @@ export interface FileFilter {
   extensions: string[]
 }
 
+/** A model file as DBML text. */
+export interface OpenedModelFile {
+  path: string
+  text: string
+  /** Set when the file is another tool's model: `path` is then the source, not a file the model saves to. */
+  imported?: {
+    from: 'dezign'
+    tables: number
+    /** Table positions of the source's main diagram, keyed `schema.table`. */
+    positions: Record<string, { x: number; y: number }>
+    leftOut: DezignLeftOut
+  }
+}
+
 /** Everything the renderer can ask the main process to do. */
 export interface MastermindApi {
   getAppInfo(): Promise<AppInfo>
@@ -497,8 +512,8 @@ export interface MastermindApi {
   exportDataDictionary(connectionId: string, format: 'html' | 'markdown', schemas?: string[]): Promise<string | null>
   compareData(request: CompareDataRequest): Promise<DataCompareResult>
   /** Opens a CSV / Parquet / JSON / Excel file for SQL in the built-in DuckDB; asks for the file when `path` is omitted. */
-  /** Opens a .dbml model file (asks for it when `path` is omitted). */
-  openModelFile(path?: string, defaultDir?: string): Promise<{ path: string; text: string } | null>
+  /** Opens a model file: .dbml, or a DeZign for Databases model (.dez, .dezproj) read as DBML. Asks for it when `path` is omitted. */
+  openModelFile(path?: string, defaultDir?: string): Promise<OpenedModelFile | null>
   /** Saves a .dbml model; asks where when `path` is omitted. Returns the path, or null if cancelled. */
   saveModelFile(text: string, path?: string, defaultDir?: string): Promise<string | null>
   /** Reads a SQL DDL script (pg_dump, mysqldump, SSMS…) into DBML; asks for the file. */

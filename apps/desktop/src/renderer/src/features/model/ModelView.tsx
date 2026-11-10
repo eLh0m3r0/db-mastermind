@@ -19,6 +19,7 @@ import { useSettings } from '@/store/settings'
 import { askAi, toast } from '@/store/ui'
 import { useWorkspace, type DiagramTab, type ModelTab } from '@/store/workspace'
 import { DiagramView } from '../diagram/DiagramView'
+import { modelTabFromFile } from './open-model'
 import { editorTheme } from '../query/SqlEditor'
 import { confirmAction } from '@/components/ui/ConfirmDialog'
 
@@ -169,7 +170,9 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const open = async () => {
     try {
       const file = await api.openModelFile(undefined, connection?.knowledgeBasePath)
-      if (file) replaceText(file.text, { path: file.path, dirty: false, title: file.path.split(/[\\/]/).pop() ?? t('Model') })
+      if (!file) return
+      const { text: opened, ...patch } = modelTabFromFile(file, liveSchema?.defaultSchema)
+      replaceText(opened, patch)
     } catch (err) {
       toast({ kind: 'error', message: t('Could not open the model'), detail: errorMessage(err) })
     }

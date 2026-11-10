@@ -288,15 +288,22 @@ Not a clone: their features, rethought and connected to live databases, the know
 5. **Agents get the model like everything else**: the same tools and permissions as the connection it is linked
    to; nothing extra to configure.
 
-### 8.1 Open a DeZign model and use it ⬜ (next)
-- ⬜ Open `.dez` files (DeZign 4 to 14, file formats 41–140) as model documents: File → Open, drag & drop,
-  double-click in Explorer/Finder. Tables, columns, types, keys, relationships, indexes, defaults, comments, schemas
-- ⬜ The DeZign diagrams come along: subdiagrams become subject areas with their original positions and colors
-- ⬜ Everything a model already does works on it: DDL for any database, ALTER script against a live database,
-  compare with an older version, data dictionary, AI review
-- ⬜ What the model can't show yet (domains, triggers, procedures, sequences) is listed, never dropped silently
-- ⬜ Folder projects (`.dezproj`, one file per object) — needs a sample from the owner's company
-- ⬜ Czech names and comments read correctly — needs a sample saved on a Czech Windows
+### 8.1 Open a DeZign model and use it 🚧
+- ✅ Open `.dez` files (DeZign 4 to 14, file formats 41–140) as a model: Open model in the Model tab or the command
+  palette. Tables, columns, types, keys, relationships with their rules, unique constraints, indexes, defaults,
+  comments, schemas. Checked on public models of formats 41, 51, 60, 120, 140
+- ✅ Folder projects (`.dezproj`, one file per object; archived versions are not read). A real project of 305
+  tables, 3,000 columns and 540 relationships opens and draws in under a second
+- ✅ The layout of the main diagram comes along (spread to the size of our tables)
+- ✅ Text in the Windows code page DeZign wrote it in (Czech reads correctly; the file's own `iso-8859-1` label is wrong)
+- ✅ Everything a model already does works on it: DDL for any database, ALTER script against a live database,
+  compare with a `.dbml` or another DeZign file, data dictionary, AI review
+- ✅ What the model can't show yet (domains, views, procedures, sequences, triggers, check constraints,
+  relationships without columns, other diagrams) is listed with counts when the file opens, never dropped silently
+- ✅ The DeZign file is only read; saving writes a new `.dbml` model (until 8.2)
+- ⬜ File → Open, drag & drop and double-click in Explorer/Finder; a model without any connection
+- ⬜ Subdiagrams as subject areas with their own positions and colors (a table can be in several: needs 8.3's
+  several diagrams per model)
 
 ### 8.2 Save it back ⬜
 - ⬜ Save to the same `.dez`: only the touched elements change, everything else stays byte for byte, the file
