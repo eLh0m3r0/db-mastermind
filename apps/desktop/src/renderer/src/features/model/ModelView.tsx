@@ -189,8 +189,17 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const save = async (as = false) => {
     if (!as && !tab.path && tab.source) return saveToSource(tab.source)
     try {
-      const path = await api.saveModelFile(text, as ? undefined : tab.path, connection?.knowledgeBasePath)
+      const path = await api.saveModelFile(text, as ? undefined : tab.path, connection?.knowledgeBasePath, { positions: tab.positions, defaultSchema: liveSchema?.defaultSchema, driver: connection?.driver, name: fileName })
       if (!path) return
+      // Saved as a DeZign project: the tab now follows that file, as if it had been opened from it.
+      if (/\.dez$/i.test(path)) {
+        const file = await api.openModelFile(path)
+        if (!file) return
+        const { text: opened, ...patch } = modelTabFromFile(file, liveSchema?.defaultSchema, { quiet: true })
+        replaceText(opened, patch)
+        if (connection) rememberModelDatabase(path, connection.id)
+        return toast({ kind: 'success', message: t('Saved as a DeZign for Databases project'), detail: `${path}\n${t('Not yet checked in DeZign itself: open it there before you rely on it.')}` })
+      }
       // Saved as its own file, the model no longer follows the DeZign project it came from.
       updateTab(tab.id, { path, source: undefined, dirty: false, text, title: path.split(/[\\/]/).pop() ?? t('Model') })
       if (connection) rememberModelDatabase(path, connection.id)

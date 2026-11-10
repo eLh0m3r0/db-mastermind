@@ -725,7 +725,7 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     const at = wanted ? toDiagram(diagramId, wanted) : { l: right + 60, t: top }
     const el = template
       ? clone(template)
-      : container('ENTC', [leaf('ID'), leaf('DIAGRAMID', diagramId), leaf('W', '200'), leaf('H', '120'), leaf('L'), leaf('T'), leaf('AS', '1')])
+      : container('ENTC', [leaf('ID'), leaf('DIAGRAMID', diagramId), leaf('W', '200'), leaf('H', '120'), leaf('L'), leaf('T'), leaf('BRUSH', '0,16119285'), leaf('PEN', '0,1,4,10987431'), leaf('FONT', 'Arial,8,,0,clWindowText,0'), leaf('TR', '0'), leaf('AS', '1'), leaf('ROUNDED', '8')])
     for (const tag of ['HIDDENATTR', 'ATTRCLIST', 'HEADERCOLOR']) if (kid(el, tag)) set(el, tag, '')
     set(el, 'ID', entity.id)
     if (kid(el, 'DIAGRAMID') || diagramId) set(el, 'DIAGRAMID', diagramId, ['W'])
@@ -934,7 +934,7 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
       const to = of(parent.id)
       if (!from || !to) continue
       const middle = (c: El) => ({ x: Math.round(Number(text(c, 'L')) + Number(text(c, 'W')) / 2) || 0, y: Math.round(Number(text(c, 'T')) + Number(text(c, 'H')) / 2) || 0 })
-      const connector = connectorTemplate ? clone(connectorTemplate) : container('RELC', [leaf('ID'), leaf('DIAGRAMID'), leaf('HIDDEN', '0'), container('POINTS', [])])
+      const connector = connectorTemplate ? clone(connectorTemplate) : container('RELC', [leaf('ID'), leaf('DIAGRAMID'), leaf('FONT', 'Arial,8,,0,clWindowText,0'), leaf('PEN', '1,1,4,0'), container('POINTS', [])])
       remove(connector, kid(connector, 'ROUTING'))
       set(connector, 'ID', id)
       if (kid(connector, 'DIAGRAMID') || diagramId) set(connector, 'DIAGRAMID', diagramId, ['FONT', 'PEN', 'HIDDEN', 'POINTS'])

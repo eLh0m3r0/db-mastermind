@@ -5,6 +5,7 @@ import type {
   DesignTable,
   DezignChange,
   DezignLeftOut,
+  DriverId,
   Grant,
   Principal,
   ExplainResult,
@@ -468,6 +469,17 @@ export interface DiagramPdfRequest {
   pages: 'one' | 'many'
 }
 
+/** What an export of a model to another tool's format takes besides the model itself. */
+export interface ModelExportLayout {
+  positions?: Record<string, { x: number; y: number }>
+  /** Schema the window puts schema-less tables under (keys of `positions`). */
+  defaultSchema?: string
+  /** Engine of the model's database, when it has one. */
+  driver?: DriverId
+  /** Name offered in the save dialog. */
+  name?: string
+}
+
 export interface DezignSaveRequest {
   /** The `.dez` or `.dezproj` the model was opened from. */
   path: string
@@ -572,7 +584,11 @@ export interface MastermindApi {
   /** Opens a model file: .dbml, or a DeZign for Databases model (.dez, .dezproj) read as DBML. Asks for it when `path` is omitted. */
   openModelFile(path?: string, defaultDir?: string): Promise<OpenedModelFile | null>
   /** Saves a .dbml model; asks where when `path` is omitted. Returns the path, or null if cancelled. */
-  saveModelFile(text: string, path?: string, defaultDir?: string): Promise<string | null>
+  /**
+   * Saves a model. With `path` it must be a .dbml file; without, the user picks the file and its format: DBML, or
+   * a new DeZign for Databases project (.dez) made from the model with `layout`.
+   */
+  saveModelFile(text: string, path?: string, defaultDir?: string, layout?: ModelExportLayout): Promise<string | null>
   /** Reads a SQL DDL script (pg_dump, mysqldump, SSMS…) into DBML; asks for the file. */
   /** Saves a SQL script (migrations); asks where, suggesting `name`. Returns the path or null. */
   saveSqlFile(text: string, name: string, defaultDir?: string): Promise<string | null>

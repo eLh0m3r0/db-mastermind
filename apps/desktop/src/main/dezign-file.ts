@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto'
 import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join } from 'node:path'
 import { app } from 'electron'
-import { assembleDezignProject, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '@dbmastermind/core'
-import type { DezignSaveOutcome, DezignSaveRequest, OpenedModelFile } from '@shared/api'
+import { assembleDezignProject, dezignDatabaseFor, newDezignProject, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '@dbmastermind/core'
+import type { DezignSaveOutcome, DezignSaveRequest, ModelExportLayout, OpenedModelFile } from '@shared/api'
 import { dataPath } from './storage'
 import { paletteIndex } from './palette'
 
@@ -115,4 +115,16 @@ export async function saveDezignModel(request: DezignSaveRequest): Promise<Dezig
   for (const rel of result.deleted) await rm(join(dir, rel), { force: true })
   const after = read(await load(path), project).model
   return { ...outcome, backup, hash: fingerprint(toDbml(after.tables)) }
+}
+
+/** Writes a model made here as a new DeZign project (`.dez`), for the database of its connection (PostgreSQL without one). */
+export async function exportDezignModel(path: string, dbml: string, layout: ModelExportLayout = {}): Promise<void> {
+  const model = parseDbml(dbml)
+  if (model.errors.length) throw new Error(`The model has errors (line ${model.errors[0]!.line}): fix them before saving.`)
+  // Tables without a schema sit under the connection's default schema in the window's diagram.
+  const positions = Object.fromEntries(Object.entries(layout.positions ?? {}).map(([key, p]) => [layout.defaultSchema && key.startsWith(`${layout.defaultSchema}.`) ? key.slice(layout.defaultSchema.length) : key, p]))
+  const text = newDezignProject(model.tables, { database: dezignDatabaseFor(layout.driver), positions })
+  const temp = `${path}.dbm-saving`
+  await writeFile(temp, text, 'latin1')
+  await rename(temp, path)
 }

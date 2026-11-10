@@ -17,7 +17,7 @@ const LEFT_OUT: [keyof NonNullable<OpenedModelFile['imported']>['leftOut'], stri
  * What a model tab takes from an opened file. Another tool's model (DeZign for Databases) keeps its source and
  * layout: Save writes the changes back into that file, Save as makes a .dbml model of it.
  */
-export function modelTabFromFile(file: OpenedModelFile, defaultSchema?: string): Pick<ModelTab, 'text' | 'path' | 'source' | 'dirty' | 'title' | 'positions' | 'diagrams' | 'colors' | 'notes'> {
+export function modelTabFromFile(file: OpenedModelFile, defaultSchema?: string, options: { /** No notice about what was opened (the caller says its own). */ quiet?: boolean } = {}): Pick<ModelTab, 'text' | 'path' | 'source' | 'dirty' | 'title' | 'positions' | 'diagrams' | 'colors' | 'notes'> {
   const name = file.path.split(/[\\/]/).pop() ?? t('Model')
   if (!file.imported) return { text: file.text, path: file.path, source: undefined, dirty: false, title: name, positions: undefined, diagrams: undefined, colors: undefined, notes: undefined }
   // Tables without a schema land in the connection's default schema when the DBML is read.
@@ -27,7 +27,7 @@ export function modelTabFromFile(file: OpenedModelFile, defaultSchema?: string):
   const diagrams = file.imported.diagrams.map((d) => ({ ...d, tables: d.tables.map(keyed), positions: rekey(d.positions), colors: rekey(d.colors) }))
   const colors = rekey(file.imported.colors)
   const leftOut = LEFT_OUT.filter(([key]) => file.imported!.leftOut[key] > 0).map(([key, label]) => t(label, { n: String(file.imported!.leftOut[key]) }))
-  toast({
+  if (!options.quiet) toast({
     kind: leftOut.length ? 'warning' : 'success',
     message: tp(file.imported.tables, { one: 'Opened a DeZign for Databases model: {n} table', many: 'Opened a DeZign for Databases model: {n} tables' }),
     detail: [leftOut.length ? `${t('Not in the model yet:')} ${leftOut.join(' · ')}` : '', t('Save writes your changes back into the DeZign file (a backup is kept); Save as makes a .dbml model.')].filter(Boolean).join('\n'),

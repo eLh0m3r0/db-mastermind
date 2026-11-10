@@ -327,6 +327,14 @@ Not a clone: their features, rethought and connected to live databases, the know
   own id style, and character references for letters outside the file's code page
 - ⬜ Subtype clusters and domains edited from the model (today they are kept, not editable)
 
+- ✅ A model made here goes the other way too: Save as… offers a new DeZign project (`.dez`, format 140, for the
+  database of the model's connection: PostgreSQL, SQL Server or MySQL) with tables, keys, relationships, indexes,
+  checks, comments and the diagram; the tab then follows that file. Same caveat: not opened in DeZign yet
+- ✅ Every save passes a reference check (no id used twice, no key, index, relationship or diagram object
+  pointing nowhere) and chains of random edits run as tests, on made-up models in CI and on real ones locally.
+  They found and fixed two defects before anyone met them (ids replaced inside other values in files that
+  number their objects; a dropped supertype leaving its subtype cluster)
+
 ### 8.3 The model holds a whole database 🚧
 - ✅ Check constraints in the model: DBML `checks` blocks and column `check:`, written into CREATE TABLE for any
   database, read from DeZign models and saved back to them (ALTER for a changed check on an existing table ⬜)

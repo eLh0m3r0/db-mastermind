@@ -61,7 +61,8 @@ PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB · Cl
   with the database for the migration, or write it as DDL for any supported database (types translated)
 - **Opens DeZign for Databases models** (`.dez` and `.dezproj` folder projects, DeZign 4 to 14) with their diagram
   layout: generate DDL or the ALTER script against a live database without a DeZign license. Saving the edited
-  model back into the DeZign project is in preview (changes are listed first, a backup is kept)
+  model back into the DeZign project, and saving a model made here as a new DeZign project, are in preview
+  (changes are listed first, a backup is kept)
 - **Schema designer on the live database**: edit tables, columns, keys and indexes right on the diagram. DB
   Mastermind generates the migration for your database (including SQLite table rebuilds and dependent views),
   checks the existing data first (NULLs, duplicates, orphans) and writes a rollback script

@@ -57,7 +57,7 @@ import { listModels, testProvider } from './ai/models'
 import { deleteChat, deleteChatsOf, getChat, listChats, renameChat, saveChat } from './ai/chat-store'
 import { detectImportSources, exportConnections, importConnections } from './importers'
 import { backupDatabase, restoreDatabase } from './backup'
-import { openDezignModel, saveDezignModel } from './dezign-file'
+import { exportDezignModel, openDezignModel, saveDezignModel } from './dezign-file'
 import { takeOpenedFiles } from './opened-files'
 import { saveDiagramPdf } from './diagram-pdf'
 import { aiAccess, turnedOffCentrally } from './ai-access'
@@ -513,13 +513,26 @@ export const api: MastermindApi = {
     const { tables, skipped } = await tablesFromDdl(source)
     return { path: r.filePaths[0], dbml: toDbml(tables, { defaultSchema: 'main' }), skipped }
   },
-  async saveModelFile(text, path, defaultDir) {
+  async saveModelFile(text, path, defaultDir, layout) {
     if (!path) {
       const window = BrowserWindow.getFocusedWindow()
-      const options = { title: 'Save model', defaultPath: defaultDir ? join(defaultDir, 'model.dbml') : 'model.dbml', filters: [{ name: 'DBML', extensions: ['dbml'] }] }
+      const name = `${(layout?.name ?? 'model').replace(/\.\w+$/, '').replace(/[\\/:*?"<>|]/g, '_') || 'model'}.dbml`
+      const options = {
+        title: 'Save model',
+        defaultPath: defaultDir ? join(defaultDir, name) : name,
+        filters: [
+          { name: 'DBML', extensions: ['dbml'] },
+          { name: 'DeZign for Databases project', extensions: ['dez'] },
+        ],
+      }
       const r = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
       if (r.canceled || !r.filePath) return null
       path = r.filePath
+      // Only a file the user just chose in the dialog can become a DeZign project.
+      if (extname(path).toLowerCase() === '.dez') {
+        await exportDezignModel(path, text, layout)
+        return path
+      }
     }
     // Only model files: the renderer must not be able to write anything else.
     if (extname(path).toLowerCase() !== '.dbml') throw new Error('Models are saved as .dbml files')

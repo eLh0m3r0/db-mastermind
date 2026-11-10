@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mutate, random } from './dezign-fuzz.js'
-import { applyDezignSave, assembleDezignProject, detectDezignEncoding, dezignIntegrity, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
+import { applyDezignSave, assembleDezignProject, detectDezignEncoding, dezignIntegrity, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 // Hand-written models in DeZign's layout (no file from a real project is kept in the repository).
 const attr = (id: string, name: string, type: string, extra = '', more = '') =>
@@ -611,5 +611,83 @@ ${ent('30', 'other', 'R1')}
   it('refuses a result that would not read back as edited', () => {
     // A column typed with something the file cannot hold round-trips differently: nothing is returned.
     expect(() => saveToDezign(single, model(single), model(single), { normalize: () => [] })).toThrow(/could not be written safely/)
+  })
+})
+
+describe('a new DeZign project from a model made here', () => {
+  const dbml = `
+Table shop.customers {
+  id bigint [pk, increment]
+  email varchar(120) [not null, unique, note: 'Přihlašovací e-mail']
+  active boolean [not null, default: true]
+
+  checks {
+    \`email <> ''\` [name: 'email_filled']
+  }
+
+  Note: 'Zákazníci obchodu'
+}
+Table shop.orders {
+  id bigint [pk]
+  customer_id bigint [not null, ref: > shop.customers.id]
+  placed timestamp
+
+  indexes {
+    (customer_id, placed) [name: 'orders_by_customer']
+  }
+}
+Ref: shop.orders.customer_id > shop.customers.id [delete: cascade]
+`
+  const tables = parseDbml(dbml.replace(/\n  customer_id bigint \[not null, ref: > shop.customers.id\]/, '\n  customer_id bigint [not null]')).tables
+  let n = 0
+  const make = (database?: 'postgres' | 'mssql' | 'mysql') => {
+    n = 0
+    return newDezignProject(tables, { database, newId: () => `ID-${++n}`, today: '2026-11-10', positions: { 'shop.orders': { x: 500, y: 60 } } })
+  }
+
+  it('holds the whole model and passes the reference check', () => {
+    const file = make()
+    expect(file.startsWith('<?xml version="1.0" encoding="iso-8859-1"?><dezign>\n<VERSION>\n<PROJECTSETTINGS>')).toBe(true)
+    expect(dezignIntegrity(file)).toEqual([])
+    const model = readDezign(file)
+    expect(model).toMatchObject({ formatVersion: '140', targetDatabase: 'postgresql16', encoding: 'windows-1250' })
+    const [customers, orders] = model.tables
+    expect(customers).toMatchObject({ schema: 'shop', name: 'customers', comment: 'Zákazníci obchodu', primaryKey: ['id'], checks: [{ expression: "email <> ''", name: 'email_filled' }] })
+    expect(customers!.columns.map((c) => `${c.name} ${c.dataType}${c.nullable ? '' : ' not null'}${c.isIdentity ? ' identity' : ''}${c.defaultValue ? ` = ${c.defaultValue}` : ''}`)).toEqual(['id bigint not null identity', 'email varchar(120) not null', 'active boolean not null = true'])
+    expect(customers!.columns[1]!.comment).toBe('Přihlašovací e-mail')
+    expect(customers!.indexes).toEqual([{ name: 'ux_customers_email', columns: ['email'], unique: true, primary: false, constraint: true }])
+    expect(orders!.foreignKeys).toEqual([{ name: 'customers_orders', columns: ['customer_id'], refSchema: 'shop', refTable: 'customers', refColumns: ['id'], onDelete: 'CASCADE' }])
+    expect(orders!.indexes).toEqual([{ name: 'orders_by_customer', columns: ['customer_id', 'placed'], unique: false, primary: false }])
+    // The table somebody placed is where they put it; the other one sits on the grid; the relationship is drawn.
+    expect(model.positions).toEqual({ 'shop.customers': { x: 0, y: 0 }, 'shop.orders': { x: 460, y: 20 } })
+    expect(file).toMatch(/<RELATIONSHIPCONNECTORS>\s*<RELC>/)
+    // The same model through DBML again is the same model.
+    expect(parseDbml(toDbml(model.tables)).errors).toEqual([])
+  })
+
+  it('is made for the chosen database, with its types', () => {
+    const mssql = readDezign(make('mssql'))
+    expect(mssql.targetDatabase).toBe('mssqlserver2022')
+    expect(mssql.tables[0]!.columns[2]!.dataType).toBe('bit')
+    expect(readDezign(make('mysql')).targetDatabase).toBe('mysql8')
+  })
+
+  it('can be opened and saved into like any other project', () => {
+    const files = [{ path: 'new.dez', text: make() }]
+    const viaDbml = (t: TableInfo[]) => parseDbml(toDbml(t)).tables
+    const base = viaDbml(readDezign(files[0]!.text).tables)
+    expect(saveToDezign(files, base, viaDbml(readDezign(files[0]!.text).tables), { normalize: viaDbml }).changes).toEqual([])
+    const edited = viaDbml(readDezign(files[0]!.text).tables)
+    edited[1]!.columns.push({ name: 'total', ordinal: 9, dataType: 'numeric(12,2)', nullable: true, isPrimaryKey: false, isIdentity: false })
+    const saved = saveToDezign(files, base, viaDbml(edited), { normalize: viaDbml })
+    expect(saved.changes).toEqual([{ kind: 'add_column', table: 'orders', name: 'total' }])
+    expect(readDezign(saved.files[0]!.text).tables[1]!.columns.map((c) => c.name)).toEqual(['id', 'customer_id', 'placed', 'total'])
+  })
+
+  it('writes an empty model as an empty project', () => {
+    const file = newDezignProject([], { newId: () => 'X', today: '2026-11-10' })
+    expect(dezignIntegrity(file)).toEqual([])
+    expect(() => readDezign(file)).not.toThrow()
+    expect(readDezign(file).tables).toEqual([])
   })
 })

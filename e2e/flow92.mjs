@@ -31,6 +31,17 @@ try {
   const fixed = await win.locator('.cm-content:visible').first().innerText()
   console.log('fixed:', /Ref: dbm_notes\.dbm_client_id > dbm_clients\.id/.test(fixed), (fixed.match(/name: 'ix_/g) ?? []).length, 'indexes added, chip gone:', await win.getByTestId('model-issues').count() === 0)
 
+  // Save as a DeZign project: the model made here becomes a .dez that reads back the same, and the tab follows it.
+  const dezFile = join(dir, 'exported.dez')
+  await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }) }, dezFile)
+  await win.getByRole('button', { name: 'Save as…' }).click()
+  await win.getByText('Saved as a DeZign for Databases project').waitFor({ timeout: 15000 })
+  const exported = existsSync(dezFile) ? readFileSync(dezFile, 'latin1') : ''
+  console.log('exported .dez:', exported.includes('<FILEFORMATVERSION>140</FILEFORMATVERSION>'), (exported.match(/<ENT>/g) ?? []).length, 'tables,', (exported.match(/<REL>/g) ?? []).length, 'relationships, tab follows it:', await win.getByText('exported.dez', { exact: true }).count() > 0)
+  await win.getByRole('button', { name: 'Save', exact: true }).click()
+  await win.getByText(/Nothing to save/).waitFor({ timeout: 10000 })
+  await app.evaluate(({ dialog }, sql) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: sql }) }, sql)
+
   // DDL without a database goes to a file.
   await win.getByRole('button', { name: 'SQL DDL' }).click()
   await win.getByText('PostgreSQL', { exact: true }).first().click()
@@ -45,7 +56,7 @@ try {
   await win.reload()
   // The tab was saved with the workspace and comes back, still without a database.
   await win.locator('.react-flow__node').first().waitFor({ timeout: 20000 })
-  console.log('restored after restart:', await win.getByText('shop.dbml', { exact: true }).count() > 0)
+  console.log('restored after restart:', await win.getByText('exported.dez', { exact: true }).count() > 0)
   const options = await win.getByTestId('model-database').locator('option').allInnerTexts()
   console.log('picker offers:', options.join(' | '))
   await win.getByTestId('model-database').selectOption({ label: options.find((o) => /coffee/i.test(o)) })
@@ -55,7 +66,7 @@ try {
   await win.getByRole('button', { name: 'Compare', exact: true }).click()
   await win.getByText(/Create table/).first().waitFor({ timeout: 20000 })
   console.log('compare with the linked database:', await win.getByText(/Create table/).count() >= 2)
-  console.log('remembered:', await win.evaluate((model) => JSON.parse(localStorage.getItem('dbm.modelDatabase') ?? '{}')[model] !== undefined, model))
+  console.log('remembered:', await win.evaluate((model) => JSON.parse(localStorage.getItem('dbm.modelDatabase') ?? '{}')[model] !== undefined, dezFile))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow92.png') })
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])
