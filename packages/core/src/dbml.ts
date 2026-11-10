@@ -251,6 +251,8 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
         isPrimaryKey: has('pk') || has('primary key'),
         isIdentity: has('increment'),
         comment: value('note') !== undefined ? unquoteString(value('note')!) : null,
+        // A custom setting: the named type (a DeZign domain) the column follows.
+        ...(value('domain') ? { domain: unquoteString(value('domain')!) } : {}),
       }
       // A table's own column wins over an injected one of the same name; so does a later partial.
       const earlier = t.columns.findIndex((c) => c.name.toLowerCase() === name.toLowerCase())
@@ -404,6 +406,7 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
         attrs.push(`default: ${/^-?\d+(\.\d+)?$/.test(d) || /^'.*'$/.test(d) || /^(true|false|null)$/i.test(d) ? d : `\`${d}\``}`)
       }
       if (uniqueColumns.has(c.name)) attrs.push('unique')
+      if (c.domain) attrs.push(`domain: '${c.domain.replaceAll("'", '')}'`)
       if (c.comment) attrs.push(`note: ${noteText(c.comment)}`)
       const type = /^[\w$.]+(\(.*\))?(\[\])?$/.test(c.dataType) ? c.dataType : `"${c.dataType}"`
       out.push(`  ${quoteName(c.name)} ${type}${attrs.length ? ` [${attrs.join(', ')}]` : ''}`)

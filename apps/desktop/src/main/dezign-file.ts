@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { copyFile, mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { basename, dirname, extname, join } from 'node:path'
+import { basename, dirname, extname, join, relative } from 'node:path'
 import { app } from 'electron'
 import { assembleDezignProject, dezignDatabaseFor, listDezignVersions, newDezignProject, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '@dbmastermind/core'
 import type { DezignSaveOutcome, DezignSaveRequest, ModelExportLayout, ModelVersion, OpenedModelFile } from '@shared/api'
@@ -16,12 +16,12 @@ async function projectFiles(projectFile: string): Promise<DezignFile[]> {
   const dir = dirname(projectFile)
   const paths: string[] = []
   for (const name of await readdir(dir)) {
-    if (extname(name).toLowerCase() === '.dds' || join(dir, name) === projectFile) paths.push(name)
+    if (extname(name).toLowerCase() === '.dds' || name === basename(projectFile)) paths.push(name)
   }
   for (const name of await readdir(dir, { withFileTypes: true })) {
     if (!name.isDirectory() || !['data dictionary', 'diagrams'].includes(name.name.toLowerCase())) continue
     for (const entry of await readdir(join(dir, name.name), { recursive: true, withFileTypes: true })) {
-      if (entry.isFile() && extname(entry.name).toLowerCase() === '.xml') paths.push(join(entry.parentPath, entry.name).slice(dir.length + 1))
+      if (entry.isFile() && extname(entry.name).toLowerCase() === '.xml') paths.push(relative(dir, join(entry.parentPath, entry.name)))
     }
   }
   const out: DezignFile[] = []
@@ -49,7 +49,12 @@ const viaDbml = (tables: TableInfo[]) => parseDbml(toDbml(tables)).tables
 /** A DeZign for Databases model (`.dez`, or the `.dezproj` of a folder project) as a DBML model. */
 export async function openDezignModel(path: string): Promise<OpenedModelFile> {
   const { model } = read(await load(path), isProject(path))
-  const text = toDbml(model.tables)
+  const plain = toDbml(model.tables)
+  // The project's domains are listed in the model as a note: a column follows one through its `domain` setting.
+  const domains = model.domains.length
+    ? [`Note domains {\n'''\nDomains of the DeZign project. A column follows one with [domain: 'name'] and has its type:\n${model.domains.map((d) => `  ${d.name}: ${d.dataType}`).join('\n')}\n'''\n}`]
+    : []
+  const text = toDbml(model.tables, { extras: domains })
   return {
     path,
     text,
@@ -64,7 +69,8 @@ export async function openDezignModel(path: string): Promise<OpenedModelFile> {
       sqlObjects: model.sqlObjects,
       targetDatabase: model.targetDatabase,
       diagrams: model.diagrams.filter((d) => !d.main && d.tables.length).map(({ id, name, tables, positions, colors, notes, boxes }) => ({ id, name, tables, positions, colors: paletteColors(colors), notes, boxes })),
-      hash: fingerprint(text),
+      // Of the tables alone: the note above is ours, not the project's.
+      hash: fingerprint(plain),
     },
   }
 }

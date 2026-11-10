@@ -240,4 +240,11 @@ Note reminder {
     expect(again.extras).toEqual(model.extras)
     expect(again.tables[0]!.columns.map((c) => c.name)).toEqual(['id', 'created_at'])
   })
+
+  it('keeps the domain a column follows as a custom setting', () => {
+    const model = parseDbml("Table t {\n  code char(2) [not null, domain: 'country_code', note: 'ISO']\n}")
+    expect(model.errors).toEqual([])
+    expect(model.tables[0]!.columns[0]).toMatchObject({ dataType: 'char(2)', domain: 'country_code', comment: 'ISO', nullable: false })
+    expect(toDbml(model.tables)).toContain("code char(2) [not null, domain: 'country_code', note: 'ISO']")
+  })
 })

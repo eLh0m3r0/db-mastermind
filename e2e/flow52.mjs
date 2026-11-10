@@ -27,9 +27,15 @@ try {
   console.log('with change:', await nodes())
   await win.getByRole('button', { name: 'Change sets' }).click()
   await win.getByText('Save these changes as…').click()
+  // The name is asked in the app's own dialog.
+  await win.getByPlaceholder('Name of the change set').fill('Release 42')
+  await win.keyboard.press('Enter')
   await win.waitForTimeout(500)
   console.log('saved:', JSON.stringify((await api('listChangeSets', id)).map((c) => [c.name, Object.keys(c.design).length])))
-  await win.getByRole('button', { name: 'Discard' }).click()
+  await win.getByRole('button', { name: 'Discard' }).first().click()
+  await win.waitForTimeout(400)
+  // Discarding asks first.
+  if (await win.getByRole('dialog').getByRole('button', { name: 'Discard' }).count()) await win.getByRole('dialog').getByRole('button', { name: 'Discard' }).click()
   await win.waitForTimeout(400)
   console.log('after discard:', await nodes())
   await win.getByRole('button', { name: 'Change sets' }).click()

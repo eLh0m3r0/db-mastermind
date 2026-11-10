@@ -957,7 +957,6 @@ export const cs: Record<string, string> = {
   'new note': 'nová poznámka',
   'removed note': 'odebraná poznámka',
   'table color': 'barva tabulky',
-  'domains (their columns keep the base type): {n}': 'domény (sloupce mají jejich základní typ): {n}',
   'relationships without columns: {n}': 'vazby bez sloupců: {n}',
   'Edit as model (DBML)…': 'Upravit jako model (DBML)…',
   'Apply to model': 'Použít jako model',

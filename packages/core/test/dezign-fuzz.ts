@@ -57,6 +57,8 @@ export function mutate(tables: TableInfo[], rnd: () => number, serial: number): 
       c.nullable = rnd() < 0.5
       c.defaultValue = rnd() < 0.3 ? "'x'" : null
       c.isIdentity = false
+      // A type of its own: the column no longer follows a named type.
+      c.domain = undefined
       return true
     },
     comment() {

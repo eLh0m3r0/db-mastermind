@@ -239,6 +239,10 @@ describe('DeZign for Databases models', () => {
       ['credit', 'numeric(10,2)', true, false, false, '0'],
       ['country', 'character(2)', true, false, false, null],
     ])
+    // The column follows the project's domain; its type is the domain's.
+    expect(c!.columns[3]!.domain).toBe('country_code')
+    expect(readDezign(dez).domains).toEqual([{ name: 'country_code', dataType: 'character(2)' }])
+    expect(toDbml(model.tables)).toContain("country character(2) [domain: 'country_code']")
     expect(c!.primaryKey).toEqual(['id'])
     expect(c!.indexes).toEqual([{ name: 'TUC_customer_1', columns: ['email'], unique: true, primary: false, constraint: true }])
     // The automatic index on the primary key is not a second index.
@@ -401,6 +405,25 @@ describe('saving back into a DeZign project', () => {
     expect(email).toMatchObject({ dataType: 'varchar(200)', nullable: true, defaultValue: "'x'", comment: 'Přihlašovací e-mail <"hlavní">' })
     // The archived version in the same file is untouched.
     expect(out.slice(out.indexOf('<VERSIONINFO>'))).toBe(dez.slice(dez.indexOf('<VERSIONINFO>')))
+  })
+
+  it('keeps, gives and takes away domains', () => {
+    // Untouched, the domain column is not written at all.
+    expect(save(single, () => {}).files).toEqual([])
+    const given = save(single, (t) => void t[1]!.columns.push(column('ship_to', 'character(2)', { domain: 'country_code' })))
+    expect(given.changes).toEqual([{ kind: 'add_column', table: 'invoice', name: 'ship_to' }])
+    expect(given.files[0]!.text).toMatch(/<NAME>ship_to<\/NAME>\s*<ID>NEW-1<\/ID>\s*<DESC><\/DESC>\s*<DOMAINID>D1<\/DOMAINID>\s*<DT>\s*<DTLISTNAME>CHARACTER<\/DTLISTNAME>\s*<LE>2<\/LE>/)
+    expect(readDezign(given.files[0]!.text).tables[1]!.columns.at(-1)).toMatchObject({ name: 'ship_to', dataType: 'character(2)', domain: 'country_code' })
+
+    // A type of its own takes the column out of the domain.
+    const own = save(single, (t) => void Object.assign(t[0]!.columns[3]!, { dataType: 'varchar(3)', domain: undefined }))
+    expect(own.changes).toEqual([{ kind: 'alter_column', table: 'customer', name: 'country' }])
+    expect(readDezign(own.files[0]!.text).tables[0]!.columns[3]).toMatchObject({ dataType: 'varchar(3)' })
+    expect(readDezign(own.files[0]!.text).tables[0]!.columns[3]!.domain).toBeUndefined()
+
+    // A domain and another type at once, or a domain the project does not have, is said so and nothing is written.
+    expect(() => save(single, (t) => void (t[0]!.columns[3]!.dataType = 'varchar(3)'))).toThrow(/follows the domain "country_code", whose type is character\(2\)/)
+    expect(() => save(single, (t) => void (t[0]!.columns[1]!.domain = 'email'))).toThrow(/no domain "email" \(it has: country_code\)/)
   })
 
   it('adds and drops columns, keeping keys and indexes consistent', () => {

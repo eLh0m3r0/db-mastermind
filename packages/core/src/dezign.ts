@@ -77,6 +77,8 @@ export interface DezignModel {
   layout: { diagramId: string; originX: number; originY: number; scaleX: number; scaleY: number }
   /** Every diagram of the project (the main one included) with the tables it shows and where. */
   diagrams: DezignDiagram[]
+  /** The project's domains (named reusable types): a column follows one through `ColumnInfo.domain`. */
+  domains: { name: string; dataType: string }[]
   /** Views, sequences, procedures and triggers as the SQL the project holds for them (in its target database's dialect). */
   sqlObjects: DezignSqlObject[]
   leftOut: DezignLeftOut
@@ -242,6 +244,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
         isPrimaryKey,
         isIdentity: text(dt, 'AN') === '1',
         comment: text(attr, 'DESC') || null,
+        ...(domain && text(domain, 'NAME') ? { domain: text(domain, 'NAME') } : {}),
       }
     })
     const primaryKey = pkIds.map((id) => columnNames.get(id)).filter((c): c is string => !!c)
@@ -394,7 +397,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const positions = main?.positions ?? {}
   const layout = { diagramId: mainId, ...(main?.layout ?? { originX: 0, originY: 0, scaleX: 1, scaleY: 1 }) }
 
-  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, diagrams: described, sqlObjects, leftOut }
+  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, diagrams: described, sqlObjects, domains: [...domains.values()].map((d) => ({ name: text(d, 'NAME'), dataType: typeOf(kid(d, 'DT')) })).filter((d) => d.name), leftOut }
 }
 
 const PROJECT_SECTIONS: [folder: string, element: string][] = [

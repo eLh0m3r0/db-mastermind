@@ -36,6 +36,8 @@ export function TableEditor({
   const set = (patch: Partial<DesignTable>) => onChange({ ...table, ...patch })
   const setColumn = (id: string, patch: Partial<DesignTable['columns'][number]>) => {
     const old = table.columns.find((c) => c.id === id)!
+    // A column given its own type no longer follows the named type (domain) it had.
+    if (patch.dataType !== undefined && patch.dataType !== old.dataType && old.domain) patch = { ...patch, domain: undefined }
     const columns = table.columns.map((c) => (c.id === id ? { ...c, ...patch } : c))
     // Keep keys pointing at renamed columns.
     const rename = (name: string) => (patch.name && name === old.name ? patch.name : name)

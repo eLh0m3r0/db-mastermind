@@ -5,7 +5,6 @@ import { toast } from '@/store/ui'
 import type { ModelTab } from '@/store/workspace'
 
 const LEFT_OUT: [keyof NonNullable<OpenedModelFile['imported']>['leftOut'], string][] = [
-  ['domains', 'domains (their columns keep the base type): {n}'],
   ['relationshipsWithoutColumns', 'relationships without columns: {n}'],
 ]
 

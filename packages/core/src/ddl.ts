@@ -19,6 +19,8 @@ export interface DesignColumn {
   defaultValue?: string | null
   identity?: boolean
   comment?: string | null
+  /** Kept through design edits for models whose columns follow named types (see ColumnInfo.domain). */
+  domain?: string
 }
 
 export interface DesignForeignKey {
@@ -116,6 +118,7 @@ export function toDesignTable(t: TableInfo): DesignTable {
       defaultValue: c.defaultValue ?? null,
       identity: c.isIdentity,
       comment: c.comment ?? null,
+      ...(c.domain ? { domain: c.domain } : {}),
     })),
     primaryKey: [...t.primaryKey],
     foreignKeys: t.foreignKeys
@@ -730,6 +733,7 @@ export function designToTableInfo(t: DesignTable): TableInfo {
       isPrimaryKey: t.primaryKey.includes(c.name),
       isIdentity: !!c.identity,
       comment: c.comment ?? null,
+      ...(c.domain ? { domain: c.domain } : {}),
     })),
     primaryKey: [...t.primaryKey],
     foreignKeys: t.foreignKeys.map((f) => ({

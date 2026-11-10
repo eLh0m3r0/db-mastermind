@@ -300,8 +300,13 @@ Not a clone: their features, rethought and connected to live databases, the know
   compare with a `.dbml` or another DeZign file, data dictionary, AI review
 - ✅ Views, sequences, procedures and triggers of the project are kept as the SQL it holds for them and added to
   the generated DDL script (as comments when the script is for another database than the project's)
-- ✅ What the model can't show yet (domains: their columns have the base type; relationships without columns) is
-  listed with counts when the file opens, never dropped silently
+- ✅ Domains: a column keeps the domain it follows (`[domain: 'name']` in the model, with the domain's type), a new
+  column can be given one, and a type of its own takes a column out of its domain. The project's domains are
+  listed in the model as a note; they are made and changed in DeZign
+- ✅ What the model can't show (relationships drawn without columns) is listed with counts when the file opens,
+  never dropped silently
+- ✅ A large diagram opens with all of it in view (the view is fitted to where the tables are, not to the ones
+  already drawn: a 305-table model used to open with a third outside the window)
 - ✅ Opening never changes the DeZign file; Save as makes a `.dbml` model of it
 - ✅ A model needs no connection: File → Open Model (⌘O), "Open a model" on the start page, a file dropped on the
   window, or the file itself (command line, double-click; `.dbml` is registered on macOS and Windows, DeZign files
@@ -331,7 +336,7 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ⬜ Verified in DeZign: open saved files of every kind of edit (14-day trial on Windows, or a colleague's license).
   Unknown until then: whether DeZign accepts the straight connector of a new relationship, GUID ids next to its
   own id style, and character references for letters outside the file's code page
-- ⬜ Subtype clusters and domains edited from the model (today they are kept, not editable)
+- ⬜ Subtype clusters and the domains themselves edited from the model (today they are kept as they are)
 
 - ✅ Compare with a version archived in the project ("Compare with version…" lists them, newest first): the
   changes since then and the ALTER script for the model's database. DeZign sells this in its top edition only
@@ -352,7 +357,7 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ⬜ Custom properties on tables and columns; DeZign attribute packages as `TablePartial`
 - ⬜ Views, sequences, triggers and procedures edited in the model (a DeZign project's are carried into the DDL
   as they are; a model made here has none yet)
-- ⬜ Domains (named reusable types)
+- ⬜ Domains defined in a model made here (a DeZign project's are used by its columns already)
 - ⬜ Several diagrams per model with their own layout, notes and group boxes
 - ⬜ A model as a folder (one file per table, SQL files for the rest): small Git diffs, merges without conflicts
 

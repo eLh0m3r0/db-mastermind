@@ -122,6 +122,8 @@ export interface ColumnInfo {
   isGenerated?: boolean
   maxLength?: number | null
   comment?: string | null
+  /** The named reusable type the column follows, where a model has such (DeZign domains); `dataType` is its type. */
+  domain?: string
 }
 
 export interface ForeignKeyInfo {

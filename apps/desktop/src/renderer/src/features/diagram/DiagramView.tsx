@@ -5,6 +5,7 @@ import {
   BaseEdge,
   Controls,
   getSmoothStepPath,
+  getViewportForBounds,
   Handle,
   MarkerType,
   MiniMap,
@@ -636,7 +637,17 @@ function DiagramInner({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab;
         positions[d.key] = position ?? { x: Math.round(laid?.x ?? 0), y: Math.round(laid?.y ?? 0) }
       }
       setNodes(display.map((d) => ({ id: d.key, type: 'table', position: positions[d.key]!, data: nodeData(d) })))
-      requestAnimationFrame(() => flow.fitView({ padding: 0.15, duration: 300, maxZoom: 1 }))
+      // The view is fitted to where the tables are, not to the ones already drawn: a large diagram draws only the
+      // tables in view, and fitting to those left a third of a 300-table model outside the window.
+      const boxes = display.map((d) => ({ ...positions[d.key]!, bottom: positions[d.key]!.y + HEADER + ROW * d.info.columns.length }))
+      const left = Math.min(...boxes.map((b) => b.x))
+      const top = Math.min(...boxes.map((b) => b.y))
+      const bounds = { x: left, y: top, width: Math.max(...boxes.map((b) => b.x)) + WIDTH - left, height: Math.max(...boxes.map((b) => b.bottom)) - top }
+      requestAnimationFrame(() => {
+        const pane = wrapper.current?.querySelector<HTMLElement>('.react-flow')
+        if (!pane || !boxes.length || !pane.clientWidth) return void flow.fitView({ padding: 0.15, duration: 300, maxZoom: 1 })
+        void flow.setViewport(getViewportForBounds(bounds, pane.clientWidth, pane.clientHeight, 0.05, 1, 0.1), { duration: 300 })
+      })
       // In a custom diagram, pin the layout so adding a table doesn't rearrange the others.
       if (tab.tables && display.some((d) => !saved[d.key])) patchLayout({ positions: { ...saved, ...positions } })
     } finally {
@@ -1339,8 +1350,6 @@ function DiagramInner({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab;
           minZoom={0.05}
           maxZoom={2}
           proOptions={{ hideAttribution: true }}
-          fitView
-          fitViewOptions={{ maxZoom: 1 }}
           onlyRenderVisibleElements={tables.length > 80}
           defaultEdgeOptions={{ markerEnd: { type: MarkerType.Arrow } }}
         >

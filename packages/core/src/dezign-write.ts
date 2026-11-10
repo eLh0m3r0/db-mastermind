@@ -112,7 +112,7 @@ export interface SaveDezignOptions {
 }
 
 type El = DezignElement
-type Kind = 'ENT' | 'REL' | 'ENTC' | 'RELC' | 'DIAGRAM' | 'SUBCAT' | 'SUBCONN' | 'SUBCATC' | 'SUBCONNC' | 'TEXTAR' | 'TEXTC'
+type Kind = 'DOMAIN' | 'ENT' | 'REL' | 'ENTC' | 'RELC' | 'DIAGRAM' | 'SUBCAT' | 'SUBCONN' | 'SUBCATC' | 'SUBCONNC' | 'TEXTAR' | 'TEXTC'
 
 interface Slot {
   el: El
@@ -121,6 +121,7 @@ interface Slot {
 }
 
 const SINGLE: Record<Kind, string[]> = {
+  DOMAIN: ['DATADICT', 'DOMAINS'],
   ENT: ['DATADICT', 'ENTITIES'],
   REL: ['DATADICT', 'RELATIONSHIPS'],
   SUBCAT: ['DATADICT', 'SUBCATEGORIES'],
@@ -134,6 +135,7 @@ const SINGLE: Record<Kind, string[]> = {
   TEXTC: ['DIAGRAMS', 'CONTROLS', 'TEXTAREACONTROLS'],
 }
 const FOLDER: Record<Kind, string> = {
+  DOMAIN: 'data dictionary/domains',
   ENT: 'data dictionary/entities',
   REL: 'data dictionary/relationships',
   SUBCAT: 'data dictionary/subcategories',
@@ -465,6 +467,26 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
       if (con && text(con, 'NAME') && text(con, 'NAMETEMPLATE')) set(con, 'NAME', fromTemplate(text(con, 'NAMETEMPLATE'), { table, column }))
     }
   }
+  // Domains of the project by name: a column that follows one has its id and a copy of its type.
+  const domainsByName = new Map(project.list('DOMAIN').map((d) => [lower(text(d.el, 'NAME')), d.el]))
+  const setDomain = (attr: El, table: string, column: ColumnInfo) => {
+    if (!column.domain) {
+      if (kid(attr, 'DOMAINID')) set(attr, 'DOMAINID', '')
+      return
+    }
+    const domain = domainsByName.get(lower(column.domain))
+    if (!domain) throw new Error(`${table}.${column.name}: the project has no domain "${column.domain}" (it has: ${[...domainsByName.values()].map((d) => text(d, 'NAME')).join(', ') || 'none'}). Domains are made in DeZign; remove the setting to give the column its own type.`)
+    const dt = kid(domain, 'DT')
+    const type = (text(dt, 'DTLISTNAME').toLowerCase() + (text(dt, 'LE') ? `(${text(dt, 'LE')}${text(dt, 'PR') ? `,${text(dt, 'PR')}` : ''})` : '')).trim()
+    if (type && normType(type) !== normType(column.dataType)) {
+      throw new Error(`${table}.${column.name} follows the domain "${column.domain}", whose type is ${type}, but is typed ${column.dataType}. Change one of them: remove the domain setting for a type of its own.`)
+    }
+    set(attr, 'DOMAINID', text(domain, 'ID'), ['DT', 'NNCON', 'CCON', 'DEFCON'])
+    // The column carries a copy of the domain's type, as DeZign writes it.
+    const own = kid(attr, 'DT')
+    if (dt && own) own.children = clone(dt).children
+  }
+
   const anyAttr = () => {
     for (const e of entities.values()) for (const a of e.attrs.values()) return a
     return undefined
@@ -493,7 +515,7 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     setNullable(attr, column.nullable)
     setDefault(attr, column.defaultValue)
     if (column.comment) set(attr, 'DESC', column.comment, ['NOTE', 'DOMAINID', 'DT'])
-    void table
+    if (column.domain) setDomain(attr, table, column)
     return attr
   }
 
@@ -587,6 +609,11 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
       let altered = false
       if (normType(b.dataType) !== normType(c.dataType) || b.isIdentity !== c.isIdentity) {
         setType(existing, c.dataType, c.isIdentity)
+        altered = true
+      }
+      // After the type: a column that follows a domain takes the domain's type, and one that left it keeps its own.
+      if ((b.domain ?? '') !== (c.domain ?? '') || (c.domain && altered)) {
+        setDomain(existing, label, c)
         altered = true
       }
       if (b.nullable !== c.nullable) {
@@ -1177,7 +1204,7 @@ function verify(files: DezignFile[], result: { files: DezignFile[]; deleted: str
     tables
       .filter((t) => t.type === 'table')
       .map((t) => {
-        const cols = t.columns.map((c) => `${lower(c.name)} ${normType(c.dataType)}${c.nullable ? '' : ' nn'}${c.isIdentity ? ' id' : ''}${normText(c.defaultValue) ? ` =${normText(c.defaultValue)}` : ''}${normText(c.comment) ? ` #${normText(c.comment)}` : ''}`)
+        const cols = t.columns.map((c) => `${lower(c.name)} ${normType(c.dataType)}${c.domain ? ` @${lower(c.domain)}` : ''}${c.nullable ? '' : ' nn'}${c.isIdentity ? ' id' : ''}${normText(c.defaultValue) ? ` =${normText(c.defaultValue)}` : ''}${normText(c.comment) ? ` #${normText(c.comment)}` : ''}`)
         const fks = t.foreignKeys.filter((f) => !f.virtual).map((f) => `${f.columns.map(lower).join(',')}>${lower(f.refTable)}(${f.refColumns.map(lower).join(',')})`)
         const indexes = t.indexes.filter((ix) => !ix.primary).map(indexKey)
         const checks = (t.checks ?? []).map((c) => `check ${c.expression.replace(/\s+/g, ' ').trim().toLowerCase()}`)

@@ -184,7 +184,11 @@ try {
     await win.keyboard.press('Meta+k')
     await win.keyboard.type('Open model')
     await win.keyboard.press('Enter')
-    await win.waitForFunction((n) => document.querySelectorAll('.react-flow__node').length > n, before, { timeout: 120000 })
+    await win.waitForFunction((n) => document.querySelectorAll('.react-flow__node').length > n, before, { timeout: 60000 }).catch(async () => {
+      // Numbers only, to see what the window shows instead.
+      console.log('local model did not draw:', JSON.stringify(await win.evaluate(() => ({ nodes: document.querySelectorAll('.react-flow__node').length, palette: !!document.querySelector('[cmdk-root]'), openError: /Could not open the model/.test(document.body.innerText), opened: /Opened a DeZign/.test(document.body.innerText), dialog: !!document.querySelector('[role="dialog"]'), tabs: document.querySelectorAll('[role="tab"]').length }))), 'before', before)
+      throw new Error('the local model did not draw')
+    })
     const shown = Date.now() - started
     const said = await win.evaluate(() => (document.body.innerText.match(/Opened a DeZign for Databases model: \d+/g) ?? []).pop()?.replace(/\D+/, ''))
     console.log('local model: tables', said, '| diagram after', shown, 'ms | tables drawn', (await win.locator('.react-flow__node').count()) - before, '| dbml errors', await win.locator('.text-warning button').count())
