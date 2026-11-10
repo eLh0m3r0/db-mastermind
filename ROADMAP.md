@@ -327,7 +327,7 @@ Not a clone: their features, rethought and connected to live databases, the know
   own id style, and character references for letters outside the file's code page
 - ⬜ Subtype clusters and domains edited from the model (today they are kept, not editable)
 
-### 8.3 The model holds a whole database ⬜
+### 8.3 The model holds a whole database 🚧
 - ✅ Check constraints in the model: DBML `checks` blocks and column `check:`, written into CREATE TABLE for any
   database, read from DeZign models and saved back to them (ALTER for a changed check on an existing table ⬜)
 - ✅ DBML `TablePartial` (reusable column sets, e.g. audit columns) with `~name` injection
@@ -339,7 +339,7 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ⬜ Several diagrams per model with their own layout, notes and group boxes
 - ⬜ A model as a folder (one file per table, SQL files for the rest): small Git diffs, merges without conflicts
 
-### 8.4 Easy on the first day ⬜
+### 8.4 Easy on the first day ✅
 - ✅ Start page: "Open a model" next to the connections; a model file opened from the system goes straight to the
   designer with the connection sidebar out of the way
 - ✅ Model checks that run by themselves (instant, also on 300 tables): tables without a key, foreign keys to
