@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
-import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join } from 'node:path'
 import { app } from 'electron'
-import { assembleDezignProject, dezignDatabaseFor, newDezignProject, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '@dbmastermind/core'
-import type { DezignSaveOutcome, DezignSaveRequest, ModelExportLayout, OpenedModelFile } from '@shared/api'
+import { assembleDezignProject, dezignDatabaseFor, listDezignVersions, newDezignProject, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '@dbmastermind/core'
+import type { DezignSaveOutcome, DezignSaveRequest, ModelExportLayout, ModelVersion, OpenedModelFile } from '@shared/api'
 import { dataPath } from './storage'
 import { paletteIndex } from './palette'
 
@@ -127,4 +127,52 @@ export async function exportDezignModel(path: string, dbml: string, layout: Mode
   const temp = `${path}.dbm-saving`
   await writeFile(temp, text, 'latin1')
   await rename(temp, path)
+}
+
+const fallbackEncoding = () => (/^(cs|sk|pl|hu|sl|hr|ro|sq)\b/i.test(app.getLocale()) ? ('windows-1250' as const) : ('windows-1252' as const))
+
+/** The folder a folder project keeps its archived versions in (one XML file each), if it has one. */
+async function archiveDir(projectFile: string): Promise<string | undefined> {
+  const dir = dirname(projectFile)
+  const name = (await readdir(dir, { withFileTypes: true })).find((e) => e.isDirectory() && e.name.toLowerCase() === 'archived versions')?.name
+  return name ? join(dir, name) : undefined
+}
+
+/** The versions archived in a DeZign project, newest first. */
+export async function listModelVersions(path: string): Promise<ModelVersion[]> {
+  const ext = extname(path).toLowerCase()
+  if (ext !== '.dez' && ext !== '.dezproj') return []
+  let versions: ModelVersion[]
+  if (!isProject(path)) {
+    versions = listDezignVersions(await readFile(path, 'latin1'), { fallbackEncoding: fallbackEncoding() }).map((v, i) => ({ id: String(i), ...v }))
+  } else {
+    const dir = await archiveDir(path)
+    if (!dir) return []
+    versions = []
+    for (const name of (await readdir(dir)).filter((n) => extname(n).toLowerCase() === '.xml')) {
+      // Each file is a whole model (megabytes): what the list shows is in its first lines.
+      const file = await open(join(dir, name), 'r')
+      try {
+        const { buffer, bytesRead } = await file.read(Buffer.alloc(16384), 0, 16384, 0)
+        const info = listDezignVersions(buffer.subarray(0, bytesRead).toString('latin1'), { fallbackEncoding: fallbackEncoding() })[0]
+        if (info) versions.push({ id: name, ...info })
+      } finally {
+        await file.close()
+      }
+    }
+  }
+  const order = (v: ModelVersion) => `${v.date} ${v.number.padStart(8, '0')}`
+  return versions.sort((a, b) => (order(a) < order(b) ? 1 : -1))
+}
+
+/** An archived version of a DeZign project as a DBML model. */
+export async function openModelVersion(path: string, id: string): Promise<{ text: string }> {
+  if (!isProject(path)) {
+    return { text: toDbml(readDezign(await readFile(path, 'latin1'), { archived: Number(id), fallbackEncoding: fallbackEncoding() }).tables) }
+  }
+  const dir = await archiveDir(path)
+  // The id is a file name out of the list: nothing else in the folder, and nothing outside it, can be asked for.
+  if (!dir || basename(id) !== id || !(await readdir(dir)).includes(id)) throw new Error('The archived version is not in the project')
+  const version = (await readFile(join(dir, id), 'latin1')).replace(/^\uFEFF?\s*<\?xml[^>]*\?>\s*/, '')
+  return { text: toDbml(readDezign(`<dezign>\n${version}\n</dezign>`, { archived: 0, fallbackEncoding: fallbackEncoding() }).tables) }
 }

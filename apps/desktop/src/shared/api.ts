@@ -480,6 +480,16 @@ export interface ModelExportLayout {
   name?: string
 }
 
+/** A version archived in a model's project (DeZign keeps them in the project). */
+export interface ModelVersion {
+  /** Handle for `openModelVersion`. */
+  id: string
+  number: string
+  label: string
+  date: string
+  comments: string
+}
+
 export interface DezignSaveRequest {
   /** The `.dez` or `.dezproj` the model was opened from. */
   path: string
@@ -596,6 +606,10 @@ export interface MastermindApi {
   saveImageFile(dataUrl: string, name: string): Promise<string | null>
   /** Prints a diagram to a PDF file; returns the path, or null if cancelled. */
   saveDiagramPdf(request: DiagramPdfRequest): Promise<string | null>
+  /** The versions archived in a DeZign project, newest first. */
+  listModelVersions(path: string): Promise<ModelVersion[]>
+  /** An archived version as a DBML model. */
+  openModelVersion(path: string, id: string): Promise<{ text: string }>
   /** Files the app was started with (command line, double-click); each is handed out once. */
   takeOpenedFiles(): Promise<string[]>
   /** Writes an edited model back into the DeZign project it came from (draft: see ROADMAP 8.2). */
@@ -746,6 +760,8 @@ export const API_METHODS = [
   'saveModelFile',
   'saveDezignModel',
   'takeOpenedFiles',
+  'listModelVersions',
+  'openModelVersion',
   'importDdlFile',
   'saveSqlFile',
   'saveImageFile',

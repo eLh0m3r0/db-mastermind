@@ -239,6 +239,26 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     }
   }
 
+  /** A project's own archived versions are one click away; any other file is picked as before. */
+  const compareMenu = async (anchor: HTMLElement) => {
+    const source = tab.source
+    const versions = source ? await api.listModelVersions(source.path).catch(() => []) : []
+    if (!source || !versions.length) return compareWithFile()
+    const name = (v: (typeof versions)[number]) => [v.number && `v${v.number}`, v.label, v.date].filter(Boolean).join(' · ')
+    openMenu(anchor, [
+      { label: t('Another file…'), onClick: () => void compareWithFile() },
+      'separator',
+      ...versions.slice(0, 30).map((v) => ({
+        label: name(v),
+        onClick: () =>
+          void api.openModelVersion(source.path, v.id).then(
+            (file) => openTab({ kind: 'compare', connectionId: tab.connectionId, sourceModel: text, targetModel: file.text, targetLabel: name(v), title: t('Changes since {name}', { name: name(v) }) }, { reuse: false }),
+            (err) => toast({ kind: 'error', message: t('Could not open the model'), detail: errorMessage(err) }),
+          ),
+      })),
+    ])
+  }
+
   const importDdl = async () => {
     try {
       const r = await api.importDdlFile()
@@ -452,10 +472,11 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           variant="ghost"
           icon={<GitCompare size={13} />}
           disabled={!connection || model.errors.length > 0}
-          title={t('What changed compared with another DBML file, e.g. an older version of this model')}
-          onClick={() => void compareWithFile()}
+          title={tab.source ? t('What changed since a version archived in the project, or compared with another file: the changes and the ALTER script') : t('What changed compared with another DBML file, e.g. an older version of this model')}
+          onClick={(e) => void compareMenu(e.currentTarget)}
+          data-testid="model-compare-versions"
         >
-          {t('Compare with file…')}
+          {tab.source ? t('Compare with version…') : t('Compare with file…')}
         </Button>
       </div>
       <div className="flex min-h-0 flex-1">

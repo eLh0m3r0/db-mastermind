@@ -57,7 +57,7 @@ import { listModels, testProvider } from './ai/models'
 import { deleteChat, deleteChatsOf, getChat, listChats, renameChat, saveChat } from './ai/chat-store'
 import { detectImportSources, exportConnections, importConnections } from './importers'
 import { backupDatabase, restoreDatabase } from './backup'
-import { exportDezignModel, openDezignModel, saveDezignModel } from './dezign-file'
+import { exportDezignModel, listModelVersions, openDezignModel, openModelVersion, saveDezignModel } from './dezign-file'
 import { takeOpenedFiles } from './opened-files'
 import { saveDiagramPdf } from './diagram-pdf'
 import { aiAccess, turnedOffCentrally } from './ai-access'
@@ -478,6 +478,8 @@ export const api: MastermindApi = {
   },
   saveDezignModel: (request) => saveDezignModel(request),
   takeOpenedFiles: async () => takeOpenedFiles(),
+  listModelVersions: (path) => listModelVersions(path),
+  openModelVersion: (path, id) => openModelVersion(path, id),
   async saveSqlFile(text, name, defaultDir) {
     const window = BrowserWindow.getFocusedWindow()
     const options = { title: 'Save SQL', defaultPath: defaultDir ? join(defaultDir, name) : name, filters: [{ name: 'SQL', extensions: ['sql'] }] }

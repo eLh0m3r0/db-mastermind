@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mutate, random } from './dezign-fuzz.js'
-import { applyDezignSave, assembleDezignProject, detectDezignEncoding, dezignIntegrity, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
+import { applyDezignSave, assembleDezignProject, detectDezignEncoding, dezignIntegrity, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 // Hand-written models in DeZign's layout (no file from a real project is kept in the repository).
 const attr = (id: string, name: string, type: string, extra = '', more = '') =>
@@ -178,10 +178,14 @@ ${control('10', '2', 900, 900)}
 <VERSION>
 <VERSIONINFO>
 <VERSIONNUMBER>1</VERSIONNUMBER>
+<VERSIONLABEL>Prvn\xed vyd\xe1n\xed</VERSIONLABEL>
+<VERSIONDATE>2026-01-15</VERSIONDATE>
+<VERSIONCOMMENTS>before invoices</VERSIONCOMMENTS>
 </VERSIONINFO>
 <DATADICT>
 <DBID>postgresql12</DBID>
 <ENTITIES>
+${customer.replace(attr('A3', 'credit', 'NUMERIC', '<LE>10</LE>\n<PR>2</PR>\n', '<DEFCON>\n<VALUE>0</VALUE>\n</DEFCON>\n<CCON>\n<VALUE>credit &gt;= 0</VALUE>\n</CCON>\n'), '')}
 </ENTITIES>
 </DATADICT>
 </VERSION>
@@ -285,6 +289,17 @@ describe('DeZign for Databases models', () => {
     expect(model.tables[0]!.columns[3]!.dataType).toBe('character(2)')
     expect(Object.keys(model.positions)).toEqual(['shop.customer', 'shop.invoice'])
     expect(() => assembleDezignProject(files.slice(1))).toThrow(/dezproj/)
+  })
+
+  it('lists the versions archived in a project and reads one', () => {
+    expect(listDezignVersions(dez, { fallbackEncoding: 'windows-1250' })).toEqual([{ number: '1', label: 'První vydání', date: '2026-01-15', comments: 'before invoices' }])
+    const old = readDezign(dez, { archived: 0 })
+    expect(old.targetDatabase).toBe('postgresql12')
+    // The archived version has one table, without the credit column the working model has.
+    expect(old.tables.map((t) => `${t.name}: ${t.columns.map((c) => c.name).join(', ')}`)).toEqual(['customer: id, email, country'])
+    expect(() => readDezign(dez, { archived: 3 })).toThrow(/archived version/)
+    // The head of a folder project's archived file is enough for the list.
+    expect(listDezignVersions('<?xml version="1.0"?>\r\n<VERSION>\r\n<VERSIONINFO>\r\n<VERSIONNUMBER>7</VERSIONNUMBER>\r\n<VERSIONLABEL>a &amp; b</VERSIONLABEL>\r\n</VERSIONINFO>\r\n<PROJECTSETTINGS>')).toEqual([{ number: '7', label: 'a & b', date: '', comments: '' }])
   })
 
   it('rejects files that are not DeZign models', () => {

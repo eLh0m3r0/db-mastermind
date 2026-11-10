@@ -157,6 +157,8 @@ export interface ReadDezignOptions {
   fallbackEncoding?: Exclude<DezignEncoding, 'utf-8'>
   /** Size of a table in the target diagram: positions are spread so tables of this size don't overlap. */
   node?: { width: number; header: number; row: number }
+  /** Read this archived version (its index among the file's archived versions) instead of the working model. */
+  archived?: number
 }
 
 /** The model of a DeZign project given as a binary string (`.dez` content, or `assembleDezignProject`). */
@@ -173,9 +175,9 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const dezign = kid(parseDezignXml(binary), 'dezign')
   const versions = kids(dezign, 'VERSION')
   // Archived versions carry VERSIONINFO; the working model does not.
-  const version = versions.find((v) => !kid(v, 'VERSIONINFO')) ?? versions[0]
+  const version = options.archived !== undefined ? versions.filter((v) => kid(v, 'VERSIONINFO'))[options.archived] : (versions.find((v) => !kid(v, 'VERSIONINFO')) ?? versions[0])
   const dict = kid(version, 'DATADICT')
-  if (!dezign || !dict) throw new Error('This is not a DeZign for Databases model')
+  if (!dezign || !dict) throw new Error(options.archived !== undefined ? 'The archived version is not in the file' : 'This is not a DeZign for Databases model')
 
   const formatVersion = text(dezign, 'FILEFORMATVERSION') || text(kid(kid(version, 'PROJECTSETTINGS'), 'COMMONSETTINGS'), 'FILEFORMATVERSION')
   const leftOut: DezignLeftOut = { domains: 0, views: 0, procedures: 0, sequences: 0, triggers: 0, checks: 0, relationshipsWithoutColumns: 0, subdiagrams: 0 }
@@ -456,4 +458,26 @@ export function dezignIntegrity(binary: string): string[] {
   check('TEXTAREACONTROLS', (id) => texts.has(id), 'text area')
   check('SUBCATEGORYCONTROLS', (id) => subcategories.has(id), 'subtype cluster')
   return problems
+}
+
+/** What DeZign records about a version archived in a project. */
+export interface DezignVersionInfo {
+  number: string
+  label: string
+  /** As written by DeZign (a date, or date and time). */
+  date: string
+  comments: string
+}
+
+/**
+ * The versions archived in a project file, in file order (`readDezign(…, { archived: index })` reads one). Also
+ * reads the head of a folder project's archived version file: only the leading VERSIONINFO has to be there.
+ */
+export function listDezignVersions(binary: string, options: Pick<ReadDezignOptions, 'encoding' | 'fallbackEncoding'> = {}): DezignVersionInfo[] {
+  const decoder = new TextDecoder(options.encoding ?? detectDezignEncoding(binary, options.fallbackEncoding))
+  const decode = (s: string) => unescapeXml(/[\x80-\xff]/.test(s) ? decoder.decode(Uint8Array.from(s, (c) => c.charCodeAt(0))) : s).trim()
+  return [...binary.matchAll(/<VERSIONINFO>([\s\S]*?)<\/VERSIONINFO>/g)].map((m) => {
+    const field = (tag: string) => decode(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(m[1]!)?.[1] ?? '')
+    return { number: field('VERSIONNUMBER'), label: field('VERSIONLABEL'), date: field('VERSIONDATE'), comments: field('VERSIONCOMMENTS') }
+  })
 }

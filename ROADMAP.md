@@ -327,6 +327,8 @@ Not a clone: their features, rethought and connected to live databases, the know
   own id style, and character references for letters outside the file's code page
 - ⬜ Subtype clusters and domains edited from the model (today they are kept, not editable)
 
+- ✅ Compare with a version archived in the project ("Compare with version…" lists them, newest first): the
+  changes since then and the ALTER script for the model's database. DeZign sells this in its top edition only
 - ✅ A model made here goes the other way too: Save as… offers a new DeZign project (`.dez`, format 140, for the
   database of the model's connection: PostgreSQL, SQL Server or MySQL) with tables, keys, relationships, indexes,
   checks, comments and the diagram; the tab then follows that file. Same caveat: not opened in DeZign yet

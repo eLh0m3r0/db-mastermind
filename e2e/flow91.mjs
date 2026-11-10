@@ -29,7 +29,7 @@ const textControl = el('TEXTC', '<ID>T1</ID>\n<DIAGRAMID>1</DIAGRAMID>\n<W>200</
 const billingControls = [entc('20', 50, 50), entc('30', 50, 500)].map((c) => c.replace('<DIAGRAMID>1</DIAGRAMID>', '<DIAGRAMID>2</DIAGRAMID>'))
 const head = '<?xml version="1.0" encoding="iso-8859-1"?>'
 const dez = join(dir, 'shop.dez')
-writeFileSync(dez, `${head}<dezign>\n<VERSION>\n${settings}\n<DATADICT>\n<DBID>postgresql16</DBID>\n<DOMAINS>\n</DOMAINS>\n<TEXTAREAS>\n${textArea}\n</TEXTAREAS>\n<ENTITIES>\n${entities.join('\n')}\n</ENTITIES>\n<VIEWS>\n<VIEW>\n<NAME>v</NAME>\n</VIEW>\n</VIEWS>\n<RELATIONSHIPS>\n${rels.join('\n')}\n</RELATIONSHIPS>\n</DATADICT>\n<DIAGRAMS>\n<DisplayPreferences>\n<DEFENTCOLOR>16119285</DEFENTCOLOR>\n</DisplayPreferences>\n${diagram}\n${billing}\n<CONTROLS>\n<ENTITYCONTROLS>\n${controls.join('\n')}\n${billingControls.join('\n')}\n</ENTITYCONTROLS>\n<TEXTAREACONTROLS>\n${textControl}\n</TEXTAREACONTROLS>\n</CONTROLS>\n</DIAGRAMS>\n</VERSION>\n</dezign>\n`, 'latin1')
+writeFileSync(dez, `${head}<dezign>\n<VERSION>\n${settings}\n<DATADICT>\n<DBID>postgresql16</DBID>\n<DOMAINS>\n</DOMAINS>\n<TEXTAREAS>\n${textArea}\n</TEXTAREAS>\n<ENTITIES>\n${entities.join('\n')}\n</ENTITIES>\n<VIEWS>\n<VIEW>\n<NAME>v</NAME>\n</VIEW>\n</VIEWS>\n<RELATIONSHIPS>\n${rels.join('\n')}\n</RELATIONSHIPS>\n</DATADICT>\n<DIAGRAMS>\n<DisplayPreferences>\n<DEFENTCOLOR>16119285</DEFENTCOLOR>\n</DisplayPreferences>\n${diagram}\n${billing}\n<CONTROLS>\n<ENTITYCONTROLS>\n${controls.join('\n')}\n${billingControls.join('\n')}\n</ENTITYCONTROLS>\n<TEXTAREACONTROLS>\n${textControl}\n</TEXTAREACONTROLS>\n</CONTROLS>\n</DIAGRAMS>\n</VERSION>\n<VERSION>\n<VERSIONINFO>\n<VERSIONNUMBER>1</VERSIONNUMBER>\n<VERSIONLABEL>First release</VERSIONLABEL>\n<VERSIONDATE>2026-01-15</VERSIONDATE>\n</VERSIONINFO>\n<DATADICT>\n<DBID>postgresql16</DBID>\n<ENTITIES>\n${entities.slice(0, 2).join('\n')}\n</ENTITIES>\n<RELATIONSHIPS>\n${rels[0]}\n</RELATIONSHIPS>\n</DATADICT>\n</VERSION>\n</dezign>\n`, 'latin1')
 const before = readFileSync(dez)
 
 const project = join(dir, 'ShopProject')
@@ -40,7 +40,7 @@ entities.forEach((e, i) => put(`data dictionary/entities/shop.e${i}.xml`, e))
 rels.forEach((r, i) => put(`data dictionary/relationships/r${i}.xml`, r))
 put('diagrams/1.xml', diagram)
 controls.forEach((c, i) => put(`diagrams/diagramobjects/entitycontrols/1-${i}.xml`, c))
-put('archived versions/old.xml', el('VERSION', el('VERSIONINFO', '<VERSIONNUMBER>1</VERSIONNUMBER>')))
+put('archived versions/old.xml', el('VERSION', `${el('VERSIONINFO', '<VERSIONNUMBER>4</VERSIONNUMBER>\n<VERSIONLABEL>Before payments</VERSIONLABEL>\n<VERSIONDATE>2026-02-01</VERSIONDATE>')}\n${el('DATADICT', `<DBID>postgresql16</DBID>\n${el('ENTITIES', entities.slice(0, 2).join('\n'))}`)}`))
 
 const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, HOME: join(dir, 'home'), DBM_USER_DATA: join(dir, 'data'), DBM_NO_UPDATE_CHECK: '1', DBM_LANGUAGE: 'en', DBM_E2E_BACKGROUND: '1' } })
 const pick = (file) => app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }) }, file)
@@ -110,8 +110,16 @@ try {
   await win.getByText(/Nothing to save/).last().waitFor({ timeout: 10000 })
   console.log('second save untouched:', readFileSync(dez, 'latin1') === after)
 
+  // What changed since a version archived in the project: the payment table came after "First release".
+  await win.getByTestId('model-compare-versions').click()
+  await win.getByText('v1 · First release · 2026-01-15').click()
+  await win.getByRole('button', { name: 'Compare', exact: true }).click()
+  await win.getByText(/Create table/).first().waitFor({ timeout: 20000 })
+  console.log('compare with an archived version:', await win.getByText(/Changes since v1/).count() > 0, 'changes:', await win.getByText(/Create table/).count())
+
   await pick(join(project, 'Shop.dezproj'))
   await openModel()
+  console.log('folder project versions:', JSON.stringify(await win.evaluate((p) => window.mastermind.api.listModelVersions(p), join(project, 'Shop.dezproj'))), (await win.evaluate(async (p) => (await window.mastermind.api.openModelVersion(p, 'old.xml')).text.match(/^Table /gm)?.length, join(project, 'Shop.dezproj'))), 'tables in it')
   const text2 = await win.locator('.cm-content:visible').first().innerText()
   console.log('project tables:', await win.locator('.react-flow__node:visible').count(), 'dbml:', text2.includes('Table shop.payment'), text2.includes('Ref: shop.payment.invoice_id > shop.invoice.id'))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow91.png') })
