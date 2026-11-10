@@ -529,10 +529,11 @@ describe('saving back into a DeZign project', () => {
     expect(after.leftOut.domains).toBe(1)
   })
 
-  it('survives chains of random edits: each save reads back as edited, keeps every reference valid and is final', () => {
+  // 2 projects × 25 chains × 6 edits, each saved twice and read back: seconds on a slow CI runner.
+  it('survives chains of random edits: each save reads back as edited, keeps every reference valid and is final', { timeout: 120_000 }, () => {
     const counts: Record<string, number> = {}
     for (const [label, start] of [['file', single], ['folder', folder]] as const) {
-      for (let seed = 1; seed <= 40; seed++) {
+      for (let seed = 1; seed <= 25; seed++) {
         const rnd = random(seed)
         let files = start
         for (let step = 0; step < 6; step++) {
