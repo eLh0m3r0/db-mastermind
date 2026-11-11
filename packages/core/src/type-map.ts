@@ -19,7 +19,7 @@ function family(type: string): Family | null {
   const t = type.trim().toLowerCase()
   if (/^(bool|boolean|bit)$/.test(t) || t === 'tinyint(1)' || t === 'number(1)') return 'bool'
   if (/^jsonb?$/.test(t)) return 'json'
-  if (/^(text|clob|nclob|ntext|mediumtext|longtext|tinytext|citext)$/.test(t) || /^n?varchar\s*\(\s*max\s*\)$/.test(t)) return 'text'
+  if (/^(text|clob|nclob|ntext|mediumtext|longtext|tinytext|citext|memo|long)$/.test(t) || /^n?varchar\s*\(\s*max\s*\)$/.test(t)) return 'text'
   if (/^(varchar|nvarchar|character varying|string|varchar2|nvarchar2)$/.test(t)) return 'string'
   if (/^(timestamptz|timestamp with time zone|datetimeoffset)$/.test(t)) return 'timestamptz'
   if (/^(timestamp|timestamp without time zone|datetime2)$/.test(t)) return 'timestamp'
@@ -32,8 +32,21 @@ function family(type: string): Family | null {
   return null
 }
 
-/** A column type written for another database, e.g. `boolean` → `bit` for SQL Server. Unknown types pass through. */
-export function translateType(type: string, to: DriverId): string {
+/** MySQL and MariaDB are one family: a model drawn for one needs no translation for the other. */
+const sameEngine = (a: DriverId | undefined, b: DriverId) => !!a && (a === b || (['mysql', 'mariadb'].includes(a) && ['mysql', 'mariadb'].includes(b)))
+
+/** Whole numbers by their number of digits, for databases that have no NUMBER(n). */
+const integerOf = (digits: number) => (digits <= 4 ? 'smallint' : digits <= 9 ? 'integer' : digits <= 18 ? 'bigint' : `numeric(${digits})`)
+
+/**
+ * A column type written for another database, e.g. `boolean` → `bit` for SQL Server. Unknown types pass through,
+ * and so does everything when the type was written for this database (`from`): `json` stays `json`.
+ */
+export function translateType(type: string, to: DriverId, from?: DriverId): string {
+  // Types no version of the target has (DeZign's database-independent INT64, STRING(n)) are translated regardless.
+  const own = otherEngineType(type.trim(), to)
+  if (own) return own
+  if (sameEngine(from, to)) return type
   const f = family(type)
   const mapped = f ? TARGETS[to][f] : undefined
   if (mapped) return mapped
@@ -53,10 +66,43 @@ export function translateType(type: string, to: DriverId): string {
   return type
 }
 
+/** Spellings only one database (or DeZign's database-independent models) has, for the databases that lack them. */
+function otherEngineType(t: string, to: DriverId): string | null {
+  const my = to === 'mysql' || to === 'mariadb'
+  const sized = /^(\w+)\s*\(\s*(\d+)\s*(?:,\s*(\d+)\s*)?\)$/.exec(t)
+  const name = (sized?.[1] ?? t).toLowerCase()
+  // Oracle's NUMBER: a whole number of n digits, a decimal, or any number.
+  if (name === 'number' && to !== 'oracle' && t.toLowerCase() !== 'number(1)') {
+    if (!sized) return to === 'bigquery' ? 'NUMERIC' : 'numeric'
+    if (sized[3] && sized[3] !== '0') return `${to === 'bigquery' ? 'NUMERIC' : 'numeric'}(${sized[2]},${sized[3]})`
+    return to === 'bigquery' ? 'INT64' : to === 'clickhouse' ? 'Int64' : to === 'sqlite' ? 'INTEGER' : integerOf(Number(sized[2]))
+  }
+  // MySQL's display widths (`int(11)`) and its unsigned and medium integers.
+  const integer = /^(tinyint|smallint|mediumint|int|integer|bigint)(?:\s*\(\s*(\d+)\s*\))?(\s+unsigned)?$/i.exec(t)
+  if (integer && !my && (integer[2] || integer[3] || /^mediumint$/i.test(integer[1]!)) && !(integer[1]!.toLowerCase() === 'tinyint' && integer[2] === '1')) {
+    const base = integer[1]!.toLowerCase()
+    if (to === 'bigquery') return 'INT64'
+    if (to === 'oracle') return base === 'bigint' ? 'NUMBER(19)' : 'NUMBER(10)'
+    if (to === 'sqlite') return 'INTEGER'
+    if (base === 'tinyint') return to === 'mssql' ? 'tinyint' : 'smallint'
+    return base === 'mediumint' || base === 'int' ? (to === 'mssql' ? 'int' : 'integer') : base
+  }
+  if (name === 'int64' && to !== 'bigquery' && to !== 'clickhouse') return to === 'oracle' ? 'NUMBER(19)' : to === 'sqlite' ? 'INTEGER' : 'bigint'
+  if (name === 'string' && sized && !sized[3]) return translateType(`varchar(${sized[2]})`, to)
+  // MySQL's ENUM and SET: a short string elsewhere.
+  if (/^(enum|set)\s*\(/i.test(t) && !my && to !== 'postgres') return translateType('varchar(255)', to)
+  if (/^(enum|set)\s*\(/i.test(t) && to === 'postgres') return 'varchar(255)'
+  if ((name === 'money' || name === 'smallmoney') && to !== 'mssql' && to !== 'postgres') return to === 'oracle' ? 'NUMBER(19,4)' : to === 'bigquery' ? 'NUMERIC' : to === 'sqlite' ? 'NUMERIC' : 'decimal(19,4)'
+  if (name === 'smallmoney' && to === 'postgres') return 'money'
+  if ((name === 'binary' || name === 'varbinary') && sized && !my && to !== 'mssql') return translateType('blob', to)
+  if (name === 'binary' && !sized && !my && to !== 'mssql') return translateType('blob', to)
+  return null
+}
+
 /** A default value written for another database (timestamps and booleans; other expressions pass through). */
 export function translateDefault(value: string, to: DriverId): string {
   const v = value.trim()
-  if (/^(now\(\)|current_timestamp(\(\))?|getdate\(\)|sysdatetime\(\)|systimestamp|localtimestamp)$/i.test(v)) {
+  if (/^(now\(\)|current_timestamp(\(\))?|getdate\(\)|sysdatetime\(\)|systimestamp|sysdate|localtimestamp)$/i.test(v)) {
     return to === 'mssql' ? 'SYSDATETIME()' : to === 'oracle' ? 'SYSTIMESTAMP' : to === 'postgres' ? 'now()' : 'CURRENT_TIMESTAMP'
   }
   const bool = /^(?:cast\s*\(\s*)?'?(t|f|true|false)'?(?:\s+as\s+boolean\s*\))?$/i.exec(v)
@@ -70,16 +116,22 @@ export function translateDefault(value: string, to: DriverId): string {
 /** Bounded strings for key columns: MySQL can't index TEXT, SQL Server can't index nvarchar(max) (900-byte keys). */
 const KEY_STRING: Partial<Record<DriverId, string>> = { mysql: 'varchar(255)', mariadb: 'varchar(255)', mssql: 'nvarchar(450)', oracle: 'VARCHAR2(1000)' }
 
-/** Tables with column types and defaults written for `to`. */
-export function translateTables(tables: TableInfo[], to: DriverId): TableInfo[] {
+/** Tables with column types and defaults written for `to`; untouched when they were written for it (`from`). */
+export function translateTables(tables: TableInfo[], to: DriverId, from?: DriverId): TableInfo[] {
+  if (sameEngine(from, to)) return tables.map((t) => ({ ...t, columns: t.columns.map((c) => ({ ...c, dataType: translateType(c.dataType, to, from) })) }))
   return tables.map((t) => {
     const keyed = new Set([...t.primaryKey, ...t.indexes.flatMap((i) => i.columns), ...t.foreignKeys.flatMap((f) => f.columns)])
     return {
       ...t,
       columns: t.columns.map((c) => {
         const f = family(c.dataType)
-        const dataType = keyed.has(c.name) && (f === 'text' || f === 'json' || f === 'string') && KEY_STRING[to] ? KEY_STRING[to]! : translateType(c.dataType, to)
-        return { ...c, dataType, defaultValue: c.defaultValue ? translateDefault(c.defaultValue, to) : c.defaultValue }
+        let dataType = keyed.has(c.name) && (f === 'text' || f === 'json' || f === 'string') && KEY_STRING[to] ? KEY_STRING[to]! : translateType(c.dataType, to)
+        // A one-digit number that defaults to something other than 0 or 1 was never a flag.
+        if (f === 'bool' && /\(1\)$/.test(c.dataType.trim()) && c.defaultValue && !/^[01]$/.test(c.defaultValue.trim())) dataType = translateType('smallint', to)
+        let defaultValue = c.defaultValue ? translateDefault(c.defaultValue, to) : c.defaultValue
+        // A flag kept as 0/1 where the target has real booleans.
+        if (defaultValue && f === 'bool' && (to === 'postgres' || to === 'duckdb') && /^[01]$/.test(defaultValue)) defaultValue = defaultValue === '1' ? 'true' : 'false'
+        return { ...c, dataType, defaultValue }
       }),
     }
   })

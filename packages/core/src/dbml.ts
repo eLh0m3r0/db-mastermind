@@ -263,7 +263,7 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
       t.columns.push(column)
       if (column.isPrimaryKey) t.primaryKey.push(name)
       const check = value('check')
-      if (check) (t.checks ??= []).push({ expression: check.replace(/^`|`$/g, '').trim() })
+      if (check) (t.checks ??= []).push({ expression: check.replace(/^`|`$/g, '').trim(), column: name })
       if (has('unique')) t.indexes.push({ name: `ux_${t.name}_${name}`, columns: [name], unique: true, primary: false, constraint: true })
       const ref = value('ref')
       if (ref) {
@@ -397,6 +397,10 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
   return { tables, enums, groups, extras, errors }
 }
 
+const checkText = (expression: string) => `\`${expression.replaceAll('`', "'").replace(/\s*\n\s*/g, ' ')}\``
+/** The check written on a column (the first, if there are several: a column setting holds one). */
+const ownCheck = (t: TableInfo, column: string) => t.checks?.find((c) => c.column === column)
+
 /** DBML for tables (round-trips through `parseDbml`), with the model's enums and table groups when given. */
 export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; enums?: Record<string, string[]>; groups?: Record<string, string[]>; /** Blocks kept as written (`DbmlModel.extras`). */ extras?: string[] } = {}): string {
   const out: string[] = []
@@ -420,6 +424,8 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
       }
       if (uniqueColumns.has(c.name)) attrs.push('unique')
       if (c.domain) attrs.push(`domain: '${c.domain.replaceAll("'", '')}'`)
+      const own = ownCheck(t, c.name)
+      if (own) attrs.push(`check: ${checkText(own.expression)}`)
       if (c.comment) attrs.push(`note: ${noteText(c.comment)}`)
       const type = /^[\w$.]+(\(.*\))?(\[\])?$/.test(c.dataType) ? c.dataType : `"${c.dataType}"`
       out.push(`  ${quoteName(c.name)} ${type}${attrs.length ? ` [${attrs.join(', ')}]` : ''}`)
@@ -434,8 +440,9 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
       }
       out.push('  }')
     }
-    if (t.checks?.length) {
-      out.push('', '  checks {', ...t.checks.map((c) => `    \`${c.expression.replaceAll('`', "'").replace(/\s*\n\s*/g, ' ')}\`${c.name ? ` [name: '${c.name.replaceAll("'", '')}']` : ''}`), '  }')
+    const checks = (t.checks ?? []).filter((c) => !t.columns.some((col) => ownCheck(t, col.name) === c))
+    if (checks.length) {
+      out.push('', '  checks {', ...checks.map((c) => `    ${checkText(c.expression)}${c.name ? ` [name: '${c.name.replaceAll("'", '')}']` : ''}`), '  }')
     }
     if (t.comment) out.push('', `  Note: ${noteText(t.comment)}`)
     out.push('}', '')

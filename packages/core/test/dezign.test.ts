@@ -3,7 +3,7 @@ import { diagramsAsLoaded, mutate, mutateDiagrams, random } from './dezign-fuzz.
 
 // More chains for a long local run: DBM_FUZZ_CHAINS=500 npx vitest run --root packages/core test/dezign.test.ts
 const CHAINS = Number(process.env.DBM_FUZZ_CHAINS) || 0
-import { applyDezignSave, assembleDezignProject, detectDezignEncoding, dezignIntegrity, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
+import { applyDezignSave, assembleDezignProject, createScript, detectDezignEncoding, dezignDriver, dezignIntegrity, getDialect, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 // Hand-written models in DeZign's layout (no file from a real project is kept in the repository).
 const attr = (id: string, name: string, type: string, extra = '', more = '') =>
@@ -825,6 +825,91 @@ ${ent('30', 'other', 'R1')}
   it('refuses a result that would not read back as edited', () => {
     // A column typed with something the file cannot hold round-trips differently: nothing is returned.
     expect(() => saveToDezign(single, model(single), model(single), { normalize: () => [] })).toThrow(/could not be written safely/)
+  })
+})
+
+describe('what a database needs from a DeZign model', () => {
+  // A MySQL model: an ENUM with its values, defaults typed without quotes, and a column that follows a domain
+  // whose check says `value` for the column.
+  const file = `<?xml version="1.0" encoding="iso-8859-1"?><dezign>
+<VERSION>
+${settings}
+<DATADICT>
+<DBID>mysql8</DBID>
+<DOMAINS>
+<DOMAIN>
+<NAME>grade</NAME>
+<ID>D9</ID>
+<DT>
+<DTLISTNAME>CHAR</DTLISTNAME>
+<LE>1</LE>
+</DT>
+<CCON>
+<VALUE>value IS NULL OR value IN ('A','B')</VALUE>
+</CCON>
+</DOMAIN>
+</DOMAINS>
+<ENTITIES>
+<ENT>
+<NAME>Users</NAME>
+<ID>10</ID>
+<ATTRIBUTES>
+${attr('U1', 'id', 'INT', '<LE>11</LE>\n', notNull)}
+${attr('U2', 'kind', 'ENUM', '', '<DEFCON>\n<VALUE>free</VALUE>\n</DEFCON>\n').replace('<INC>1</INC>', "<INC>1</INC>\n<ITMS>'admin','free'</ITMS>")}
+${attr('U3', 'visits', 'INT', '', '<DEFCON>\n<VALUE>0</VALUE>\n</DEFCON>\n')}
+${attr('U4', 'since', 'VARCHAR', '<LE>30</LE>\n', '<DEFCON>\n<VALUE>CURRENT_USER</VALUE>\n</DEFCON>\n')}
+${attr('U5', 'Grade', 'CHAR', '<LE>1</LE>\n', "<CCON>\n<VALUE>value IS NULL OR value IN ('A','B')</VALUE>\n</CCON>\n").replace('<DOMAINID></DOMAINID>', '<DOMAINID>D9</DOMAINID>')}
+</ATTRIBUTES>
+</ENT>
+</ENTITIES>
+</DATADICT>
+</VERSION>
+</dezign>`
+
+  it('reads the values of an ENUM, quotes a word typed as a text default, and keeps a domain check on its column', () => {
+    const model = readDezign(file)
+    const [users] = model.tables
+    expect(users!.columns.map((c) => [c.name, c.dataType, c.defaultValue])).toEqual([
+      ['id', 'int(11)', null],
+      ['kind', "enum('admin','free')", "'free'"],
+      ['visits', 'int', '0'],
+      ['since', 'varchar(30)', 'CURRENT_USER'],
+      ['Grade', 'char(1)', null],
+    ])
+    expect(users!.checks).toEqual([{ expression: "value IS NULL OR value IN ('A','B')", column: 'Grade' }])
+    expect(dezignDriver(model.targetDatabase)).toBe('mysql')
+    expect([dezignDriver('postgresql16'), dezignDriver('mssqlserver2022'), dezignDriver('oracle12'), dezignDriver('dbindependent')]).toEqual(['postgres', 'mssql', 'oracle', undefined])
+    // DBML keeps all of it.
+    const text = toDbml(model.tables)
+    expect(text).toContain("kind enum('admin','free') [default: 'free']")
+    expect(text).toContain("check: `value IS NULL OR value IN ('A','B')`")
+    expect(parseDbml(text).tables[0]!.checks).toEqual(users!.checks)
+    expect(parseDbml(text).tables[0]!.columns[1]!.dataType).toBe("enum('admin','free')")
+  })
+
+  it('writes DDL for its own database as the model has it, and for another one translated', () => {
+    const { tables, targetDatabase } = readDezign(file)
+    const from = dezignDriver(targetDatabase)
+    const mysql = createScript(tables, getDialect('mysql'), { translateTypes: true, from })
+    expect(mysql).toContain("`kind` enum('admin','free') DEFAULT 'free'")
+    expect(mysql).toContain('`id` int(11) NOT NULL')
+    expect(mysql).toContain("CHECK (`Grade` IS NULL OR `Grade` IN ('A','B'))")
+    const postgres = createScript(tables, getDialect('postgres'), { translateTypes: true, from })
+    expect(postgres).toContain(`"kind" varchar(255) DEFAULT 'free'`)
+    expect(postgres).toContain('"id" integer NOT NULL')
+    expect(postgres).toContain(`CHECK ("Grade" IS NULL OR "Grade" IN ('A','B'))`)
+  })
+
+  it('saves a changed list of ENUM values', () => {
+    const viaDbml = (tables: TableInfo[]) => parseDbml(toDbml(tables)).tables
+    const base = viaDbml(readDezign(file).tables)
+    const target = structuredClone(base)
+    target[0]!.columns[1]!.dataType = "enum('admin','free','premium')"
+    const saved = saveToDezign([{ path: 'm.dez', text: file }], base, target, { normalize: viaDbml })
+    expect(saved.changes.map((c) => c.kind)).toEqual(['alter_column'])
+    expect(saved.files[0]!.text).toContain("<DTLISTNAME>ENUM</DTLISTNAME>")
+    expect(saved.files[0]!.text).toContain("<ITMS>'admin','free','premium'</ITMS>")
+    expect(readDezign(saved.files[0]!.text).tables[0]!.columns[1]!.dataType).toBe("enum('admin','free','premium')")
   })
 })
 

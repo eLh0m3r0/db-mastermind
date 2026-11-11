@@ -1,4 +1,4 @@
-import type { CheckInfo, ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfo } from './types.js'
+import type { CheckInfo, ColumnInfo, DriverId, ForeignKeyInfo, IndexInfo, TableInfo } from './types.js'
 
 /**
  * Reader for DeZign for Databases models: single-file projects (`.dez`, file formats 41 to 140, i.e. DeZign 4
@@ -177,6 +177,28 @@ export interface ReadDezignOptions {
   archived?: number
 }
 
+/**
+ * A default as SQL. DeZign takes what was typed: a plain word typed for a text column (`free` for an ENUM,
+ * `N` for a CHAR) is a string that lost its quotes, not a name the database would know.
+ */
+function defaultSql(value: string, dataType: string): string {
+  if (!/^(n?(var)?char2?|character|text|string|memo|enum|set|(tiny|medium|long)text|n?clob)\b/i.test(dataType)) return value
+  if (!/^[\p{L}_][\p{L}\p{N}_.\- ]*$/u.test(value) || /^(null|user|(current|session|system)_user|current_(date|time|timestamp|role|schema|catalog)|sysdate|systimestamp|localtime(stamp)?|true|false)$/i.test(value)) return value
+  return `'${value}'`
+}
+
+/** The driver for a DeZign target database id (`postgresql16`, `mssqlserver2022`, `mysql8`, `oracle12`…), when there is one. */
+export function dezignDriver(targetDatabase: string | undefined): DriverId | undefined {
+  const id = (targetDatabase ?? '').toLowerCase()
+  if (/^postgres/.test(id)) return 'postgres'
+  if (/^(mssql|sqlserver|azure)/.test(id)) return 'mssql'
+  if (/^maria/.test(id)) return 'mariadb'
+  if (/^mysql/.test(id)) return 'mysql'
+  if (/^oracle/.test(id)) return 'oracle'
+  if (/^sqlite/.test(id)) return 'sqlite'
+  return undefined
+}
+
 /** The model of a DeZign project given as a binary string (`.dez` content, or `assembleDezignProject`). */
 export function readDezign(binary: string, options: ReadDezignOptions = {}): DezignModel {
   const encoding = options.encoding ?? detectDezignEncoding(binary, options.fallbackEncoding)
@@ -213,7 +235,9 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
     const name = text(dt, 'DTLISTNAME').toLowerCase()
     const length = text(dt, 'LE')
     const scale = text(dt, 'PR')
-    return name + (length ? `(${length}${scale ? `,${scale}` : ''})` : '')
+    // MySQL's ENUM and SET keep their values next to the type.
+    const items = text(dt, 'ITMS')
+    return name + (length ? `(${length}${scale ? `,${scale}` : ''})` : items ? `(${items})` : '')
   }
   const idsOf = (constraint: DezignElement | undefined) => kids(kid(constraint, 'ATTRIBUTEIDS'), 'ATTRIBUTEID').map((a) => unescapeXml(a.children.filter((c) => typeof c === 'string').join('')).trim())
 
@@ -238,12 +262,15 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
       const dt = ownType && text(ownType, 'DTLISTNAME') ? ownType : (kid(domain, 'DT') ?? ownType)
       const isPrimaryKey = pkIds.includes(id)
       const check = text(kid(attr, 'CCON'), 'VALUE')
-      if (check) checks.push({ expression: check, ...(text(kid(attr, 'CCON'), 'NAME') ? { name: text(kid(attr, 'CCON'), 'NAME') } : {}) })
-      const defaultValue = text(kid(attr, 'DEFCON'), 'VALUE') || text(kid(domain, 'DEFCON'), 'VALUE')
+      // A domain's check says `value` for whichever column follows the domain: such a check stays with its column.
+      const ownColumn = /\bvalue\b/i.test(check) && name.toLowerCase() !== 'value'
+      if (check) checks.push({ expression: check, ...(text(kid(attr, 'CCON'), 'NAME') ? { name: text(kid(attr, 'CCON'), 'NAME') } : {}), ...(ownColumn ? { column: name } : {}) })
+      const dataType = typeOf(dt) || text(domain, 'NAME') || 'text'
+      const defaultValue = defaultSql(text(kid(attr, 'DEFCON'), 'VALUE') || text(kid(domain, 'DEFCON'), 'VALUE'), dataType)
       return {
         name,
         ordinal: i + 1,
-        dataType: typeOf(dt) || text(domain, 'NAME') || 'text',
+        dataType,
         nullable: !isPrimaryKey && text(kid(attr, 'NNCON'), 'VALUE') !== '1',
         defaultValue: defaultValue || null,
         isPrimaryKey,

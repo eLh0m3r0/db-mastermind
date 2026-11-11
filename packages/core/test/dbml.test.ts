@@ -166,9 +166,14 @@ Ref: orders.customer_id > customers.id
     const dbml = "Table products {\n  id int [pk]\n  price numeric(10,2) [not null, check: `price >= 0`]\n  stock int\n\n  checks {\n    `stock >= 0 and price < 1000000` [name: 'sane_values']\n    `stock < 5000`\n  }\n}"
     const model = parseDbml(dbml)
     expect(model.errors).toEqual([])
-    expect(model.tables[0]!.checks).toEqual([{ expression: 'price >= 0' }, { expression: 'stock >= 0 and price < 1000000', name: 'sane_values' }, { expression: 'stock < 5000' }])
+    expect(model.tables[0]!.checks).toEqual([{ expression: 'price >= 0', column: 'price' }, { expression: 'stock >= 0 and price < 1000000', name: 'sane_values' }, { expression: 'stock < 5000' }])
     const written = toDbml(model.tables)
-    expect(written).toContain("  checks {\n    `price >= 0`\n    `stock >= 0 and price < 1000000` [name: 'sane_values']\n    `stock < 5000`\n  }")
+    // A check written on a column stays on it.
+    expect(written).toContain('price numeric(10,2) [not null, check: `price >= 0`]')
+    expect(written).toContain("  checks {\n    `stock >= 0 and price < 1000000` [name: 'sane_values']\n    `stock < 5000`\n  }")
+    // A check whose column is gone is still a check of the table.
+    const orphan = toDbml([{ ...model.tables[0]!, checks: [{ expression: 'value > 0', column: 'gone' }] }])
+    expect(orphan).toContain('  checks {\n    `value > 0`\n  }')
     expect(parseDbml(written).tables[0]!.checks).toEqual(model.tables[0]!.checks)
   })
 

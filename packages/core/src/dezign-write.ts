@@ -454,9 +454,12 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     let dt = kid(attr, 'DT')
     if (!dt) insert(attr, (dt = container('DT', [])), ['NNCON', 'CCON', 'DEFCON'])
     const m = /^(.+?)\s*\(\s*(\d+)\s*(?:,\s*(\d+)\s*)?\)$/.exec(dataType.trim())
-    set(dt, 'DTLISTNAME', (m ? m[1]! : dataType).trim().toUpperCase(), ['LE', 'PR', 'SD', 'INC', 'AN'])
+    // ENUM('a','b') and SET(…) keep their values in ITMS.
+    const listed = m ? null : /^(\w+)\s*\((.*')\s*\)$/s.exec(dataType.trim())
+    set(dt, 'DTLISTNAME', (m?.[1] ?? listed?.[1] ?? dataType).trim().toUpperCase(), ['LE', 'PR', 'SD', 'INC', 'AN'])
     setOptional(dt, 'LE', m?.[2] ?? '', ['PR', 'SD', 'INC', 'AN'])
     setOptional(dt, 'PR', m?.[3] ?? '', ['SD', 'INC', 'AN'])
+    setOptional(dt, 'ITMS', listed?.[2] ?? '', [])
     setOptional(dt, 'AN', identity ? '1' : '', [])
     // A column with its own type no longer follows a domain.
     if (kid(attr, 'DOMAINID')) set(attr, 'DOMAINID', '')
@@ -497,7 +500,7 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     const domain = domainsByName.get(lower(column.domain))
     if (!domain) throw new Error(`${table}.${column.name}: the project has no domain "${column.domain}" (it has: ${[...domainsByName.values()].map((d) => text(d, 'NAME')).join(', ') || 'none'}). Domains are made in DeZign; remove the setting to give the column its own type.`)
     const dt = kid(domain, 'DT')
-    const type = (text(dt, 'DTLISTNAME').toLowerCase() + (text(dt, 'LE') ? `(${text(dt, 'LE')}${text(dt, 'PR') ? `,${text(dt, 'PR')}` : ''})` : '')).trim()
+    const type = (text(dt, 'DTLISTNAME').toLowerCase() + (text(dt, 'LE') ? `(${text(dt, 'LE')}${text(dt, 'PR') ? `,${text(dt, 'PR')}` : ''})` : text(dt, 'ITMS') ? `(${text(dt, 'ITMS')})` : '')).trim()
     if (type && normType(type) !== normType(column.dataType)) {
       throw new Error(`${table}.${column.name} follows the domain "${column.domain}", whose type is ${type}, but is typed ${column.dataType}. Change one of them: remove the domain setting for a type of its own.`)
     }

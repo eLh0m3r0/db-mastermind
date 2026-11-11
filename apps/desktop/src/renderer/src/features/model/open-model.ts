@@ -1,4 +1,4 @@
-import type { DezignChange, DezignSqlObject } from '@dbmastermind/core/browser'
+import { dezignDriver, type DezignChange, type DezignSqlObject } from '@dbmastermind/core/browser'
 import type { OpenedModelFile } from '@shared/api'
 import { t, tp } from '@/lib/i18n'
 import { toast } from '@/store/ui'
@@ -63,21 +63,14 @@ export function describeDezignChanges(changes: DezignChange[], limit = 40): stri
   return lines.length > limit ? [...lines.slice(0, limit), t('… and {n} more', { n: String(lines.length - limit) })] : lines
 }
 
-const FAMILIES: [RegExp, string[]][] = [
-  [/^postgres/i, ['postgres']],
-  [/^(mssql|sqlserver|azure)/i, ['mssql']],
-  [/^(mysql|maria)/i, ['mysql', 'mariadb']],
-  [/^oracle/i, ['oracle']],
-  [/^sqlite/i, ['sqlite']],
-]
-
 /**
  * The source's views, sequences, procedures and triggers as a block for a DDL script. They are written in the
  * dialect of the project's own database: for another one they are left in as comments, to be rewritten by hand.
  */
 export function sqlObjectsScript(objects: DezignSqlObject[] | undefined, database: string | undefined, driver: string): string {
   if (!objects?.length) return ''
-  const same = FAMILIES.some(([pattern, drivers]) => pattern.test(database ?? '') && drivers.includes(driver))
+  const own = dezignDriver(database)
+  const same = !!own && (own === driver || (['mysql', 'mariadb'].includes(own) && ['mysql', 'mariadb'].includes(driver)))
   const order = ['sequence', 'view', 'procedure', 'trigger']
   const body = [...objects]
     .sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))

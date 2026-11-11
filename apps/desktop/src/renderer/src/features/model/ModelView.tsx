@@ -5,7 +5,7 @@ import { Compartment, EditorState } from '@codemirror/state'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
 import { AlertTriangle, Database, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare, Plus } from 'lucide-react'
-import { checkModel, createScript, fixModelIssue, getDialect, parseDbml, toDbml, updateModelFromDatabase, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
+import { checkModel, createScript, dezignDriver, fixModelIssue, getDialect, parseDbml, toDbml, updateModelFromDatabase, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { DRIVERS } from '../connections/drivers'
@@ -319,7 +319,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
       DRIVERS.map((d) => ({
         label: d.label,
         onClick: () => {
-          const script = `-- ${t('Model as {db} DDL', { db: d.label })}\n${createScript(model.tables, getDialect(d.id), { translateTypes: true })}${sqlObjectsScript(tab.sqlObjects, tab.sqlDatabase, d.id)}`
+          const script = `-- ${t('Model as {db} DDL', { db: d.label })}\n${createScript(model.tables, getDialect(d.id), { translateTypes: true, from: dezignDriver(tab.sqlDatabase) ?? connection?.driver })}${sqlObjectsScript(tab.sqlObjects, tab.sqlDatabase, d.id)}`
           // With a database the script opens in its editor; a model on its own saves it as a file.
           if (connection) newQuery(tab.connectionId, script, `DDL · ${d.label}`)
           else void api.saveSqlFile(script, `${fileName.replace(/\.\w+$/, '') || 'model'}-${d.id}.sql`).then((path) => path && toast({ kind: 'success', message: t('Script saved'), detail: path }), (err) => toast({ kind: 'error', message: t('Could not save the script'), detail: errorMessage(err) }))

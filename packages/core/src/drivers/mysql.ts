@@ -40,6 +40,19 @@ const TYPE_NAMES: Record<number, string> = Object.fromEntries(
 
 type RawRow = Record<string, unknown>
 
+/**
+ * A column default as SQL. MySQL's catalog gives a literal bare (`pending`) and an expression without its
+ * parentheses (`uuid()`); MariaDB's already gives SQL (`'pending'`). Everything else here (DDL, compare, the
+ * model) expects SQL, as the other databases report it.
+ */
+export function mysqlDefaultSql(raw: string, extra: string, mariadb: boolean): string {
+  if (mariadb) return raw
+  if (/^(current_timestamp|now)(\(\d*\))?$/i.test(raw)) return raw
+  if (/default_generated/i.test(extra)) return /^\(.*\)$/s.test(raw) ? raw : `(${raw})`
+  if (/^-?\d+(\.\d+)?(e[+-]?\d+)?$/i.test(raw) || /^(b'[01]*'|0x[0-9a-f]+)$/i.test(raw)) return raw
+  return `'${raw.replaceAll('\\', '\\\\').replaceAll("'", "''")}'`
+}
+
 /** Driver for MySQL and MariaDB (same wire protocol, slightly different catalogs). */
 export class MysqlDriver implements DatabaseDriver {
   readonly dialect
@@ -435,7 +448,7 @@ export class MysqlDriver implements DatabaseDriver {
       this.rows(
         `SELECT TABLE_SCHEMA AS s, TABLE_NAME AS t, COLUMN_NAME AS name, ORDINAL_POSITION AS ord, COLUMN_TYPE AS type,
                 IS_NULLABLE AS nullable, COLUMN_DEFAULT AS def, EXTRA AS extra, COLUMN_KEY AS col_key,
-                COLUMN_COMMENT AS comment, CHARACTER_MAXIMUM_LENGTH AS max_len
+                COLUMN_COMMENT AS comment, CHARACTER_MAXIMUM_LENGTH AS max_len, VERSION() AS ver
            FROM information_schema.COLUMNS WHERE TABLE_SCHEMA IN (${inList})
           ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION`,
         schemas,
@@ -491,7 +504,7 @@ export class MysqlDriver implements DatabaseDriver {
         ordinal: Number(c.ord),
         dataType: String(c.type),
         nullable: c.nullable === 'YES',
-        defaultValue: c.def === null || c.def === undefined ? null : String(c.def),
+        defaultValue: c.def === null || c.def === undefined ? null : mysqlDefaultSql(String(c.def), extra, /mariadb/i.test(String(c.ver ?? ''))),
         isPrimaryKey: c.col_key === 'PRI',
         isIdentity: extra.includes('auto_increment'),
         isGenerated: extra.includes('generated'),

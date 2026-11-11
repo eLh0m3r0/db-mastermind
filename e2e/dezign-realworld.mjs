@@ -3,7 +3,7 @@
 // Prints one line of counts per model, never names from it. Usage:
 //   DBM_DEZ_SAMPLES=/path/to/models node e2e/dezign-realworld.mjs
 import { _electron as electron } from '@playwright/test'
-import { cpSync, mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 
@@ -63,11 +63,11 @@ for (const [i, path] of models.entries()) {
     const listed = await win.locator('.fixed:visible').filter({ hasText: 'Write these changes' }).last().innerText()
     const lines = listed.split('\n').filter((l) => /^(new|dropped|renamed|changed|table|primary|added|taken|moved)/.test(l.trim())).length
     await win.getByRole('button', { name: 'Write to the DeZign file' }).click()
-    await win.getByText(/Saved to/).last().waitFor({ timeout: 60000 })
-    await win.waitForTimeout(500)
-
     // What the file holds now, read as on a fresh open: the model plus the one table, and nothing more to save.
-    const after = await api('openModelFile', path)
+    // (The previous model's "Saved to" notice may still be on screen: the file itself says when this save is done.)
+    let after = await api('openModelFile', path)
+    for (const until = Date.now() + 60000; !/dbm_e2e_table/.test(after.text) && Date.now() < until; after = await api('openModelFile', path)) await win.waitForTimeout(250)
+    await win.waitForTimeout(300)
     const again = await api('saveDezignModel', { path, text: after.text, hash: after.imported.hash, positions: after.imported.positions, notes: after.imported.notes, colors: after.imported.colors, diagrams: after.imported.diagrams, layout: true, dryRun: true })
     const ok = parseErrors === 0 && tablesIn(after.text) === tablesIn(before.text) + 1 && /Table (\w+\.)?dbm_e2e_table \{/.test(after.text) && /Přidáno testem/.test(after.text) && lines === 1 && again.changes.length === 0
     if (!ok) failed++
@@ -85,4 +85,6 @@ for (const [i, path] of models.entries()) {
 }
 console.log(`models: ${models.length} | failed: ${failed} | page errors: ${pageErrors.length}`)
 await app.close()
+// The copies are models somebody owns: they don't stay behind in the temp folder.
+rmSync(work, { recursive: true, force: true })
 process.exit(failed ? 1 : 0)

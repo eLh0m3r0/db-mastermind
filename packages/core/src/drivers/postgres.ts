@@ -532,7 +532,8 @@ export class PostgresDriver implements DatabaseDriver {
     for (const ix of indexes.rows) {
       byKey.get(key(ix.schema, ix.table))?.indexes.push({
         name: ix.name,
-        columns: ix.columns,
+        // pg_get_indexdef quotes names that need it ("PERM_ID"); a column is its plain name everywhere else.
+        columns: ix.columns.map((c) => (/^"(?:[^"]|"")*"$/.test(c) ? c.slice(1, -1).replaceAll('""', '"') : c)),
         unique: ix.unique,
         primary: ix.primary,
         method: ix.method,

@@ -153,6 +153,8 @@ export interface CheckInfo {
   name?: string
   /** The condition, without the CHECK keyword and its parentheses. */
   expression: string
+  /** The column a check was written on. Such a condition may say `value` for the column (a DeZign domain's check). */
+  column?: string
 }
 
 export interface TableInfo {
