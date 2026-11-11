@@ -206,7 +206,7 @@ export interface DiffOptions {
 }
 
 /** What `DatabaseService.canonicalChecks` says of one condition. */
-export type CanonicalCheck = { definition: string } | { missingColumn: true } | null
+export type CanonicalCheck = { definition: string; /** The table's own check of that name, stored the same way. */ current?: string } | { missingColumn: true } | null
 
 /**
  * The checks of a model whose condition differs from the same-named check of the database, found by asking
@@ -228,7 +228,7 @@ export async function findChangedChecks(
     }
   }
   const answers = asked.length ? await canonical(asked.map(({ table, check }) => ({ table, check }))) : []
-  const changed = new Set(asked.filter((a, i) => { const answer = answers[i]; return !!answer && ('missingColumn' in answer || answer.definition.trim() !== a.live.trim()) }).map((a) => key(a.table.name, a.check.name!)))
+  const changed = new Set(asked.filter((a, i) => { const answer = answers[i]; return !!answer && ('missingColumn' in answer || answer.definition.trim() !== (answer.current ?? a.live).trim()) }).map((a) => key(a.table.name, a.check.name!)))
   return (table, name) => changed.has(key(table.name, name))
 }
 

@@ -127,8 +127,8 @@ for (const engine of engines.filter((e) => e.id !== 'duckdb')) {
         expect(added.checks).toHaveLength(before.checks!.length + 2)
         // The model and the database now agree, however the database spells the conditions.
         expect(compareSchemas([model], [added])).toEqual([])
-        // The same name with another condition: only the database can tell (PostgreSQL), and then the check is replaced.
-        if (engine.id === 'postgres') {
+        // The same name with another condition: only the database can tell, and then the check is replaced.
+        {
           const same = await findChangedChecks([model], [added], (items) => svc.canonicalChecks(config.id, items))
           expect(compareSchemas([model], [added], { checkChanged: same })).toEqual([])
           // Written another way, it is still the same condition.
@@ -137,7 +137,7 @@ for (const engine of engines.filter((e) => e.id !== 'duckdb')) {
           const edited: TableInfo = { ...model, checks: model.checks!.map((c) => (c.name === 'dbm_name_filled' ? { ...c, expression: "name <> '' AND name <> 'x'" } : c)) }
           const changed = await findChangedChecks([edited], [added], (items) => svc.canonicalChecks(config.id, items))
           const migration = generateMigration(compareSchemas([edited], [added], { checkChanged: changed }), dialect, [added])
-          expect(migration.statements.map((sql) => sql.split(' ').slice(3, 5).join(' '))).toEqual(['DROP CONSTRAINT', 'ADD CONSTRAINT'])
+          expect(migration.statements.map((sql) => sql.split(' ').slice(3, 5).join(' '))).toEqual([engine.id === 'mysql' ? 'DROP CHECK' : 'DROP CONSTRAINT', 'ADD CONSTRAINT'])
           expect((await svc.runScript(config.id, migrationScript(migration, dialect))).find((o) => o.error)).toBeUndefined()
           const replaced = await customers()
           expect(replaced.checks!.find((c) => c.name === 'dbm_name_filled')!.expression).toContain("'x'")

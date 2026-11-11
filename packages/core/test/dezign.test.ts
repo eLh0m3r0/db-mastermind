@@ -1009,6 +1009,7 @@ ${rel('30', 'Customer_Invoice', '<PAIR>\n<KEYID>C1</KEYID>\n<FOREIGNKEYID>I2</FO
     const model = readDezign(project('0'))
     expect(model.scripting.primaryKeys).toEqual({ names: { 'sales.customer': 'Customer_PK', 'sales.invoice': '' }, template: '%table%_PK' })
     expect(model.scripting.uniqueConstraints).toEqual(['customer_1tuc'])
+    expect(model.scripting.uniqueIndexes).toEqual([])
     expect(model.scripting.domains).toEqual([
       { name: 'TECH_ID', dataType: 'bigint', defaultValue: null, check: null, notNull: false },
       { name: 'FLAG', dataType: 'char(1)', defaultValue: "'N'", check: "value IN ('Y','N')", notNull: false },
@@ -1033,9 +1034,12 @@ ${rel('30', 'Customer_Invoice', '<PAIR>\n<KEYID>C1</KEYID>\n<FOREIGNKEYID>I2</FO
     // A key the project leaves unnamed is unnamed; the foreign key has the name the project gives its constraint.
     expect(sql).toContain('  "customerid" tech_id NOT NULL,\n  PRIMARY KEY ("id")\n)')
     expect(sql).toContain('ADD CONSTRAINT "fk_customer_invoice" FOREIGN KEY ("customerid") REFERENCES "sales"."customer" ("id")')
-    // A table made here gets its key named by the project's template.
-    const added = parseDbml('Table Sales.Payment {\n  Id bigint [pk]\n}').tables
-    expect(scriptOf(project('0'), 'postgres', added)).toContain('CONSTRAINT "payment_pk" PRIMARY KEY ("id")')
+    // A table made here gets its key named by the project's template, and what it makes unique is a constraint,
+    // as it will be in the project once saved.
+    const added = parseDbml("Table Sales.Payment {\n  Id bigint [pk]\n  a int\n  b int\n  indexes {\n    (a, b) [unique, name: 'payment_pair']\n  }\n}").tables
+    const withNew = scriptOf(project('0'), 'postgres', added)
+    expect(withNew).toContain('CONSTRAINT "payment_pk" PRIMARY KEY ("id")')
+    expect(withNew).toContain('CONSTRAINT "payment_pair" UNIQUE ("a", "b")')
   })
 
   it('carries the types themselves where the database has no domains or the project converts them', () => {

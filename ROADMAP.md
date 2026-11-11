@@ -394,9 +394,9 @@ Not a clone: their features, rethought and connected to live databases, the know
   model has and the database lacks is added and one the model no longer has is dropped. They go by name (a
   database stores a condition rewritten its own way, so conditions can't be compared as text); a check without
   a name in the model stands for one the database named itself. A named check whose condition changed is not
-  noticed by the text, so the database is asked: on PostgreSQL the model's condition is put on a temporary copy
-  of the table's columns (rolled back) and read back as PostgreSQL stores it; if that differs from what the
-  table has, the check is replaced under its name (MySQL and SQL Server: a renamed check, for now)
+  noticed by the text, so the database is asked: the model's condition is put on a temporary copy of the
+  table's columns (thrown away) and read back as the database stores it; if that differs from what the table
+  has, the check is replaced under its name. PostgreSQL, MySQL and SQL Server
 - ✅ DBML `TablePartial` (reusable column sets, e.g. audit columns) with `~name` injection
 - ✅ Blocks the model does not hold (Project, notes, Records, TablePartial) stay as written when the model is
   rewritten from the canvas or by a fix

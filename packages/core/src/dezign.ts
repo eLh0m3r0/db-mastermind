@@ -98,17 +98,20 @@ export interface DezignScripting {
   domains: ModelDomain[]
   /** The names of the project's UNIQUE constraints (as opposed to its unique indexes), lower case. */
   uniqueConstraints: string[]
+  /** The names of its unique indexes, lower case. Anything else unique in the model is saved, and made, as a constraint. */
+  uniqueIndexes: string[]
 }
 
 /** The options for a script or migration of a DeZign project's model, for `driver`: names as DeZign's scripts have them. */
 export function dezignMigrationOptions(scripting: DezignScripting | undefined, driver: DriverId): MigrationOptions {
   if (!scripting) return {}
-  const unique = new Set(scripting.uniqueConstraints ?? [])
+  const indexes = new Set(scripting.uniqueIndexes ?? [])
   return {
     primaryKeyName: (table) => unquotedName(dezignKeyName(scripting.primaryKeys, table), driver),
     domains: scripting.domains,
-    // A constraint of the project is a constraint in the database; anything else goes by what the model says of it.
-    uniqueConstraint: (_table, name) => (name && unique.has(name.toLowerCase()) ? true : undefined),
+    // What is unique in a DeZign project is a UNIQUE constraint (that is how a new one is saved into the project
+    // too), except the unique indexes the project has.
+    uniqueConstraint: (_table, name) => !(name && indexes.has(name.toLowerCase())),
   }
 }
 
@@ -297,6 +300,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const convertDomains = text(kid(dict, 'DDSETTINGS'), 'CONVERTDOMAINS') === '1' || text(kid(projectSettings, 'GenDB_Options'), 'CONVERTDOMAINS') === '1'
   const anyKey = kids(kid(dict, 'ENTITIES'), 'ENT').map((e) => text(kid(e, 'PKCON'), 'NAMETEMPLATE')).find(Boolean)
   const uniqueConstraints: string[] = []
+  const uniqueIndexes: string[] = []
   const primaryKeys: DezignKeyNames = { names: {}, template: nameTemplates.PKCONNAMETEMPLATE || anyKey || undefined }
 
   for (const ent of kids(kid(dict, 'ENTITIES'), 'ENT')) {
@@ -350,6 +354,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
       // DeZign's automatic index on the primary key is the key itself here.
       if (!cols.length || (text(ix, 'AUTOIDXTYPE') !== '0' && text(ix, 'AUTOIDXTYPE') !== '' && cols.join('\0') === primaryKey.join('\0'))) continue
       indexes.push({ name: text(ix, 'NAME') || `${tableName}_${cols.join('_')}_idx`, columns: cols, unique: /unique/i.test(text(ix, 'INDEXTYPE')), primary: false })
+      if (/unique/i.test(text(ix, 'INDEXTYPE')) && text(ix, 'NAME')) uniqueIndexes.push(text(ix, 'NAME').toLowerCase())
     }
     leftOut.triggers += kids(kid(ent, 'TRIGGERS')).length
     const table: TableInfo = {
@@ -490,7 +495,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const positions = main?.positions ?? {}
   const layout = { diagramId: mainId, ...(main?.layout ?? { originX: 0, originY: 0, scaleX: 1, scaleY: 1 }) }
 
-  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, diagrams: described, sqlObjects, domains: domainList.map(({ name, dataType }) => ({ name, dataType })), scripting: { primaryKeys, domains: convertDomains ? [] : domainList, uniqueConstraints }, nameTemplates, leftOut }
+  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, diagrams: described, sqlObjects, domains: domainList.map(({ name, dataType }) => ({ name, dataType })), scripting: { primaryKeys, domains: convertDomains ? [] : domainList, uniqueConstraints, uniqueIndexes }, nameTemplates, leftOut }
 }
 
 const PROJECT_SECTIONS: [folder: string, element: string][] = [

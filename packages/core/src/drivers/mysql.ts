@@ -564,7 +564,8 @@ export class MysqlDriver implements DatabaseDriver {
         )
         for (const t of byKey.values()) if (t.type === 'table') t.checks = []
         for (const row of checks) {
-          const clause = String(row.clause ?? '')
+          // The catalog shows the clause with its quotes and backslashes escaped (`_utf8mb4\'x\'`): as SQL again.
+          const clause = String(row.clause ?? '').replace(/\\(.)/gs, '$1')
           byKey.get(key(row.s, row.t))?.checks?.push({ name: String(row.name), expression: /^\(.*\)$/s.test(clause) ? clause.slice(1, -1) : clause })
         }
       } catch {

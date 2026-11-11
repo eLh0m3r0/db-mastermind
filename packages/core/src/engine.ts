@@ -182,39 +182,67 @@ export class DatabaseService {
   }
 
   /**
-   * A check's condition as the database itself would store it on that table, to compare a model's condition with
-   * the one the table has (a database rewrites a condition when it takes it: `x IN (1, 2)` comes back as
-   * `x = ANY (ARRAY[1, 2])`). PostgreSQL only: the condition is put on a temporary copy of the table's columns in a
-   * transaction that is rolled back. `null` where the database can't say (another engine, a read-only connection,
-   * a condition it refuses); `missingColumn` when the condition names a column the table does not have.
+   * A check's condition as the database itself would store it on that table, next to the condition the table's
+   * check of that name has, stored the same way: the two can then be compared (a database rewrites a condition
+   * when it takes it: `x IN (1, 2)` comes back as `x = ANY (ARRAY[1, 2])`). Both conditions are put on a
+   * temporary copy of the table's columns, which is thrown away. PostgreSQL, MySQL and SQL Server. `null` where
+   * the database can't say (another engine, a read-only connection, a condition it refuses); `missingColumn`
+   * when the model's condition names a column the table does not have.
    */
-  async canonicalChecks(id: string, items: { table: TableRef; check: CheckInfo }[]): Promise<({ definition: string } | { missingColumn: true } | null)[]> {
+  async canonicalChecks(id: string, items: { table: TableRef; check: CheckInfo }[]): Promise<({ definition: string; current?: string } | { missingColumn: true } | null)[]> {
     const entry = this.get(id)
-    if (entry.config.driver !== 'postgres') return items.map(() => null)
+    const driver = entry.config.driver
     const d = entry.driver.dialect
-    const out: ({ definition: string } | { missingColumn: true } | null)[] = []
+    const out: ({ definition: string; current?: string } | { missingColumn: true } | null)[] = []
+    if (driver !== 'postgres' && driver !== 'mysql' && driver !== 'mssql') return items.map(() => null)
     for (const { table, check } of items) {
       try {
         const live = await this.findTable(id, table)
+        // PostgreSQL reports a table's check with the very function that reads the probe, so the model's condition
+        // is compared with that report as it is (fed back, its own text does not always come out the same again).
+        // MySQL and SQL Server report it from another place than the probe is read from: there the table's
+        // condition goes through the probe as well.
+        const twin = driver !== 'postgres' && check.name ? live?.checks?.find((c) => c.name?.toLowerCase() === check.name!.toLowerCase()) : undefined
         if (!live) {
           out.push(null)
           continue
         }
-        const probe = 'dbm_check_probe'
-        const outcomes = await this.runScript(
-          id,
-          [
-            'BEGIN',
-            `CREATE TEMP TABLE ${probe} (LIKE ${live.schema ? `${d.quoteIdent(live.schema)}.` : ''}${d.quoteIdent(live.name)}) ON COMMIT DROP`,
-            `ALTER TABLE ${probe} ADD CONSTRAINT ${probe}_c CHECK (${checkCondition(check, live.columns, d)})`,
-            `SELECT pg_get_constraintdef(oid, true) FROM pg_constraint WHERE conrelid = '${probe}'::regclass AND conname = '${probe}_c'`,
-            'ROLLBACK',
-          ].join(';\n'),
-          { continueOnError: true },
-        )
-        const failed = outcomes.find((o) => o.error)
-        const definition = /^CHECK \((.*)\)(?: NOT VALID| NO INHERIT)*$/s.exec(String(outcomes[3]?.results?.[0]?.rows[0]?.[0] ?? ''))?.[1]
-        out.push(failed ? (failed.error?.code === '42703' ? { missingColumn: true } : null) : definition ? { definition } : null)
+        const source = `${live.schema ? `${d.quoteIdent(live.schema)}.` : ''}${d.quoteIdent(live.name)}`
+        const model = checkCondition(check, live.columns, d)
+        // Names nobody else has: check names are per schema in MySQL and SQL Server, also for temporary tables.
+        const tag = Math.random().toString(36).slice(2, 10)
+        const [m, c] = [`dbm_m_${tag}`, `dbm_c_${tag}`]
+        const probe = driver === 'mssql' ? `#dbm_probe_${tag}` : `dbm_probe_${tag}`
+        const add = (name: string, condition: string) => `ALTER TABLE ${probe} ADD CONSTRAINT ${name} CHECK (${condition})`
+        const script =
+          driver === 'postgres'
+            ? ['BEGIN', `CREATE TEMP TABLE ${probe} (LIKE ${source}) ON COMMIT DROP`, add(m, model), ...(twin ? [add(c, twin.expression)] : []), `SELECT conname, pg_get_constraintdef(oid, true) FROM pg_constraint WHERE conrelid = '${probe}'::regclass AND conname IN ('${m}', '${c}')`, 'ROLLBACK']
+            : driver === 'mysql'
+              ? [`CREATE TEMPORARY TABLE ${probe} LIKE ${source}`, add(m, model), ...(twin ? [add(c, twin.expression)] : []), `SHOW CREATE TABLE ${probe}`, `DROP TEMPORARY TABLE IF EXISTS ${probe}`]
+              : [`SELECT TOP 0 * INTO ${probe} FROM ${source}`, add(m, model), ...(twin ? [add(c, twin.expression)] : []), `SELECT name, definition FROM tempdb.sys.check_constraints WHERE name IN ('${m}', '${c}')`, `DROP TABLE ${probe}`]
+        const outcomes = await this.runScript(id, script.join(';\n'), { continueOnError: true })
+        // The model's condition is the second statement after the copy; the last is the clean-up, which always runs.
+        // (SQL Server takes the script as one batch: one outcome with a result set per statement that has one.)
+        const modelFailed = driver === 'mssql' ? outcomes.find((o) => o.error)?.error : outcomes[driver === 'postgres' ? 2 : 1]?.error
+        if (modelFailed) {
+          out.push(modelFailed.code === '42703' || /unknown column|invalid column name|column .* does not exist/i.test(modelFailed.message) ? { missingColumn: true } : null)
+          continue
+        }
+        const read = driver === 'mssql' ? outcomes.flatMap((o) => o.results ?? []).find((r) => r.rows.some((row) => String(row[0]).startsWith('dbm_'))) : outcomes[outcomes.length - 2]?.results?.[0]
+        const found = new Map<string, string>()
+        if (driver === 'mysql') {
+          const ddl = String(read?.rows[0]?.[1] ?? '')
+          for (const line of ddl.matchAll(/CONSTRAINT `(dbm_[mc]_\w+)` CHECK \((.*)\)(?: \/\*.*?\*\/)?,?$/gm)) found.set(line[1]!, line[2]!.replace(/\b_[a-z0-9]+(?=')/gi, ''))
+        } else {
+          for (const row of read?.rows ?? []) {
+            const text = String(row[1] ?? '')
+            // (SQL Server keeps names as they were typed and finds them whatever their case: outside its strings, case is not a difference.)
+            found.set(String(row[0]), driver === 'postgres' ? (/^CHECK \((.*)\)(?: NOT VALID| NO INHERIT)*$/s.exec(text)?.[1] ?? '') : text.replace(/'(?:[^']|'')*'|[^']+/g, (part) => (part.startsWith("'") ? part : part.toLowerCase())))
+          }
+        }
+        const definition = found.get(m)
+        // The table's own condition must have gone through the same way, or there is nothing sound to compare with.
+        out.push(definition && (!twin || found.get(c)) ? { definition, ...(twin ? { current: found.get(c)! } : {}) } : null)
       } catch {
         out.push(null)
       }
