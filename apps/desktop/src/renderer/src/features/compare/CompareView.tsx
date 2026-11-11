@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ArrowRight, GitCompare, Minus, Pencil, Plus } from 'lucide-react'
-import { compareSchemas, generateMigration, getDialect, migrationScript, parseDbml, translateTables, type SchemaChange, type SchemaSnapshot } from '@dbmastermind/core/browser'
+import { compareSchemas, dezignMigrationOptions, generateMigration, getDialect, migrationScript, parseDbml, translateTables, unquotedNames, type SchemaChange, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Checkbox, Select } from '@/components/ui/Input'
@@ -56,8 +56,10 @@ export function CompareView({ tab }: { tab: CompareTab }) {
         if (!targetSnap) throw new Error(t('Could not read both schemas'))
         const model = parseDbml(tab.sourceModel, { defaultSchema: targetSnap.defaultSchema, enumType: target?.driver === 'mssql' ? 'nvarchar(50)' : target?.driver === 'oracle' ? 'VARCHAR2(50)' : 'varchar(50)' })
         if (model.errors.length) throw new Error(model.errors.map((e) => `${t('line {n}', { n: String(e.line) })}: ${e.message}`).join('\n'))
-        const schemas = [...new Set(model.tables.map((x) => x.schema ?? ''))]
-        setSnapshots({ source: { tables: model.tables, schemas, routines: [], defaultSchema: targetSnap.defaultSchema, capturedAt: '' }, target: targetSnap })
+        // A DeZign project's names are the ones DeZign's own scripts create: bare, so PostgreSQL stores them in lower case.
+        const tables = tab.sourceUnquoted && target ? unquotedNames(model.tables, target.driver) : model.tables
+        const schemas = [...new Set(tables.map((x) => x.schema ?? ''))]
+        setSnapshots({ source: { tables, schemas, routines: [], defaultSchema: targetSnap.defaultSchema, capturedAt: '' }, target: targetSnap })
         setExcluded(new Set())
         return
       }
@@ -80,7 +82,7 @@ export function CompareView({ tab }: { tab: CompareTab }) {
     // Across engines, source types are first written the target's way (boolean → bit, text → nvarchar(max)…).
     const source = pick(snapshots.source, tab.sourceSchema)
     // A model names its schemas on purpose: its new tables go there unless a schema of the database was picked.
-    return compareSchemas(crossEngine && target ? translateTables(source, target.driver) : source, pick(snapshots.target, tab.targetSchema), { keepExtra, ownSchemas: tab.sourceModel !== undefined && !tab.targetSchema })
+    return compareSchemas(crossEngine && target ? translateTables(source, target.driver) : source, pick(snapshots.target, tab.targetSchema), { keepExtra, model: tab.sourceModel !== undefined && !tab.targetSchema })
   }, [snapshots, tab.sourceSchema, tab.targetSchema, tab.sourceModel, keepExtra, crossEngine, target])
 
   const byTable = useMemo(() => {
@@ -93,7 +95,8 @@ export function CompareView({ tab }: { tab: CompareTab }) {
   const script = useMemo(() => {
     if (!target || !snapshots || !selected.length) return ''
     const dialect = getDialect(target.driver)
-    return migrationScript(generateMigration(selected, dialect, snapshots.target.tables), dialect)
+    // A DeZign project names its keys its own way (`PK_%table%`) and keeps its domains as types: the script follows.
+    return migrationScript(generateMigration(selected, dialect, snapshots.target.tables, dezignMigrationOptions(tab.sourceScripting, target.driver)), dialect)
   }, [selected, target, snapshots])
 
   const pickConnection = (id: string, side: 'source' | 'target') =>

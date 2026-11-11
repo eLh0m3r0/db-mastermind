@@ -1,4 +1,4 @@
-import type { ColumnInfo, ForeignKeyInfo, TableInfo } from './types.js'
+import type { ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfo } from './types.js'
 import { designId, toDesignTable, type DesignTable } from './ddl.js'
 
 /**
@@ -144,7 +144,7 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
   const original = text.split('\n')
   const errors: DbmlError[] = []
   const aliases = new Map<string, TableInfo>()
-  const refs: { line: number; from: string; op: string; to: string; settings: string }[] = []
+  const refs: { line: number; from: string; op: string; to: string; settings: string; name?: string }[] = []
   let i = 0
   const blockEnd = (start: number) => {
     // Index of the line closing a block that opened on `start` (brace counting across lines).
@@ -312,8 +312,11 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
       i = end + 1
       continue
     }
-    const refLine = /^Ref(?:\s+[\w$"]+)?\s*:\s*(.+?)\s*(\[([^\]]*)\])?\s*$/i.exec(line)
+    const refLine = /^Ref(?:\s+("[^"]+"|[\w$]+))?\s*:\s*(.+?)\s*(\[([^\]]*)\])?\s*$/i.exec(line)
     if (refLine) {
+      // `Ref name: …` names the relationship: the name of its foreign key.
+      const refName = refLine[1] ? ident(refLine[1]) : undefined
+      refLine.splice(1, 1)
       // The operator is the first <, > or - outside quotes: a name like "user-id" has a hyphen of its own.
       const body = refLine[1]!
       let quote: string | null = null
@@ -326,7 +329,7 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
       }
       const from = at === -1 ? '' : body.slice(0, at).trim()
       const to = at === -1 ? '' : body.slice(at + 1).trim()
-      if (from && to) refs.push({ line: lineNo, from, op: body[at]!, to, settings: refLine[3] ?? '' })
+      if (from && to) refs.push({ line: lineNo, from, op: body[at]!, to, settings: refLine[3] ?? '', name: refName })
       else errors.push({ line: lineNo, message: `Can't read reference: ${body}` })
       i++
       continue
@@ -380,7 +383,7 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
       continue
     }
     const fk: ForeignKeyInfo = {
-      name: `fk_${owner.name}_${from.columns.join('_')}`,
+      name: r.name ?? defaultFkName(owner.name, from.columns),
       columns: from.columns,
       refSchema: target.schema,
       refTable: target.name,
@@ -397,7 +400,27 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
   return { tables, enums, groups, extras, errors }
 }
 
-const checkText = (expression: string) => `\`${expression.replaceAll('`', "'").replace(/\s*\n\s*/g, ' ')}\``
+/** The name a foreign key gets when its relationship has none. */
+export const defaultFkName = (table: string, columns: string[]) => `fk_${table}_${columns.join('_')}`
+/**
+ * A check's condition on one line. A condition written over several lines may hold `--` comments, which would
+ * swallow everything after them once the lines are joined: they become block comments.
+ */
+const checkText = (expression: string) =>
+  `\`${expression
+    .replaceAll('`', "'")
+    .split('\n')
+    .map((line) => {
+      let quoted = false
+      for (let k = 0; k < line.length - 1; k++) {
+        if (line[k] === "'") quoted = !quoted
+        else if (!quoted && line[k] === '-' && line[k + 1] === '-') return `${line.slice(0, k)}/* ${line.slice(k + 2).trim().replaceAll('*/', '* /')} */`
+      }
+      return line
+    })
+    .join('\n')
+    .replace(/\s*\n\s*/g, ' ')
+    .trim()}\``
 /** The check written on a column (the first, if there are several: a column setting holds one). */
 const ownCheck = (t: TableInfo, column: string) => t.checks?.find((c) => c.column === column)
 
@@ -412,7 +435,9 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
     out.push(`Table ${tableName(t)} {`)
     const singlePk = t.primaryKey.length === 1
     // Single-column UNIQUE constraints read best on the column; named and multi-column indexes stay in `indexes`.
-    const uniqueColumns = new Set(t.indexes.filter((ix) => ix.unique && ix.constraint && !ix.primary && ix.columns.length === 1).map((ix) => ix.columns[0]!))
+    // (A constraint somebody named keeps its name in `indexes`: a column setting has no place for one.)
+    const unnamed = (ix: IndexInfo) => !ix.name || ix.name === `ux_${t.name}_${ix.columns[0]}` || ix.name === `${t.name}_${ix.columns[0]}_key`
+    const uniqueColumns = new Set(t.indexes.filter((ix) => ix.unique && ix.constraint && !ix.primary && ix.columns.length === 1 && unnamed(ix)).map((ix) => ix.columns[0]!))
     for (const c of t.columns) {
       const attrs: string[] = []
       if (singlePk && c.isPrimaryKey) attrs.push('pk')
@@ -430,7 +455,7 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
       const type = /^[\w$.]+(\(.*\))?(\[\])?$/.test(c.dataType) ? c.dataType : `"${c.dataType}"`
       out.push(`  ${quoteName(c.name)} ${type}${attrs.length ? ` [${attrs.join(', ')}]` : ''}`)
     }
-    const indexes = t.indexes.filter((ix) => !ix.primary && !(ix.unique && ix.constraint && ix.columns.length === 1 && uniqueColumns.has(ix.columns[0]!)))
+    const indexes = t.indexes.filter((ix) => !ix.primary && !(ix.unique && ix.constraint && ix.columns.length === 1 && unnamed(ix) && uniqueColumns.has(ix.columns[0]!)))
     if (t.primaryKey.length > 1 || indexes.length) {
       out.push('', '  indexes {')
       if (t.primaryKey.length > 1) out.push(`    (${t.primaryKey.map(quoteName).join(', ')}) [pk]`)
@@ -452,7 +477,10 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
       if (fk.virtual) continue
       const cols = (c: string[]) => (c.length === 1 ? quoteName(c[0]!) : `(${c.map(quoteName).join(', ')})`)
       const actions = [fk.onDelete && fk.onDelete !== 'NO ACTION' ? `delete: ${fk.onDelete.toLowerCase()}` : '', fk.onUpdate && fk.onUpdate !== 'NO ACTION' ? `update: ${fk.onUpdate.toLowerCase()}` : ''].filter(Boolean)
-      out.push(`Ref: ${tableName(t)}.${cols(fk.columns)} > ${tableName({ schema: fk.refSchema ?? t.schema, name: fk.refTable })}.${cols(fk.refColumns)}${actions.length ? ` [${actions.join(', ')}]` : ''}`)
+      // A relationship keeps the name it was given (`Ref name: …`); the name made up for an unnamed one is left out.
+      // (So is the name PostgreSQL makes up, `orders_customer_id_fkey`: nobody chose it.)
+      const named = fk.name && fk.name !== defaultFkName(t.name, fk.columns) && fk.name !== `${t.name}_${fk.columns.join('_')}_fkey` ? ` ${/^[\w$]+$/.test(fk.name) ? fk.name : `"${fk.name.replaceAll('"', '')}"`}` : ''
+      out.push(`Ref${named}: ${tableName(t)}.${cols(fk.columns)} > ${tableName({ schema: fk.refSchema ?? t.schema, name: fk.refTable })}.${cols(fk.refColumns)}${actions.length ? ` [${actions.join(', ')}]` : ''}`)
     }
   }
   const names = new Set(tables.map((t) => t.name))
@@ -476,7 +504,7 @@ export function designFromDbml(text: string, live: TableInfo[], options: { defau
   const defined = new Set([...text.matchAll(/^\s*Table\s+((?:"[^"]+"|[\w$]+)(?:\.(?:"[^"]+"|[\w$]+))?)/gim)].map((m) => ident(m[1]!.split('.').pop()!).toLowerCase()))
   const context = toDbml(live.filter((l) => l.type === 'table' && !defined.has(l.name.toLowerCase())), options)
     .split('\n')
-    .filter((l) => !/^Ref:/.test(l))
+    .filter((l) => !/^Ref(\s+("[^"]+"|[\w$]+))?\s*:/.test(l))
     .join('\n')
   const contextLines = context.split('\n').length
   const parsed = parseDbml(`${context}\n${text}`, options)

@@ -3,7 +3,7 @@ import { diagramsAsLoaded, mutate, mutateDiagrams, random } from './dezign-fuzz.
 
 // More chains for a long local run: DBM_FUZZ_CHAINS=500 npx vitest run --root packages/core test/dezign.test.ts
 const CHAINS = Number(process.env.DBM_FUZZ_CHAINS) || 0
-import { applyDezignSave, assembleDezignProject, createScript, detectDezignEncoding, dezignDriver, dezignIntegrity, getDialect, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
+import { applyDezignSave, assembleDezignProject, compareSchemas, createScript, detectDezignEncoding, dezignDriver, dezignIntegrity, dezignMigrationOptions, generateMigration, getDialect, unquotedNames, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 // Hand-written models in DeZign's layout (no file from a real project is kept in the repository).
 const attr = (id: string, name: string, type: string, extra = '', more = '') =>
@@ -307,7 +307,7 @@ describe('DeZign for Databases models', () => {
     const model = readDezign(dez)
     const dbml = toDbml(model.tables)
     expect(dbml).toContain('Table shop.customer {')
-    expect(dbml).toContain('Ref: shop.invoice.customer_id > shop.customer.id [delete: restrict, update: cascade]')
+    expect(dbml).toContain('Ref FK_customer_invoice: shop.invoice.customer_id > shop.customer.id [delete: restrict, update: cascade]')
     const back = parseDbml(dbml)
     expect(back.errors).toEqual([])
     expect(back.tables.map((t) => t.columns.map((c) => `${c.name} ${c.dataType}`))).toEqual(model.tables.map((t) => t.columns.map((c) => `${c.name} ${c.dataType}`)))
@@ -453,7 +453,7 @@ describe('saving back into a DeZign project', () => {
       single,
       (t) => [
         ...t,
-        { schema: 'shop', name: 'payment', type: 'table', comment: 'Platba', columns: [column('id', 'bigint', { nullable: false, isPrimaryKey: true }), column('invoice_id', 'bigint', { nullable: false })], primaryKey: ['id'], foreignKeys: [{ name: 'x', columns: ['invoice_id'], refSchema: 'shop', refTable: 'invoice', refColumns: ['id'], onDelete: 'CASCADE' }], indexes: [{ name: 'payment_invoice', columns: ['invoice_id'], unique: false, primary: false }] },
+        { schema: 'shop', name: 'payment', type: 'table', comment: 'Platba', columns: [column('id', 'bigint', { nullable: false, isPrimaryKey: true }), column('invoice_id', 'bigint', { nullable: false })], primaryKey: ['id'], foreignKeys: [{ name: 'fk_payment_invoice_id', columns: ['invoice_id'], refSchema: 'shop', refTable: 'invoice', refColumns: ['id'], onDelete: 'CASCADE' }], indexes: [{ name: 'payment_invoice', columns: ['invoice_id'], unique: false, primary: false }] },
       ],
       { 'shop.payment': { x: 700, y: 100 } },
     )
@@ -614,13 +614,13 @@ describe('saving back into a DeZign project', () => {
       t[0]!.columns[1]!.comment = 'Kontakt'
       t[0]!.name = 'client'
       for (const fk of t[1]!.foreignKeys) fk.refTable = 'client'
-      return [...t, { schema: 'shop', name: 'payment', type: 'table', comment: null, columns: [column('id', 'bigint', { nullable: false, isPrimaryKey: true }), column('invoice_id', 'bigint')], primaryKey: ['id'], foreignKeys: [{ name: 'x', columns: ['invoice_id'], refSchema: 'shop', refTable: 'invoice', refColumns: ['id'] }], indexes: [] }]
+      return [...t, { schema: 'shop', name: 'payment', type: 'table', comment: null, columns: [column('id', 'bigint', { nullable: false, isPrimaryKey: true }), column('invoice_id', 'bigint')], primaryKey: ['id'], foreignKeys: [{ name: 'payment_of_invoice', columns: ['invoice_id'], refSchema: 'shop', refTable: 'invoice', refColumns: ['id'] }], indexes: [] }]
     })
     expect(r.deleted).toEqual(['data dictionary/entities/shop.customer.xml'])
     expect(r.files.map((f) => f.path).sort()).toEqual([
       'data dictionary/entities/shop.client.xml',
       'data dictionary/entities/shop.payment.xml',
-      'data dictionary/relationships/invoice_payment.xml',
+      'data dictionary/relationships/payment_of_invoice.xml',
       'diagrams/diagramobjects/entitycontrols/entc-1-31.xml',
       'diagrams/diagramobjects/relationshipconnectors/relc-1-32.xml',
     ])
@@ -912,6 +912,161 @@ ${attr('U5', 'Grade', 'CHAR', '<LE>1</LE>\n', "<CCON>\n<VALUE>value IS NULL OR v
     expect(saved.files[0]!.text).toContain("<DTLISTNAME>ENUM</DTLISTNAME>")
     expect(saved.files[0]!.text).toContain("<ITMS>'admin','free','premium'</ITMS>")
     expect(readDezign(saved.files[0]!.text).tables[0]!.columns[1]!.dataType).toBe("enum('admin','free','premium')")
+  })
+})
+
+describe('scripts as DeZign itself writes them', () => {
+  // A PostgreSQL project with a domain it keeps as a type, its own name templates, names in capitals, a key
+  // without a name and a named relationship.
+  const project = (convertDomains: '0' | '1') => `<?xml version="1.0" encoding="iso-8859-1"?><dezign>
+<VERSION>
+${settings}
+<DATADICT>
+<DBID>postgresql16</DBID>
+<DDSETTINGS>
+<CONVERTDOMAINS>${convertDomains}</CONVERTDOMAINS>
+<PKCONNAMETEMPLATE>%table%_PK</PKCONNAMETEMPLATE>
+</DDSETTINGS>
+<DOMAINS>
+<DOMAIN>
+<NAME>TECH_ID</NAME>
+<ID>D1</ID>
+<DT>
+<DTLISTNAME>BIGINT</DTLISTNAME>
+</DT>
+</DOMAIN>
+<DOMAIN>
+<NAME>FLAG</NAME>
+<ID>D2</ID>
+<DT>
+<DTLISTNAME>CHAR</DTLISTNAME>
+<LE>1</LE>
+</DT>
+<DEFCON>
+<VALUE>N</VALUE>
+</DEFCON>
+<CCON>
+<VALUE>value IN ('Y','N')</VALUE>
+</CCON>
+</DOMAIN>
+</DOMAINS>
+<ENTITIES>
+<ENT>
+<NAME>Customer</NAME>
+<ID>10</ID>
+<SCHEMA>Sales</SCHEMA>
+<PKCON>
+<NAME>Customer_PK</NAME>
+<ATTRIBUTEIDS>
+<ATTRIBUTEID>C1</ATTRIBUTEID>
+</ATTRIBUTEIDS>
+</PKCON>
+<ATTRIBUTES>
+${attr('C1', 'Id', 'BIGINT', '', notNull).replace('<DOMAINID></DOMAINID>', '<DOMAINID>D1</DOMAINID>')}
+${attr('C2', 'isActive', 'CHAR', '<LE>1</LE>\n', "<CCON>\n<VALUE>value IN ('Y','N')</VALUE>\n</CCON>\n").replace('<DOMAINID></DOMAINID>', '<DOMAINID>D2</DOMAINID>')}
+${attr('C3', 'unit price', 'NUMERIC', '<LE>8</LE>\n')}
+</ATTRIBUTES>
+<CONSTRAINTS>
+<CONSTRAINT>
+<NAME>Customer_1TUC</NAME>
+<CONTYPE>2</CONTYPE>
+<ATTRIBUTEIDS>
+<ATTRIBUTEID>C2</ATTRIBUTEID>
+</ATTRIBUTEIDS>
+</CONSTRAINT>
+</CONSTRAINTS>
+</ENT>
+<ENT>
+<NAME>Invoice</NAME>
+<ID>20</ID>
+<SCHEMA>Sales</SCHEMA>
+<PKCON>
+<NAME></NAME>
+<ATTRIBUTEIDS>
+<ATTRIBUTEID>I1</ATTRIBUTEID>
+</ATTRIBUTEIDS>
+</PKCON>
+<ATTRIBUTES>
+${attr('I1', 'Id', 'BIGINT', '', notNull)}
+${attr('I2', 'CustomerId', 'BIGINT', '', notNull).replace('<DOMAINID></DOMAINID>', '<DOMAINID>D1</DOMAINID>')}
+</ATTRIBUTES>
+</ENT>
+</ENTITIES>
+<RELATIONSHIPS>
+${rel('30', 'Customer_Invoice', '<PAIR>\n<KEYID>C1</KEYID>\n<FOREIGNKEYID>I2</FOREIGNKEYID>\n</PAIR>\n').replace('<PARENTOBJECTID>10</PARENTOBJECTID>', '<PARENTOBJECTID>10</PARENTOBJECTID>')}
+</RELATIONSHIPS>
+</DATADICT>
+</VERSION>
+</dezign>`
+  const scriptOf = (file: string, driver: 'postgres' | 'mssql', extra: TableInfo[] = []) => {
+    const model = readDezign(file)
+    // As the app has it: the model as DBML text, names as DeZign's scripts create them.
+    const tables = [...parseDbml(toDbml(model.tables)).tables, ...extra]
+    return createScript(unquotedNames(tables, driver), getDialect(driver), { translateTypes: true, from: dezignDriver(model.targetDatabase), ...dezignMigrationOptions(model.scripting, driver) })
+  }
+
+  it('reads what the project decides about its scripts', () => {
+    const model = readDezign(project('0'))
+    expect(model.scripting.primaryKeys).toEqual({ names: { 'sales.customer': 'Customer_PK', 'sales.invoice': '' }, template: '%table%_PK' })
+    expect(model.scripting.domains).toEqual([
+      { name: 'TECH_ID', dataType: 'bigint', defaultValue: null, check: null, notNull: false },
+      { name: 'FLAG', dataType: 'char(1)', defaultValue: "'N'", check: "value IN ('Y','N')", notNull: false },
+    ])
+    // A project that converts its domains has none for the database.
+    expect(readDezign(project('1')).scripting.domains).toEqual([])
+    // The relationship and the unique constraint keep their names in the model's text.
+    const text = toDbml(model.tables)
+    expect(text).toContain('Ref FK_Customer_Invoice: Sales.Invoice.CustomerId > Sales.Customer.Id')
+    expect(text).toContain("isActive [unique, name: 'Customer_1TUC']")
+    expect(parseDbml(text).tables[1]!.foreignKeys[0]!.name).toBe('FK_Customer_Invoice')
+  })
+
+  it('writes PostgreSQL the way DeZign does: bare names, domains as types, the project\'s constraint names', () => {
+    const sql = scriptOf(project('0'), 'postgres')
+    expect(sql).toContain('CREATE SCHEMA IF NOT EXISTS "sales"')
+    expect(sql).toContain('CREATE DOMAIN tech_id AS bigint;')
+    expect(sql).toContain("CREATE DOMAIN flag AS char(1) DEFAULT 'N' CHECK (value IN ('Y','N'));")
+    // Columns are typed by their domain and take its default and check from it; a name that can't be bare keeps its quotes.
+    expect(sql).toContain('CREATE TABLE "sales"."customer" (\n  "id" tech_id NOT NULL,\n  "isactive" flag,\n  "unit price" numeric(8),\n  CONSTRAINT "customer_pk" PRIMARY KEY ("id")\n)')
+    // A key the project leaves unnamed is unnamed; the foreign key has the name the project gives its constraint.
+    expect(sql).toContain('  "customerid" tech_id NOT NULL,\n  PRIMARY KEY ("id")\n)')
+    expect(sql).toContain('ADD CONSTRAINT "fk_customer_invoice" FOREIGN KEY ("customerid") REFERENCES "sales"."customer" ("id")')
+    expect(sql).toContain('CREATE UNIQUE INDEX "customer_1tuc" ON "sales"."customer" ("isactive")')
+    // A table made here gets its key named by the project's template.
+    const added = parseDbml('Table Sales.Payment {\n  Id bigint [pk]\n}').tables
+    expect(scriptOf(project('0'), 'postgres', added)).toContain('CONSTRAINT "payment_pk" PRIMARY KEY ("id")')
+  })
+
+  it('carries the types themselves where the database has no domains or the project converts them', () => {
+    const converted = scriptOf(project('1'), 'postgres')
+    expect(converted).not.toContain('CREATE DOMAIN')
+    expect(converted).toContain(`"isactive" char(1) DEFAULT 'N'`)
+    expect(converted).toContain(`CHECK ("isactive" IN ('Y','N'))`)
+    const mssql = scriptOf(project('0'), 'mssql')
+    expect(mssql).not.toContain('CREATE DOMAIN')
+    // SQL Server keeps the case of a name: nothing is folded there.
+    expect(mssql).toContain('CREATE TABLE [Sales].[Customer]')
+    expect(mssql).toContain('CONSTRAINT [Customer_PK] PRIMARY KEY ([Id])')
+  })
+
+  it('finds no difference with a database whose columns are typed by the domains', () => {
+    const model = readDezign(project('0'))
+    const tables = unquotedNames(parseDbml(toDbml(model.tables)).tables, 'postgres')
+    // What PostgreSQL reports after DeZign's own script: lower-case names, the domain as the column's type, no column default.
+    const database: TableInfo[] = tables.map((t) => ({
+      ...t,
+      checks: [],
+      columns: t.columns.map((c) => ({ ...c, dataType: c.domain ? c.domain.toLowerCase() : c.dataType, defaultValue: c.domain ? null : c.defaultValue, domain: undefined })),
+    }))
+    expect(compareSchemas(tables, database, { model: true })).toEqual([])
+    // A column added to the model is added typed by its domain, and the domain is made if the database lacks it.
+    const next = structuredClone(tables)
+    next[1]!.columns.push({ name: 'paid', ordinal: 3, dataType: 'char(1)', nullable: true, defaultValue: "'N'", isPrimaryKey: false, isIdentity: false, domain: 'FLAG' })
+    const migration = generateMigration(compareSchemas(next, database, { model: true }), getDialect('postgres'), database, dezignMigrationOptions(model.scripting, 'postgres'))
+    expect(migration.statements).toEqual([
+      `DO $dbm$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'flag') THEN CREATE DOMAIN flag AS char(1) DEFAULT 'N' CHECK (value IN ('Y','N')); END IF; END $dbm$`,
+      'ALTER TABLE "sales"."invoice" ADD COLUMN "paid" flag',
+    ])
   })
 })
 

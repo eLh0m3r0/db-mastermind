@@ -5,7 +5,7 @@ import { Compartment, EditorState } from '@codemirror/state'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
 import { AlertTriangle, Database, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare, Plus } from 'lucide-react'
-import { checkModel, createScript, dezignDriver, fixModelIssue, getDialect, parseDbml, toDbml, updateModelFromDatabase, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
+import { checkModel, createScript, dezignDriver, dezignMigrationOptions, fixModelIssue, unquotedNames, getDialect, parseDbml, toDbml, updateModelFromDatabase, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { DRIVERS } from '../connections/drivers'
@@ -319,7 +319,11 @@ export function ModelView({ tab }: { tab: ModelTab }) {
       DRIVERS.map((d) => ({
         label: d.label,
         onClick: () => {
-          const script = `-- ${t('Model as {db} DDL', { db: d.label })}\n${createScript(model.tables, getDialect(d.id), { translateTypes: true, from: dezignDriver(tab.sqlDatabase) ?? connection?.driver })}${sqlObjectsScript(tab.sqlObjects, tab.sqlDatabase, d.id)}`
+          // A DeZign project's names are created as DeZign's own scripts create them: without quotes.
+          const named = tab.source?.kind === 'dezign' ? unquotedNames(model.tables, d.id) : model.tables
+          const folded = named !== model.tables && named.some((x, i) => x.name !== model.tables[i]!.name || x.columns.some((c, k) => c.name !== model.tables[i]!.columns[k]!.name))
+          const note = folded ? `-- ${t('Names are created as DeZign creates them, without quotes: {db} stores them in {case} case.', { db: d.label, case: d.id === 'oracle' ? t('upper') : t('lower') })}\n` : ''
+          const script = `-- ${t('Model as {db} DDL', { db: d.label })}\n${note}${createScript(named, getDialect(d.id), { translateTypes: true, from: dezignDriver(tab.sqlDatabase) ?? connection?.driver, ...dezignMigrationOptions(tab.scripting, d.id) })}${sqlObjectsScript(tab.sqlObjects, tab.sqlDatabase, d.id)}`
           // With a database the script opens in its editor; a model on its own saves it as a file.
           if (connection) newQuery(tab.connectionId, script, `DDL · ${d.label}`)
           else void api.saveSqlFile(script, `${fileName.replace(/\.\w+$/, '') || 'model'}-${d.id}.sql`).then((path) => path && toast({ kind: 'success', message: t('Script saved'), detail: path }), (err) => toast({ kind: 'error', message: t('Could not save the script'), detail: errorMessage(err) }))
@@ -372,7 +376,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const compareWithDatabase = async () => {
     if (!connection) return
     if (!liveSchema && !(await connectAndSelect(connection.id))) return
-    openTab({ kind: 'compare', connectionId: tab.connectionId, sourceModel: text, title: t('Model → {name}', { name: connection.name }) }, { reuse: false })
+    openTab({ kind: 'compare', connectionId: tab.connectionId, sourceModel: text, sourceUnquoted: tab.source?.kind === 'dezign', sourceScripting: tab.scripting, title: t('Model → {name}', { name: connection.name }) }, { reuse: false })
   }
   const fileName = (tab.path ?? tab.source?.path)?.split(/[\\/]/).pop() ?? ''
 

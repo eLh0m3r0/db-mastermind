@@ -1,5 +1,7 @@
 // A team's day with a DeZign model and a real PostgreSQL, through the window: the model names its own schema,
-// the database is empty except for somebody else's table. Compare writes the script (schema, tables, keys,
+// has names in capitals, a domain and its own template for key names; the database is empty except for somebody
+// else's table. The scripts are the ones DeZign itself would write: bare names (PostgreSQL stores them in lower
+// case), the domain as a type, keys named by the template. Compare writes the script (schema, tables, keys,
 // check), the script runs, and the model and the database are then identical; the model moves on (a column,
 // a table, a check, a column gone) and the ALTER script brings the database along.
 // Needs the `postgres` service of docker-compose.test.yml.
@@ -12,11 +14,11 @@ const dir = mkdtempSync(join(tmpdir(), 'dbm-ui95-'))
 const el = (tag, body) => `<${tag}>\n${body}\n</${tag}>`
 const attr = (id, name, type, size = '', extra = '') => el('ATTR', `<NAME>${name}</NAME>\n<ID>${id}</ID>\n<DESC></DESC>\n<DOMAINID></DOMAINID>\n<DT>\n<DTLISTNAME>${type}</DTLISTNAME>\n${size}<SD>1</SD>\n<INC>1</INC>\n</DT>\n${extra}`)
 const notNull = '<NNCON>\n<VALUE>1</VALUE>\n</NNCON>\n'
-const ent = (id, name, pk, attrs, more = '') => el('ENT', `<NAME>${name}</NAME>\n<ID>${id}</ID>\n<SCHEMA>sales</SCHEMA>\n<DESC></DESC>\n<PKCON>\n<ATTRIBUTEIDS>\n<ATTRIBUTEID>${pk}</ATTRIBUTEID>\n</ATTRIBUTEIDS>\n</PKCON>\n<ATTRIBUTES>\n${attrs.join('\n')}\n</ATTRIBUTES>\n${more}`)
+const ent = (id, name, pk, attrs, more = '') => el('ENT', `<NAME>${name}</NAME>\n<ID>${id}</ID>\n<SCHEMA>sales</SCHEMA>\n<DESC></DESC>\n<PKCON>\n<NAME>${name}_PK</NAME>\n<ATTRIBUTEIDS>\n<ATTRIBUTEID>${pk}</ATTRIBUTEID>\n</ATTRIBUTEIDS>\n</PKCON>\n<ATTRIBUTES>\n${attrs.join('\n')}\n</ATTRIBUTES>\n${more}`)
 const rel = el('REL', '<NAME>customer_invoice</NAME>\n<ID>40</ID>\n<PARENTOBJECTID>10</PARENTOBJECTID>\n<CHILDOBJECTID>20</CHILDOBJECTID>\n<UPDATERULE>0</UPDATERULE>\n<DELETERULE>2</DELETERULE>\n<PAIRS>\n<PAIR>\n<KEYID>A1</KEYID>\n<FOREIGNKEYID>B2</FOREIGNKEYID>\n</PAIR>\n</PAIRS>')
 const entities = [
   // The invoice comes first and references the customer below it; names in capitals need their quotes.
-  ent('20', 'Invoice', 'B1', [attr('B1', 'id', 'INTEGER', '', notNull), attr('B2', 'customer_id', 'INTEGER', '', notNull), attr('B3', 'Total', 'NUMERIC', '<LE>10</LE>\n<PR>2</PR>\n', `${notNull}<DEFCON>\n<VALUE>0</VALUE>\n</DEFCON>\n`), attr('B4', 'state', 'CHARACTER VARYING', '<LE>12</LE>\n', '<DEFCON>\n<VALUE>new</VALUE>\n</DEFCON>\n')],
+  ent('20', 'Invoice', 'B1', [attr('B1', 'id', 'INTEGER', '', notNull), attr('B2', 'customer_id', 'INTEGER', '', notNull), attr('B3', 'Total', 'NUMERIC', '<LE>10</LE>\n<PR>2</PR>\n', `${notNull}<DEFCON>\n<VALUE>0</VALUE>\n</DEFCON>\n`).replace('<DOMAINID></DOMAINID>', '<DOMAINID>D1</DOMAINID>'), attr('B4', 'state', 'CHARACTER VARYING', '<LE>12</LE>\n', '<DEFCON>\n<VALUE>new</VALUE>\n</DEFCON>\n')],
     el('CONSTRAINTS', el('CONSTRAINT', '<NAME>invoice_total_ok</NAME>\n<ID>C1</ID>\n<VALUE>Total &gt;= 0</VALUE>\n<CONLEVEL>2</CONLEVEL>\n<CONTYPE>1</CONTYPE>\n<ATTRIBUTEIDS>\n<ATTRIBUTEID>B3</ATTRIBUTEID>\n</ATTRIBUTEIDS>'))),
   ent('10', 'customer', 'A1', [attr('A1', 'id', 'INTEGER', '', notNull), attr('A2', 'name', 'CHARACTER VARYING', '<LE>120</LE>\n', notNull), attr('A3', 'since', 'TIMESTAMP', '', '<DEFCON>\n<VALUE>CURRENT_TIMESTAMP</VALUE>\n</DEFCON>\n')]),
 ]
@@ -25,7 +27,7 @@ const settings = el('PROJECTSETTINGS', el('COMMONSETTINGS', '<PROJECTNAME /></PR
 const dez = join(dir, 'team.dez')
 writeFileSync(
   dez,
-  `<?xml version="1.0" encoding="iso-8859-1"?><dezign>\n<VERSION>\n${settings}\n<DATADICT>\n<DBID>postgresql16</DBID>\n<DOMAINS>\n</DOMAINS>\n<ENTITIES>\n${entities.join('\n')}\n</ENTITIES>\n<RELATIONSHIPS>\n${rel}\n</RELATIONSHIPS>\n</DATADICT>\n<DIAGRAMS>\n${el('DIAGRAM', '<ID>1</ID>\n<NAME>Main</NAME>\n<ISMAINDIAGRAM>1</ISMAINDIAGRAM>')}\n<ENTITYCONTROLS>\n${entc('20', 0)}\n${entc('10', 600)}\n</ENTITYCONTROLS>\n</DIAGRAMS>\n</VERSION>\n</dezign>\n`,
+  `<?xml version="1.0" encoding="iso-8859-1"?><dezign>\n<VERSION>\n${settings}\n<DATADICT>\n<DBID>postgresql16</DBID>\n<DDSETTINGS>\n<CONVERTDOMAINS>0</CONVERTDOMAINS>\n<PKCONNAMETEMPLATE>%table%_PK</PKCONNAMETEMPLATE>\n</DDSETTINGS>\n<DOMAINS>\n${el('DOMAIN', '<NAME>AMOUNT_T</NAME>\n<ID>D1</ID>\n<DT>\n<DTLISTNAME>NUMERIC</DTLISTNAME>\n<LE>10</LE>\n<PR>2</PR>\n</DT>')}\n</DOMAINS>\n<ENTITIES>\n${entities.join('\n')}\n</ENTITIES>\n<RELATIONSHIPS>\n${rel}\n</RELATIONSHIPS>\n</DATADICT>\n<DIAGRAMS>\n${el('DIAGRAM', '<ID>1</ID>\n<NAME>Main</NAME>\n<ISMAINDIAGRAM>1</ISMAINDIAGRAM>')}\n<ENTITYCONTROLS>\n${entc('20', 0)}\n${entc('10', 600)}\n</ENTITYCONTROLS>\n</DIAGRAMS>\n</VERSION>\n</dezign>\n`,
   'latin1',
 )
 
@@ -83,9 +85,11 @@ try {
   // 1. The first script: the model's schema, both tables (in the model's order), the key between them, the check.
   const create = await compare()
   check('script makes the schema of the model', /CREATE SCHEMA IF NOT EXISTS "sales"/.test(create))
-  check('tables go to that schema, not to public', /CREATE TABLE "sales"\."Invoice"/.test(create) && /CREATE TABLE "sales"\."customer"/.test(create) && !/"public"\."(Invoice|customer)"/.test(create))
+  check('tables go to that schema, not to public, under the names DeZign would create', /CREATE TABLE "sales"\."invoice"/.test(create) && /CREATE TABLE "sales"\."customer"/.test(create) && !/"public"\."(invoice|customer)"/.test(create) && !/"Invoice"|"Total"/.test(create))
+  check('the domain is a type of the database and types its column', /CREATE DOMAIN amount_t AS numeric\(10,2\)/.test(create) && /"total" amount_t NOT NULL DEFAULT 0/.test(create))
+  check('keys are named by the project\'s template', /CONSTRAINT "invoice_pk" PRIMARY KEY \("id"\)/.test(create) && /CONSTRAINT "customer_pk" PRIMARY KEY/.test(create) && /ADD CONSTRAINT "customer_invoice" FOREIGN KEY/.test(create))
   check('the foreign key comes after both tables', create.indexOf('FOREIGN KEY') > create.indexOf('CREATE TABLE "sales"."customer"'))
-  check('the check names its column as the database knows it', /CONSTRAINT "invoice_total_ok" CHECK \("Total" >= 0\)/.test(create))
+  check('the check is the model\'s', /CONSTRAINT "invoice_total_ok" CHECK \(Total >= 0\)/.test(create))
   check('a word typed as a text default is a string', /DEFAULT 'new'/.test(create))
   check('nothing of the other table is touched', !/legacy/.test(create))
   await sql(team.id, create)
@@ -98,7 +102,7 @@ try {
     .replace(/(\n\s*)name ("character varying\(120\)"|character varying\(120\)|varchar\(120\))/, '$1name varchar(200)')
     .replace(/\n\s*state [^\n]*/, '')
     .replace(/(Table sales\.customer \{)/, '$1\n  email varchar(255)')
-    .concat("\nTable sales.payment {\n  id integer [pk]\n  invoice_id integer [not null, ref: > sales.\"Invoice\".id]\n  amount numeric(10,2) [not null]\n\n  checks {\n    `amount > 0` [name: 'payment_positive']\n  }\n}\n")
+    .concat("\nTable sales.Payment {\n  id integer [pk]\n  invoice_id integer [not null, ref: > sales.Invoice.id]\n  amount numeric(10,2) [not null, domain: 'AMOUNT_T']\n\n  checks {\n    `amount > 0` [name: 'payment_positive']\n  }\n}\n")
   check('the edit applies to the model text', next !== text && /email varchar\(255\)/.test(next) && !/\n\s*state /.test(next), next === text ? '(the text did not change)' : '')
   await win.locator('.cm-content:visible').first().click()
   await win.keyboard.press('Meta+a')
@@ -109,16 +113,16 @@ try {
   const alter = await compare()
   check('ALTER: the new column', /ALTER TABLE "sales"\."customer" ADD COLUMN "email" varchar\(255\)/.test(alter))
   check('ALTER: the longer name', /ALTER COLUMN "name" TYPE varchar\(200\)/.test(alter))
-  check('ALTER: the column that left', /ALTER TABLE "sales"\."Invoice" DROP COLUMN "state"/.test(alter))
-  check('ALTER: the new table with its key and check', /CREATE TABLE "sales"\."payment"/.test(alter) && /CONSTRAINT "payment_positive" CHECK \(amount > 0\)/.test(alter) && /REFERENCES "sales"\."Invoice"/.test(alter))
-  check('ALTER: nothing that did not change', !/"Total"|invoice_total_ok|"since"|legacy/.test(alter), alter.split('\n').length + ' lines')
+  check('ALTER: the column that left', /ALTER TABLE "sales"\."invoice" DROP COLUMN "state"/.test(alter))
+  check('ALTER: the new table with its key (named by the template), check and domain column', /CREATE TABLE "sales"\."payment"/.test(alter) && /CONSTRAINT "payment_pk" PRIMARY KEY/.test(alter) && /CONSTRAINT "payment_positive" CHECK \(amount > 0\)/.test(alter) && /REFERENCES "sales"\."invoice"/.test(alter) && /"amount" amount_t NOT NULL/.test(alter))
+  check('ALTER: nothing that did not change', !/"total"|invoice_total_ok|"since"|legacy/.test(alter), alter.split('\n').length + ' lines')
   await sql(team.id, alter)
   check('after the ALTER script they are identical again', (await compare()) === '')
 
   // 3. What the database really has.
   const schema = await api('getSchema', team.id, true)
   const tables = (schema.tables ?? []).filter((t) => t.schema === 'sales')
-  check('the database has the three tables in the schema', tables.map((t) => t.name).sort().join(',') === 'Invoice,customer,payment')
+  check('the database has the three tables in the schema', tables.map((t) => t.name).sort().join(',') === 'customer,invoice,payment')
   check('with both checks', tables.flatMap((t) => (t.checks ?? []).map((c) => c.name)).sort().join(',') === 'invoice_total_ok,payment_positive')
   check('and the other table is still there', (schema.tables ?? []).some((t) => t.schema === 'public' && t.name === 'legacy'))
 

@@ -5,6 +5,7 @@ import type {
   DesignTable,
   DezignChange,
   DezignLeftOut,
+  DezignScripting,
   DezignSqlObject,
   DriverId,
   Grant,
@@ -454,6 +455,8 @@ export interface OpenedModelFile {
     /** Views, sequences, procedures and triggers of the source as SQL, and the database they are written for. */
     sqlObjects: DezignSqlObject[]
     targetDatabase: string
+    /** What the project decides about its scripts: the names of its primary keys, its domains as database types. */
+    scripting: DezignScripting
     /** The source's other diagrams (subject areas): which tables each shows and where. */
     diagrams: ModelDiagram[]
     /** Fingerprint of the model as read: saving back is refused when the source has changed since. */

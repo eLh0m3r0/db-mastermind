@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareSchemas, designFromDbml, diffTables, parseDbml, toDbml } from '../src/index.js'
+import { compareSchemas, designFromDbml, diffTables, parseDbml, toDbml, type TableInfo } from '../src/index.js'
 
 const source = `
 Project shop { database_type: 'PostgreSQL' }
@@ -175,6 +175,13 @@ Ref: orders.customer_id > customers.id
     const orphan = toDbml([{ ...model.tables[0]!, checks: [{ expression: 'value > 0', column: 'gone' }] }])
     expect(orphan).toContain('  checks {\n    `value > 0`\n  }')
     expect(parseDbml(written).tables[0]!.checks).toEqual(model.tables[0]!.checks)
+  })
+
+  it('keeps a check written over several lines with comments valid on one line', () => {
+    const table: TableInfo = { name: 't', type: 'table', columns: [{ name: 'a', ordinal: 1, dataType: 'int', nullable: true, isPrimaryKey: false, isIdentity: false }], primaryKey: [], foreignKeys: [], indexes: [], checks: [{ name: 'one_of', expression: "-- first case\n(a IS NULL) OR\n-- it's the second -- case\n(a > 0 AND 'x--y' <> '')" }] }
+    const text = toDbml([table])
+    expect(text).toContain("`/* first case */ (a IS NULL) OR /* it's the second -- case */ (a > 0 AND 'x--y' <> '')` [name: 'one_of']")
+    expect(parseDbml(text).tables[0]!.checks![0]!.expression).toBe("/* first case */ (a IS NULL) OR /* it's the second -- case */ (a > 0 AND 'x--y' <> '')")
   })
 
   it('expands TablePartial into the tables that use it', () => {

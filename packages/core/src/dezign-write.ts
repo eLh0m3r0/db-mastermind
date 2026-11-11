@@ -12,6 +12,7 @@ import {
   type DezignEncoding,
   type DezignModel,
 } from './dezign.js'
+import { defaultFkName } from './dbml.js'
 import type { ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfo } from './types.js'
 
 /**
@@ -1052,7 +1053,9 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
         ])
     for (const tag of ['DESC', 'NOTE']) if (kid(el, tag)) set(el, tag, '')
     const parentName = text(parent.el, 'NAME')
-    const name = text(el, 'NAMETEMPLATE') ? fromTemplate(text(el, 'NAMETEMPLATE'), { parent: parentName, child: table.name }) : `${parentName}_${table.name}`
+    // A name typed for the relationship (`Ref name: …`) is its name; otherwise the project's template makes one.
+    const typed = fk.name && fk.name !== defaultFkName(table.name, fk.columns) ? fk.name : ''
+    const name = typed || (text(el, 'NAMETEMPLATE') ? fromTemplate(text(el, 'NAMETEMPLATE'), { parent: parentName, child: table.name }) : `${parentName}_${table.name}`)
     set(el, 'NAME', name)
     set(el, 'PARENTOBJECTID', parent.id)
     set(el, 'CHILDOBJECTID', child.id)

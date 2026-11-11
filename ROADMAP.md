@@ -299,7 +299,7 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ Text in the Windows code page DeZign wrote it in (Czech reads correctly; the file's own `iso-8859-1` label is wrong)
 - ✅ Everything a model already does works on it: DDL for any database, ALTER script against a live database,
   compare with a `.dbml` or another DeZign file, data dictionary, AI review
-- ✅ Proven on real databases: the DDL of each of 26 public models (DeZign 4 to 14; PostgreSQL, MySQL, SQL Server,
+- ✅ Proven on real databases: the DDL of each of 37 public models (DeZign 4 to 14; PostgreSQL, MySQL, SQL Server,
   Oracle, Firebird and database-independent ones) runs on the model's own database (PostgreSQL 17, MySQL 8.4,
   SQL Server 2022; the others translated to PostgreSQL), and the model compared with what the database then has
   shows no difference. Each model is then edited at random forty times over (new, renamed and dropped tables and
@@ -313,6 +313,18 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ DDL for the model's own database keeps its types as they are written; for another database they are
   translated, now including Oracle `NUMBER`, MySQL display widths and `ENUM`, and DeZign's database-independent
   types. `ENUM` values, text defaults typed without quotes and a domain's check (`value …`) come out as valid SQL
+- ✅ Checked against DeZign's own output: public repositories keep scripts DeZign generated next to their models.
+  DeZign's script and ours each make a PostgreSQL database and the two are compared (tables, columns, types,
+  keys, indexes, the name of every constraint). They come out the same. To get there, a DeZign project's scripts
+  are now written the way DeZign writes them: names without quotes (PostgreSQL stores `isAdmin` as `isadmin`;
+  quoted it would be a different column than the one DeZign's script made), domains as types of the database
+  where the project keeps them (`CREATE DOMAIN`, columns typed by it), primary keys named by the project's own
+  names and template (`PK_%table%`), foreign keys by their relationships, unique constraints and indexes by
+  their names. A database whose columns are typed by the domains no longer shows as different from the model
+- ✅ Relationship names are part of the model (`Ref name: a.b > c.d`), read from DeZign and written back
+- ✅ The whole day through the window, on a real PostgreSQL (e2e/flow95): a DeZign model with its own schema
+  against a database that has other people's tables; compare, script, run, identical; edit the model; ALTER
+  script, run, identical
 - ✅ Views, sequences, procedures and triggers of the project are kept as the SQL it holds for them and added to
   the generated DDL script (as comments when the script is for another database than the project's)
 - ✅ Domains: a column keeps the domain it follows (`[domain: 'name']` in the model, with the domain's type), a new

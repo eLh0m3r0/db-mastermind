@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { DesignTable, FilterNode, SortSpec, TableRef, DezignSqlObject } from '@dbmastermind/core/browser'
+import type { DesignTable, FilterNode, SortSpec, TableRef, DezignScripting, DezignSqlObject } from '@dbmastermind/core/browser'
 import type { DiagramNote, ModelDiagram, DiagramBox } from '@shared/api'
 import { api } from '@/lib/api'
 import { debounce, uid } from '@/lib/utils'
@@ -66,6 +66,9 @@ export interface CompareTab extends BaseTab {
   targetSchema?: string
   /** Compare a DBML model (instead of a connection) with the target. */
   sourceModel?: string
+  /** The model is a DeZign project: its names are created as DeZign's scripts create them, without quotes. */
+  sourceUnquoted?: boolean
+  sourceScripting?: DezignScripting
   /** Compare with another DBML model (e.g. an older version) instead of the database. */
   targetModel?: string
   /** File name of `targetModel`, for the header. */
@@ -93,6 +96,8 @@ export interface ModelTab extends BaseTab {
   /** Views, sequences, procedures and triggers of the source, as SQL for `sqlDatabase`: added to generated DDL. */
   sqlObjects?: DezignSqlObject[]
   sqlDatabase?: string
+  /** What the source decides about its scripts (key names, domains as database types): scripts follow the project. */
+  scripting?: DezignScripting
   dirty?: boolean
   positions?: Record<string, { x: number; y: number }>
   /** Table colors and sticky notes of the model's diagram. */

@@ -69,7 +69,7 @@ try {
   console.log('text area as a note:', await noteNode.count(), JSON.stringify(await noteNode.first().evaluate((n) => (n.querySelector('textarea')?.value ?? n.innerText).trim())), 'invoice colored:', await win.locator('.react-flow__node[data-id="shop.invoice"]').evaluate((n) => /series-4/.test(n.innerHTML)))
   console.log('group box:', await win.getByTestId('diagram-box').count(), JSON.stringify(await win.getByTestId('diagram-box').first().innerText()))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow91-open.png') })
-  console.log('dez dbml:', text.includes('Table shop.customer'), text.includes('Ref: shop.invoice.customer_id > shop.customer.id [delete: cascade]'), 'czech note:', text.includes('Zákazník, který platí řádně'))
+  console.log('dez dbml:', text.includes('Table shop.customer'), text.includes('Ref customer_invoice: shop.invoice.customer_id > shop.customer.id [delete: cascade]'), 'czech note:', text.includes('Zákazník, který platí řádně'))
   console.log('dez layout kept:', JSON.stringify(pos['shop.customer']), JSON.stringify(pos['shop.invoice']), JSON.stringify(pos['shop.payment']))
   console.log('toast:', await win.getByText(/Opened a DeZign for Databases model: 3 tables/).count(), await win.getByText(/Views, sequences, procedures and triggers of the project \(1\) go into the SQL DDL/).count(), 'title:', await win.getByText('shop.dez', { exact: true }).count())
   console.log('source untouched by opening:', readFileSync(dez).equals(before))
@@ -172,7 +172,7 @@ try {
   await openModel()
   console.log('folder project versions:', JSON.stringify(await win.evaluate((p) => window.mastermind.api.listModelVersions(p), join(project, 'Shop.dezproj'))), (await win.evaluate(async (p) => (await window.mastermind.api.openModelVersion(p, 'old.xml')).text.match(/^Table /gm)?.length, join(project, 'Shop.dezproj'))), 'tables in it')
   const text2 = await win.locator('.cm-content:visible').first().innerText()
-  console.log('project tables:', await win.locator('.react-flow__node:visible').count(), 'dbml:', text2.includes('Table shop.payment'), text2.includes('Ref: shop.payment.invoice_id > shop.invoice.id'))
+  console.log('project tables:', await win.locator('.react-flow__node:visible').count(), 'dbml:', text2.includes('Table shop.payment'), text2.includes('Ref invoice_payment: shop.payment.invoice_id > shop.invoice.id'))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow91.png') })
 
   // A real model from this machine (DBM_DEZ_FILE=…/x.dez or …/x.dezproj): counts and time only, nothing from its content.

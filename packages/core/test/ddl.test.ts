@@ -276,7 +276,7 @@ describe('compareSchemas', () => {
     const more = parseDbml('Table audit.log {\n  id int [pk]\n}\nTable other.thing {\n  id int [pk]\n}').tables
     expect(compareSchemas([...tables, ...more], tables).map((c) => (c.kind === 'create_table' ? c.table.schema : c.kind))).toEqual(['audit', 'sales'])
     // A model names its schemas on purpose: its new tables go there, and the script makes the schema.
-    const own = compareSchemas([...tables, ...more], tables, { ownSchemas: true })
+    const own = compareSchemas([...tables, ...more], tables, { model: true })
     expect(own.map((c) => (c.kind === 'create_table' ? c.table.schema : c.kind))).toEqual(['audit', 'other'])
     expect(generateMigration(own, getDialect('postgres'), tables).statements.filter((sql) => sql.includes('SCHEMA'))).toEqual(['CREATE SCHEMA IF NOT EXISTS "other"'])
   })
@@ -313,6 +313,21 @@ describe('compareSchemas', () => {
     expect(compareSchemas(model, database(undefined))).toEqual([])
     // In agreement: nothing to do.
     expect(compareSchemas(model, database([{ name: 'PRICE_OK', expression: 'x' }, { name: 'qty_cap', expression: 'y' }, { name: 'auto', expression: 'z' }]))).toEqual([])
+  })
+
+  it('keeps the names a model gives its relationships and indexes, and numbers a name given twice', () => {
+    const { tables } = parseDbml("Table a {\n  id int [pk]\n  b_id int\n  indexes {\n    b_id [name: 'IDX_1']\n  }\n}\nTable b {\n  id int [pk]\n  a_id int\n  indexes {\n    a_id [name: 'IDX_1']\n  }\n}\nRef a_to_b: a.b_id > b.id\nRef: b.a_id > a.id")
+    const sql = createScript(tables, getDialect('postgres'))
+    expect(sql.match(/CREATE INDEX "[^"]+"/g)).toEqual(['CREATE INDEX "IDX_1"', 'CREATE INDEX "IDX_1_2"'])
+    expect(sql.match(/ADD CONSTRAINT "[^"]+"/g)).toEqual(['ADD CONSTRAINT "a_to_b"', 'ADD CONSTRAINT "fk_b_a_id"'])
+    // Between two databases the target names its own constraints.
+    const synced = generateMigration(compareSchemas(tables, []), getDialect('postgres'), []).statements.join('\n')
+    expect(synced).toContain('ADD CONSTRAINT "fk_a_b_id"')
+    // A foreign key that rests on a unique index goes before that index does.
+    const parent: TableInfo = { name: 'p', type: 'table', columns: tables[0]!.columns, primaryKey: [], foreignKeys: [], indexes: [{ name: 'ux_p', columns: ['id'], unique: true, primary: false }] }
+    const child: TableInfo = { name: 'c', type: 'table', columns: tables[0]!.columns, primaryKey: [], foreignKeys: [{ name: 'c_p', columns: ['b_id'], refTable: 'p', refColumns: ['id'] }], indexes: [] }
+    const bare = (t: TableInfo): TableInfo => ({ ...t, foreignKeys: [], indexes: [] })
+    expect(generateMigration(compareSchemas([bare(parent), bare(child)], [parent, child]), getDialect('postgres'), [parent, child]).statements).toEqual(['ALTER TABLE "c" DROP CONSTRAINT "c_p"', 'DROP INDEX "ux_p"'])
   })
 
   it('writes a migration as a Liquibase changelog with its rollback', () => {

@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync, appendFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { mutate, random } from './dezign-fuzz.js'
-import { assembleDezignProject, compareSchemas, createScript, DatabaseService, dezignDriver, generateMigration, getDialect, migrationScript, parseDbml, readDezign, translateTables, type ConnectionConfig, type DezignSqlObject, type DriverId, type TableInfo } from '../src/index.js'
+import { assembleDezignProject, compareSchemas, createScript, DatabaseService, dezignDriver, dezignMigrationOptions, generateMigration, getDialect, migrationScript, parseDbml, readDezign, toDbml, translateTables, unquotedName, unquotedNames, type ConnectionConfig, type DezignScripting, type DezignSqlObject, type DriverId, type TableInfo } from '../src/index.js'
 
 /**
  * Real DeZign models against real databases: the DDL generated from each model in DBM_DEZ_SAMPLES is run on the
@@ -22,6 +22,8 @@ const SERVERS: Partial<Record<DriverId, ConnectionConfig>> = {
   mssql: { id: 'dz-ms', name: 'dz', driver: 'mssql', host: '127.0.0.1', port: 14339, user: 'sa', password: 'Mastermind!2026', database: 'master', options: { trustServerCertificate: true } },
 }
 const ORDER = ['sequence', 'view', 'procedure', 'trigger']
+/** Words of SQL itself: safe to show when the database stops at one. */
+const SQL_WORDS = new Set('as default not null check constraint primary key references unique create table domain alter add column on in and or is user date time timestamp interval boolean integer numeric decimal varchar char character text value values precision with without zone order group by to from select where like between current_date current_timestamp true false bit real double float bigint smallint int serial'.split(' '))
 /** The engine a model was drawn for, when it is one that runs here. */
 const nativeEngine = (target: string): DriverId | null => (/^postgres/i.test(target) ? 'postgres' : /^(mysql|mariadb)/i.test(target) ? 'mysql' : /^mssql/i.test(target) ? 'mssql' : null)
 
@@ -71,7 +73,7 @@ function sensible(edited: TableInfo[], live: TableInfo[], checked: Set<string>):
  * One model through a database: created from its DDL, compared, and on PostgreSQL edited at random and migrated
  * for a number of rounds. Adds what went wrong to `failures`.
  */
-async function exercise(svc: DatabaseService, n: number, model: { tables: TableInfo[]; targetDatabase: string; sqlObjects?: DezignSqlObject[] }, failures: string[]): Promise<void> {
+async function exercise(svc: DatabaseService, n: number, model: { tables: TableInfo[]; targetDatabase: string; sqlObjects?: DezignSqlObject[]; scripting?: DezignScripting }, failures: string[]): Promise<void> {
   const native = nativeEngine(model.targetDatabase)
   const driver = native && !skipped.includes(native) ? native : 'postgres'
   if (skipped.includes(driver)) return
@@ -86,26 +88,41 @@ async function exercise(svc: DatabaseService, n: number, model: { tables: TableI
   await svc.runScript(server.id, `DROP DATABASE IF EXISTS ${space}`)
   await svc.runScript(server.id, `CREATE DATABASE ${space}`)
   await svc.connect(config)
-  const tables: TableInfo[] = model.tables.map((t) => ({ ...t, schema: schemaFor(t.schema), foreignKeys: t.foreignKeys.filter((f) => !f.virtual).map((f) => ({ ...f, refSchema: schemaFor(f.refSchema) })) }))
+  // As the app does it for a DeZign project: names as DeZign's own scripts create them (bare, so PostgreSQL
+  // folds them), keys named the project's way.
+  const placed: TableInfo[] = model.tables.map((t) => ({ ...t, schema: schemaFor(t.schema), foreignKeys: t.foreignKeys.filter((f) => !f.virtual).map((f) => ({ ...f, refSchema: schemaFor(f.refSchema) })) }))
+  const tables = model.scripting ? unquotedNames(placed, driver) : placed
+  const options = dezignMigrationOptions(model.scripting, driver)
   // As the app does it: types are translated unless the model was drawn for this database.
   const from = dezignDriver(model.targetDatabase)
-  const outcomes = await svc.runScript(config.id, createScript(tables, getDialect(driver), { translateTypes: true, from }), { continueOnError: true })
+  const outcomes = await svc.runScript(config.id, createScript(tables, getDialect(driver), { translateTypes: true, from, ...options }), { continueOnError: true })
   const errors = outcomes.filter((o) => o.error)
   const mine = (t: TableInfo) => t.type === 'table'
   const live = (await svc.schema(config.id, true)).tables.filter(mine)
-  const changes = errors.length ? [] : compareSchemas(translateTables(tables, driver, from), live, { keepExtra: false })
+  const changes = errors.length ? [] : compareSchemas(translateTables(tables, driver, from), live, { keepExtra: false, model: true })
   const kinds = changes.reduce<Record<string, number>>((all, c) => ({ ...all, [c.kind]: (all[c.kind] ?? 0) + 1 }), {})
   // The kind of error, without the names in it.
   const firstError = errors[0]?.error?.message.replace(/"[^"]*"|'[^']*'|`[^`]*`/g, '"…"').replace(/\b[\w$]*_[\w$]*\b/g, 'x').split(/\s+/).slice(0, 6).join(' ') ?? ''
+  // Which kind of statement failed first, and whether the database stopped at a word or at punctuation: enough to
+  // find the cause without a name from the model.
+  const near = /near "([^"]*)"/.exec(errors[0]?.error?.message ?? '')?.[1]
+  const firstKind = errors[0] ? ` [${errors[0].sql.replace(/^(\s*--[^\n]*\n)*/, '').trim().split(/\s+/).slice(0, 2).join(' ')}${near === undefined ? '' : /^[\w$]+$/.test(near) ? `, at a word of ${near.length} letters${/^[a-z_]+$/.test(near) && SQL_WORDS.has(near.toLowerCase()) ? ` (${near})` : ''}` : `, at ${near}`}]` : ''
+  // The skeleton of the first statement that failed: SQL's own words and punctuation, every name and text blanked.
+  if (errors[0] && process.env.DBM_DEZ_SHAPE) {
+    const skeleton = errors[0].sql.replace(/'(?:[^']|'')*'/g, "'…'").replace(/"(?:[^"]|"")*"/g, '"…"').replace(/[\p{L}_][\p{L}\p{N}_$]*/gu, (w) => (SQL_WORDS.has(w.toLowerCase()) ? w : 'w'))
+    report(`#${n + 1} skeleton of the failed statement:\n${skeleton.split('\n').slice(0, 60).join('\n')}`)
+  }
   const ok = !errors.length && !changes.length && live.length === tables.length
-  report(`#${n + 1} ${model.targetDatabase} on ${driver}${driver === native ? '' : ' (translated)'} schemas=${schemas.length} tables=${tables.length} created=${live.length} failed statements=${errors.length}/${outcomes.length} differences=${JSON.stringify(kinds)} ${ok ? 'ok' : `PROBLEM ${firstError}`}`)
+  // What no script could create: the model itself is not valid for its database (DeZign's own script fails the same way).
+  const invalidModel = errors.some((o) => /there can be only one auto column/i.test(o.error?.message ?? ''))
+  report(`#${n + 1} ${model.targetDatabase} on ${driver}${driver === native ? '' : ' (translated)'} schemas=${schemas.length} tables=${tables.length} created=${live.length} failed statements=${errors.length}/${outcomes.length} differences=${JSON.stringify(kinds)} ${ok ? 'ok' : `${invalidModel ? 'MODEL NOT VALID' : 'PROBLEM'} ${firstError}${firstKind}`}`)
   // Details name things from the model: for public samples only.
   if (!ok && process.env.DBM_DEZ_DEBUG) {
     for (const o of errors.slice(0, 3)) console.log(`#${n + 1} ERROR ${o.error?.message}\n   ${o.sql.replace(/\s+/g, ' ').slice(0, 400)}`)
     for (const c of changes.slice(0, 6)) console.log(`#${n + 1} CHANGE ${JSON.stringify(c).slice(0, 700)}`)
   }
   // A model drawn for this database must come out exactly; a translated one carries its own database's types.
-  if (!ok && driver === native) failures.push(`#${n + 1}`)
+  if (!ok && driver === native && !invalidModel) failures.push(`#${n + 1}`)
   // The project's views and sequences, as the app adds them to the script. They may name things no model holds
   // (functions, other databases), so what fails is reported, not required.
   const objects = driver === native && ok && driver !== 'mysql' ? [...(model.sqlObjects ?? [])].sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind)) : []
@@ -136,13 +153,13 @@ async function exercise(svc: DatabaseService, n: number, model: { tables: TableI
       const edits = Array.from({ length: Number(process.env.DBM_DEZ_EDITS) || 12 }, () => mutate(edited, rnd, serial++))
       for (const t of edited) for (const f of t.foreignKeys) f.refSchema = edited.find((x) => x.name === f.refTable)?.schema
       sensible(edited, current, checked)
-      const planned = compareSchemas(edited, current, { keepExtra: false })
+      const planned = compareSchemas(edited, current, { keepExtra: false, model: true })
       totals.checks += planned.filter((c) => c.kind === 'add_check' || c.kind === 'drop_check').length
-      const migration = generateMigration(planned, getDialect(driver), current)
+      const migration = generateMigration(planned, getDialect(driver), current, options)
       const ran = migration.statements.length ? await svc.runScript(config.id, migrationScript(migration, getDialect(driver)), { continueOnError: true }) : []
       const failed = ran.filter((o) => o.error)
       const after = (await svc.schema(config.id, true)).tables.filter(mine)
-      const left = failed.length ? [] : compareSchemas(edited, after, { keepExtra: false })
+      const left = failed.length ? [] : compareSchemas(edited, after, { keepExtra: false, model: true })
       totals.statements += migration.statements.length
       totals.failed += failed.length
       totals.left += left.length
@@ -169,7 +186,11 @@ describe.skipIf(!root)('DeZign models become real schemas', () => {
     const failures: string[] = []
     try {
       for (const [n, file] of find(root!).entries()) {
-        await exercise(svc, n, readDezign(/\.dezproj$/i.test(file) ? assembleDezignProject(projectFiles(join(file, '..'))) : readFileSync(file, 'latin1')), failures)
+        const model = readDezign(/\.dezproj$/i.test(file) ? assembleDezignProject(projectFiles(join(file, '..'))) : readFileSync(file, 'latin1'))
+        // The app works on the model as DBML text: what that form keeps is what its scripts are made of.
+        const asText = parseDbml(toDbml(model.tables))
+        expect(asText.errors).toEqual([])
+        await exercise(svc, n, { ...model, tables: asText.tables }, failures)
       }
     } finally {
       await svc.disconnectAll()
@@ -229,6 +250,66 @@ Ref: orders.customer_id > customer.id
     const failures: string[] = []
     try {
       await exercise(svc, 9000, { tables, targetDatabase: 'postgresql16' }, failures)
+    } finally {
+      await svc.disconnectAll()
+    }
+    expect(failures).toEqual([])
+  })
+})
+
+// The closest thing to DeZign itself: scripts DeZign generated, kept next to their models in public repositories.
+// DBM_DEZ_PAIRS is a folder of folders, each with `model.dez` and `dezign.sql` (DeZign's own creation script
+// for PostgreSQL). DeZign's script and ours each make a database, and the two databases are compared: tables,
+// columns, types, keys, indexes, and the names of every constraint.
+const pairs = process.env.DBM_DEZ_PAIRS
+describe.skipIf(!pairs || skipped.includes('postgres'))('our script makes the database DeZign\'s own script makes', () => {
+  it('compares the two databases of every pair', { timeout: 600_000 }, async () => {
+    const svc = new DatabaseService()
+    const server = SERVERS.postgres!
+    const failures: string[] = []
+    try {
+      await svc.connect(server)
+      for (const [n, name] of readdirSync(pairs!).filter((d) => statSync(join(pairs!, d)).isDirectory()).entries()) {
+        const model = readDezign(readFileSync(join(pairs!, name, 'model.dez'), 'latin1'))
+        const asText = parseDbml(toDbml(model.tables))
+        const ours = createScript(unquotedNames(asText.tables, 'postgres'), getDialect('postgres'), {
+          translateTypes: true,
+          from: dezignDriver(model.targetDatabase),
+          ...dezignMigrationOptions(model.scripting, 'postgres'),
+        })
+        const made: TableInfo[][] = []
+        for (const [side, script] of [['a', readFileSync(join(pairs!, name, 'dezign.sql'), 'utf8')], ['b', ours]] as const) {
+          const database = `dzp_${n + 1}_${side}`
+          const config: ConnectionConfig = { ...server, id: `dzp-${n}-${side}`, database }
+          await svc.runScript(server.id, `DROP DATABASE IF EXISTS ${database}`)
+          await svc.runScript(server.id, `CREATE DATABASE ${database}`)
+          await svc.connect(config)
+          const failed = (await svc.runScript(config.id, script, { continueOnError: true })).filter((o) => o.error)
+          if (failed.length) {
+            report(`pair ${name}: ${side === 'a' ? "DeZign's" : 'our'} script: ${failed.length} statements failed`)
+            if (process.env.DBM_DEZ_DEBUG) for (const o of failed.slice(0, 3)) report(`   ${o.error?.message} | ${o.sql.replace(/\s+/g, ' ').slice(0, 200)}`)
+            if (side === 'b') failures.push(`${name}: our script`)
+          }
+          made.push((await svc.schema(config.id, true)).tables.filter((t) => t.type === 'table'))
+          await svc.disconnect(config.id)
+          await svc.runScript(server.id, `DROP DATABASE IF EXISTS ${database}`)
+        }
+        const [theirs, mine] = made as [TableInfo[], TableInfo[]]
+        const kinds = (changes: ReturnType<typeof compareSchemas>) => JSON.stringify(changes.reduce<Record<string, number>>((all, c) => ({ ...all, [c.kind]: (all[c.kind] ?? 0) + 1 }), {}))
+        const toTheirs = compareSchemas(theirs, mine, { keepExtra: false })
+        // Every name a constraint or index has, by kind: the two databases should use the same ones.
+        const names = (tables: TableInfo[]) =>
+          new Set(tables.flatMap((t) => [...t.indexes.map((i) => `${i.primary ? 'key' : i.unique ? 'unique' : 'index'} ${t.name}.${i.name}`), ...t.foreignKeys.map((f) => `foreign key ${t.name}.${f.name}`), ...(t.checks ?? []).map((c) => `check ${t.name}.${c.name}`)]))
+        const [a, b] = [names(theirs), names(mine)]
+        const onlyTheirs = [...a].filter((x) => !b.has(x))
+        const onlyOurs = [...b].filter((x) => !a.has(x))
+        report(`pair ${name}: tables ${theirs.length} / ${mine.length} | to make ours like DeZign's: ${kinds(toTheirs)} | names only in DeZign's: ${onlyTheirs.length} | only in ours: ${onlyOurs.length} | of ${a.size}`)
+        if (process.env.DBM_DEZ_DEBUG) {
+          for (const c of toTheirs.slice(0, 8)) report(`   CHANGE ${JSON.stringify(c).slice(0, 500)}`)
+          for (const x of onlyTheirs.slice(0, 12)) report(`   DeZign's: ${x}`)
+          for (const x of onlyOurs.slice(0, 12)) report(`   ours:     ${x}`)
+        }
+      }
     } finally {
       await svc.disconnectAll()
     }

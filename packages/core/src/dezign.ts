@@ -1,3 +1,4 @@
+import { unquotedName, type MigrationOptions, type ModelDomain } from './ddl.js'
 import type { CheckInfo, ColumnInfo, DriverId, ForeignKeyInfo, IndexInfo, TableInfo } from './types.js'
 
 /**
@@ -81,7 +82,38 @@ export interface DezignModel {
   domains: { name: string; dataType: string }[]
   /** Views, sequences, procedures and triggers as the SQL the project holds for them (in its target database's dialect). */
   sqlObjects: DezignSqlObject[]
+  /** What the project decides about the scripts made from it. */
+  scripting: DezignScripting
   leftOut: DezignLeftOut
+}
+
+/**
+ * How a project wants its scripts: the names of its primary keys, and its domains where it keeps them as types
+ * of the database (DeZign's "convert domains" off: `CREATE DOMAIN` in PostgreSQL, and columns typed by it).
+ */
+export interface DezignScripting {
+  primaryKeys: DezignKeyNames
+  domains: ModelDomain[]
+}
+
+/** The options for a script or migration of a DeZign project's model, for `driver`: names as DeZign's scripts have them. */
+export function dezignMigrationOptions(scripting: DezignScripting | undefined, driver: DriverId): MigrationOptions {
+  if (!scripting) return {}
+  return { primaryKeyName: (table) => unquotedName(dezignKeyName(scripting.primaryKeys, table), driver), domains: scripting.domains }
+}
+
+/** Primary key names of a project: by table (`schema.table`, lower case) and the template for a new table (`PK_%table%`). */
+export interface DezignKeyNames {
+  names: Record<string, string>
+  template?: string
+}
+
+/** The name of a table's primary key as the project would have it, if it says. */
+export function dezignKeyName(keys: DezignKeyNames | undefined, table: { schema?: string; name: string }): string | undefined {
+  if (!keys) return undefined
+  const name = table.name.toLowerCase()
+  const known = keys.names[`${(table.schema ?? '').toLowerCase()}.${name}`] ?? Object.entries(keys.names).find(([key]) => key.endsWith(`.${name}`))?.[1]
+  return known ?? (keys.template ? keys.template.replace(/%(table|tab_name)%/gi, table.name) : undefined)
 }
 
 export function parseDezignXml(text: string): DezignElement {
@@ -248,9 +280,14 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   }
   const entities = new Map<string, Entity>()
   const tables: TableInfo[] = []
+  const anyKey = kids(kid(dict, 'ENTITIES'), 'ENT').map((e) => text(kid(e, 'PKCON'), 'NAMETEMPLATE')).find(Boolean)
+  const primaryKeys: DezignKeyNames = { names: {}, template: text(kid(dict, 'DDSETTINGS'), 'PKCONNAMETEMPLATE') || anyKey || undefined }
 
   for (const ent of kids(kid(dict, 'ENTITIES'), 'ENT')) {
     const pkIds = idsOf(kid(ent, 'PKCON'))
+    // (A key without a name is written without one: the database names it.)
+    const pkName = text(kid(ent, 'PKCON'), 'NAME')
+    if (pkIds.length) primaryKeys.names[`${(text(ent, 'SCHEMA') || text(ent, 'SCHEMANAME')).toLowerCase()}.${text(ent, 'NAME').toLowerCase()}`] = pkName
     const columnNames = new Map<string, string>()
     const checks: CheckInfo[] = []
     const columns: ColumnInfo[] = kids(kid(ent, 'ATTRIBUTES'), 'ATTR').map((attr, i) => {
@@ -343,6 +380,9 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
 
   // What the model does not hold as structure is kept as the SQL the project has for it. DeZign's code carries
   // placeholders for the object's own name.
+  const domainList: ModelDomain[] = [...domains.values()]
+    .map((d) => ({ name: text(d, 'NAME'), dataType: typeOf(kid(d, 'DT')), defaultValue: defaultSql(text(kid(d, 'DEFCON'), 'VALUE'), typeOf(kid(d, 'DT'))) || null, check: text(kid(d, 'CCON'), 'VALUE') || null, notNull: text(kid(d, 'NNCON'), 'VALUE') === '1' }))
+    .filter((d) => d.name)
   const sqlObjects: DezignSqlObject[] = []
   const code = (el: DezignElement, names: Record<string, string>) =>
     text(el, 'CODE')
@@ -433,7 +473,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const positions = main?.positions ?? {}
   const layout = { diagramId: mainId, ...(main?.layout ?? { originX: 0, originY: 0, scaleX: 1, scaleY: 1 }) }
 
-  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, diagrams: described, sqlObjects, domains: [...domains.values()].map((d) => ({ name: text(d, 'NAME'), dataType: typeOf(kid(d, 'DT')) })).filter((d) => d.name), leftOut }
+  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, diagrams: described, sqlObjects, domains: domainList.map(({ name, dataType }) => ({ name, dataType })), scripting: { primaryKeys, domains: text(kid(dict, 'DDSETTINGS'), 'CONVERTDOMAINS') === '1' ? [] : domainList }, leftOut }
 }
 
 const PROJECT_SECTIONS: [folder: string, element: string][] = [

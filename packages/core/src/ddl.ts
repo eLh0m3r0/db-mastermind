@@ -162,6 +162,8 @@ const typesDiffer = (model: string, database: string) => {
   const [a, b] = [normType(model), normType(database)]
   return a !== b && !(a === 'numeric' && /^numeric\((10|18|38),0\)$/.test(b))
 }
+/** A type name without quotes and schema: `public."TECH_ID"` and `tech_id` are one. */
+const plainName = (name: string) => name.replaceAll('"', '').split('.').pop()!.trim().toLowerCase()
 /** Whether two type names mean the same type (`int` and `integer`, `varchar(9)` and `character varying(9)`). */
 export const sameType = (a: string, b: string) => !typesDiffer(a, b)
 /** `serial` is PostgreSQL's shorthand for an integer with its own sequence: an identity column in all but name. */
@@ -242,6 +244,7 @@ export function diffTable(original: TableInfo | undefined, draftIn: DesignTable)
   const adds: SchemaChange[] = []
   const alters: SchemaChange[] = []
   const draftOriginals = new Set(draft.columns.map((c) => c.originalName).filter(Boolean))
+  const domainTyped = new Set<string>()
   for (const col of original.columns) {
     if (!draftOriginals.has(col.name)) drops.push({ kind: 'drop_column', table: current, column: col.name, before: col })
   }
@@ -253,11 +256,15 @@ export function diffTable(original: TableInfo | undefined, draftIn: DesignTable)
     const before = original.columns.find((c) => c.name === col.originalName)
     if (!before) continue
     if (col.name !== col.originalName) renames.push({ kind: 'rename_column', table: current, column: col.originalName, newName: col.name })
+    // A column that follows a named type and is typed by it in the database (`tech_id`) has the model's type,
+    // and its default comes from there.
+    const byDomain = !!col.domain && plainName(before.dataType) === plainName(col.domain)
+    if (byDomain) domainTyped.add(col.name.toLowerCase())
     const diff = {
-      type: typesDiffer(col.dataType, before.dataType),
+      type: !byDomain && typesDiffer(col.dataType, before.dataType),
       // PostgreSQL makes a serial column NOT NULL whatever the model says.
       nullable: col.nullable !== before.nullable && !(isSerialType(col.dataType) && !before.nullable),
-      default: normDefault(col.defaultValue) !== normDefault(before.defaultValue),
+      default: normDefault(col.defaultValue) !== normDefault(before.defaultValue) && !(byDomain && !before.defaultValue),
       comment: (col.comment ?? null) !== (before.comment ?? null),
     }
     if (diff.type || diff.nullable || diff.default || diff.comment) {
@@ -284,7 +291,8 @@ export function diffTable(original: TableInfo | undefined, draftIn: DesignTable)
   // same check. A check the model does not name stands for any one check of the database the model does not
   // name either. Only where the database says which checks it has (`checks` set).
   if (original.checks) {
-    const wanted = draftIn.checks ?? []
+    // (A check a column has from its named type is that type's in the database, not the table's.)
+    const wanted = (draftIn.checks ?? []).filter((c) => !(c.column && domainTyped.has(c.column.toLowerCase())))
     const live = new Map(original.checks.map((c) => [(c.name ?? '').toLowerCase(), c]))
     const kept = new Set<string>()
     const columns = draftIn.columns.map((c) => c.name)
@@ -342,7 +350,8 @@ export function diffTables(originals: TableInfo[], drafts: DesignTable[]): Schem
   // Checks leave before the columns they name change and come once those are as the model has them.
   const first = (c: SchemaChange) => c.kind === 'drop_foreign_key' || c.kind === 'drop_index' || c.kind === 'drop_check'
   const last = (c: SchemaChange) => c.kind === 'add_check' || c.kind === 'add_foreign_key'
-  const fkDrops = alters.filter(first)
+  // Foreign keys go before indexes: a key may rest on a unique index of the table it references.
+  const fkDrops = [...alters.filter((c) => c.kind === 'drop_foreign_key'), ...alters.filter((c) => c.kind === 'drop_check'), ...alters.filter((c) => c.kind === 'drop_index')]
   const fkAdds = [...alters.filter((c) => c.kind === 'add_check'), ...alters.filter((c) => c.kind === 'add_foreign_key')]
   const rest = alters.filter((c) => !first(c) && !last(c))
   return [...fkDrops, ...drops, ...creates, ...rest, ...fkAdds]
@@ -437,14 +446,60 @@ function isNarrowing(before: string, after: string): boolean {
   return /char|text|clob/i.test(before) && !/char|text|clob/i.test(after)
 }
 
+/** A named type of a model (a DeZign domain): in PostgreSQL a `CREATE DOMAIN`, which the columns that follow it are typed by. */
+export interface ModelDomain {
+  name: string
+  dataType: string
+  defaultValue?: string | null
+  /** The domain's check; `value` stands for the column. */
+  check?: string | null
+  notNull?: boolean
+}
+
+export interface MigrationOptions {
+  /**
+   * The name of a table's primary key constraint, where the model has a say (a DeZign project's `PK_%table%`).
+   * An empty name is a key without a name of its own (the database gives it one).
+   */
+  primaryKeyName?: (table: TableRef) => string | undefined
+  /** The model's named types, for a database that has them (PostgreSQL): columns that follow one are typed by it. */
+  domains?: ModelDomain[]
+}
+
 /** Renders a change set as SQL. `tables` is the live schema (needed by MySQL MODIFY and SQLite rebuilds). */
-export function generateMigration(changes: SchemaChange[], dialect: Dialect, tables: TableInfo[] = []): Migration {
+export function generateMigration(changes: SchemaChange[], dialect: Dialect, tables: TableInfo[] = [], options: MigrationOptions = {}): Migration {
   // DuckDB can't alter a table once a new table references it: create new tables after the alters.
   if (dialect.id === 'duckdb') changes = [...changes.filter((c) => c.kind !== 'create_table'), ...changes.filter((c) => c.kind === 'create_table')]
   const d = dialect
   const statements: string[] = []
   const rollback: string[] = []
   const warnings: MigrationWarning[] = []
+  // PostgreSQL has the model's named types: a column that follows one is typed by it and takes its default and
+  // check from it, as in the scripts DeZign writes. (Elsewhere the column carries the type itself.)
+  // Written bare, as DeZign writes it: a domain somebody called INTEGER or REAL then means the database's own
+  // type of that name, in our script as in DeZign's.
+  const domainName = (name: string) => (/^[A-Za-z_][A-Za-z0-9_$]*$/.test(name) ? name.toLowerCase() : d.quoteIdent(name))
+  const usedDomains = new Map<string, ModelDomain>()
+  const viaDomain = new Set<string>()
+  if (options.domains?.length && d.id === 'postgres') {
+    const byName = new Map(options.domains.map((x) => [x.name.toLowerCase(), x]))
+    const typed = (table: string) => <T extends DesignColumn>(c: T): T => {
+      const domain = c.domain ? byName.get(c.domain.toLowerCase()) : undefined
+      if (!domain || !sameType(domain.dataType, c.dataType)) return c
+      usedDomains.set(domain.name.toLowerCase(), domain)
+      if (domain.check) viaDomain.add(`${table}\u0000${c.name}`.toLowerCase())
+      return { ...c, dataType: domainName(domain.name), defaultValue: normDefault(c.defaultValue) === normDefault(domain.defaultValue) ? null : c.defaultValue }
+    }
+    changes = changes.map((c) =>
+      c.kind === 'create_table'
+        ? { ...c, table: { ...c.table, columns: c.table.columns.map(typed(c.table.name)) } }
+        : c.kind === 'add_column'
+          ? { ...c, column: typed(c.table.name)(c.column) }
+          : c.kind === 'alter_column' && c.changes.type
+            ? { ...c, after: typed(c.table.name)(c.after) }
+            : c,
+    )
+  }
   const q = (ref: TableRef) => qualify(d, ref)
   const id = (n: string) => d.quoteIdent(n)
   const isMy = d.id === 'mysql' || d.id === 'mariadb'
@@ -452,17 +507,28 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
   // Names made up here must not repeat: index names are per schema, MySQL's foreign key names per database, and
   // two relationships over the same columns (or long names cut at 60 characters) would get the same one.
   const taken = new Set(tables.flatMap((t) => [...t.indexes.map((i) => i.name), ...t.foreignKeys.map((f) => f.name ?? '')]).map((n) => n.toLowerCase()))
-  const fresh = (prefix: string, table: string, columns: string[]): string => {
-    const base = constraintName(prefix, table, columns)
+  // (A name this migration drops is free again: an index that changes is dropped and added under its name.)
+  for (const c of changes) if (c.kind === 'drop_index' || c.kind === 'drop_foreign_key') taken.delete(c.name.toLowerCase())
+  const numbered = (base: string): string => {
     let name = base
     for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${base.slice(0, 60 - String(n).length - 1)}_${n}`
     taken.add(name.toLowerCase())
     return name
   }
+  const fresh = (prefix: string, table: string, columns: string[]): string => {
+    return numbered(constraintName(prefix, table, columns))
+  }
+  /** `CONSTRAINT "name" ` for a primary key, or nothing where the model leaves the key unnamed. */
+  const keyClause = (table: TableRef, columns: string[]) => {
+    const own = options.primaryKeyName?.(table)
+    return own === '' ? '' : `CONSTRAINT ${id(own ? numbered(own) : fresh('pk', table.name, columns))} `
+  }
+  // Names the model gives come first and are kept; the same name given twice (two indexes called IDX_1 in two
+  // tables) is numbered like a made-up one.
+  const given = new Map<object, string>()
   for (const c of changes) {
-    if (c.kind === 'create_table') for (const x of [...c.table.foreignKeys, ...c.table.indexes]) if (x.name) taken.add(x.name.toLowerCase())
-    if (c.kind === 'add_foreign_key' && c.fk.name) taken.add(c.fk.name.toLowerCase())
-    if (c.kind === 'add_index' && c.index.name) taken.add(c.index.name.toLowerCase())
+    const named = c.kind === 'create_table' ? [...c.table.foreignKeys, ...c.table.indexes] : c.kind === 'add_foreign_key' ? [c.fk] : c.kind === 'add_index' ? [c.index] : []
+    for (const x of named) if (x.name) given.set(x, numbered(x.name))
   }
   // A model's tables may live in schemas the database does not have yet.
   // (Each database has one schema from the start; `dbo` in a PostgreSQL model is a schema like any other.)
@@ -472,6 +538,12 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
     if (present.has(schema.toLowerCase()) || schema.toLowerCase() === builtIn) continue
     if (d.id === 'mssql') statements.push(`IF SCHEMA_ID(${literalComment(schema, 'mssql')}) IS NULL EXEC(${literalComment(`CREATE SCHEMA ${id(schema)}`, 'mssql')})`)
     else if (d.id === 'postgres' || isMy || d.id === 'duckdb') statements.push(`CREATE SCHEMA IF NOT EXISTS ${id(schema)}`)
+  }
+  for (const domain of usedDomains.values()) {
+    const name = unquotedName(domain.name, 'postgres')
+    const create = `CREATE DOMAIN ${domainName(domain.name)} AS ${domain.dataType}${domain.defaultValue ? ` DEFAULT ${domain.defaultValue}` : ''}${domain.notNull ? ' NOT NULL' : ''}${domain.check ? ` CHECK (${domain.check})` : ''}`
+    // A database that already has tables may have the domain too.
+    statements.push(tables.length ? `DO $dbm$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = ${literalComment(name, 'postgres')}) THEN ${create}; END IF; END $dbm$` : create)
   }
   // A new table may reference one created further down, or a column an existing table only gets in this
   // migration: the foreign keys of new tables wait until everything else is in place.
@@ -523,14 +595,15 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
           }
         }
         const lines = t.columns.map((c) => `  ${columnDefinition(c, d, { inlinePk: !!inlinePk && c.name === t.primaryKey[0], sequence: sequences.get(c.name) })}`)
-        if (t.primaryKey.length && !inlinePk) lines.push(`  CONSTRAINT ${id(fresh('pk', t.name, t.primaryKey))} PRIMARY KEY (${t.primaryKey.map(id).join(', ')})`)
+        if (t.primaryKey.length && !inlinePk) lines.push(`  ${keyClause(ref, t.primaryKey)}PRIMARY KEY (${t.primaryKey.map(id).join(', ')})`)
         // SQLite and DuckDB can't add foreign keys later: declare them in the table.
         const inlineFks = d.id === 'sqlite' || d.id === 'duckdb'
         // The same relationship drawn twice is one constraint.
         const fkKey = (f: DesignForeignKey) => JSON.stringify([f.columns, f.refSchema ?? '', f.refTable, f.refColumns, f.onDelete ?? '', f.onUpdate ?? ''])
-        const foreignKeys = t.foreignKeys.filter((f, i, all) => all.findIndex((x) => fkKey(x) === fkKey(f)) === i).map((f) => ({ ...f, name: f.name || fresh('fk', t.name, f.columns) }))
+        const foreignKeys = t.foreignKeys.filter((f, i, all) => all.findIndex((x) => fkKey(x) === fkKey(f)) === i).map((f) => ({ ...f, name: given.get(f) ?? fresh('fk', t.name, f.columns) }))
         if (inlineFks) for (const fk of foreignKeys) lines.push(`  ${fkClause(fk, t.name, d)}`)
-        for (const check of t.checks ?? []) lines.push(`  ${check.name ? `CONSTRAINT ${id(check.name)} ` : ''}CHECK (${checkCondition(check, t.columns, d)})`)
+        // (A check the column has from its domain is the domain's here.)
+        for (const check of (t.checks ?? []).filter((c) => !(c.column && viaDomain.has(`${t.name}\u0000${c.column}`.toLowerCase())))) lines.push(`  ${check.name ? `CONSTRAINT ${id(check.name)} ` : ''}CHECK (${checkCondition(check, t.columns, d)})`)
         let sql = `CREATE TABLE ${q(ref)} (\n${lines.join(',\n')}\n)`
         if (isMy && t.comment) sql += ` COMMENT=${literalComment(t.comment, d.id)}`
         statements.push(sql)
@@ -542,7 +615,7 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
           }
         }
         for (const ix of t.indexes) {
-          statements.push(createIndexSql(ix.name || fresh(ix.unique ? 'ux' : 'ix', t.name, ix.columns), ref, ix.columns, ix.unique, d))
+          statements.push(createIndexSql(given.get(ix) ?? fresh(ix.unique ? 'ux' : 'ix', t.name, ix.columns), ref, ix.columns, ix.unique, d))
         }
         statements.push(...commentStatements(ref, t.comment ?? null, t.columns, d))
         rollback.unshift(`DROP TABLE ${q(ref)}`)
@@ -671,7 +744,7 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
           warnings.push({ level: 'info', message: `SQLite can't add constraints in place: ${change.table.name} is rebuilt.` })
           break
         }
-        const name = change.fk.name || fresh('fk', change.table.name, change.fk.columns)
+        const name = given.get(change.fk) ?? fresh('fk', change.table.name, change.fk.columns)
         statements.push(`ALTER TABLE ${q(change.table)} ADD ${fkClause({ ...change.fk, name }, change.table.name, d)}`)
         rollback.unshift(isMy ? `ALTER TABLE ${q(change.table)} DROP FOREIGN KEY ${id(name)}` : `ALTER TABLE ${q(change.table)} DROP CONSTRAINT ${id(name)}`)
         warnings.push({ level: 'info', message: `The foreign key on ${change.table.name}(${change.fk.columns.join(', ')}) fails if existing rows reference missing ${change.fk.refTable} rows.` })
@@ -690,7 +763,7 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
       }
       case 'add_index': {
         const ix = change.index
-        const name = ix.name || fresh(ix.unique ? 'ux' : 'ix', change.table.name, ix.columns)
+        const name = given.get(ix) ?? fresh(ix.unique ? 'ux' : 'ix', change.table.name, ix.columns)
         statements.push(createIndexSql(name, change.table, ix.columns, ix.unique, d))
         rollback.unshift(dropIndexSql(name, change.table, d))
         if (ix.unique) warnings.push({ level: 'info', message: `Unique index ${name} fails if duplicates already exist.` })
@@ -704,7 +777,7 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
       }
       case 'set_primary_key': {
         const t = q(change.table)
-        const name = constraintName('pk', change.table.name, change.columns)
+        const named = change.columns.length ? keyClause(change.table, change.columns) : ''
         if (d.id === 'sqlite') {
           markViewSensitive(change.table.name)
           statements.push(...rebuild(change.table, (cols) => cols, undefined, undefined, change.columns))
@@ -724,7 +797,7 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
             )
           }
         }
-        if (change.columns.length) statements.push(`ALTER TABLE ${t} ADD CONSTRAINT ${id(name)} PRIMARY KEY (${change.columns.map(id).join(', ')})`)
+        if (change.columns.length) statements.push(`ALTER TABLE ${t} ADD ${named}PRIMARY KEY (${change.columns.map(id).join(', ')})`)
         warnings.push({ level: 'warning', message: `Changing the primary key of ${change.table.name} rebuilds its index and may break foreign keys that reference it.` })
         break
       }
@@ -1011,10 +1084,11 @@ export const COMMON_TYPES: Record<DriverId, string[]> = {
  * Changes that make `target` match `source` (schema compare, e.g. dev → prod). Tables and columns are matched by
  * name (case-insensitively); anything only in the target is dropped unless `keepExtra` is set. Schemas may be
  * named differently on the two sides (`shop` → `public`); where both sides have a schema of the same name, a
- * table is matched with the one in its own schema first, and a new table stays in its schema. With `ownSchemas`
- * (a model, which names its schemas on purpose) a new table always goes to the schema it names.
+ * table is matched with the one in its own schema first, and a new table stays in its schema. With `model` (the
+ * source is a model, which names things on purpose) a new table always goes to the schema it names and keeps
+ * the names of its relationships and indexes.
  */
-export function compareSchemas(source: TableInfo[], target: TableInfo[], options: { keepExtra?: boolean; ownSchemas?: boolean } = {}): SchemaChange[] {
+export function compareSchemas(source: TableInfo[], target: TableInfo[], options: { keepExtra?: boolean; model?: boolean } = {}): SchemaChange[] {
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
   const drafts: DesignTable[] = []
   const targetSchema = target[0]?.schema
@@ -1033,7 +1107,7 @@ export function compareSchemas(source: TableInfo[], target: TableInfo[], options
     const draft = toDesignTable(s)
     if (!t) {
       // New table: created in the target's schema, referencing the target's tables, with its own identity.
-      const stays = (schema: string | undefined) => !!schema && (options.ownSchemas || targetSchemas.has(schema.toLowerCase()))
+      const stays = (schema: string | undefined) => !!schema && (options.model || targetSchemas.has(schema.toLowerCase()))
       draft.schema = stays(draft.schema) ? draft.schema : (targetSchema ?? draft.schema)
       draft.originalName = undefined
       for (const c of draft.columns) {
@@ -1042,12 +1116,12 @@ export function compareSchemas(source: TableInfo[], target: TableInfo[], options
       }
       for (const f of draft.foreignKeys) {
         f.originalName = undefined
-        f.name = undefined
+        if (!options.model) f.name = undefined
         f.refSchema = inTarget(f.refTable, f.refSchema)?.schema ?? (stays(f.refSchema) ? f.refSchema : (targetSchema ?? f.refSchema))
       }
       for (const i of draft.indexes) {
         i.originalName = undefined
-        i.name = undefined
+        if (!options.model) i.name = undefined
       }
       drafts.push(draft)
       continue
@@ -1113,13 +1187,40 @@ export function liquibaseChangelog(migration: Migration, options: { id: string; 
   return `${lines.join('\n')}\n`
 }
 
+/**
+ * A model's names as a script without quotes creates them. DeZign writes its PostgreSQL and Oracle scripts with
+ * bare names, so the column a model calls `isAdmin` is `isadmin` in the database DeZign made (and in every
+ * query written against it); quoted, it would be a different column. Names that can't be written bare
+ * (`unit price`) stay as they are. Other databases keep the case of a name anyway.
+ */
+export function unquotedNames(tables: TableInfo[], driver: DriverId): TableInfo[] {
+  if (driver !== 'postgres' && driver !== 'oracle') return tables
+  const name = <T extends string | undefined>(n: T): T => unquotedName(n, driver)
+  return tables.map((t) => ({
+    ...t,
+    schema: name(t.schema),
+    name: name(t.name),
+    columns: t.columns.map((c) => ({ ...c, name: name(c.name) })),
+    primaryKey: t.primaryKey.map(name),
+    foreignKeys: t.foreignKeys.map((f) => ({ ...f, name: name(f.name), columns: f.columns.map(name), refSchema: name(f.refSchema), refTable: name(f.refTable), refColumns: f.refColumns.map(name) })),
+    indexes: t.indexes.map((i) => ({ ...i, name: name(i.name), columns: i.columns.map(name) })),
+    ...(t.checks ? { checks: t.checks.map((c) => ({ ...c, ...(c.name ? { name: name(c.name) } : {}), ...(c.column ? { column: name(c.column) } : {}) })) } : {}),
+  }))
+}
+
+/** One name as a script without quotes creates it (see `unquotedNames`). */
+export function unquotedName<T extends string | undefined>(name: T, driver: DriverId): T {
+  if (!name || !/^[A-Za-z_][A-Za-z0-9_$]*$/.test(name)) return name
+  return (driver === 'postgres' ? name.toLowerCase() : driver === 'oracle' ? name.toUpperCase() : name) as T
+}
+
 /** CREATE script for a whole model (forward engineering), in any dialect. */
-export function createScript(tables: TableInfo[], dialect: Dialect, options: { translateTypes?: boolean; /** The database the model's types were written for: for that one they are left as written. */ from?: DriverId } = {}): string {
+export function createScript(tables: TableInfo[], dialect: Dialect, options: { translateTypes?: boolean; /** The database the model's types were written for: for that one they are left as written. */ from?: DriverId } & MigrationOptions = {}): string {
   const source = options.translateTypes ? translateTables(tables, dialect.id, options.from) : tables
   const changes = compareSchemas(
     source.filter((t) => t.type === 'table'),
     [],
-    { keepExtra: true },
+    { keepExtra: true, model: true },
   )
-  return migrationScript(generateMigration(changes, dialect, []), dialect)
+  return migrationScript(generateMigration(changes, dialect, [], options), dialect)
 }
