@@ -253,6 +253,7 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
         comment: value('note') !== undefined ? unquoteString(value('note')!) : null,
         // A custom setting: the named type (a DeZign domain) the column follows.
         ...(value('domain') ? { domain: unquoteString(value('domain')!) } : {}),
+        ...(value('collate') ? { collation: unquoteString(value('collate')!) } : {}),
       }
       // A table's own column wins over an injected one of the same name; so does a later partial.
       const earlier = t.columns.findIndex((c) => c.name.toLowerCase() === name.toLowerCase())
@@ -449,6 +450,7 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
       }
       if (uniqueColumns.has(c.name)) attrs.push('unique')
       if (c.domain) attrs.push(`domain: '${c.domain.replaceAll("'", '')}'`)
+      if (c.collation) attrs.push(`collate: '${c.collation.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`)
       const own = ownCheck(t, c.name)
       if (own) attrs.push(`check: ${checkText(own.expression)}`)
       if (c.comment) attrs.push(`note: ${noteText(c.comment)}`)

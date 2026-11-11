@@ -124,6 +124,8 @@ export interface ColumnInfo {
   comment?: string | null
   /** The named reusable type the column follows, where a model has such (DeZign domains); `dataType` is its type. */
   domain?: string
+  /** The collation a model gives the column, as it is written there (`COLLATE <this>` in a script). */
+  collation?: string
 }
 
 export interface ForeignKeyInfo {

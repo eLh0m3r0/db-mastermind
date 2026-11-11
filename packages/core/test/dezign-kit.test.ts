@@ -245,7 +245,8 @@ describe.skipIf(!to || !back)('the kit as DeZign saved it again', () => {
           .sort((x, y) => `${x.schema ?? ''}.${x.name}`.localeCompare(`${y.schema ?? ''}.${y.name}`))
           .map((t) => ({ ...t, columns: t.columns.map((c) => (/^(small|big)?serial$/i.test(c.dataType) ? { ...c, dataType: c.dataType.toLowerCase().replace('serial', 'int').replace(/^int$/, 'integer'), isIdentity: true } : c)) })),
         positions: Object.entries(m.positions).sort(([x], [y]) => x.localeCompare(y)),
-        diagrams: m.diagrams.map((d) => ({ ...d, positions: Object.entries(d.positions ?? {}).sort(([x], [y]) => x.localeCompare(y)) })),
+        // (The order of a diagram's tables is the order of its objects in the file, which is DeZign's to choose.)
+        diagrams: m.diagrams.map((d) => ({ ...d, tables: [...d.tables].sort(), positions: Object.entries(d.positions ?? {}).sort(([x], [y]) => x.localeCompare(y)) })),
         sqlObjects: m.sqlObjects,
         domains: m.domains,
         scripting: m.scripting,

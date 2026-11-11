@@ -131,7 +131,8 @@ export function translateTables(tables: TableInfo[], to: DriverId, from?: Driver
         let defaultValue = c.defaultValue ? translateDefault(c.defaultValue, to) : c.defaultValue
         // A flag kept as 0/1 where the target has real booleans.
         if (defaultValue && f === 'bool' && (to === 'postgres' || to === 'duckdb') && /^[01]$/.test(defaultValue)) defaultValue = defaultValue === '1' ? 'true' : 'false'
-        return { ...c, dataType, defaultValue }
+        // (A collation is a name of the database the model was written for: another one has its own.)
+        return { ...c, dataType, defaultValue, collation: undefined }
       }),
     }
   })

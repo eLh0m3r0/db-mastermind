@@ -457,7 +457,8 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
     const out: { key: string; info: TableInfo; status: DesignStatus }[] = liveTables.map((t) => {
       const draft = drafts[keyOf(t)]
       if (!draft) return { key: keyOf(t), info: t, status: 'live' }
-      const changed = diffTable(t, draft).length > 0
+      // A model takes whatever the editor changed, also what no ALTER would say (the order of columns, the name of a key).
+      const changed = diffTable(t, draft).length > 0 || (!!model && JSON.stringify(designToTableInfo(toDesignTable(t))) !== JSON.stringify(designToTableInfo(draft)))
       return { key: keyOf(t), info: designToTableInfo(draft), status: draft.dropped ? 'dropped' : changed ? 'modified' : 'live' }
     })
     for (const [key, draft] of Object.entries(drafts)) {
@@ -494,6 +495,9 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
     if (!schema || !Object.keys(drafts).length) return []
     return diffTables(schema.tables, Object.values(drafts))
   }, [schema, drafts])
+
+  // (For a model: also the tables changed in ways a migration would not list.)
+  const pending = changes.length || display.filter((d) => d.status === 'modified' || d.status === 'new' || d.status === 'dropped').length
 
   const columnSets = useMemo(() => {
     const fk = new Map<string, Set<string>>()
@@ -1226,9 +1230,9 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
           {model && onApplyModel ? (
             <Button
               size="sm"
-              variant={changes.length ? 'primary' : 'secondary'}
+              variant={pending ? 'primary' : 'secondary'}
               icon={<FileCode2 size={13} />}
-              disabled={!changes.length}
+              disabled={!pending}
               title={tr('Write the tables on the canvas to the DBML text')}
               onClick={() => {
                 onApplyModel(display.filter((d) => d.status !== 'dropped').map((d) => d.info))
@@ -1237,7 +1241,7 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
                 setDrafts({}, false)
               }}
             >
-              {tr('Write to DBML')}{changes.length ? ` (${changes.length})` : ''}
+              {tr('Write to DBML')}{pending ? ` (${pending})` : ''}
             </Button>
           ) : (
             <Button size="sm" variant={changes.length ? 'primary' : 'secondary'} icon={<FileCode2 size={13} />} disabled={!changes.length} onClick={() => setReviewOpen(true)}>
@@ -1377,6 +1381,7 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
           table={selectedDraft}
           driver={editorDriver}
           allTables={tables}
+          model={!!model}
           onChange={(t) => updateDraft(selected, t)}
           onRevert={
             drafts[selected]?.originalName

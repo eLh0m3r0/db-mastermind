@@ -613,6 +613,8 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
   }
   // Domains of the project by name: a column that follows one has its id and a copy of its type.
   const domainsByName = new Map(project.list('DOMAIN').map((d) => [lower(text(d.el, 'NAME')), d.el]))
+  /** A column's collation sits right after its type, and only when it has one. */
+  const setCollation = (attr: El, collation: string | undefined) => setOptional(attr, 'COLLATE', collation ?? '', ['NNCON', 'CCON', 'DEFCON'])
   const setDomain = (attr: El, table: string, column: ColumnInfo) => {
     if (!column.domain) {
       if (kid(attr, 'DOMAINID') && text(attr, 'DOMAINID') !== noDomain && text(attr, 'DOMAINID') !== '-1') set(attr, 'DOMAINID', noDomain)
@@ -663,6 +665,7 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     setDefault(attr, column.defaultValue)
     if (column.comment) set(attr, 'DESC', column.comment, ['NOTE', 'DOMAINID', 'DT'])
     if (column.domain) setDomain(attr, table, column)
+    if (column.collation) setCollation(attr, column.collation)
     return attr
   }
 
@@ -765,6 +768,10 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       // After the type: a column that follows a domain takes the domain's type, and one that left it keeps its own.
       if ((b.domain ?? '') !== (c.domain ?? '') || (c.domain && altered)) {
         setDomain(existing, label, c)
+        altered = true
+      }
+      if ((b.collation ?? '') !== (c.collation ?? '')) {
+        setCollation(existing, c.collation)
         altered = true
       }
       if (b.nullable !== c.nullable) {
@@ -1529,7 +1536,7 @@ function verify(files: DezignFile[], result: { files: DezignFile[]; deleted: str
     tables
       .filter((t) => t.type === 'table')
       .map((t) => {
-        const cols = t.columns.map((c) => `${lower(c.name)} ${normType(c.dataType)}${c.domain ? ` @${lower(c.domain)}` : ''}${c.nullable ? '' : ' nn'}${c.isIdentity ? ' id' : ''}${normText(c.defaultValue) ? ` =${normText(c.defaultValue)}` : ''}${normText(c.comment) ? ` #${normText(c.comment)}` : ''}`)
+        const cols = t.columns.map((c) => `${lower(c.name)} ${normType(c.dataType)}${c.domain ? ` @${lower(c.domain)}` : ''}${c.collation ? ` ~${c.collation}` : ''}${c.nullable ? '' : ' nn'}${c.isIdentity ? ' id' : ''}${normText(c.defaultValue) ? ` =${normText(c.defaultValue)}` : ''}${normText(c.comment) ? ` #${normText(c.comment)}` : ''}`)
         const fks = t.foreignKeys.filter((f) => !f.virtual).map((f) => `${f.columns.map(lower).join(',')}>${lower(f.refTable)}(${f.refColumns.map(lower).join(',')})`)
         const indexes = t.indexes.filter((ix) => !ix.primary).map(indexKey)
         const checks = (t.checks ?? []).map((c) => `check ${c.expression.replace(/\s+/g, ' ').trim().toLowerCase()}`)

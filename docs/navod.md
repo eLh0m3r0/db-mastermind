@@ -84,6 +84,9 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   uvidíte změny od té doby a ALTER skript pro databázi modelu.
 - **Export do DeZignu:** model vytvořený tady uložíte přes *Uložit jako…* i jako nový projekt DeZign for Databases
   (`.dez`) pro kolegy, kteří pracují v DeZignu. Ověřeno v DeZignu 14.9.3: projekt otevře a uloží beze ztráty.
+- **Panel tabulky:** v režimu *Návrh* kliknutím na tabulku otevřete panel, kde upravíte sloupce (název, typ,
+  NOT NULL, výchozí hodnotu, komentář, pořadí, doménu), cizí klíče (i název a ON UPDATE), indexy a kontroly
+  CHECK. Funguje i u modelu bez připojené databáze; *Zapsat do DBML* přenese změny do textu modelu.
 - **Kontroly modelu:** počítadlo v liště modelu ukazuje, co stojí za pozornost (tabulky bez klíče, nesoulad typů
   cizího klíče, duplicitní indexy, cizí klíče bez indexu, názvy mimo styl, vazby, které nikdo nedeklaroval).
   Kliknutím přejdete na tabulku; bezpečné opravy jsou na jedno kliknutí.

@@ -3,7 +3,7 @@ import { diagramsAsLoaded, mutate, mutateDiagrams, random } from './dezign-fuzz.
 
 // More chains for a long local run: DBM_FUZZ_CHAINS=500 npx vitest run --root packages/core test/dezign.test.ts
 const CHAINS = Number(process.env.DBM_FUZZ_CHAINS) || 0
-import { applyDezignSave, assembleDezignProject, compareSchemas, createScript, detectDezignEncoding, dezignDriver, dezignIntegrity, dezignMigrationOptions, generateMigration, getDialect, unquotedNames, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
+import { applyDezignSave, assembleDezignProject, compareSchemas, createScript, detectDezignEncoding, dezignDriver, dezignIntegrity, dezignMigrationOptions, dezignWrapScript, generateMigration, getDialect, unquotedNames, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 // Hand-written models in DeZign's layout (no file from a real project is kept in the repository).
 const attr = (id: string, name: string, type: string, extra = '', more = '') =>
@@ -597,6 +597,28 @@ describe('saving back into a DeZign project', () => {
     expect(counter('invoice')).toBe('1')
     const payment = /<NAME>payment<\/NAME>\n<ID>(\d+)<\/ID>/.exec(out)![1]!
     expect(Number(/<LASTID>(\d+)<\/LASTID>/.exec(out)![1])).toBeGreaterThanOrEqual(Number(payment))
+  })
+
+  it('reads a column\'s collation, keeps it in DBML and scripts, and writes a new, changed or removed one', () => {
+    // (After the type, before the constraints: where DeZign keeps it.)
+    const collated: DezignFile[] = [{ path: 'shop.dez', text: dez.replace(/(<NAME>email<\/NAME>[\s\S]*?<\/DT>\n)/, '$1<COLLATE>"cs_CZ"</COLLATE>\n') }]
+    const tables = model(collated)
+    const email = tables[0]!.columns.find((c) => c.name === 'email')!
+    expect(email.collation).toBe('"cs_CZ"')
+    expect(toDbml(tables)).toContain(`collate: '"cs_CZ"'`)
+    expect(createScript(tables, getDialect('postgres'))).toMatch(/"email" [\w ]+(\(\d+\))? COLLATE "cs_CZ"/)
+    // Another database has other collations: the translated script leaves it out.
+    expect(createScript(tables, getDialect('mysql'), { translateTypes: true, from: 'postgres' })).not.toContain('COLLATE')
+    expect(save(collated, () => {})).toEqual({ files: [], deleted: [], changes: [] })
+    const r = save(collated, (t) => {
+      t[0]!.columns.find((c) => c.name === 'email')!.collation = 'C'
+      t[0]!.columns.push(column('code', 'varchar(10)', { collation: 'C' }))
+    })
+    expect(r.changes.map((c) => `${c.kind} ${c.name}`)).toEqual(['alter_column email', 'add_column code'])
+    expect(r.files[0]!.text).toMatch(/<NAME>email<\/NAME>[\s\S]*?<\/DT>\n<COLLATE>C<\/COLLATE>\n<NNCON>|<NAME>email<\/NAME>[\s\S]*?<\/DT>\n<COLLATE>C<\/COLLATE>\n<\/ATTR>/)
+    expect(model(r.files).flatMap((t) => t.columns).filter((c) => c.collation === 'C').map((c) => c.name)).toEqual(['email', 'code'])
+    const gone = save(r.files, (t) => void delete t[0]!.columns.find((c) => c.name === 'email')!.collation)
+    expect(gone.files[0]!.text.match(/<COLLATE>/g)).toHaveLength(1)
   })
 
   it('writes changed check constraints: a column check that changed becomes a table check', () => {
@@ -1200,6 +1222,19 @@ ${rel('30', 'Customer_Invoice', '<PAIR>\n<KEYID>C1</KEYID>\n<FOREIGNKEYID>I2</FO
       `DO $dbm$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'flag') THEN CREATE DOMAIN flag AS char(1) DEFAULT 'N' CHECK (value IN ('Y','N')); END IF; END $dbm$`,
       'ALTER TABLE "sales"."invoice" ADD COLUMN "paid" flag',
     ])
+  })
+})
+
+describe('the scripts a DeZign project puts around its scripts', () => {
+  it('reads the begin and end database scripts and wraps a script in them', () => {
+    const withScripts = dez.replace('<PROJECTNAME></PROJECTNAME>', '<PROJECTNAME></PROJECTNAME>\n<BEGINDATABASESCRIPT>SET search_path = shop;\nSET client_encoding = &apos;UTF8&apos;;</BEGINDATABASESCRIPT>\n<ENDDATABASESCRIPT>ANALYZE;</ENDDATABASESCRIPT>\n<BEGINALTERDATABASESCRIPT>BEGIN;</BEGINALTERDATABASESCRIPT>\n<ENDALTERDATABASESCRIPT>COMMIT;</ENDALTERDATABASESCRIPT>')
+    const { scripting } = readDezign(withScripts)
+    expect(scripting.around).toEqual({ create: ["SET search_path = shop;\nSET client_encoding = 'UTF8';", 'ANALYZE;'], alter: ['BEGIN;', 'COMMIT;'] })
+    expect(dezignWrapScript('CREATE TABLE a (id int);\n', scripting, 'create')).toBe("SET search_path = shop;\nSET client_encoding = 'UTF8';\n\nCREATE TABLE a (id int);\n\nANALYZE;\n")
+    expect(dezignWrapScript('ALTER TABLE a ADD b int;', scripting, 'alter')).toBe('BEGIN;\n\nALTER TABLE a ADD b int;\n\nCOMMIT;\n')
+    // A project without them changes nothing.
+    expect(readDezign(dez).scripting.around).toBeUndefined()
+    expect(dezignWrapScript('SELECT 1;\n', readDezign(dez).scripting, 'create')).toBe('SELECT 1;\n')
   })
 })
 

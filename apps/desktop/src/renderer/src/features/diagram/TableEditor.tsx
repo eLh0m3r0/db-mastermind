@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { ArrowRight, KeyRound, Plus, RotateCcw, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowRight, ArrowUp, KeyRound, Plus, RotateCcw, Trash2, X } from 'lucide-react'
 import { COMMON_TYPES, designId, type DesignTable, type DriverId, type TableInfo } from '@dbmastermind/core/browser'
 import { Button, IconButton } from '@/components/ui/Button'
 import { Checkbox, Input, Select } from '@/components/ui/Input'
@@ -13,6 +13,7 @@ export function TableEditor({
   table,
   driver,
   allTables: everything,
+  model,
   onChange,
   onRevert,
   onClose,
@@ -20,6 +21,8 @@ export function TableEditor({
   table: DesignTable
   driver: DriverId
   allTables: TableInfo[]
+  /** A model, not a live database: nothing is in the way of what an ALTER could not do (auto-increment on a column that exists). */
+  model?: boolean
   onChange: (table: DesignTable) => void
   onRevert?: () => void
   onClose: () => void
@@ -37,7 +40,7 @@ export function TableEditor({
   const setColumn = (id: string, patch: Partial<DesignTable['columns'][number]>) => {
     const old = table.columns.find((c) => c.id === id)!
     // A column given its own type no longer follows the named type (domain) it had.
-    if (patch.dataType !== undefined && patch.dataType !== old.dataType && old.domain) patch = { ...patch, domain: undefined }
+    if (patch.dataType !== undefined && patch.dataType !== old.dataType && old.domain && !('domain' in patch)) patch = { ...patch, domain: undefined }
     const columns = table.columns.map((c) => (c.id === id ? { ...c, ...patch } : c))
     // Keep keys pointing at renamed columns.
     const rename = (name: string) => (patch.name && name === old.name ? patch.name : name)
@@ -50,6 +53,16 @@ export function TableEditor({
   }
   const togglePk = (name: string, on: boolean) =>
     set({ primaryKey: on ? [...table.primaryKey, name] : table.primaryKey.filter((c) => c !== name) })
+  const moveColumn = (id: string, by: -1 | 1) => {
+    const from = table.columns.findIndex((c) => c.id === id)
+    const to = from + by
+    if (from === -1 || to < 0 || to >= table.columns.length) return
+    const columns = [...table.columns]
+    columns.splice(to, 0, ...columns.splice(from, 1))
+    set({ columns })
+  }
+  // The named types (domains) the model's columns follow, with the type each stands for.
+  const domains = [...new Map(everything.flatMap((t) => t.columns.filter((c) => c.domain).map((c) => [c.domain!, c.dataType] as const))).entries()].sort(([a], [b]) => a.localeCompare(b))
   const types = COMMON_TYPES[driver]
   const textType = types.find((t) => /char|text/i.test(t)) ?? types[0] ?? 'text'
   // Tables are told apart by schema too: "All schemas" can show shop.customers next to xt.customers.
@@ -111,6 +124,12 @@ export function TableEditor({
                   </button>
                   <Input inputSize="sm" className="h-6 flex-1 font-mono text-[12px]" value={c.name} onChange={(e) => setColumn(c.id, { name: e.target.value })} />
                   <Input inputSize="sm" className="h-6 w-[130px] font-mono text-[12px]" list="dbm-types" value={c.dataType} onChange={(e) => setColumn(c.id, { dataType: e.target.value })} />
+                  <IconButton label={tr('Move up')} onClick={() => moveColumn(c.id, -1)}>
+                    <ArrowUp size={12} />
+                  </IconButton>
+                  <IconButton label={tr('Move down')} onClick={() => moveColumn(c.id, 1)}>
+                    <ArrowDown size={12} />
+                  </IconButton>
                   <IconButton
                     label={tr('Delete column')}
                     onClick={() =>
@@ -127,7 +146,7 @@ export function TableEditor({
                 </div>
                 <div className="mt-1 flex items-center gap-3 pl-7">
                   <Checkbox checked={!c.nullable} onChange={(v) => setColumn(c.id, { nullable: !v })} label={<span className="text-[11.5px]">NOT NULL</span>} />
-                  {!c.originalName && (driver !== 'sqlite' || table.primaryKey.includes(c.name)) && (
+                  {(model || !c.originalName) && (driver !== 'sqlite' || table.primaryKey.includes(c.name)) && (
                     <Checkbox checked={!!c.identity} onChange={(v) => setColumn(c.id, { identity: v })} label={<span className="text-[11.5px]">{tr('auto-increment')}</span>} />
                   )}
                   <Input
@@ -138,7 +157,37 @@ export function TableEditor({
                     onChange={(e) => setColumn(c.id, { defaultValue: e.target.value || null })}
                   />
                 </div>
-                {c.originalName && c.originalName !== c.name && <div className="mt-1 pl-7 text-[10.5px] text-fg-faint">{tr('renamed from {name}', { name: c.originalName })}</div>}
+                <div className="mt-1 flex items-center gap-1.5 pl-7">
+                  <Input
+                    inputSize="sm"
+                    className="h-6 flex-1 text-[11.5px]"
+                    placeholder={tr('Comment')}
+                    value={c.comment ?? ''}
+                    onChange={(e) => setColumn(c.id, { comment: e.target.value || null })}
+                    data-testid={`column-comment-${c.name}`}
+                  />
+                  {(domains.length > 0 || c.domain) && (
+                    <Select
+                      inputSize="sm"
+                      className="h-6 w-[130px] text-[11px]"
+                      title={tr('The named type (domain) the column follows')}
+                      value={c.domain ?? ''}
+                      onChange={(e) => {
+                        const picked = domains.find(([name]) => name === e.target.value)
+                        setColumn(c.id, picked ? { domain: picked[0], dataType: picked[1] } : { domain: undefined })
+                      }}
+                    >
+                      <option value="">{tr('own type')}</option>
+                      {c.domain && !domains.some(([name]) => name === c.domain) && <option value={c.domain}>{c.domain}</option>}
+                      {domains.map(([name]) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </div>
+                {!model && c.originalName && c.originalName !== c.name && <div className="mt-1 pl-7 text-[10.5px] text-fg-faint">{tr('renamed from {name}', { name: c.originalName })}</div>}
               </div>
             ))}
           </div>
@@ -204,6 +253,15 @@ export function TableEditor({
                   </Select>
                   {fk.columns.length > 1 && <span>({fk.columns.join(', ')} → {fk.refColumns.join(', ')})</span>}
                 </div>
+                <div className="flex items-center gap-1.5 pl-1 text-[11px] text-fg-muted">
+                  <Input inputSize="sm" className="h-5 min-w-0 flex-1 font-mono text-[11px]" placeholder={tr('Name (optional)')} value={fk.name ?? ''} onChange={(e) => update({ name: e.target.value || undefined })} />
+                  {tr('on update')}
+                  <Select inputSize="sm" className="h-5 w-28 text-[11px]" value={fk.onUpdate ?? 'NO ACTION'} onChange={(e) => update({ onUpdate: e.target.value })}>
+                    {FK_ACTIONS.map((a) => (
+                      <option key={a}>{a}</option>
+                    ))}
+                  </Select>
+                </div>
               </div>
             )
           })}
@@ -214,6 +272,7 @@ export function TableEditor({
             const update = (patch: Partial<typeof ix>) => set({ indexes: table.indexes.map((i) => (i.id === ix.id ? { ...i, ...patch } : i)) })
             return (
               <div key={ix.id} className="mb-1 flex items-center gap-1 rounded-md border border-line bg-bg p-1.5">
+                <Input inputSize="sm" className="h-6 w-[130px] font-mono text-[11.5px]" placeholder={tr('Name (optional)')} value={ix.name ?? ''} onChange={(e) => update({ name: e.target.value || undefined })} />
                 <Input
                   inputSize="sm"
                   className="h-6 flex-1 font-mono text-[12px]"
@@ -225,6 +284,23 @@ export function TableEditor({
                 <IconButton label={tr('Delete index')} onClick={() => set({ indexes: table.indexes.filter((i) => i.id !== ix.id) })}>
                   <Trash2 size={12} />
                 </IconButton>
+              </div>
+            )
+          })}
+        </Section>
+
+        <Section title={tr('Checks')} onAdd={() => set({ checks: [...(table.checks ?? []), { expression: '' }] })}>
+          {(table.checks ?? []).map((check, i) => {
+            const update = (patch: Partial<typeof check>) => set({ checks: (table.checks ?? []).map((c, k) => (k === i ? { ...c, ...patch } : c)) })
+            return (
+              <div key={i} className="mb-1 flex flex-col gap-1 rounded-md border border-line bg-bg p-1.5">
+                <div className="flex items-center gap-1">
+                  <Input inputSize="sm" className="h-6 flex-1 font-mono text-[11.5px]" placeholder={tr('Name (optional)')} value={check.name ?? ''} onChange={(e) => update({ name: e.target.value || undefined })} />
+                  <IconButton label={tr('Delete check')} onClick={() => set({ checks: (table.checks ?? []).filter((_, k) => k !== i) })}>
+                    <Trash2 size={12} />
+                  </IconButton>
+                </div>
+                <Input inputSize="sm" className="h-6 font-mono text-[12px]" placeholder={tr('Condition, e.g. price >= 0')} value={check.expression} onChange={(e) => update({ expression: e.target.value })} data-testid={`check-condition-${i}`} />
               </div>
             )
           })}

@@ -105,6 +105,17 @@ export interface DezignScripting {
   uniqueConstraints: string[]
   /** The names of its unique indexes, lower case. Anything else unique in the model is saved, and made, as a constraint. */
   uniqueIndexes: string[]
+  /**
+   * SQL the project puts at the start and at the end of every script DeZign generates from it (Project options:
+   * "begin/end database script"), for a CREATE script and for an ALTER script: `[begin, end]`.
+   */
+  around?: { create: [string, string]; alter: [string, string] }
+}
+
+/** A script with what the DeZign project wants before and after it (see `DezignScripting.around`). */
+export function dezignWrapScript(script: string, scripting: DezignScripting | undefined, kind: 'create' | 'alter'): string {
+  const [begin, end] = scripting?.around?.[kind] ?? ['', '']
+  return [begin, script.trim(), end].filter((part) => part.trim()).join('\n\n') + (script.endsWith('\n') || end.trim() ? '\n' : '')
 }
 
 /** The options for a script or migration of a DeZign project's model, for `driver`: names as DeZign's scripts have them. */
@@ -313,6 +324,11 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const nameTemplates: Record<string, string> = {}
   for (const holder of [kid(dict, 'DDSETTINGS'), kid(projectSettings, 'NAMETEMPLATES')]) for (const s of kids(holder)) if (/NAMETEMPLATE$/.test(s.tag) && text(holder, s.tag)) nameTemplates[s.tag] = text(holder, s.tag)
   const convertDomains = text(kid(dict, 'DDSETTINGS'), 'CONVERTDOMAINS') === '1' || text(kid(projectSettings, 'GenDB_Options'), 'CONVERTDOMAINS') === '1'
+  const common = kid(projectSettings, 'COMMONSETTINGS')
+  const around = {
+    create: [text(common, 'BEGINDATABASESCRIPT'), text(common, 'ENDDATABASESCRIPT')] as [string, string],
+    alter: [text(common, 'BEGINALTERDATABASESCRIPT'), text(common, 'ENDALTERDATABASESCRIPT')] as [string, string],
+  }
   const anyKey = kids(kid(dict, 'ENTITIES'), 'ENT').map((e) => text(kid(e, 'PKCON'), 'NAMETEMPLATE')).find(Boolean)
   const uniqueConstraints: string[] = []
   const uniqueIndexes: string[] = []
@@ -350,6 +366,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
         isIdentity: text(dt, 'AN') === '1',
         comment: text(attr, 'DESC') || null,
         ...(domain && text(domain, 'NAME') ? { domain: text(domain, 'NAME') } : {}),
+        ...(text(attr, 'COLLATE') ? { collation: text(attr, 'COLLATE') } : {}),
       }
     })
     const primaryKey = pkIds.map((id) => columnNames.get(id)).filter((c): c is string => !!c)
@@ -512,7 +529,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const positions = main?.positions ?? {}
   const layout = { diagramId: mainId, ...(main?.layout ?? { originX: 0, originY: 0, scaleX: 1, scaleY: 1 }) }
 
-  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, diagrams: described, sqlObjects, domains: domainList.map(({ name, dataType }) => ({ name, dataType })), scripting: { primaryKeys, domains: convertDomains ? [] : domainList, uniqueConstraints, uniqueIndexes }, nameTemplates, leftOut }
+  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, diagrams: described, sqlObjects, domains: domainList.map(({ name, dataType }) => ({ name, dataType })), scripting: { primaryKeys, domains: convertDomains ? [] : domainList, uniqueConstraints, uniqueIndexes, ...([...around.create, ...around.alter].some(Boolean) ? { around } : {}) }, nameTemplates, leftOut }
 }
 
 const PROJECT_SECTIONS: [folder: string, element: string][] = [

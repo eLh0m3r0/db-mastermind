@@ -375,10 +375,9 @@ Not a clone: their features, rethought and connected to live databases, the know
   relationship between existing tables, a renamed foreign key and index, a moved table, a note and a color, a
   new diagram, all of it at once, and projects made from scratch for PostgreSQL, SQL Server and MySQL) is opened
   in DeZign and saved there again with "Save project as"; what DeZign wrote is read back and compared with what
-  we wrote (`DBM_DEZ_KIT_BACK`). On a model DeZign 14.9.3 wrote: all 18 files of the kit open and come back as
-  the same model; a DeZign 6 model is converted by DeZign and comes back the same (first files checked).
-  Still to run: the renamed foreign key and index file, the rest of the older-format kit, folder projects.
-  DeZign found what reading back could not:
+  we wrote (`DBM_DEZ_KIT_BACK`). Every file opens and comes back as the same model: the kit made from a model
+  DeZign 14.9.3 wrote, the kit made from a DeZign 6 model (DeZign converts it when it opens it), and a folder
+  project as it is and after edits. DeZign found what reading back could not:
   - an empty number (`<HEADERCOLOR></HEADERCOLOR>` of a new table on a diagram) stops the whole project from
     opening ("'' is not a valid integer value"); the shape test now also learns which values are always numbers
   - DeZign makes names from their templates again when it opens a project: a typed name of an index, a
@@ -424,6 +423,14 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ DBML `TablePartial` (reusable column sets, e.g. audit columns) with `~name` injection
 - ✅ Blocks the model does not hold (Project, notes, Records, TablePartial) stay as written when the model is
   rewritten from the canvas or by a fix
+- ✅ What a DeZign project says about its scripts beyond names: a column's collation (`[collate: '…']` in the
+  model, `COLLATE` in the script, read from and written to the project; left out when the script is translated
+  for another database) and the project's begin and end database scripts, put around the CREATE script for the
+  project's own database and around the ALTER script
+- ✅ The table panel of the diagram edits what used to need the text: a column's comment, its place among the
+  columns, the named type (domain) it follows, auto-increment; the names of foreign keys and indexes, ON UPDATE;
+  check constraints. It opens for a model with no database connected (e2e/flow96: a DeZign model edited in the
+  panel and saved back into its file)
 - ⬜ Custom properties on tables and columns; DeZign attribute packages as `TablePartial`
 - ⬜ Views, sequences, triggers and procedures edited in the model (a DeZign project's are carried into the DDL
   as they are; a model made here has none yet)

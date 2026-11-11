@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ArrowRight, GitCompare, Minus, Pencil, Plus } from 'lucide-react'
-import { compareSchemas, dezignMigrationOptions, findChangedChecks, generateMigration, getDialect, migrationScript, parseDbml, translateTables, unquotedNames, type SchemaChange, type SchemaSnapshot } from '@dbmastermind/core/browser'
+import { compareSchemas, dezignMigrationOptions, dezignWrapScript, findChangedChecks, generateMigration, getDialect, migrationScript, parseDbml, translateTables, unquotedNames, type SchemaChange, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Checkbox, Select } from '@/components/ui/Input'
@@ -99,7 +99,8 @@ export function CompareView({ tab }: { tab: CompareTab }) {
     if (!target || !snapshots || !selected.length) return ''
     const dialect = getDialect(target.driver)
     // A DeZign project names its keys its own way (`PK_%table%`) and keeps its domains as types: the script follows.
-    return migrationScript(generateMigration(selected, dialect, snapshots.target.tables, dezignMigrationOptions(tab.sourceScripting, target.driver)), dialect)
+    // Its own begin and end scripts for ALTER scripts go around it (Project options in DeZign).
+    return dezignWrapScript(migrationScript(generateMigration(selected, dialect, snapshots.target.tables, dezignMigrationOptions(tab.sourceScripting, target.driver)), dialect), tab.sourceScripting, 'alter')
   }, [selected, target, snapshots])
 
   const pickConnection = (id: string, side: 'source' | 'target') =>
