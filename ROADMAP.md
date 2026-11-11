@@ -361,6 +361,9 @@ Not a clone: their features, rethought and connected to live databases, the know
   the edited model (a mismatch writes nothing), the files as they were are copied to `<data>/dezign-backups`
 - ✅ A project that changed on disk since it was opened (a colleague, Git, DeZign) is not overwritten
 - ⬜ Verified in DeZign: open saved files of every kind of edit (14-day trial on Windows, or a colleague's license).
+  The files are ready to hand over: `DBM_DEZ_KIT_FROM=<a model DeZign wrote> DBM_DEZ_KIT_TO=<folder>` with
+  `packages/core/test/dezign-kit.test.ts` writes one file per kind of edit, three projects made from scratch and
+  a checklist of what to look for in each.
   Unknown until then: whether DeZign accepts the straight connector of a new relationship, GUID ids next to its
   own id style, and character references for letters outside the file's code page
 - ⬜ Subtype clusters and the domains themselves edited from the model (today they are kept as they are)
