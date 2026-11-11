@@ -170,7 +170,7 @@ const normType = (s: string) => lower(s).replace(/\s+/g, ' ').replace(/\s*,\s*/g
 const normText = (s: string | null | undefined) => (s ?? '').replace(/\r\n?/g, '\n').trim()
 const indexKey = (ix: { unique: boolean; columns: string[] }) => `${ix.unique ? 'u' : 'i'}:${ix.columns.map(lower).join(',')}`
 
-function codec(encoding: DezignEncoding, nl: string) {
+export function codec(encoding: DezignEncoding, nl: string) {
   const decoder = dezignDecoder(encoding)
   const toByte = new Map<string, string>()
   if (encoding !== 'utf-8') {

@@ -35,4 +35,7 @@ Good to know:
 - For a private model: run the container with `--network none`, pass project folders instead of files
   (`roundtrip.sh` then keeps only the object counts of the object browser and the dialogs), compare without
   `DBM_DEZ_DEBUG`, and remove the container afterwards.
+- Attribute packages are kept in DeZign's installation, not in the project: a project that uses them asks, in a
+  DeZign without those packages, whether to delete the columns that come from them. `ANSWER_NO=1` before
+  `roundtrip.sh` answers No.
 - Emulation is slow: a model takes one to two minutes.

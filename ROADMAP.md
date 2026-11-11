@@ -399,6 +399,11 @@ Not a clone: their features, rethought and connected to live databases, the know
   files of DeZign 4 to 11 get their id counters (`LASTID`, `ATTRLASTID`, …) moved on with new objects
 - ⬜ Subtype clusters and the domains themselves edited from the model (today they are kept as they are)
 
+- ✅ Archive a version (the model's "Archive version…", as DeZign's File → Versions → Archive current version): the
+  project as it is saved is kept in it, in a single file as another VERSION element, in a folder project as a
+  file in `archived versions`; numbered past the project's own. Byte for byte what DeZign 14.9.3 writes for the
+  same model (project path apart), and DeZign lists the versions made here next to its own. Teams that let
+  DeZign archive a version with every ALTER script keep doing so from here
 - ✅ Compare with a version archived in the project ("Compare with version…" lists them, newest first): the
   changes since then and the ALTER script for the model's database. DeZign sells this in its top edition only
 - ✅ A model made here goes the other way too: Save as… offers a new DeZign project (`.dez`, format 140, for the

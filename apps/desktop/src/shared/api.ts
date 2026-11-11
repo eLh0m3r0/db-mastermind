@@ -639,9 +639,14 @@ export interface MastermindApi {
   listModelVersions(path: string): Promise<ModelVersion[]>
   /** An archived version as a DBML model. */
   openModelVersion(path: string, id: string): Promise<{ text: string }>
+  /**
+   * Archives the DeZign project as it is saved now (DeZign's File → Versions → Archive current version). `hash`
+   * is the model the tab opened or last saved: a project that changed on disk since is not archived.
+   */
+  archiveModelVersion(path: string, request: { label?: string; comments?: string; hash: string }): Promise<{ number: number; label: string }>
   /** Files the app was started with (command line, double-click); each is handed out once. */
   takeOpenedFiles(): Promise<string[]>
-  /** Writes an edited model back into the DeZign project it came from (draft: see ROADMAP 8.2). */
+  /** Writes an edited model back into the DeZign project it came from. */
   saveDezignModel(request: DezignSaveRequest): Promise<DezignSaveOutcome>
   importDdlFile(): Promise<{ path: string; dbml: string; skipped: { sql: string; error: string }[] } | null>
   /** A data file opens in the built-in DuckDB with a first SELECT; a SQLite/DuckDB database file as its own connection (`database`). */
@@ -792,6 +797,7 @@ export const API_METHODS = [
   'takeOpenedFiles',
   'listModelVersions',
   'openModelVersion',
+  'archiveModelVersion',
   'importDdlFile',
   'saveSqlFile',
   'saveImageFile',

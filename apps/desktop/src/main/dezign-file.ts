@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { copyFile, mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative } from 'node:path'
 import { app } from 'electron'
-import { assembleDezignProject, dezignDatabaseFor, listDezignVersions, newDezignProject, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '@dbmastermind/core'
+import { archiveDezignVersion, assembleDezignProject, dezignDatabaseFor, listDezignVersions, newDezignProject, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '@dbmastermind/core'
 import type { DezignSaveOutcome, DezignSaveRequest, ModelExportLayout, ModelVersion, OpenedModelFile } from '@shared/api'
 import { dataPath } from './storage'
 import { paletteFill, paletteIndex } from './palette'
@@ -196,6 +196,35 @@ export async function listModelVersions(path: string): Promise<ModelVersion[]> {
   }
   const order = (v: ModelVersion) => `${v.date} ${v.number.padStart(8, '0')}`
   return versions.sort((a, b) => (order(a) < order(b) ? 1 : -1))
+}
+
+/** Archives the project as it is on disk now: a single file gets the copy inside it (backed up first), a folder project a file. */
+export async function archiveModelVersion(path: string, request: { label?: string; comments?: string; hash: string }): Promise<{ number: number; label: string }> {
+  const ext = extname(path).toLowerCase()
+  if (ext !== '.dez' && ext !== '.dezproj') throw new Error('Not a DeZign for Databases model')
+  const project = isProject(path)
+  const files = await load(path)
+  const { model, fallbackEncoding } = read(files, project)
+  // A version is of the model the user has seen: not of one a colleague or DeZign changed in the meantime.
+  if (fingerprint(toDbml(model.tables)) !== request.hash) throw new Error('The DeZign file changed on disk since this model was opened or saved. Open it again before archiving a version.')
+  const existing = project ? (await listModelVersions(path)).map((v) => Number(v.number)).filter((n) => Number.isFinite(n)) : []
+  const result = archiveDezignVersion(files, { label: request.label, comments: request.comments, encoding: model.encoding, fallbackEncoding }, existing)
+  const dir = dirname(path)
+  if (!project) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    const backup = dataPath('dezign-backups', `${stamp} ${basename(path, extname(path))}`)
+    await mkdir(backup, { recursive: true })
+    await copyFile(path, join(backup, basename(path)))
+  }
+  for (const file of result.files) {
+    const target = project ? join(dir, file.path) : path
+    await mkdir(dirname(target), { recursive: true })
+    const temp = `${target}.dbm-saving`
+    await writeFile(temp, file.text, 'latin1')
+    await rename(temp, target)
+  }
+  const label = listDezignVersions(result.files[0]!.text, { encoding: model.encoding }).find((v) => v.number === String(result.number))?.label ?? ''
+  return { number: result.number, label }
 }
 
 /** An archived version of a DeZign project as a DBML model. */

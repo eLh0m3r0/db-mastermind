@@ -68,6 +68,14 @@ try {
   const names = [...saved.matchAll(/<ATTR>\n<NAME>([^<]*)/g)].map((m) => m[1]).slice(0, 4).join(',')
   console.log('in the DeZign file:', names, /<DESC>P\xf8ihla\xb9ovac\xed e-mail<\/DESC>|<DESC>P.ihla.ovac. e-mail<\/DESC>/.test(saved), /<NAME>credit_not_negative<\/NAME>/.test(saved), /<VALUE>credit &gt;= 0<\/VALUE>/.test(saved), /<NAME>customer_by_email<\/NAME>/.test(saved))
 
+  // A version of the project, as DeZign archives one: listed in the file, and a later save still works.
+  await win.getByTestId('model-archive-version').click()
+  await win.getByRole('button', { name: 'Archive', exact: true }).click()
+  await win.getByText('Archived as version 1').waitFor({ timeout: 10000 })
+  const versions = await win.evaluate((path) => window.mastermind.api.listModelVersions(path), dez)
+  const archived = readFileSync(dez, 'latin1')
+  console.log('archived version:', JSON.stringify(versions.map((v) => [v.number, v.label.startsWith('Version ')])), (archived.match(/<VERSION>/g) ?? []).length === 2, /<\/VERSION><VERSION>\n<VERSIONINFO>\n<VERSIONID>[0-9A-F-]{36}<\/VERSIONID>/.test(archived))
+
   // The project's begin and end scripts go around the DDL made for its own database.
   await win.getByRole('button', { name: /^SQL DDL/ }).click()
   await win.getByText('PostgreSQL', { exact: true }).last().click()

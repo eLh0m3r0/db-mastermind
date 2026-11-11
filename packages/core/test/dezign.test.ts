@@ -3,7 +3,7 @@ import { diagramsAsLoaded, mutate, mutateDiagrams, random } from './dezign-fuzz.
 
 // More chains for a long local run: DBM_FUZZ_CHAINS=500 npx vitest run --root packages/core test/dezign.test.ts
 const CHAINS = Number(process.env.DBM_FUZZ_CHAINS) || 0
-import { applyDezignSave, assembleDezignProject, compareSchemas, createScript, detectDezignEncoding, dezignDriver, dezignIntegrity, dezignMigrationOptions, dezignWrapScript, generateMigration, getDialect, unquotedNames, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
+import { applyDezignSave, archiveDezignVersion, assembleDezignProject, compareSchemas, createScript, detectDezignEncoding, dezignDriver, dezignFolderAsVersion, dezignIntegrity, dezignMigrationOptions, dezignWrapScript, generateMigration, getDialect, unquotedNames, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 // Hand-written models in DeZign's layout (no file from a real project is kept in the repository).
 const attr = (id: string, name: string, type: string, extra = '', more = '') =>
@@ -386,6 +386,47 @@ describe('saving back into a DeZign project', () => {
     return b.split('\n').filter((l) => !before.has(l))
   }
   const column = (name: string, dataType: string, more: Partial<TableInfo['columns'][number]> = {}) => ({ name, ordinal: 99, dataType, nullable: true, isPrimaryKey: false, isIdentity: false, ...more })
+
+  // What DeZign archives of a folder project, and what it writes for "Save project as → Single file".
+  it('turns a folder project into the one VERSION element of a single-file project, holding the same model', () => {
+    const version = dezignFolderAsVersion(folder, '<VERSIONINFO>\n<VERSIONNUMBER>3</VERSIONNUMBER>\n</VERSIONINFO>')
+    expect(version.startsWith('<VERSION>\r\n<VERSIONINFO>\r\n<VERSIONNUMBER>3</VERSIONNUMBER>\r\n</VERSIONINFO>\r\n<PROJECTSETTINGS>')).toBe(true)
+    const single = readDezign(`<?xml version="1.0" encoding="iso-8859-1"?><dezign>\r\n${version}</dezign>`, { archived: 0 })
+    const assembled = readDezign(assembleDezignProject(folder))
+    expect(single.tables).toEqual(assembled.tables)
+    expect(single.positions).toEqual(assembled.positions)
+    expect(single.targetDatabase).toBe('postgresql16')
+    expect(dezignIntegrity(`<dezign>\n${version}</dezign>`)).toEqual([])
+    // A part of the project that is not known here stops it: a snapshot that leaves something out is no snapshot.
+    expect(() => dezignFolderAsVersion([...folder, { path: 'data dictionary/somethingnew/x.xml', text: xml('<X>\n</X>') }])).toThrow(/somethingnew/)
+  })
+
+  // As DeZign 14.9.3 archives (checked byte for byte against its own files, project path apart).
+  it('archives the project as a version DeZign lists, and it reads back as the model it was', () => {
+    // (The fixture already has version 1.)
+    const one = archiveDezignVersion(single, { label: 'Před úpravami', comments: 'Řádek 1\nŘádek 2 & další', date: '2026-11-11 18:00:00', id: 'V-1' })
+    expect(one.number).toBe(2)
+    const text = one.files[0]!.text
+    expect(text).toMatch(/<\/VERSION><VERSION>\n<VERSIONINFO>\n<VERSIONID>V-1<\/VERSIONID>\n<VERSIONNUMBER>2<\/VERSIONNUMBER>/)
+    const listed = listDezignVersions(text)
+    expect(listed).toContainEqual({ number: '2', label: 'Před úpravami', date: '2026-11-11 18:00:00', comments: 'Řádek 1\nŘádek 2 & další' })
+    // The working model stays what it was; the archived one is a copy of it.
+    expect(readDezign(text).tables).toEqual(readDezign(single[0]!.text).tables)
+    expect(readDezign(text, { archived: listed.findIndex((v) => v.number === '2') }).tables).toEqual(readDezign(single[0]!.text).tables)
+    const two = archiveDezignVersion([{ path: 'shop.dez', text }], { date: '2026-11-12 09:30:00', id: 'V-2' })
+    expect(two.number).toBe(3)
+    expect(listDezignVersions(two.files[0]!.text).map((v) => v.number).sort()).toEqual(['1', '2', '3'])
+    expect(dezignIntegrity(two.files[0]!.text)).toEqual(dezignIntegrity(single[0]!.text))
+
+    // A folder project: a file of its own in "archived versions", numbered past the ones it has.
+    const f = archiveDezignVersion(folder, { date: '2026-11-11 18:00:00', id: 'V-3' }, [1, 4])
+    expect(f.number).toBe(5)
+    expect(f.files.map((x) => x.path)).toEqual(['archived versions/V-3.xml'])
+    const body = f.files[0]!.text
+    expect(body.startsWith('<?xml version="1.0" encoding="iso-8859-1"?><VERSION>\r\n<VERSIONINFO>')).toBe(true)
+    expect(listDezignVersions(body)[0]).toMatchObject({ number: '5', label: 'Version 2026-11-11 18:00:00' })
+    expect(readDezign(`<dezign>\n${body.replace(/^<\?xml[^>]*\?>/, '')}\n</dezign>`, { archived: 0 }).tables).toEqual(readDezign(assembleDezignProject(folder)).tables)
+  })
 
   it('writes nothing when the model was not edited', () => {
     expect(save(single, () => {})).toEqual({ files: [], deleted: [], changes: [] })

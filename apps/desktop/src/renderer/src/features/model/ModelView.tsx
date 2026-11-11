@@ -4,7 +4,7 @@ import { bracketMatching, StreamLanguage } from '@codemirror/language'
 import { Compartment, EditorState } from '@codemirror/state'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
-import { AlertTriangle, Database, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare, Plus } from 'lucide-react'
+import { AlertTriangle, Archive, Database, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare, Plus } from 'lucide-react'
 import { checkModel, createScript, dezignDriver, dezignMigrationOptions, dezignWrapScript, fixModelIssue, unquotedNames, getDialect, parseDbml, toDbml, updateModelFromDatabase, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
@@ -293,6 +293,32 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     ])
   }
 
+  /**
+   * Archives the DeZign project as saved (DeZign's File → Versions): the version DeZign lists, and the one a later
+   * "Compare with version…" makes the ALTER script from. Unsaved edits are not in the file, so it is saved first.
+   */
+  const archiveVersion = async () => {
+    const source = tab.source
+    if (!source) return
+    if (tab.dirty) return toast({ kind: 'info', message: t('Save the model first: a version holds the project as it is saved') })
+    const now = new Date()
+    const two = (n: number) => String(n).padStart(2, '0')
+    const stamp = `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())} ${two(now.getHours())}:${two(now.getMinutes())}`
+    const label = await askText({
+      title: t('Archive a version of {file}', { file: source.path.split(/[\\/]/).pop() ?? '' }),
+      message: t('The project as it is saved now is kept in it as a version, as DeZign keeps one: listed under File → Versions there, and under Compare with version… here.'),
+      value: t('Version {date}', { date: stamp }),
+      confirmLabel: t('Archive'),
+    })
+    if (!label) return
+    try {
+      const done = await api.archiveModelVersion(source.path, { label, hash: source.hash })
+      toast({ kind: 'success', message: t('Archived as version {n}', { n: String(done.number) }), detail: done.label })
+    } catch (err) {
+      toast({ kind: 'error', message: t('Could not archive the version'), detail: errorMessage(err) })
+    }
+  }
+
   /** An empty model starts with one table open in the designer: nobody has to know DBML to begin. */
   const addFirstTable = () => {
     replaceText('Table table_1 {\n  id integer [pk, increment]\n  name varchar(100) [not null]\n}\n', { dirty: true, startDesign: `${liveSchema?.defaultSchema ?? ''}.table_1` } as Partial<ModelTab>)
@@ -535,6 +561,11 @@ export function ModelView({ tab }: { tab: ModelTab }) {
         >
           {tab.source ? t('Compare with version…') : t('Compare with file…')}
         </Button>
+        {tab.source && (
+          <Button size="sm" variant="ghost" icon={<Archive size={13} />} onClick={() => void archiveVersion()} title={t('Keep the project as it is saved now as a version, as DeZign does')} data-testid="model-archive-version">
+            {t('Archive version…')}
+          </Button>
+        )}
       </div>
       <div className="flex min-h-0 flex-1">
         <div style={{ width }} className="flex min-w-[260px] shrink-0 flex-col">
