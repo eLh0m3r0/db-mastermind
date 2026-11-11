@@ -130,13 +130,15 @@ async function exercise(svc: DatabaseService, n: number, model: { tables: TableI
     let current = live
     let serial = 0
     const rounds = Number(process.env.DBM_DEZ_ROUNDS) || 6
-    const totals = { statements: 0, failed: 0, left: 0, error: '' }
+    const totals = { statements: 0, checks: 0, failed: 0, left: 0, error: '' }
     const checked = new Set(tables.flatMap((t) => (t.checks ?? []).flatMap((c) => [...(c.column ? [c.column] : []), ...(c.expression.match(/[A-Za-z_][\w$]*/g) ?? [])])))
     for (let round = 0; round < rounds && !totals.failed && !totals.left; round++) {
       const edits = Array.from({ length: Number(process.env.DBM_DEZ_EDITS) || 12 }, () => mutate(edited, rnd, serial++))
       for (const t of edited) for (const f of t.foreignKeys) f.refSchema = edited.find((x) => x.name === f.refTable)?.schema
       sensible(edited, current, checked)
-      const migration = generateMigration(compareSchemas(edited, current, { keepExtra: false }), getDialect(driver), current)
+      const planned = compareSchemas(edited, current, { keepExtra: false })
+      totals.checks += planned.filter((c) => c.kind === 'add_check' || c.kind === 'drop_check').length
+      const migration = generateMigration(planned, getDialect(driver), current)
       const ran = migration.statements.length ? await svc.runScript(config.id, migrationScript(migration, getDialect(driver)), { continueOnError: true }) : []
       const failed = ran.filter((o) => o.error)
       const after = (await svc.schema(config.id, true)).tables.filter(mine)
@@ -154,7 +156,7 @@ async function exercise(svc: DatabaseService, n: number, model: { tables: TableI
       current = after
     }
     const fine = !totals.failed && !totals.left
-    report(`#${n + 1} altered: rounds=${rounds} statements=${totals.statements} failed=${totals.failed} left=${totals.left} ${fine ? 'ok' : `PROBLEM ${totals.error}`}`)
+    report(`#${n + 1} altered: rounds=${rounds} statements=${totals.statements} (checks added or dropped: ${totals.checks}) failed=${totals.failed} left=${totals.left} ${fine ? 'ok' : `PROBLEM ${totals.error}`}`)
     if (!fine && driver === native) failures.push(`#${n + 1} altered`)
   }
   await svc.disconnect(config.id)

@@ -1,6 +1,7 @@
 import { rmSync } from 'node:fs'
 import { afterAll, describe, expect, it } from 'vitest'
 import {
+  compareSchemas,
   DatabaseService,
   designId,
   diffTables,
@@ -10,6 +11,7 @@ import {
   migrationScript,
   toDesignTable,
   type DesignTable,
+  type TableInfo,
 } from '../src/index.js'
 import { engines, setupEngine, skip, tmp } from './fixtures.js'
 
@@ -96,6 +98,37 @@ for (const engine of engines.filter((e) => e.id !== 'duckdb')) {
 
         // Clean up so other suites start fresh.
         await svc.runScript(config.id, `DROP TABLE ${svc.qualifiedName(config.id, { schema: engine.schema, name: 'payments' })}`)
+      } finally {
+        await svc.disconnectAll()
+      }
+    })
+
+    // The databases whose catalog says which checks a table has.
+    it.skipIf(!['postgres', 'mysql', 'mssql'].includes(engine.id))('adds and drops check constraints by name', async () => {
+      const svc = new DatabaseService()
+      try {
+        const config = await setupEngine(svc, engine)
+        const dialect = getDialect(engine.id)
+        const customers = async () => findTable(await svc.schema(config.id, true), { schema: engine.schema, name: 'customers' })!
+        const run = async (model: TableInfo, database: TableInfo) => {
+          const migration = generateMigration(compareSchemas([model], [database]), dialect, [database])
+          const failed = (await svc.runScript(config.id, migrationScript(migration, dialect))).find((o) => o.error)
+          expect(failed?.error?.message, failed?.sql).toBeUndefined()
+          return migration.statements
+        }
+        const before = await customers()
+        expect(before.checks).toBeDefined()
+        // A named check and one without a name: the database gives the second a name of its own.
+        const model: TableInfo = { ...before, checks: [...before.checks!, { name: 'dbm_name_filled', expression: "name <> ''" }, { expression: "email <> ''" }] }
+        expect(await run(model, before)).toHaveLength(2)
+        const added = await customers()
+        expect(added.checks!.map((c) => c.name)).toContain('dbm_name_filled')
+        expect(added.checks).toHaveLength(before.checks!.length + 2)
+        // The model and the database now agree, however the database spells the conditions.
+        expect(compareSchemas([model], [added])).toEqual([])
+        // Checks the model no longer has leave the database.
+        expect(await run(before, added)).toHaveLength(2)
+        expect((await customers()).checks).toHaveLength(before.checks!.length)
       } finally {
         await svc.disconnectAll()
       }

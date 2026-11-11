@@ -516,6 +516,24 @@ export class MssqlDriver implements DatabaseDriver {
       entry.refColumns.push(String(fk.ref_col))
     }
 
+    // Check constraints, as conditions without the parentheses SQL Server wraps them in.
+    try {
+      const checks = await this.rows(
+        `SELECT s.name AS s, t.name AS t, cc.name AS name, cc.definition AS def
+           FROM sys.check_constraints cc
+           JOIN sys.tables t ON t.object_id = cc.parent_object_id
+           JOIN sys.schemas s ON s.schema_id = t.schema_id
+          ORDER BY s.name, t.name, cc.name`,
+      )
+      for (const t of byKey.values()) if (t.type === 'table') t.checks = []
+      for (const row of checks) {
+        const def = String(row.def ?? '')
+        byKey.get(key(row.s, row.t))?.checks?.push({ name: String(row.name), expression: /^\(.*\)$/s.test(def) ? def.slice(1, -1) : def })
+      }
+    } catch {
+      for (const t of byKey.values()) delete t.checks
+    }
+
     return {
       database: meta[0]?.db ? String(meta[0].db) : undefined,
       defaultSchema: meta[0]?.sch ? String(meta[0].sch) : 'dbo',

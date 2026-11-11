@@ -683,6 +683,8 @@ export const cs: Record<string, string> = {
   'Drop foreign key': 'Smazat cizí klíč',
   'Add index': 'Přidat index',
   'Drop index': 'Smazat index',
+  'Add check': 'Přidat kontrolu',
+  'Drop check': 'Smazat kontrolu',
   'Primary key': 'Primární klíč',
   'Rename table': 'Přejmenovat tabulku',
   'Change table comment': 'Změnit komentář tabulky',

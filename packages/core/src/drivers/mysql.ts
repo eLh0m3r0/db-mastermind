@@ -551,6 +551,27 @@ export class MysqlDriver implements DatabaseDriver {
       entry.refColumns.push(String(fk.ref_col))
     }
 
+    // Check constraints (MySQL 8.0.16 and later; MariaDB names them per table and is left out here).
+    if (!columns.some((c) => /mariadb/i.test(String(c.ver ?? '')))) {
+      try {
+        const checks = await this.rows(
+          `SELECT tc.TABLE_SCHEMA AS s, tc.TABLE_NAME AS t, tc.CONSTRAINT_NAME AS name, cc.CHECK_CLAUSE AS clause
+             FROM information_schema.TABLE_CONSTRAINTS tc
+             JOIN information_schema.CHECK_CONSTRAINTS cc ON cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+            WHERE tc.CONSTRAINT_TYPE = 'CHECK' AND tc.TABLE_SCHEMA IN (${inList})
+            ORDER BY tc.TABLE_SCHEMA, tc.TABLE_NAME, tc.CONSTRAINT_NAME`,
+          schemas,
+        )
+        for (const t of byKey.values()) if (t.type === 'table') t.checks = []
+        for (const row of checks) {
+          const clause = String(row.clause ?? '')
+          byKey.get(key(row.s, row.t))?.checks?.push({ name: String(row.name), expression: /^\(.*\)$/s.test(clause) ? clause.slice(1, -1) : clause })
+        }
+      } catch {
+        for (const t of byKey.values()) delete t.checks
+      }
+    }
+
     return {
       database: currentDb,
       defaultSchema: currentDb,

@@ -540,6 +540,26 @@ export class PostgresDriver implements DatabaseDriver {
         constraint: ix.is_constraint,
       })
     }
+    // Check constraints, as conditions without their CHECK ( … ) wrapping. A catalog that can't tell leaves
+    // `checks` unset, which a compare reads as "unknown" rather than "none".
+    try {
+      const checks = await pool.query<{ schema: string; table: string; name: string; def: string }>(
+        `SELECT n.nspname AS schema, c.relname AS table, con.conname AS name, pg_get_constraintdef(con.oid, true) AS def
+           FROM pg_constraint con
+           JOIN pg_class c ON c.oid = con.conrelid
+           JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE con.contype = 'c' AND con.conislocal AND ${SYSTEM_SCHEMA_FILTER}${schemaFilter}
+          ORDER BY n.nspname, c.relname, con.conname`,
+        params,
+      )
+      for (const t of byKey.values()) if (t.type === 'table') t.checks = []
+      for (const row of checks.rows) {
+        const expression = /^CHECK \((.*)\)(?: NOT VALID| NO INHERIT)*$/s.exec(row.def)?.[1]
+        if (expression) byKey.get(key(row.schema, row.table))?.checks?.push({ name: row.name, expression })
+      }
+    } catch {
+      for (const t of byKey.values()) delete t.checks
+    }
     const routineInfos: RoutineInfo[] = routines.rows.map((r) => ({
       schema: r.schema,
       name: r.name,

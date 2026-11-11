@@ -30,5 +30,9 @@ export function describeChange(c: SchemaChange, t: ReturnType<typeof useT>): { i
       return { icon: 'edit', text: `${t('Rename table')} → ${c.newName}` }
     case 'set_table_comment':
       return { icon: 'edit', text: t('Change table comment') }
+    case 'add_check':
+      return { icon: 'add', text: `${t('Add check')} ${c.check.name ?? c.check.expression}` }
+    case 'drop_check':
+      return { icon: 'drop', text: `${t('Drop check')} ${c.name}` }
   }
 }

@@ -55,7 +55,7 @@ export interface DesignTable {
   primaryKey: string[]
   foreignKeys: DesignForeignKey[]
   indexes: DesignIndex[]
-  /** Check constraints: created with a new table; changes to an existing table's checks are not migrated yet. */
+  /** Check constraints: created with a new table; on an existing table added and dropped by name (see `diffTable`). */
   checks?: CheckInfo[]
   /** Diagram position, kept with the draft. */
   position?: { x: number; y: number }
@@ -82,6 +82,9 @@ export type SchemaChange =
   | { kind: 'drop_index'; table: TableRef; name: string; before: IndexInfo }
   | { kind: 'set_primary_key'; table: TableRef; columns: string[]; before: string[] }
   | { kind: 'set_table_comment'; table: TableRef; comment: string | null }
+  /** `columns` are the table's columns once the migration is through (a condition names them). */
+  | { kind: 'add_check'; table: TableRef; check: CheckInfo; columns: string[] }
+  | { kind: 'drop_check'; table: TableRef; name: string; before: CheckInfo }
 
 export interface MigrationWarning {
   level: 'danger' | 'warning' | 'info'
@@ -275,6 +278,26 @@ export function diffTable(original: TableInfo | undefined, draftIn: DesignTable)
     const before = ix.originalName ? original.indexes.find((x) => x.name === ix.originalName) : undefined
     if (!before || !same(ix.columns, before.columns) || ix.unique !== before.unique) changes.push({ kind: 'add_index', table: current, index: draftIn.indexes[i]! })
   })
+
+  // Check constraints go by name. A database stores a condition rewritten its own way (`x IN ('A','B')` comes
+  // back as `x = ANY (ARRAY[…])`), so two conditions can't be compared as text: a check of the same name is the
+  // same check. A check the model does not name stands for any one check of the database the model does not
+  // name either. Only where the database says which checks it has (`checks` set).
+  if (original.checks) {
+    const wanted = draftIn.checks ?? []
+    const live = new Map(original.checks.map((c) => [(c.name ?? '').toLowerCase(), c]))
+    const kept = new Set<string>()
+    const columns = draftIn.columns.map((c) => c.name)
+    for (const check of wanted.filter((c) => c.name)) {
+      const name = check.name!.toLowerCase()
+      if (live.has(name)) kept.add(name)
+      else changes.push({ kind: 'add_check', table: current, check, columns })
+    }
+    const unnamed = wanted.filter((c) => !c.name)
+    const spare = original.checks.filter((c) => !kept.has((c.name ?? '').toLowerCase()))
+    for (const check of unnamed.slice(spare.length)) changes.push({ kind: 'add_check', table: current, check, columns })
+    for (const check of spare.slice(unnamed.length)) if (check.name) changes.push({ kind: 'drop_check', table: ref, name: check.name, before: check })
+  }
   return changes
 }
 
@@ -316,9 +339,12 @@ export function diffTables(originals: TableInfo[], drafts: DesignTable[]): Schem
   }
   drops.splice(0, drops.length, ...loose, ...ordered)
   // FK additions run last so referenced tables/columns exist; drops of FKs first.
-  const fkDrops = alters.filter((c) => c.kind === 'drop_foreign_key' || c.kind === 'drop_index')
-  const fkAdds = alters.filter((c) => c.kind === 'add_foreign_key')
-  const rest = alters.filter((c) => c.kind !== 'drop_foreign_key' && c.kind !== 'drop_index' && c.kind !== 'add_foreign_key')
+  // Checks leave before the columns they name change and come once those are as the model has them.
+  const first = (c: SchemaChange) => c.kind === 'drop_foreign_key' || c.kind === 'drop_index' || c.kind === 'drop_check'
+  const last = (c: SchemaChange) => c.kind === 'add_check' || c.kind === 'add_foreign_key'
+  const fkDrops = alters.filter(first)
+  const fkAdds = [...alters.filter((c) => c.kind === 'add_check'), ...alters.filter((c) => c.kind === 'add_foreign_key')]
+  const rest = alters.filter((c) => !first(c) && !last(c))
   return [...fkDrops, ...drops, ...creates, ...rest, ...fkAdds]
 }
 
@@ -705,6 +731,25 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
       case 'set_table_comment':
         statements.push(...commentStatements(change.table, change.comment, [], d, true))
         break
+      case 'add_check':
+      case 'drop_check': {
+        const t = q(change.table)
+        if (d.id === 'sqlite' || d.id === 'duckdb') {
+          warnings.push({ level: 'warning', message: `${d.id === 'sqlite' ? 'SQLite' : 'DuckDB'} can't add or drop a check on an existing table: ${change.table.name} keeps the checks it has.` })
+          break
+        }
+        const add = (check: CheckInfo, columns: string[]) => `ALTER TABLE ${t} ADD ${check.name ? `CONSTRAINT ${id(check.name)} ` : ''}CHECK (${checkCondition(check, columns.map((name) => ({ name })), d)})`
+        const drop = (name: string) => `ALTER TABLE ${t} DROP ${d.id === 'mysql' ? 'CHECK' : 'CONSTRAINT'} ${id(name)}`
+        if (change.kind === 'add_check') {
+          statements.push(add(change.check, change.columns))
+          if (change.check.name) rollback.unshift(drop(change.check.name))
+          warnings.push({ level: 'info', message: `The check on ${change.table.name} fails if existing rows break it.` })
+        } else {
+          statements.push(drop(change.name))
+          rollback.unshift(add(change.before, []))
+        }
+        break
+      }
     }
   }
   statements.push(...laterForeignKeys.map((f) => f.sql))

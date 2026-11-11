@@ -287,6 +287,30 @@ describe('compareSchemas', () => {
     expect(about).toEqual(['v_totals reads orders.total: change or drop the view first, or the database refuses this.'])
   })
 
+  it('adds and drops checks by name, and leaves them alone where the database does not say what it has', () => {
+    const model = parseDbml("Table \"Item\" {\n  id int [pk]\n  \"Price\" int\n  qty int [check: `value > 0`]\n\n  checks {\n    `Price >= 0` [name: 'price_ok']\n    `qty < 1000` [name: 'qty_cap']\n  }\n}").tables
+    const database = (checks: TableInfo['checks']): TableInfo[] => [{ ...model[0]!, checks }]
+    const pg = getDialect('postgres')
+    // The database has one of the named checks (spelled its own way), one nobody named in the model, and one extra.
+    const live = database([{ name: 'price_ok', expression: '"Price" >= 0' }, { name: 'Item_qty_check', expression: 'qty > 0' }, { name: 'old_rule', expression: 'id <> 5' }])
+    const changes = compareSchemas(model, live)
+    expect(changes.map((c) => (c.kind === 'add_check' ? `add ${c.check.name}` : c.kind === 'drop_check' ? `drop ${c.name}` : c.kind))).toEqual(['drop old_rule', 'add qty_cap'])
+    const migration = generateMigration(changes, pg, live)
+    expect(migration.statements).toEqual(['ALTER TABLE "Item" DROP CONSTRAINT "old_rule"', 'ALTER TABLE "Item" ADD CONSTRAINT "qty_cap" CHECK (qty < 1000)'])
+    expect(migration.rollback).toEqual(['ALTER TABLE "Item" DROP CONSTRAINT "qty_cap"', 'ALTER TABLE "Item" ADD CONSTRAINT "old_rule" CHECK (id <> 5)'])
+    // Nothing in the database yet: all three come, the column's own with its column written out and quoted names where needed.
+    expect(generateMigration(compareSchemas(model, database([])), pg, database([])).statements).toEqual([
+      'ALTER TABLE "Item" ADD CONSTRAINT "price_ok" CHECK ("Price" >= 0)',
+      'ALTER TABLE "Item" ADD CONSTRAINT "qty_cap" CHECK (qty < 1000)',
+      'ALTER TABLE "Item" ADD CHECK ("qty" > 0)',
+    ])
+    expect(generateMigration(compareSchemas(database([]), live), getDialect('mysql'), live).statements).toEqual(['ALTER TABLE `Item` DROP CHECK `price_ok`', 'ALTER TABLE `Item` DROP CHECK `Item_qty_check`', 'ALTER TABLE `Item` DROP CHECK `old_rule`'])
+    // A database whose driver does not report checks: no change either way.
+    expect(compareSchemas(model, database(undefined))).toEqual([])
+    // In agreement: nothing to do.
+    expect(compareSchemas(model, database([{ name: 'PRICE_OK', expression: 'x' }, { name: 'qty_cap', expression: 'y' }, { name: 'auto', expression: 'z' }]))).toEqual([])
+  })
+
   it('writes a migration as a Liquibase changelog with its rollback', () => {
     const { tables } = parseDbml('Table customers {\n  id int [pk]\n  email varchar(120)\n}')
     const draft = toDesignTable(tables[0]!)

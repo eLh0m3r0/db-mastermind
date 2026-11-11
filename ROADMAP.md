@@ -365,7 +365,12 @@ Not a clone: their features, rethought and connected to live databases, the know
 
 ### 8.3 The model holds a whole database 🚧
 - ✅ Check constraints in the model: DBML `checks` blocks and column `check:`, written into CREATE TABLE for any
-  database, read from DeZign models and saved back to them (ALTER for a changed check on an existing table ⬜)
+  database, read from DeZign models and saved back to them
+- ✅ Checks in the ALTER script: PostgreSQL, MySQL and SQL Server say which checks a table has, so a check the
+  model has and the database lacks is added and one the model no longer has is dropped. They go by name (a
+  database stores a condition rewritten its own way, so conditions can't be compared as text); a check without
+  a name in the model stands for one the database named itself. A named check whose condition changed is not
+  noticed: give it a new name (⬜ ask the database to compare the two conditions)
 - ✅ DBML `TablePartial` (reusable column sets, e.g. audit columns) with `~name` injection
 - ✅ Blocks the model does not hold (Project, notes, Records, TablePartial) stay as written when the model is
   rewritten from the canvas or by a fix
