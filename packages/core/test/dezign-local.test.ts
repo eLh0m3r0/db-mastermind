@@ -2,7 +2,7 @@ import { appendFileSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { diagramsAsLoaded, mutate, mutateDiagrams, random } from './dezign-fuzz.js'
-import { applyDezignSave, assembleDezignProject, dezignIntegrity, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
+import { applyDezignSave, assembleDezignProject, checkModel, dezignIntegrity, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 /**
  * Real models stay out of the repository. Point DBM_DEZ_SAMPLES at a folder with `.dez` files and/or folder
@@ -42,7 +42,7 @@ describe.skipIf(!root)('DeZign models on this machine', () => {
       const back = parseDbml(toDbml(model.tables))
       const count = (f: (t: (typeof model.tables)[number]) => number) => model.tables.reduce((sum, t) => sum + f(t), 0)
       report(
-        `#${n + 1} ${/\.dezproj$/i.test(file) ? 'folder' : 'file'} format=${model.formatVersion} db=${model.targetDatabase} ${model.encoding} tables=${model.tables.length} columns=${count((t) => t.columns.length)} fks=${count((t) => t.foreignKeys.length)} indexes=${count((t) => t.indexes.length)} positions=${Object.keys(model.positions).length} leftOut=${JSON.stringify(model.leftOut)} dbmlErrors=${back.errors.length}`,
+        `#${n + 1} ${/\.dezproj$/i.test(file) ? 'folder' : 'file'} format=${model.formatVersion} db=${model.targetDatabase} ${model.encoding} tables=${model.tables.length} columns=${count((t) => t.columns.length)} fks=${count((t) => t.foreignKeys.length)} indexes=${count((t) => t.indexes.length)} positions=${Object.keys(model.positions).length} leftOut=${JSON.stringify(model.leftOut)} dbmlErrors=${back.errors.length} issues=${JSON.stringify(checkModel(model.tables).reduce<Record<string, number>>((all, i) => ({ ...all, [`${i.severity ?? ''}:${i.kind}`]: (all[`${i.severity ?? ''}:${i.kind}`] ?? 0) + 1 }), {}))}`,
       )
       expect(model.tables.length).toBeGreaterThan(0)
       // Counts only: a failed comparison of the errors themselves would print text from the model.
