@@ -12,6 +12,7 @@ import {
   Position,
   ReactFlow,
   ReactFlowProvider,
+  useConnection,
   useNodesState,
   useReactFlow,
   type Edge,
@@ -90,6 +91,8 @@ function visibleColumns(t: TableInfo, keysOnly: boolean, fkColumns: Set<string>,
 const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData>>) {
   const { table, keysOnly, fkColumns, referencedColumns } = data
   const cols = visibleColumns(table, keysOnly, fkColumns, referencedColumns)
+  // While a key is being dragged, the whole table is where it can be dropped (a column's own dot still names that column).
+  const connecting = useConnection((c) => c.inProgress)
   return (
     <div
       className={cn(
@@ -104,7 +107,7 @@ const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData
       style={{ width: WIDTH }}
     >
       <div
-        className={cn('flex items-center gap-1.5 px-2.5 text-[12px] font-semibold', table.type === 'table' ? 'bg-accent text-accent-fg' : 'bg-info text-white', data.color && 'text-white')}
+        className={cn('relative flex items-center gap-1.5 px-2.5 text-[12px] font-semibold', table.type === 'table' ? 'bg-accent text-accent-fg' : 'bg-info text-white', data.color && 'text-white', data.design && table.type === 'table' && 'pr-6')}
         // Darkened series colors keep white text readable in both themes.
         style={{ height: HEADER, ...(data.color ? { background: `color-mix(in srgb, var(--series-${data.color}) 78%, black)` } : {}) }}
         title={table.comment ?? undefined}
@@ -116,10 +119,26 @@ const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData
         ) : (
           table.schema && <span className="ml-auto truncate text-[10px] font-normal opacity-75">{table.schema}</span>
         )}
+        {/* Dragged to another table: this table gets the key column and the foreign key (as drawing a relationship does in DeZign). */}
+        {/* (Always there, as the library measures a node's handles once: shown and live only while designing.) */}
+        {table.type === 'table' && (
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="s-*"
+            isConnectable={data.design}
+            title={data.design ? t('Drag to another table: adds the key column and the foreign key') : undefined}
+            className={cn('!right-2.5 !z-20 !h-3 !w-3 !min-w-0', data.design ? '!border-2 !border-white !bg-success' : '!pointer-events-none !border-0 !bg-transparent')}
+          />
+        )}
       </div>
+      {/* While a key is dragged the whole table takes the drop (a column's own dot, above it, still names that column). */}
+      {table.type === 'table' && (
+        <Handle type="target" position={Position.Left} id="t-*" isConnectable={data.design} className={cn('!inset-0 !z-[5] !h-full !w-full !transform-none !rounded-none !border-0 !bg-transparent', data.design && connecting ? '!pointer-events-auto' : '!pointer-events-none')} />
+      )}
       {cols.map((c) => (
         <div key={c.name} className="relative flex items-center gap-1.5 border-t border-line px-2.5 text-[11px]" style={{ height: ROW }} title={c.comment ?? undefined}>
-          <Handle type="target" position={Position.Left} id={`t-${c.name}`} className={cn('!h-1.5 !w-1.5 !min-w-0 !border-0', data.design ? '!bg-accent/50' : '!bg-transparent')} />
+          <Handle type="target" position={Position.Left} id={`t-${c.name}`} className={cn('!z-10 !h-1.5 !w-1.5 !min-w-0 !border-0', data.design ? '!bg-accent/50' : '!bg-transparent')} />
           {c.isPrimaryKey ? (
             <KeyRound size={10} className="shrink-0 text-warning" />
           ) : fkColumns.has(c.name) ? (
@@ -130,7 +149,7 @@ const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData
           <span className={cn('truncate', c.isPrimaryKey && 'font-semibold')}>{c.name}</span>
           <span className="ml-auto max-w-[45%] shrink-0 truncate font-mono text-[10px] text-fg-faint">{c.dataType}</span>
           {!c.nullable && !c.isPrimaryKey && <span className="text-[9px] text-fg-faint">NN</span>}
-          <Handle type="source" position={Position.Right} id={`s-${c.name}`} className={cn('!h-1.5 !w-1.5 !min-w-0 !border-0', data.design ? '!h-2.5 !w-2.5 !bg-accent' : '!bg-transparent')} />
+          <Handle type="source" position={Position.Right} id={`s-${c.name}`} className={cn('!z-10 !h-1.5 !w-1.5 !min-w-0 !border-0', data.design ? '!h-2.5 !w-2.5 !bg-accent' : '!bg-transparent')} />
         </div>
       ))}
       {keysOnly && cols.length < table.columns.length && (
@@ -831,8 +850,27 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
     const from = draftFor(c.source)
     const to = display.find((d) => d.key === c.target)?.info
     if (!from || !to) return
+    if (c.sourceHandle === 's-*') {
+      // From the table itself: its key to the other table is made here, a column for each column of that table's
+      // primary key. One that is already there under the name is the key (as DeZign reuses it).
+      if (!to.primaryKey.length) return toast({ kind: 'warning', message: tr('{table} has no primary key to point at', { table: to.name }) })
+      const columns = [...from.columns]
+      const names = to.primaryKey.map((pk) => {
+        const key = to.columns.find((x) => x.name === pk)!
+        const plain = pk.toLowerCase() === 'id' || from.columns.some((x) => x.name.toLowerCase() === pk.toLowerCase() && from.primaryKey.includes(x.name) && from.name !== to.name) ? `${to.name}_${pk}` : pk
+        const name = from.name === to.name ? `parent_${pk}` : plain
+        if (!columns.some((x) => x.name.toLowerCase() === name.toLowerCase())) {
+          const dataType = /^bigserial$/i.test(key.dataType) ? 'bigint' : /^(small)?serial$/i.test(key.dataType) ? 'integer' : key.dataType
+          columns.push({ id: designId('c'), name, dataType, nullable: true, ...(key.domain ? { domain: key.domain } : {}) })
+        }
+        return columns.find((x) => x.name.toLowerCase() === name.toLowerCase())!.name
+      })
+      updateDraft(c.source, { ...from, columns, foreignKeys: [...from.foreignKeys, { id: designId('f'), columns: names, refSchema: to.schema, refTable: to.name, refColumns: [...to.primaryKey] }] })
+      return toast({ kind: 'info', message: tr('Foreign key {from} → {to} added to the design', { from: `${from.name}.${names.join(', ')}`, to: `${to.name}.${to.primaryKey.join(', ')}` }) })
+    }
     const column = c.sourceHandle?.replace(/^s-/, '') ?? ''
-    const refColumn = c.targetHandle?.replace(/^t-/, '') ?? to.primaryKey[0] ?? ''
+    const dropped = c.targetHandle?.replace(/^t-/, '')
+    const refColumn = (dropped === '*' ? undefined : dropped) ?? to.primaryKey[0] ?? ''
     updateDraft(c.source, {
       ...from,
       foreignKeys: [...from.foreignKeys, { id: designId('f'), columns: [column], refSchema: to.schema, refTable: to.name, refColumns: [refColumn] }],

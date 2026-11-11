@@ -424,9 +424,15 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ Blocks the model does not hold (Project, notes, Records, TablePartial) stay as written when the model is
   rewritten from the canvas or by a fix
 - ✅ What a DeZign project says about its scripts beyond names: a column's collation (`[collate: '…']` in the
-  model, `COLLATE` in the script, read from and written to the project; left out when the script is translated
-  for another database) and the project's begin and end database scripts, put around the CREATE script for the
+  model, `COLLATE` in the script, read from and written to the project; for SQL Server and MySQL projects only,
+  as DeZign's own templates have none for PostgreSQL, and left out when the script is translated for another
+  database) and the project's begin and end database scripts, put around the CREATE script for the
   project's own database and around the ALTER script
+- ✅ A relationship drawn from table to table (the dot in a table's header, dropped anywhere on the other
+  table) makes the key column too, as drawing one does in DeZign: a column for each column of the other table's
+  primary key, with its type and domain, or the column of that name the table already has
+- ✅ Columns a DeZign project inherited from an attribute package (DeZign locks them to the package): one whose
+  definition is changed here is taken out of the package, and the list of changes before saving says so
 - ✅ Renames in a comparison: a column or a table that the model renamed came out as DROP and ADD (the data
   gone). The comparison now offers what is probably one thing under a new name (a table most of whose columns
   are the dropped table's; a column of the same type where one left and one came), ticked by default, and

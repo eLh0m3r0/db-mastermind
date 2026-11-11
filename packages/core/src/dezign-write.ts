@@ -71,6 +71,11 @@ export interface DezignChange {
   table: string
   /** Column, index columns or referenced table. */
   name?: string
+  /**
+   * The attribute package the changed column was taken out of. DeZign keeps a column inherited from a package
+   * the same as the package says (it cannot be edited there): one that was changed here is its table's own now.
+   */
+  detached?: string
 }
 
 export interface DezignSaveResult {
@@ -613,6 +618,13 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
   }
   // Domains of the project by name: a column that follows one has its id and a copy of its type.
   const domainsByName = new Map(project.list('DOMAIN').map((d) => [lower(text(d.el, 'NAME')), d.el]))
+  /** Takes a column out of the attribute package it was inherited from (see `DezignChange.detached`). */
+  const detach = (attr: El): { detached?: string } => {
+    const name = text(attr, 'PKGNAME')
+    if (!name) return {}
+    for (const tag of ['PKGNAME', 'PKGITEM']) remove(attr, kid(attr, tag))
+    return { detached: name }
+  }
   /** A column's collation sits right after its type, and only when it has one. */
   const setCollation = (attr: El, collation: string | undefined) => setOptional(attr, 'COLLATE', collation ?? '', ['NNCON', 'CCON', 'DEFCON'])
   const setDomain = (attr: El, table: string, column: ColumnInfo) => {
@@ -734,7 +746,7 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       constraintNames(attr, label, c.name)
       keep.set(c, attr)
       matched.add(b)
-      changes.push({ kind: 'rename_column', table: label, name: `${b.name} → ${c.name}` })
+      changes.push({ kind: 'rename_column', table: label, name: `${b.name} → ${c.name}`, ...detach(attr) })
     }
     for (const b of baseCols.filter((x) => !matched.has(x))) {
       const attr = entity.attrs.get(lower(b.name))
@@ -761,26 +773,28 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       const b = baseCols.find((x) => entity.attrs.get(lower(x.name)) === existing || lower(x.name) === lower(c.name))
       if (!b) continue
       let altered = false
+      // What the column is (as opposed to what is said about it).
+      let typed = false
       if (normType(b.dataType) !== normType(c.dataType) || b.isIdentity !== c.isIdentity) {
         setType(existing, c.dataType, c.isIdentity)
-        altered = true
+        altered = typed = true
       }
       // After the type: a column that follows a domain takes the domain's type, and one that left it keeps its own.
       if ((b.domain ?? '') !== (c.domain ?? '') || (c.domain && altered)) {
         setDomain(existing, label, c)
-        altered = true
+        altered = typed = true
       }
       if ((b.collation ?? '') !== (c.collation ?? '')) {
         setCollation(existing, c.collation)
-        altered = true
+        altered = typed = true
       }
       if (b.nullable !== c.nullable) {
         setNullable(existing, c.nullable)
-        altered = true
+        altered = typed = true
       }
       if (normText(b.defaultValue) !== normText(c.defaultValue)) {
         setDefault(existing, c.defaultValue)
-        altered = true
+        altered = typed = true
       }
       if (normText(b.comment) !== normText(c.comment)) {
         set(existing, 'DESC', c.comment ?? '', ['NOTE', 'DOMAINID', 'DT'])
@@ -788,9 +802,10 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       }
       if (b.name !== c.name && lower(b.name) === lower(c.name)) {
         set(existing, 'NAME', c.name)
-        altered = true
+        altered = typed = true
       }
-      if (altered) changes.push({ kind: 'alter_column', table: label, name: c.name })
+      // (A new description is the column's own business: DeZign keeps the package's type, not what is said about it.)
+      if (altered) changes.push({ kind: 'alter_column', table: label, name: c.name, ...(typed ? detach(existing) : {}) })
     }
     const order = next.columns.map((c) => keep.get(c)!).filter(Boolean)
     const current = kids(attributes, 'ATTR')

@@ -28,6 +28,17 @@ try {
   console.log('opened without a connection:', await win.locator('.react-flow__node').count(), 'tables')
 
   await win.getByRole('button', { name: 'Design', exact: true }).click()
+  await win.waitForTimeout(500)
+  // Dragging from a table's own dot to another table makes the key column and the foreign key, as DeZign does.
+  const dot = await win.locator('.react-flow__node[data-id="shop.invoice"] .react-flow__handle[data-handleid="s-*"]').boundingBox()
+  const key = await win.locator('.react-flow__node[data-id="shop.customer"]').boundingBox()
+  await win.mouse.move(dot.x + dot.width / 2, dot.y + dot.height / 2)
+  await win.mouse.down()
+  await win.mouse.move(key.x + key.width / 2 + 40, key.y + key.height / 2, { steps: 12 })
+  await win.mouse.move(key.x + key.width / 2, key.y + key.height / 2 + 10, { steps: 6 })
+  await win.mouse.up()
+  await win.waitForTimeout(600)
+  console.log('a key dropped anywhere on the other table:', await win.locator('.react-flow__edge').count(), 'relationship,', await win.getByText(/Foreign key invoice\.customer_id → customer\.id added/).count(), 'notice')
   await win.locator('.react-flow__node[data-id="shop.customer"]').click()
   await win.getByText('Edit table').waitFor({ timeout: 10000 })
   console.log('table panel opens:', await win.getByText('Edit table').count() === 1)
@@ -47,6 +58,7 @@ try {
   await win.waitForTimeout(1200)
   const text = await win.locator('.cm-content:visible').first().innerText()
   console.log('model text:', /email text \[note: 'Přihlašovací e-mail'\]/.test(text), text.indexOf('email text') < text.indexOf('name text'), /credit_not_negative/.test(text), /customer_by_email/.test(text))
+  console.log('relationship drawn table to table:', /customer_id bigint/.test(text), /Ref: shop\.invoice\.customer_id > shop\.customer\.id/.test(text))
 
   await win.getByRole('button', { name: 'Save', exact: true }).click()
   await win.getByText(/Write these changes into shop\.dez\?/).waitFor({ timeout: 10000 })

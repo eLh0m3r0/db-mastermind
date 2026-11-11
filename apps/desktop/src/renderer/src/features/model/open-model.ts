@@ -63,7 +63,8 @@ const CHANGE_LABELS: Record<DezignChange['kind'], string> = {
 
 /** One line per change for the confirmation before a model is written back to its DeZign file. */
 export function describeDezignChanges(changes: DezignChange[], limit = 40): string[] {
-  const lines = changes.map((c) => `${t(CHANGE_LABELS[c.kind])}: ${c.table}${c.name ? ` (${c.name})` : ''}`)
+  // (A column DeZign inherited from an attribute package is locked to the package there: changed here, it is the table's own.)
+  const lines = changes.map((c) => `${t(CHANGE_LABELS[c.kind])}: ${c.table}${c.name ? ` (${c.name})` : ''}${c.detached ? ` · ${t('no longer follows the attribute package {name}', { name: c.detached })}` : ''}`)
   return lines.length > limit ? [...lines.slice(0, limit), t('… and {n} more', { n: String(lines.length - limit) })] : lines
 }
 

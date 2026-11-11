@@ -323,6 +323,10 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const projectSettings = kid(version, 'PROJECTSETTINGS')
   const nameTemplates: Record<string, string> = {}
   for (const holder of [kid(dict, 'DDSETTINGS'), kid(projectSettings, 'NAMETEMPLATES')]) for (const s of kids(holder)) if (/NAMETEMPLATE$/.test(s.tag) && text(holder, s.tag)) nameTemplates[s.tag] = text(holder, s.tag)
+  // DeZign writes a column's collation into scripts for SQL Server and MySQL only (`enablecolumncollate` in its
+  // database definitions; its PostgreSQL template has no place for one). A project for another database may
+  // still hold collations, from the database it was made for first: they stay in the file and out of the model.
+  const collates = ['mssql', 'mysql', 'mariadb'].includes(dezignDriver(text(dict, 'DBID')) ?? '')
   const convertDomains = text(kid(dict, 'DDSETTINGS'), 'CONVERTDOMAINS') === '1' || text(kid(projectSettings, 'GenDB_Options'), 'CONVERTDOMAINS') === '1'
   const common = kid(projectSettings, 'COMMONSETTINGS')
   const around = {
@@ -366,7 +370,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
         isIdentity: text(dt, 'AN') === '1',
         comment: text(attr, 'DESC') || null,
         ...(domain && text(domain, 'NAME') ? { domain: text(domain, 'NAME') } : {}),
-        ...(text(attr, 'COLLATE') ? { collation: text(attr, 'COLLATE') } : {}),
+        ...(collates && text(attr, 'COLLATE') ? { collation: text(attr, 'COLLATE') } : {}),
       }
     })
     const primaryKey = pkIds.map((id) => columnNames.get(id)).filter((c): c is string => !!c)

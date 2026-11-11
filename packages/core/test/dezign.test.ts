@@ -601,14 +601,18 @@ describe('saving back into a DeZign project', () => {
 
   it('reads a column\'s collation, keeps it in DBML and scripts, and writes a new, changed or removed one', () => {
     // (After the type, before the constraints: where DeZign keeps it.)
-    const collated: DezignFile[] = [{ path: 'shop.dez', text: dez.replace(/(<NAME>email<\/NAME>[\s\S]*?<\/DT>\n)/, '$1<COLLATE>"cs_CZ"</COLLATE>\n') }]
+    const withCollation = dez.replace(/(<NAME>email<\/NAME>[\s\S]*?<\/DT>\n)/, '$1<COLLATE>Czech_CI_AS</COLLATE>\n')
+    // DeZign's own templates have COLLATE for SQL Server and MySQL and none for PostgreSQL: a PostgreSQL project
+    // that still holds one (from the database it was first made for) does not get it into its scripts.
+    expect(model([{ path: 'shop.dez', text: withCollation }])[0]!.columns.some((c) => c.collation)).toBe(false)
+    const collated: DezignFile[] = [{ path: 'shop.dez', text: withCollation.replace('<DBID>postgresql16</DBID>', '<DBID>mssqlserver2022</DBID>') }]
     const tables = model(collated)
     const email = tables[0]!.columns.find((c) => c.name === 'email')!
-    expect(email.collation).toBe('"cs_CZ"')
-    expect(toDbml(tables)).toContain(`collate: '"cs_CZ"'`)
-    expect(createScript(tables, getDialect('postgres'))).toMatch(/"email" [\w ]+(\(\d+\))? COLLATE "cs_CZ"/)
+    expect(email.collation).toBe('Czech_CI_AS')
+    expect(toDbml(tables)).toContain("collate: 'Czech_CI_AS'")
+    expect(createScript(tables, getDialect('mssql'))).toMatch(/\[email\] [\w ]+(\(\d+\))? COLLATE Czech_CI_AS/)
     // Another database has other collations: the translated script leaves it out.
-    expect(createScript(tables, getDialect('mysql'), { translateTypes: true, from: 'postgres' })).not.toContain('COLLATE')
+    expect(createScript(tables, getDialect('postgres'), { translateTypes: true, from: 'mssql' })).not.toContain('COLLATE')
     expect(save(collated, () => {})).toEqual({ files: [], deleted: [], changes: [] })
     const r = save(collated, (t) => {
       t[0]!.columns.find((c) => c.name === 'email')!.collation = 'C'
@@ -619,6 +623,24 @@ describe('saving back into a DeZign project', () => {
     expect(model(r.files).flatMap((t) => t.columns).filter((c) => c.collation === 'C').map((c) => c.name)).toEqual(['email', 'code'])
     const gone = save(r.files, (t) => void delete t[0]!.columns.find((c) => c.name === 'email')!.collation)
     expect(gone.files[0]!.text.match(/<COLLATE>/g)).toHaveLength(1)
+  })
+
+  // DeZign: an attribute inherited from a package cannot be edited in its table and follows the package.
+  it('takes a column whose definition changed out of its attribute package, and leaves one that only got a comment', () => {
+    const packaged: DezignFile[] = [{ path: 'shop.dez', text: dez.replace(/(<NAME>(email|credit)<\/NAME>\n<ID>[^<]*<\/ID>\n)/g, '$1<PKGNAME>Audit</PKGNAME>\n<PKGITEM>$2</PKGITEM>\n') }]
+    expect(packaged[0]!.text.match(/<PKGNAME>/g)!.length).toBeGreaterThanOrEqual(2)
+    const r = save(packaged, (t) => {
+      t[0]!.columns.find((c) => c.name === 'email')!.dataType = 'varchar(200)'
+      t[0]!.columns.find((c) => c.name === 'credit')!.comment = 'Kredit zákazníka'
+    })
+    expect(r.changes).toEqual([
+      { kind: 'alter_column', table: 'customer', name: 'email', detached: 'Audit' },
+      { kind: 'alter_column', table: 'customer', name: 'credit' },
+    ])
+    const out = r.files[0]!.text
+    expect(out.match(/<PKGNAME>/g)!.length).toBe(packaged[0]!.text.match(/<PKGNAME>/g)!.length - 1)
+    expect(out.match(/<PKGITEM>/g)!.length).toBe(out.match(/<PKGNAME>/g)!.length)
+    expect(out).toMatch(/<NAME>credit<\/NAME>\n<ID>[^<]*<\/ID>\n<PKGNAME>Audit<\/PKGNAME>\n<PKGITEM>credit<\/PKGITEM>/)
   })
 
   it('writes changed check constraints: a column check that changed becomes a table check', () => {
