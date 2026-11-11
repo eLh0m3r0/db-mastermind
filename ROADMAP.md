@@ -448,6 +448,8 @@ Not a clone: their features, rethought and connected to live databases, the know
   primary key, with its type and domain, or the column of that name the table already has
 - ✅ Columns a DeZign project inherited from an attribute package (DeZign locks them to the package): one whose
   definition is changed here is taken out of the package, and the list of changes before saving says so
+- ✅ A comparison's single changes can be left out of the script (a box at each change of a table with several;
+  the table's box for all of them), as DeZign's list of differences allows
 - ✅ Renames in a comparison: a column or a table that the model renamed came out as DROP and ADD (the data
   gone). The comparison now offers what is probably one thing under a new name (a table most of whose columns
   are the dropped table's; a column of the same type where one left and one came), ticked by default, and

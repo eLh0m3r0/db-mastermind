@@ -29,6 +29,9 @@ export function CompareView({ tab }: { tab: CompareTab }) {
   const [busy, setBusy] = useState(false)
   const [keepExtra, setKeepExtra] = useState(true)
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
+  // Single changes left out of the script (as in DeZign's list of differences), by table and what they say.
+  const [skipped, setSkipped] = useState<Set<string>>(new Set())
+  const changeKey = (c: SchemaChange) => `${changeTable(c)}|${describe(c, t).text}`
   // Renames the comparison guessed and the user said are not renames.
   const [declined, setDeclined] = useState<Set<string>>(new Set())
 
@@ -51,6 +54,7 @@ export function CompareView({ tab }: { tab: CompareTab }) {
         }
         setSnapshots({ source: read(tab.sourceModel, t('Model (DBML)')), target: read(tab.targetModel, tab.targetLabel ?? 'DBML') })
         setExcluded(new Set())
+        setSkipped(new Set())
         return
       }
       if (tab.sourceModel !== undefined) {
@@ -66,6 +70,7 @@ export function CompareView({ tab }: { tab: CompareTab }) {
         const checkChanged = await findChangedChecks(tables, targetSnap.tables, (items) => api.canonicalChecks(tab.connectionId, items)).catch(() => undefined)
         setSnapshots({ source: { tables, schemas, routines: [], defaultSchema: targetSnap.defaultSchema, capturedAt: '' }, target: targetSnap, checkChanged })
         setExcluded(new Set())
+        setSkipped(new Set())
         return
       }
       if (!tab.sourceId) return
@@ -74,6 +79,7 @@ export function CompareView({ tab }: { tab: CompareTab }) {
       if (!source || !targetSnap) throw new Error(t('Could not read both schemas'))
       setSnapshots({ source, target: targetSnap })
       setExcluded(new Set())
+      setSkipped(new Set())
     } catch (err) {
       toast({ kind: 'error', message: t('Compare failed'), detail: errorMessage(err) })
     } finally {
@@ -104,7 +110,7 @@ export function CompareView({ tab }: { tab: CompareTab }) {
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b))
   }, [changes])
 
-  const selected = changes.filter((c) => !excluded.has(changeTable(c)))
+  const selected = changes.filter((c) => !excluded.has(changeTable(c)) && !skipped.has(changeKey(c)))
   const script = useMemo(() => {
     if (!target || !snapshots || !selected.length) return ''
     const dialect = getDialect(target.driver)
@@ -222,10 +228,27 @@ export function CompareView({ tab }: { tab: CompareTab }) {
                   const d = describe(c, t)
                   const Icon = d.icon === 'add' ? Plus : d.icon === 'drop' ? Minus : Pencil
                   return (
-                    <div key={i} className="flex items-center gap-2 px-2 py-1 text-[12px]">
+                    <label key={i} className={cn('flex items-center gap-2 px-2 py-1 text-[12px]', skipped.has(changeKey(c)) && 'opacity-50')}>
+                      {list.length > 1 && (
+                        <input
+                          type="checkbox"
+                          className="accent-[var(--accent)]"
+                          checked={!skipped.has(changeKey(c))}
+                          disabled={excluded.has(table)}
+                          onChange={(e) =>
+                            setSkipped((prev) => {
+                              const next = new Set(prev)
+                              if (e.target.checked) next.delete(changeKey(c))
+                              else next.add(changeKey(c))
+                              return next
+                            })
+                          }
+                          data-testid="compare-change"
+                        />
+                      )}
                       <Icon size={12} className={cn('shrink-0', d.icon === 'add' ? 'text-success' : d.icon === 'drop' ? 'text-danger' : 'text-warning')} />
                       <span className="truncate font-mono text-[11.5px]">{d.text}</span>
-                    </div>
+                    </label>
                   )
                 })}
               </div>

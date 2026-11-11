@@ -110,6 +110,17 @@ try {
   await win.waitForTimeout(900)
   check('the edited model parses', (await win.locator('.text-warning button:visible').count()) === 0)
 
+  // A single change can stay out of the script (a table with one change has its table's box for that).
+  await compare()
+  const states = await win.evaluate(() => [...document.querySelectorAll('[data-testid="compare-change"]')].filter((e) => e.offsetParent !== null).map((e) => e.parentElement.innerText.trim()))
+  const longer = states.findIndex((x) => /Change column name/.test(x))
+  if (longer > -1) {
+    await win.locator('[data-testid="compare-change"]:visible').nth(longer).uncheck()
+    await win.waitForTimeout(500)
+  }
+  const partial = await win.evaluate(() => [...document.querySelectorAll('pre')].filter((e) => e.offsetParent !== null).pop()?.innerText ?? '')
+  check('a change left out is not in the script, the others are', longer > -1 && !/ALTER COLUMN "name" TYPE/.test(partial) && /ADD COLUMN "email"/.test(partial) && /DROP COLUMN "state"/.test(partial), states.join(' | ').slice(0, 200))
+
   const alter = await compare()
   check('ALTER: the new column', /ALTER TABLE "sales"\."customer" ADD COLUMN "email" varchar\(255\)/.test(alter))
   check('ALTER: the longer name', /ALTER COLUMN "name" TYPE varchar\(200\)/.test(alter))
