@@ -133,10 +133,28 @@ try {
   await sql(team.id, recheck)
   check('after replacing the check they are identical', (await compare()) === '')
 
-  // 4. What the database really has.
+  // 4. A column and a table get new names in the model: renamed in the database, not dropped and made again.
+  await sql(team.id, "INSERT INTO sales.customer (id, name, email) VALUES (1, 'Ada', 'ada@example.com')")
+  await win.getByText('team.dez', { exact: true }).first().click()
+  const renamed = loosened.replace(/(\n\s*)email varchar\(255\)/, '$1e_mail varchar(255)').replaceAll('sales.Payment', 'sales.Receipt')
+  check('the names are edited in the model text', renamed !== loosened && /e_mail varchar\(255\)/.test(renamed) && /Table sales\.Receipt/.test(renamed))
+  await win.locator('.cm-content:visible').first().click()
+  await win.keyboard.press('Meta+a')
+  await win.keyboard.insertText(renamed)
+  await win.waitForTimeout(900)
+  const renames = await compare()
+  const offered = await win.evaluate(() => [...document.querySelectorAll('[data-testid="compare-renames"]')].filter((e) => e.offsetParent !== null).pop()?.innerText ?? '')
+  check('the renames are offered for confirmation', /customer\.email → e_mail/.test(offered) && /payment → receipt/.test(offered), offered.replace(/\s+/g, ' ').slice(0, 160))
+  check('RENAME, not DROP and ADD', /ALTER TABLE "sales"\."customer" RENAME COLUMN "email" TO "e_mail"/.test(renames) && /ALTER TABLE "sales"\."payment" RENAME TO "receipt"/.test(renames) && !/DROP (COLUMN|TABLE)|CREATE TABLE|ADD COLUMN/.test(renames), renames.split('\n').slice(0, 12).join(' | '))
+  await sql(team.id, renames)
+  check('after the renames they are identical', (await compare()) === '')
+  const kept = await sql(team.id, 'SELECT e_mail FROM sales.customer WHERE id = 1')
+  check('the data of the renamed column is still there', JSON.stringify(kept).includes('ada@example.com'), JSON.stringify(kept).slice(0, 200))
+
+  // 5. What the database really has.
   const schema = await api('getSchema', team.id, true)
   const tables = (schema.tables ?? []).filter((t) => t.schema === 'sales')
-  check('the database has the three tables in the schema', tables.map((t) => t.name).sort().join(',') === 'customer,invoice,payment')
+  check('the database has the three tables in the schema', tables.map((t) => t.name).sort().join(',') === 'customer,invoice,receipt')
   check('with both checks', tables.flatMap((t) => (t.checks ?? []).map((c) => c.name)).sort().join(',') === 'invoice_total_ok,payment_positive')
   check('and the other table is still there', (schema.tables ?? []).some((t) => t.schema === 'public' && t.name === 'legacy'))
 

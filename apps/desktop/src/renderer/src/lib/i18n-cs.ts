@@ -489,6 +489,7 @@ export const cs: Record<string, string> = {
   'Delete foreign key': 'Smazat cizí klíč',
   'Delete index': 'Smazat index',
   'on update': 'při změně',
+  'Renamed, so the data stays. Untick what is really a new one and a dropped one:': 'Přejmenováno, data tedy zůstanou. Odškrtněte, co je ve skutečnosti nový a odstraněný objekt:',
   'Move up': 'Posunout nahoru',
   'Move down': 'Posunout dolů',
   'own type': 'vlastní typ',

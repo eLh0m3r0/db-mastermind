@@ -1152,6 +1152,58 @@ export const COMMON_TYPES: Record<DriverId, string[]> = {
   bigquery: ['INT64', 'NUMERIC', 'BIGNUMERIC', 'FLOAT64', 'BOOL', 'STRING', 'BYTES', 'DATE', 'DATETIME', 'TIMESTAMP', 'TIME', 'JSON', 'ARRAY<STRING>', 'GEOGRAPHY'],
 }
 
+/** A table or a column the source seems to have renamed: `from` is its name in the target, `to` in the source. */
+export interface RenameGuess {
+  kind: 'table' | 'column'
+  /** For a column: its table, as the target names it. */
+  table: string
+  from: string
+  to: string
+}
+
+/**
+ * What a comparison by name would drop and add although it is probably one thing under a new name: a table most
+ * of whose columns are in a table the source no longer has, a column of the same type where exactly one left and
+ * one came (or which sits in the same place). Guesses for the user to confirm: `compareSchemas` takes the ones
+ * that are right as `renames` and writes RENAME instead of DROP and ADD, which keeps the data.
+ */
+export function guessRenames(source: TableInfo[], target: TableInfo[]): RenameGuess[] {
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
+  const tables = (list: TableInfo[]) => list.filter((t) => t.type === 'table')
+  const guesses: RenameGuess[] = []
+  const pairs: [TableInfo, TableInfo][] = []
+  const lonely = tables(target).filter((t) => !tables(source).some((s) => same(s.name, t.name)))
+  for (const s of tables(source)) {
+    const twin = tables(target).find((t) => same(t.name, s.name))
+    if (twin) {
+      pairs.push([s, twin])
+      continue
+    }
+    const shared = (t: TableInfo) => t.columns.filter((c) => s.columns.some((x) => same(x.name, c.name))).length / Math.max(t.columns.length, s.columns.length, 1)
+    const best = lonely.filter((t) => shared(t) >= 0.6).sort((a, b) => shared(b) - shared(a))
+    // (Two tables it could equally be: nobody's guess.)
+    if (!best[0] || (best[1] && shared(best[1]) === shared(best[0])) || guesses.some((g) => g.kind === 'table' && same(g.from, best[0]!.name))) continue
+    guesses.push({ kind: 'table', table: best[0].name, from: best[0].name, to: s.name })
+    pairs.push([s, best[0]])
+  }
+  for (const [s, t] of pairs) {
+    const came = s.columns.filter((c) => !t.columns.some((x) => same(x.name, c.name)))
+    const left = t.columns.filter((c) => !s.columns.some((x) => same(x.name, c.name)))
+    const used = new Set<ColumnInfo>()
+    for (const c of came) {
+      const alike = left.filter((x) => !used.has(x) && sameType(x.dataType, c.dataType))
+      const others = came.filter((x) => x !== c && sameType(x.dataType, c.dataType))
+      // One of a kind on each side; or, where as many came as left, the column that stands where the other stood.
+      const inPlace = alike.length === others.length + 1 ? alike.find((x) => t.columns.indexOf(x) === s.columns.indexOf(c)) : undefined
+      const match = alike.length === 1 && !others.length ? alike[0] : inPlace
+      if (!match) continue
+      used.add(match)
+      guesses.push({ kind: 'column', table: t.name, from: match.name, to: c.name })
+    }
+  }
+  return guesses
+}
+
 /**
  * Changes that make `target` match `source` (schema compare, e.g. dev → prod). Tables and columns are matched by
  * name (case-insensitively); anything only in the target is dropped unless `keepExtra` is set. Schemas may be
@@ -1160,8 +1212,10 @@ export const COMMON_TYPES: Record<DriverId, string[]> = {
  * source is a model, which names things on purpose) a new table always goes to the schema it names and keeps
  * the names of its relationships and indexes.
  */
-export function compareSchemas(source: TableInfo[], target: TableInfo[], options: { keepExtra?: boolean; model?: boolean } & DiffOptions = {}): SchemaChange[] {
+export function compareSchemas(source: TableInfo[], target: TableInfo[], options: { keepExtra?: boolean; model?: boolean; renames?: RenameGuess[] } & DiffOptions = {}): SchemaChange[] {
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
+  const tableRenames = (options.renames ?? []).filter((r) => r.kind === 'table')
+  const columnRenames = (options.renames ?? []).filter((r) => r.kind === 'column')
   const drafts: DesignTable[] = []
   const targetSchema = target[0]?.schema
   const targetSchemas = new Set(target.map((t) => (t.schema ?? '').toLowerCase()))
@@ -1172,7 +1226,9 @@ export function compareSchemas(source: TableInfo[], target: TableInfo[], options
   }
   const taken = new Set<TableInfo>()
   for (const s of source.filter((t) => t.type === 'table')) {
-    const found = inTarget(s.name, s.schema)
+    // A table the source renamed is the target's table under its old name.
+    const renamed = inTarget(s.name, s.schema) ? undefined : tableRenames.find((r) => same(r.to, s.name))
+    const found = inTarget(renamed?.from ?? s.name, s.schema)
     // A table of another schema that already stands for a source table is not this one's match.
     const t = found && !taken.has(found) ? found : undefined
     if (t) taken.add(t)
@@ -1200,16 +1256,24 @@ export function compareSchemas(source: TableInfo[], target: TableInfo[], options
     }
     draft.schema = t.schema
     draft.originalName = t.name
-    draft.name = t.name
+    draft.name = renamed ? s.name : t.name
+    // Renamed columns: the target's name → the source's.
+    const newName = new Map<string, string>()
+    for (const r of columnRenames) {
+      if (same(r.table, t.name) && !t.columns.some((x) => same(x.name, r.to)) && t.columns.some((x) => same(x.name, r.from)) && s.columns.some((x) => same(x.name, r.to))) newName.set(r.from.toLowerCase(), r.to)
+    }
+    const oldName = new Map([...newName].map(([from, to]) => [to.toLowerCase(), from]))
     for (const c of draft.columns) {
-      const match = t.columns.find((x) => same(x.name, c.name))
+      const was = oldName.get(c.name.toLowerCase())
+      const match = t.columns.find((x) => same(x.name, was ?? c.name))
       c.originalName = match?.name
-      if (match) c.name = match.name
+      if (match && !was) c.name = match.name
       // Identity defaults name the database's own sequence (nextval('shop.x_seq')): keep the target's.
       if (match && match.isIdentity && (c.identity || isSerialType(c.dataType))) c.defaultValue = match.defaultValue ?? null
     }
     // Constraint names differ between databases (fk_orders_customer vs orders_customer_id_fkey): match by structure.
-    const cols = (list: string[]) => list.map((c) => c.toLowerCase()).join(',')
+    // (A key or an index on a renamed column is the same key: the database renames the column under it.)
+    const cols = (list: string[]) => list.map((c) => (newName.get(c.toLowerCase()) ?? c).toLowerCase()).join(',')
     // Two of the same in the source (a unique constraint written twice) are two in the target as well; the same
     // relationship drawn twice is one foreign key.
     const matched = new Set<unknown>()
@@ -1218,14 +1282,14 @@ export function compareSchemas(source: TableInfo[], target: TableInfo[], options
     for (const f of draft.foreignKeys) {
       const match = t.foreignKeys.find((x) => !matched.has(x) && !x.virtual && cols(x.columns) === cols(f.columns) && same(x.refTable, f.refTable) && cols(x.refColumns) === cols(f.refColumns))
       matched.add(match)
-      if (match) Object.assign(f, { name: match.name, originalName: match.name, columns: match.columns, refColumns: match.refColumns, onDelete: match.onDelete })
+      if (match) Object.assign(f, { name: match.name, originalName: match.name, columns: newName.size ? f.columns : match.columns, refColumns: match.refColumns, onDelete: match.onDelete })
       // References point into the target's schema, not the source's.
       f.refSchema = inTarget(f.refTable, f.refSchema)?.schema ?? t.schema
     }
     for (const i of draft.indexes) {
       const match = t.indexes.find((x) => !matched.has(x) && !x.primary && cols(x.columns) === cols(i.columns) && x.unique === i.unique)
       matched.add(match)
-      if (match) Object.assign(i, { name: match.name, originalName: match.name, columns: match.columns })
+      if (match) Object.assign(i, { name: match.name, originalName: match.name, columns: newName.size ? i.columns : match.columns })
     }
     // Keep target indexes that support a foreign key that stays (MySQL creates them and refuses to drop them).
     for (const ix of t.indexes.filter((x) => !x.primary)) {

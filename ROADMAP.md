@@ -427,6 +427,11 @@ Not a clone: their features, rethought and connected to live databases, the know
   model, `COLLATE` in the script, read from and written to the project; left out when the script is translated
   for another database) and the project's begin and end database scripts, put around the CREATE script for the
   project's own database and around the ALTER script
+- ✅ Renames in a comparison: a column or a table that the model renamed came out as DROP and ADD (the data
+  gone). The comparison now offers what is probably one thing under a new name (a table most of whose columns
+  are the dropped table's; a column of the same type where one left and one came), ticked by default, and
+  writes RENAME; keys and indexes on a renamed column stay. Any schema comparison has it (e2e/flow95 against
+  PostgreSQL: the renamed column keeps its rows)
 - ✅ The table panel of the diagram edits what used to need the text: a column's comment, its place among the
   columns, the named type (domain) it follows, auto-increment; the names of foreign keys and indexes, ON UPDATE;
   check constraints. It opens for a model with no database connected (e2e/flow96: a DeZign model edited in the

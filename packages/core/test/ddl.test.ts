@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareSchemas, createScript, designId, findChangedChecks, diffTable, generateMigration, getDialect, impactChecks, liquibaseChangelog, migrationScript, parseDbml, toDesignTable, type TableInfo } from '../src/index.js'
+import { compareSchemas, createScript, designId, findChangedChecks, diffTable, generateMigration, getDialect, guessRenames, impactChecks, liquibaseChangelog, migrationScript, parseDbml, toDesignTable, type TableInfo } from '../src/index.js'
 
 const orders: TableInfo = {
   schema: 'public',
@@ -115,6 +115,68 @@ describe('schema diff & migration', () => {
 })
 
 describe('compareSchemas', () => {
+  // A model that renamed something compared by name alone says DROP and ADD: the data would be gone.
+  it('takes a renamed column and a renamed table as renames once they are confirmed', () => {
+    const db = parseDbml(`
+Table customers {
+  id integer [pk]
+  mail varchar(120) [not null]
+  born date
+  indexes { mail [unique, name: 'customers_mail_key'] }
+}
+Table orders {
+  id integer [pk]
+  cust integer [not null]
+  placed timestamp
+  note text
+}
+Ref: orders.cust > customers.id
+`).tables
+    const model = parseDbml(`
+Table clients {
+  id integer [pk]
+  email varchar(120) [not null]
+  born date
+  indexes { email [unique, name: 'customers_mail_key'] }
+}
+Table orders {
+  id integer [pk]
+  client_id integer [not null]
+  placed timestamp
+  remark text
+  shipped timestamp
+}
+Ref: orders.client_id > clients.id
+`).tables
+    const guesses = guessRenames(model, db)
+    expect(guesses).toEqual([
+      { kind: 'table', table: 'customers', from: 'customers', to: 'clients' },
+      { kind: 'column', table: 'customers', from: 'mail', to: 'email' },
+      { kind: 'column', table: 'orders', from: 'cust', to: 'client_id' },
+      { kind: 'column', table: 'orders', from: 'note', to: 'remark' },
+    ])
+    // By name alone: tables and columns are dropped.
+    expect(compareSchemas(model, db).map((c) => c.kind)).toEqual(expect.arrayContaining(['drop_table', 'drop_column', 'create_table']))
+    const changes = compareSchemas(model, db, { renames: guesses })
+    expect(changes.map((c) => c.kind).sort()).toEqual(['add_column', 'add_foreign_key', 'drop_foreign_key', 'rename_column', 'rename_column', 'rename_column', 'rename_table'].sort())
+    const sql = generateMigration(changes, getDialect('postgres'), db).statements.join('\n')
+    expect(sql).not.toMatch(/DROP (TABLE|COLUMN|INDEX)/)
+    expect(sql).toMatch(/ALTER TABLE "customers" RENAME TO "clients"/)
+    expect(sql).toMatch(/RENAME COLUMN "mail" TO "email"/)
+    expect(sql).toMatch(/RENAME COLUMN "cust" TO "client_id"/)
+    expect(sql).toMatch(/ADD COLUMN "shipped"/)
+    // A guess that is declined stays what the names say.
+    expect(compareSchemas(model, db, { renames: guesses.filter((g) => g.to !== 'remark') }).map((c) => c.kind)).toEqual(expect.arrayContaining(['drop_column', 'add_column']))
+  })
+
+  it('does not guess where two columns could be the renamed one', () => {
+    const db = parseDbml('Table t {\n  id integer [pk]\n  a text\n  b text\n}').tables
+    const model = parseDbml('Table t {\n  id integer [pk]\n  x integer\n  c text\n  d text\n  e text\n}').tables
+    // (Three text columns came and two left: nothing says which became which.)
+    expect(guessRenames(model, db)).toEqual([])
+    expect(guessRenames(parseDbml('Table t {\n  id integer [pk]\n  c text\n  b text\n}').tables, db)).toEqual([{ kind: 'column', table: 't', from: 'a', to: 'c' }])
+  })
+
   it('produces the changes that make the target match the source', async () => {
     const target: TableInfo = { ...orders, columns: orders.columns.slice(0, 2) }
     const extra: TableInfo = { ...orders, name: 'legacy', columns: orders.columns.slice(0, 1), indexes: [] }

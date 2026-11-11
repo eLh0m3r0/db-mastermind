@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ArrowRight, GitCompare, Minus, Pencil, Plus } from 'lucide-react'
-import { compareSchemas, dezignMigrationOptions, dezignWrapScript, findChangedChecks, generateMigration, getDialect, migrationScript, parseDbml, translateTables, unquotedNames, type SchemaChange, type SchemaSnapshot } from '@dbmastermind/core/browser'
+import { compareSchemas, dezignMigrationOptions, dezignWrapScript, findChangedChecks, generateMigration, getDialect, guessRenames, migrationScript, parseDbml, translateTables, unquotedNames, type SchemaChange, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Checkbox, Select } from '@/components/ui/Input'
@@ -29,6 +29,8 @@ export function CompareView({ tab }: { tab: CompareTab }) {
   const [busy, setBusy] = useState(false)
   const [keepExtra, setKeepExtra] = useState(true)
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
+  // Renames the comparison guessed and the user said are not renames.
+  const [declined, setDeclined] = useState<Set<string>>(new Set())
 
   const sourceSchemas = useConnections((s) => (tab.sourceId ? s.runtime[tab.sourceId]?.schema?.schemas : undefined))
   const targetSchemas = useConnections((s) => s.runtime[tab.connectionId]?.schema?.schemas)
@@ -79,14 +81,22 @@ export function CompareView({ tab }: { tab: CompareTab }) {
     }
   }
 
-  const changes = useMemo(() => {
-    if (!snapshots) return []
+  const sides = useMemo(() => {
+    if (!snapshots) return null
     const pick = (snap: SchemaSnapshot, schema?: string) => snap.tables.filter((x) => !schema || (x.schema ?? '') === schema)
     // Across engines, source types are first written the target's way (boolean → bit, text → nvarchar(max)…).
     const source = pick(snapshots.source, tab.sourceSchema)
+    return { source: crossEngine && target ? translateTables(source, target.driver) : source, target: pick(snapshots.target, tab.targetSchema) }
+  }, [snapshots, tab.sourceSchema, tab.targetSchema, crossEngine, target])
+  // A table or a column that is probably the same one under a new name: renamed (the data stays) unless declined.
+  const guesses = useMemo(() => (sides ? guessRenames(sides.source, sides.target) : []), [sides])
+  const guessKey = (g: (typeof guesses)[number]) => `${g.kind}:${g.table}:${g.from}:${g.to}`
+
+  const changes = useMemo(() => {
+    if (!snapshots || !sides) return []
     // A model names its schemas on purpose: its new tables go there unless a schema of the database was picked.
-    return compareSchemas(crossEngine && target ? translateTables(source, target.driver) : source, pick(snapshots.target, tab.targetSchema), { keepExtra, model: tab.sourceModel !== undefined && !tab.targetSchema, checkChanged: snapshots.checkChanged })
-  }, [snapshots, tab.sourceSchema, tab.targetSchema, tab.sourceModel, keepExtra, crossEngine, target])
+    return compareSchemas(sides.source, sides.target, { keepExtra, model: tab.sourceModel !== undefined && !tab.targetSchema, checkChanged: snapshots.checkChanged, renames: guesses.filter((g) => !declined.has(guessKey(g))) })
+  }, [snapshots, sides, guesses, declined, tab.targetSchema, tab.sourceModel, keepExtra])
 
   const byTable = useMemo(() => {
     const map = new Map<string, SchemaChange[]>()
@@ -169,6 +179,26 @@ export function CompareView({ tab }: { tab: CompareTab }) {
       ) : (
         <div className="flex min-h-0 flex-1">
           <div className="w-[46%] min-w-[320px] overflow-auto border-r border-line p-2">
+            {guesses.length > 0 && (
+              <div className="mb-2 rounded-md border border-line bg-accent-soft px-2 py-1.5 text-[12px]" data-testid="compare-renames">
+                <div className="mb-1 font-semibold">{t('Renamed, so the data stays. Untick what is really a new one and a dropped one:')}</div>
+                {guesses.map((g) => (
+                  <Checkbox
+                    key={guessKey(g)}
+                    checked={!declined.has(guessKey(g))}
+                    onChange={(on) =>
+                      setDeclined((prev) => {
+                        const next = new Set(prev)
+                        if (on) next.delete(guessKey(g))
+                        else next.add(guessKey(g))
+                        return next
+                      })
+                    }
+                    label={<span className="font-mono text-[11.5px]">{g.kind === 'table' ? `${g.from} → ${g.to}` : `${g.table}.${g.from} → ${g.to}`}</span>}
+                  />
+                ))}
+              </div>
+            )}
             {byTable.map(([table, list]) => (
               <div key={table} className={cn('mb-2 rounded-md border border-line', excluded.has(table) && 'opacity-50')}>
                 <div className="flex items-center gap-2 border-b border-line bg-subtle px-2 py-1.5">
