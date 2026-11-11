@@ -76,6 +76,18 @@ try {
   const archived = readFileSync(dez, 'latin1')
   console.log('archived version:', JSON.stringify(versions.map((v) => [v.number, v.label.startsWith('Version ')])), (archived.match(/<VERSION>/g) ?? []).length === 2, /<\/VERSION><VERSION>\n<VERSIONINFO>\n<VERSIONID>[0-9A-F-]{36}<\/VERSIONID>/.test(archived))
 
+  // A column hidden in one table's box on this diagram (DeZign's Show/hide attributes), saved into the project.
+  await win.locator('.react-flow__node[data-id="shop.customer"]').click({ button: 'right' })
+  await win.getByText('Columns shown').hover()
+  await win.getByText('name', { exact: true }).last().click()
+  await win.waitForTimeout(600)
+  const boxRows = await win.locator('.react-flow__node[data-id="shop.customer"] .border-t').count()
+  await win.getByRole('button', { name: 'Save', exact: true }).click()
+  await win.getByText(/Write these changes into shop\.dez\?/).waitFor({ timeout: 10000 })
+  await win.getByRole('button', { name: 'Write to the DeZign file' }).click()
+  await win.getByText(/Saved to shop\.dez/).last().waitFor({ timeout: 10000 })
+  console.log('hidden column:', boxRows === 3, /<HIDDENATTR>A2<\/HIDDENATTR>/.test(readFileSync(dez, 'latin1')))
+
   // The project's begin and end scripts go around the DDL made for its own database.
   await win.getByRole('button', { name: /^SQL DDL/ }).click()
   await win.getByText('PostgreSQL', { exact: true }).last().click()

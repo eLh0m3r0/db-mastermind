@@ -405,7 +405,8 @@ Not a clone: their features, rethought and connected to live databases, the know
   two long constraint names become one; MySQL 64, SQL Server and Oracle 128), counted in bytes as they count
 - ✅ A diagram shows its tables as DeZign does: its attribute display level (all columns, keys, primary keys,
   first 10 or 20, names only), data types or none, and the columns hidden in one table's box. Changed in the
-  diagram's toolbar, saved into the project; codes checked by setting them in DeZign 14.9.3
+  diagram's toolbar (columns of one table: its menu → Columns shown), saved into the project; codes checked by
+  setting them in DeZign 14.9.3
 - ✅ Diagrams of a DeZign project renamed and removed (the tables stay; whatever was drawn on the diagram goes
   with it). DeZign 14.9.3 opens the saved files and keeps them as saved
 - ✅ Archive a version (the model's "Archive version…", as DeZign's File → Versions → Archive current version): the

@@ -499,6 +499,8 @@ export const cs: Record<string, string> = {
   'First 20 columns': 'Prvních 20 sloupců',
   'Table names only': 'Jen názvy tabulek',
   'Types': 'Typy',
+  'Columns shown': 'Zobrazené sloupce',
+  'Show all columns': 'Zobrazit všechny sloupce',
   'DROP script…': 'Skript DROP…',
   'Drops everything the model creates in {db}: run it only on a database you mean to empty.': 'Odstraní vše, co model v {db} vytváří: spouštějte jen na databázi, kterou chcete vyprázdnit.',
   'Rename diagram': 'Přejmenovat diagram',

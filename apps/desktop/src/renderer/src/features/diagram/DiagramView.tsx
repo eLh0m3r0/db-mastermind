@@ -1436,6 +1436,19 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
                   })),
                 ],
               },
+              {
+                // Columns hidden in this table's box on this diagram (DeZign: Show/hide attributes).
+                label: tr('Columns shown'),
+                submenu: [
+                  { label: tr('Show all columns'), checked: !shownAs.hidden?.[n.id]?.length, onClick: () => patchLayout({ display: { ...shownAs, hidden: { ...shownAs.hidden, [n.id]: [] } } }) },
+                  'separator' as const,
+                  ...n.data.table.columns.map((c) => {
+                    const hidden = shownAs.hidden?.[n.id] ?? []
+                    const on = !hidden.includes(c.name)
+                    return { label: c.name, checked: on, onClick: () => patchLayout({ display: { ...shownAs, hidden: { ...shownAs.hidden, [n.id]: on ? [...hidden, c.name] : hidden.filter((x) => x !== c.name) } } }) }
+                  }),
+                ],
+              },
               ...(tab.tables && !focusName
                 ? [
                     'separator' as const,
