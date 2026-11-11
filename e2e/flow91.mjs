@@ -120,7 +120,7 @@ try {
   await win.getByRole('button', { name: 'Save', exact: true }).click()
   await win.getByText(/Write these changes into shop\.dez\?/).waitFor({ timeout: 10000 })
   const listed = await win.locator('[role="dialog"], .fixed').filter({ hasText: 'Write these changes' }).last().innerText()
-  console.log('confirm lists:', /renamed column: customer \(name → full_name\)/.test(listed), /new column: customer \(vat_id\)/.test(listed), 'draft warning:', /not been checked in DeZign/.test(listed))
+  console.log('confirm lists:', /renamed column: customer \(name → full_name\)/.test(listed), /new column: customer \(vat_id\)/.test(listed), 'no draft warning:', !/not been checked in DeZign/.test(listed))
   console.log('confirm lists diagrams:', /new diagram: Customers/.test(listed), /added to diagram: customer \(Billing\)/.test(listed), /taken off diagram: payment \(Billing\)/.test(listed), /added to diagram: customer \(Customers\)/.test(listed))
   await win.getByRole('button', { name: 'Write to the DeZign file' }).click()
   await win.getByText(/Saved to shop\.dez/).waitFor({ timeout: 10000 })
