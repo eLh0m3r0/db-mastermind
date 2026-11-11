@@ -1,3 +1,4 @@
+import { dezignDecoder } from './dezign.js'
 import { saveToDezign } from './dezign-write.js'
 import { translateTables } from './type-map.js'
 import type { DriverId, TableInfo } from './types.js'
@@ -7,7 +8,8 @@ import type { DriverId, TableInfo } from './types.js'
  * who keep working in DeZign. The project starts as an empty one with DeZign's default settings and gets its
  * tables through the same writer that saves into existing projects.
  *
- * DRAFT like saving back: read back and checked for consistency, not yet opened in DeZign itself.
+ * Opened in DeZign 14.9.3 (PostgreSQL, SQL Server and MySQL projects): it shows the whole model and saves it
+ * again as the same model (`dezign-kit.test.ts` with DBM_DEZ_KIT_BACK).
  */
 
 /** DeZign's target database ids for the engines a model is exported for. */
@@ -193,7 +195,7 @@ export function newDezignProject(tables: TableInfo[], options: NewDezignOptions 
   }
   // Text is written in the Central European code page only when it needs letters the Western one lacks.
   const all = JSON.stringify(real)
-  const western = new TextDecoder('windows-1252')
+  const western = dezignDecoder('windows-1252')
   const inWestern = new Set(Array.from({ length: 128 }, (_, i) => western.decode(Uint8Array.of(i + 128))))
   const encoding = [...all].some((ch) => ch.codePointAt(0)! > 127 && !inWestern.has(ch)) ? 'windows-1250' : 'windows-1252'
   const empty = emptyProject(DEZIGN_DATABASES[database], newId(), newId(), options.today ?? new Date().toISOString().slice(0, 10))

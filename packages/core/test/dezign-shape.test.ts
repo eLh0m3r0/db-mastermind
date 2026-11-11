@@ -48,6 +48,39 @@ function misfits(el: DezignElement, grammar: Map<string, Shape>, out = new Map<s
   return out
 }
 
+/** "parent>leaf" → how many values DeZign wrote there, and how many of them were whole numbers. */
+type Values = Map<string, [seen: number, numbers: number]>
+const leafText = (el: DezignElement) => (el.children.every((c) => typeof c === 'string') ? el.children.join('').trim() : undefined)
+
+function learnValues(el: DezignElement, values: Values): Values {
+  for (const kid of dezignChildren(el)) {
+    const value = leafText(kid)
+    if (value === undefined) learnValues(kid, values)
+    else {
+      const known = values.get(`${el.tag}>${kid.tag}`) ?? [0, 0]
+      values.set(`${el.tag}>${kid.tag}`, [known[0] + 1, known[1] + (/^-?\d+$/.test(value) ? 1 : 0)])
+    }
+  }
+  return values
+}
+
+/**
+ * Values that are a whole number every time DeZign writes them and are not one here. DeZign reads such a value
+ * with no default: `<HEADERCOLOR></HEADERCOLOR>` in one new diagram object was enough for DeZign 14.9.3 to refuse
+ * the whole project ("'' is not a valid integer value"). Names only, never the value.
+ */
+function notNumbers(el: DezignElement, values: Values, out = new Map<string, number>()): Map<string, number> {
+  for (const kid of dezignChildren(el)) {
+    const value = leafText(kid)
+    if (value === undefined) notNumbers(kid, values, out)
+    else {
+      const [seen, numbers] = values.get(`${el.tag}>${kid.tag}`) ?? [0, 0]
+      if (seen >= 20 && numbers === seen && !/^-?\d+$/.test(value)) out.set(`${el.tag} > ${kid.tag}: always a whole number in DeZign's files, ${value ? 'something else' : 'empty'} here`, (out.get(`${el.tag} > ${kid.tag}: always a whole number in DeZign's files, ${value ? 'something else' : 'empty'} here`) ?? 0) + 1)
+    }
+  }
+  return out
+}
+
 function findProjects(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const path = join(dir, name)
@@ -77,13 +110,20 @@ function find(dir: string, out: string[] = []): string[] {
 
 describe.skipIf(!root)('what we write has the shape of what DeZign 14 writes', () => {
   const files = root ? find(root).map((path) => readFileSync(path, 'latin1')) : []
-  const written = files.filter((text) => /<FILEFORMATVERSION>140</.test(text))
+  const format140 = files.filter((text) => /<FILEFORMATVERSION>140</.test(text))
+  // DeZign 14 files come in two styles: some (the samples shipped with DeZign among them) hold every element even
+  // when it is empty (POSNR, DESC, NOTE …), the others leave those out. A new project is written the second way,
+  // so what must be in an element is learned from those; the first say what may be where, like the older formats.
+  const wordy = (text: string) => /<ENT>\s*<NAME>[^<]*<\/NAME>\s*<ID>[^<]*<\/ID>\s*<POSNR>/.test(text)
+  const written = format140.filter((text) => !wordy(text))
   const grammar = new Map<string, Shape>()
   for (const text of written) learn(parseDezignXml(text), grammar)
+  const values: Values = new Map()
+  for (const text of format140) learnValues(parseDezignXml(text), values)
   // Elements the few DeZign 14 files happen not to use (table constraints, indexes) are known from the files of
   // DeZign 6 to 12, which wrote them the same way: those say what may be where and in which order, not what must be.
   const older = new Map<string, Shape>()
-  for (const text of files.filter((t) => /<FILEFORMATVERSION>(60|120)</.test(t))) learn(parseDezignXml(text), older)
+  for (const text of [...format140.filter(wordy), ...files.filter((t) => /<FILEFORMATVERSION>(60|120)</.test(t))]) learn(parseDezignXml(text), older)
   // A table's check constraint, which none of the public files has, as a DeZign 14 project writes it:
   // … NOTE, VALUE, CONLEVEL, CONTYPE, ATTRIBUTEIDS.
   const constraint = grammar.get('CONSTRAINT')
@@ -115,6 +155,7 @@ describe.skipIf(!root)('what we write has the shape of what DeZign 14 writes', (
     const all = new Map<string, number>()
     for (const database of ['postgres', 'mssql', 'mysql'] as const) {
       const problems = misfits(parseDezignXml(newDezignProject(model, { database })), grammar)
+      notNumbers(parseDezignXml(newDezignProject(model, { database })), values, problems)
       report(`new ${database} project`, problems)
       for (const [p, n] of problems) all.set(p, (all.get(p) ?? 0) + n)
     }
@@ -126,6 +167,8 @@ describe.skipIf(!root)('what we write has the shape of what DeZign 14 writes', (
     // Every format with a few files to learn from is judged by its own files (DeZign 14 by the grammar above).
     const formatOf = (text: string) => /<FILEFORMATVERSION>(\d+)</.exec(text)?.[1] ?? ''
     const own = new Map<string, Map<string, Shape>>([['140', grammar]])
+    const ownValues = new Map<string, Values>()
+    for (const text of files) learnValues(parseDezignXml(text), ownValues.get(formatOf(text)) ?? ownValues.set(formatOf(text), new Map()).get(formatOf(text))!)
     for (const format of new Set(files.map(formatOf))) {
       const same = files.filter((t) => formatOf(t) === format)
       if (format === '140' || same.length < 3) continue
@@ -170,6 +213,8 @@ describe.skipIf(!root)('what we write has the shape of what DeZign 14 writes', (
       // Judged against the other files only where the file itself did not already differ.
       const before = misfits(parseDezignXml(original), grammar)
       const after = misfits(parseDezignXml(saved.files[0]!.text), grammar)
+      notNumbers(parseDezignXml(original), ownValues.get(formatOf(original))!, before)
+      notNumbers(parseDezignXml(saved.files[0]!.text), ownValues.get(formatOf(original))!, after)
       const added = new Map([...after].filter(([p, n]) => n > (before.get(p) ?? 0)))
       report(`model ${i + 1} after edits`, added)
       expect([...added.keys()], `model ${i + 1} (format ${formatOf(original)})`).toEqual([])
@@ -186,6 +231,8 @@ describe.skipIf(!root)('what we write has the shape of what DeZign 14 writes', (
       const all = projectFiles(dir)
       const grammar = new Map<string, Shape>()
       for (const f of all.filter((x) => /\.xml$/i.test(x.path))) learn(parseDezignXml(f.text), grammar)
+      const values: Values = new Map()
+      for (const f of all.filter((x) => /\.xml$/i.test(x.path))) learnValues(parseDezignXml(f.text), values)
       const model = readDezign(assembleDezignProject(all))
       const base = viaDbml(model.tables)
       const target = structuredClone(base)
@@ -202,9 +249,9 @@ describe.skipIf(!root)('what we write has the shape of what DeZign 14 writes', (
         diagrams: { [main.id]: { notes: [...main.notes, { id: 'new', text: 'Note', x: 10, y: 10 }] }, 'new:1': { name: 'Another', exact: true, tables: [`${parent.schema ?? ''}.${parent.name}`] } },
       })
       const before = new Map<string, number>()
-      for (const f of all.filter((x) => /\.xml$/i.test(x.path) && saved.files.some((w) => w.path === x.path))) misfits(parseDezignXml(f.text), grammar, before)
+      for (const f of all.filter((x) => /\.xml$/i.test(x.path) && saved.files.some((w) => w.path === x.path))) notNumbers(parseDezignXml(f.text), values, misfits(parseDezignXml(f.text), grammar, before))
       const after = new Map<string, number>()
-      for (const f of saved.files.filter((x) => /\.xml$/i.test(x.path))) misfits(parseDezignXml(f.text), grammar, after)
+      for (const f of saved.files.filter((x) => /\.xml$/i.test(x.path))) notNumbers(parseDezignXml(f.text), values, misfits(parseDezignXml(f.text), grammar, after))
       const added = new Map([...after].filter(([p, n]) => n > (before.get(p) ?? 0)))
       report(`folder project: ${saved.files.length} files written`, added)
       expect([...added.keys()]).toEqual([])

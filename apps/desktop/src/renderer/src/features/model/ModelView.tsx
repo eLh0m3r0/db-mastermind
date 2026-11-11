@@ -174,7 +174,6 @@ export function ModelView({ tab }: { tab: ModelTab }) {
         title: t('Write these changes into {file}?', { file: name }),
         message: t('Only the listed objects are changed; everything else in the DeZign project stays as it is. The files as they are now are copied to a backup folder first.'),
         items: describeDezignChanges(preview.changes),
-        warning: t('Saving to DeZign files is new and has not been checked in DeZign itself yet. Keep the backup until you have opened the result there.'),
         confirmLabel: t('Write to the DeZign file'),
       })
       if (!ok) return
@@ -203,7 +202,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
         const { text: opened, ...patch } = modelTabFromFile(file, liveSchema?.defaultSchema, { quiet: true })
         replaceText(opened, patch)
         if (connection) rememberModelDatabase(path, connection.id)
-        return toast({ kind: 'success', message: t('Saved as a DeZign for Databases project'), detail: `${path}\n${t('Not yet checked in DeZign itself: open it there before you rely on it.')}` })
+        return toast({ kind: 'success', message: t('Saved as a DeZign for Databases project'), detail: path })
       }
       // Saved as its own file, the model no longer follows the DeZign project it came from.
       updateTab(tab.id, { path, source: undefined, dirty: false, text, title: path.split(/[\\/]/).pop() ?? t('Model') })
@@ -567,6 +566,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
               tab={diagramTab}
               key={area}
               model={diagram ? snapshot : shown}
+              modelDriver={dezignDriver(tab.sqlDatabase)}
               onLayout={(patch) => (diagram ? patchDiagram(diagram.id, () => ({ ...patch, ...('positions' in patch ? { positions: patch.positions ?? {} } : {}) })) : updateTab(tab.id, { ...patch, dirty: tab.source ? true : tab.dirty }))}
               onApplyModel={(tables) => {
                 // Editing one area keeps the model's other tables; tables added there join the area.

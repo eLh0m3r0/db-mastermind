@@ -39,6 +39,7 @@ import {
   toMermaid,
   toPlantUml,
   type DesignTable,
+  type DriverId,
   type SchemaSnapshot,
   type TableInfo,
 } from '@dbmastermind/core/browser'
@@ -311,7 +312,7 @@ function nodeHeight(t: TableInfo, keysOnly: boolean, fk: Set<string>, ref: Set<s
   return HEADER + visible * ROW + (keysOnly && visible < t.columns.length ? ROW : 0) + 2
 }
 
-function DiagramInner({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables'>>) => void }) {
+function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; modelDriver?: DriverId; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables'>>) => void }) {
   const tr = useT()
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const loadSchema = useConnections((s) => s.loadSchema)
@@ -335,6 +336,8 @@ function DiagramInner({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab;
   const [layouting, setLayouting] = useState(false)
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<TableNodeData>>([])
   const connection = useConnections((s) => s.list.find((c) => c.id === tab.connectionId))
+  // A model needs no database to be edited: without a connection the table editor works for the model's own.
+  const editorDriver = connection?.driver ?? (model ? (modelDriver ?? 'postgres') : undefined)
   const newQuery = useWorkspace((s) => s.newQuery)
   const [design, setDesign] = useState(!!tab.startDesign || (!!tab.design && Object.keys(tab.design).length > 0))
   const [selected, setSelected] = useState<string | null>(tab.startDesign ?? null)
@@ -1368,11 +1371,11 @@ function DiagramInner({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab;
           )}
         </ReactFlow>
       </div>
-      {design && selected && selectedDraft && connection && (
+      {design && selected && selectedDraft && editorDriver && (
         <TableEditor
           key={selected}
           table={selectedDraft}
-          driver={connection.driver}
+          driver={editorDriver}
           allTables={tables}
           onChange={(t) => updateDraft(selected, t)}
           onRevert={
@@ -1407,10 +1410,10 @@ function DiagramInner({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab;
   )
 }
 
-export function DiagramView({ tab, model, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables'>>) => void }) {
+export function DiagramView({ tab, model, modelDriver, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables'>>) => void }) {
   return (
     <ReactFlowProvider>
-      <DiagramInner tab={tab} model={model} onApplyModel={onApplyModel} onLayout={onLayout} />
+      <DiagramInner tab={tab} model={model} modelDriver={modelDriver} onApplyModel={onApplyModel} onLayout={onLayout} />
     </ReactFlowProvider>
   )
 }

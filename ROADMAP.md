@@ -350,7 +350,7 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ Group boxes are drawn as captioned frames behind their tables (not edited here; stamps are kept in the file
   and not shown)
 
-### 8.2 Save it back 🚧 (draft: works end to end, not yet opened in DeZign itself)
+### 8.2 Save it back 🚧 (works end to end; checked in DeZign 14.9.3 itself)
 - ✅ Save writes the edited model into the same `.dez` or folder project: only the touched elements change,
   everything else stays byte for byte, the file keeps its format version, code page and line ends
 - ✅ Rename, comments, types, nullability, defaults, identity, add/remove/reorder columns, primary key, unique
@@ -369,19 +369,43 @@ Not a clone: their features, rethought and connected to live databases, the know
   constraint and relationship name, a new diagram placed with the other diagrams (it was written after the
   controls), copied tables and columns keeping every field of their neighbours, "no domain" written the file's
   way, a table's indexes before its constraints, new constraints and indexes shaped like the project's own
-- ⬜ Verified in DeZign: open saved files of every kind of edit (14-day trial on Windows, or a colleague's license).
-  The files are ready to hand over: `DBM_DEZ_KIT_FROM=<a model DeZign wrote> DBM_DEZ_KIT_TO=<folder>` with
-  `packages/core/test/dezign-kit.test.ts` writes one file per kind of edit, three projects made from scratch and
-  a checklist of what to look for in each.
-  Unknown until then: whether DeZign accepts the straight connector of a new relationship, GUID ids next to its
-  own id style, and character references for letters outside the file's code page
+- ✅ Verified in DeZign itself (14.9.3, the trial, run under Wine in Docker: `scripts/dezign-check`). A kit of
+  one file per kind of edit (`packages/core/test/dezign-kit.test.ts`: renamed, new, retyped and dropped columns,
+  a new table with a relationship, a dropped and a renamed table, an index and a unique constraint, a check, a
+  relationship between existing tables, a renamed foreign key and index, a moved table, a note and a color, a
+  new diagram, all of it at once, and projects made from scratch for PostgreSQL, SQL Server and MySQL) is opened
+  in DeZign and saved there again with "Save project as"; what DeZign wrote is read back and compared with what
+  we wrote (`DBM_DEZ_KIT_BACK`). On a model DeZign 14.9.3 wrote: all 18 files of the kit open and come back as
+  the same model; a DeZign 6 model is converted by DeZign and comes back the same (first files checked).
+  Still to run: the renamed foreign key and index file, the rest of the older-format kit, folder projects.
+  DeZign found what reading back could not:
+  - an empty number (`<HEADERCOLOR></HEADERCOLOR>` of a new table on a diagram) stops the whole project from
+    opening ("'' is not a valid integer value"); the shape test now also learns which values are always numbers
+  - DeZign makes names from their templates again when it opens a project: a typed name of an index, a
+    constraint, a check or a relationship was replaced by the pattern's (and a copied index got its neighbour's
+    name). A typed name is now written as DeZign keeps one, as its own template; names made from a pattern
+    follow a renamed table the way DeZign renames them
+  - projects that came to DeZign 14 from older versions give columns and indexes ids that are unique in the whole
+    project (`ATTR-<table>-<n>-<token>`): plain numbers were renumbered by DeZign and a new relationship lost its
+    columns. The first relationship of a pre-14 file has the constraint id that format uses (`1`)
+  - a character reference (`&#345;`) for a letter outside the file's code page is shown as typed: such a letter
+    is now written without its diacritic, as DeZign (which works in one code page) would hold it. Node 24 reads
+    windows-1252 as ISO-8859-1 (€ „ “ – Š ž came out as control characters): the reader has its own table
+  - DeZign moves the end of a relationship line with a moved table and routes the line of a new relationship
+    itself, so the straight connector we write is enough
+- ✅ Renaming an index, a unique constraint, a check or a foreign key in the model is written into the element
+  that has the name (it used to be dropped silently: they are matched by their columns and condition)
+- ✅ A copied column, table or relationship does not take its neighbour's labels, custom properties, character
+  set or relationship phrases; a dropped table takes the lines from views to it along (DeZign 14.5 draws views);
+  files of DeZign 4 to 11 get their id counters (`LASTID`, `ATTRLASTID`, …) moved on with new objects
 - ⬜ Subtype clusters and the domains themselves edited from the model (today they are kept as they are)
 
 - ✅ Compare with a version archived in the project ("Compare with version…" lists them, newest first): the
   changes since then and the ALTER script for the model's database. DeZign sells this in its top edition only
 - ✅ A model made here goes the other way too: Save as… offers a new DeZign project (`.dez`, format 140, for the
   database of the model's connection: PostgreSQL, SQL Server or MySQL) with tables, keys, relationships, indexes,
-  checks, comments and the diagram; the tab then follows that file. Same caveat: not opened in DeZign yet
+  checks, comments and the diagram; the tab then follows that file. DeZign 14.9.3 opens all three kinds and
+  saves them again as the same model
 - ✅ Every save passes a reference check (no id used twice, no key, index, relationship or diagram object
   pointing nowhere) and chains of random edits run as tests, on made-up models in CI and on real ones locally.
   They found and fixed two defects before anyone met them (ids replaced inside other values in files that

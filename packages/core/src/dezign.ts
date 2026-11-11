@@ -197,6 +197,16 @@ export function detectDezignEncoding(binary: string, fallback: Exclude<DezignEnc
   }
 }
 
+// Some Node versions (24.5 among them) read windows-1252 as ISO-8859-1: the bytes 0x80–0x9F, which hold
+// € „ “ – Š ž …, come out as control characters. They are put right here, whatever the runtime does.
+const CP1252_HIGH = '€\u0081‚ƒ„…†‡ˆ‰Š‹Œ\u008dŽ\u008f\u0090‘’“”•–—˜™š›œ\u009džŸ'
+/** A decoder for the bytes of a DeZign document. */
+export function dezignDecoder(encoding: DezignEncoding): { decode(bytes: Uint8Array): string } {
+  const decoder = new TextDecoder(encoding)
+  if (encoding !== 'windows-1252') return decoder
+  return { decode: (bytes) => decoder.decode(bytes).replace(/[\u0080-\u009f]/g, (c) => CP1252_HIGH[c.charCodeAt(0) - 0x80]!) }
+}
+
 const ENTITIES: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" }
 export const unescapeDezignText = (s: string) =>
   s.replace(/&(#\d+|#x[0-9a-f]+|[a-z]+);/gi, (whole, name: string) => {
@@ -252,7 +262,7 @@ export function dezignDriver(targetDatabase: string | undefined): DriverId | und
 /** The model of a DeZign project given as a binary string (`.dez` content, or `assembleDezignProject`). */
 export function readDezign(binary: string, options: ReadDezignOptions = {}): DezignModel {
   const encoding = options.encoding ?? detectDezignEncoding(binary, options.fallbackEncoding)
-  const decoder = new TextDecoder(encoding)
+  const decoder = dezignDecoder(encoding)
   const decode = (s: string) => (/[\x80-\xff]/.test(s) ? decoder.decode(Uint8Array.from(s, (c) => c.charCodeAt(0))) : s)
   const text = (el: DezignElement | undefined, tag: string): string => {
     const k = kid(el, tag)
@@ -601,7 +611,10 @@ export function dezignIntegrity(binary: string): string[] {
       if (parent && !parent.has(raw(pair, 'KEYID'))) problems.push(`relationship ${id}: key ${raw(pair, 'KEYID')} is not in the parent`)
       if (child && !child.has(raw(pair, 'FOREIGNKEYID'))) problems.push(`relationship ${id}: foreign key ${raw(pair, 'FOREIGNKEYID')} is not in the child`)
     }
-    for (const ref of idsOf(kid(rel, 'CONSTRAINT'))) if (child && !child.has(ref)) problems.push(`relationship ${id}: constraint lists unknown attribute ${ref}`)
+    // (DeZign 14 converting an older project gives columns new ids and leaves the old numbers in this list: the
+    // pairs are what it reads. The number is then the n of `ATTR-<table>-<n>-<token>`.)
+    const known = (ref: string) => !child || child.has(ref) || (/^\d+$/.test(ref) && [...child].some((attr) => new RegExp(`^ATTR-.+-${ref}-[^-]+$`).test(attr)))
+    for (const ref of idsOf(kid(rel, 'CONSTRAINT'))) if (!known(ref)) problems.push(`relationship ${id}: constraint lists unknown attribute ${ref}`)
   }
   const diagramsEl = kid(version, 'DIAGRAMS')
   const diagrams = new Set(kids(diagramsEl, 'DIAGRAM').map((d) => raw(d, 'ID')))
@@ -623,6 +636,13 @@ export function dezignIntegrity(binary: string): string[] {
   check('RELATIONSHIPCONNECTORS', (id) => relationships.has(id), 'relationship')
   check('TEXTAREACONTROLS', (id) => texts.has(id), 'text area')
   check('SUBCATEGORYCONTROLS', (id) => subcategories.has(id), 'subtype cluster')
+  // The lines from a view to the tables it reads (DeZign 14.5 and later).
+  const viewLinks = new Set<string>()
+  for (const link of kids(kid(dict, 'VIEWCONNECTIONS'))) {
+    viewLinks.add(raw(link, 'ID'))
+    if (!views.has(raw(link, 'PARENTOBJECTID')) || !(entities.has(raw(link, 'CHILDOBJECTID')) || views.has(raw(link, 'CHILDOBJECTID')))) problems.push(`view connection ${raw(link, 'ID')}: unknown end`)
+  }
+  check('VIEWCONNECTORS', (id) => viewLinks.has(id), 'view connection')
   return problems
 }
 
@@ -640,7 +660,7 @@ export interface DezignVersionInfo {
  * reads the head of a folder project's archived version file: only the leading VERSIONINFO has to be there.
  */
 export function listDezignVersions(binary: string, options: Pick<ReadDezignOptions, 'encoding' | 'fallbackEncoding'> = {}): DezignVersionInfo[] {
-  const decoder = new TextDecoder(options.encoding ?? detectDezignEncoding(binary, options.fallbackEncoding))
+  const decoder = dezignDecoder(options.encoding ?? detectDezignEncoding(binary, options.fallbackEncoding))
   const decode = (s: string) => unescapeXml(/[\x80-\xff]/.test(s) ? decoder.decode(Uint8Array.from(s, (c) => c.charCodeAt(0))) : s).trim()
   return [...binary.matchAll(/<VERSIONINFO>([\s\S]*?)<\/VERSIONINFO>/g)].map((m) => {
     const field = (tag: string) => decode(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(m[1]!)?.[1] ?? '')

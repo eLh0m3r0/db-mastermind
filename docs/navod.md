@@ -83,14 +83,15 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
 - **Porovnání s archivovanou verzí:** u modelu z DeZignu nabídne *Porovnat s verzí…* verze uložené v projektu;
   uvidíte změny od té doby a ALTER skript pro databázi modelu.
 - **Export do DeZignu:** model vytvořený tady uložíte přes *Uložit jako…* i jako nový projekt DeZign for Databases
-  (`.dez`) pro kolegy, kteří pracují v DeZignu. Funkce je v náhledu: soubor si v DeZignu nejdřív otevřete.
+  (`.dez`) pro kolegy, kteří pracují v DeZignu. Ověřeno v DeZignu 14.9.3: projekt otevře a uloží beze ztráty.
 - **Kontroly modelu:** počítadlo v liště modelu ukazuje, co stojí za pozornost (tabulky bez klíče, nesoulad typů
   cizího klíče, duplicitní indexy, cizí klíče bez indexu, názvy mimo styl, vazby, které nikdo nedeklaroval).
   Kliknutím přejdete na tabulku; bezpečné opravy jsou na jedno kliknutí.
 - **Modely z DeZign for Databases:** *Otevřít model* přijme i soubory `.dez` a složkové projekty `.dezproj`
   (DeZign 4 až 14) včetně rozložení hlavního diagramu. Z modelu pak vygenerujete DDL nebo ALTER skript proti
-  živé databázi. *Uložit* zapíše změny zpět do projektu DeZignu (nejdřív je vypíše a ponechá zálohu; funkce je
-  zatím v náhledu), *Uložit jako* vytvoří samostatný model `.dbml`.
+  živé databázi. *Uložit* zapíše změny zpět do projektu DeZignu (nejdřív je vypíše a ponechá zálohu;
+  ověřeno v DeZignu 14.9.3, který takto uložené soubory otevře a uloží beze ztráty), *Uložit jako* vytvoří
+  samostatný model `.dbml`.
 - **Porovnání:** schéma dvou databází (dev → prod) s migrací, nebo data dvou tabulek se synchronizačním skriptem.
 
 ## 6. AI asistent

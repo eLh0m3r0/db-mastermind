@@ -474,6 +474,131 @@ describe('saving back into a DeZign project', () => {
     expect(r.files[0]!.text).toMatch(/<ENTC>\s*<ID>32<\/ID>\s*<DIAGRAMID>1<\/DIAGRAMID>\s*<W>120<\/W>\s*<H>44<\/H>\s*<L>800<\/L>\s*<T>150<\/T>/)
   })
 
+  // Found by DeZign 14.9.3 itself: "'' is not a valid integer value", and the project did not open.
+  it('gives a new table\'s diagram object the header colour of its diagram, never an empty number', () => {
+    const colored: DezignFile[] = [{ path: 'shop.dez', text: dez.replace(/(<BRUSH>[^<]*<\/BRUSH>\n)(<\/ENTC>)/g, '$1<HEADERCOLOR>16446189</HEADERCOLOR>\n$2') }]
+    expect(colored[0]!.text.match(/<HEADERCOLOR>16446189</g)!.length).toBeGreaterThan(1)
+    const r = save(colored, (t) => [...t, { schema: 'shop', name: 'payment', type: 'table', comment: null, columns: [column('id', 'bigint', { nullable: false, isPrimaryKey: true })], primaryKey: ['id'], foreignKeys: [], indexes: [] }])
+    const out = r.files[0]!.text
+    expect(out.match(/<HEADERCOLOR>16446189</g)).toHaveLength(colored[0]!.text.match(/<HEADERCOLOR>16446189</g)!.length + 1)
+    expect(out).not.toContain('<HEADERCOLOR></HEADERCOLOR>')
+  })
+
+  // In every format before DeZign 14 that id is the number 1; DeZign does not open a file with text in a number's place.
+  it('gives the constraint of a first relationship the id its file format uses', () => {
+    const bare = (format: string): DezignFile[] => [{ path: 'shop.dez', text: dez.replace('<FILEFORMATVERSION>140<', `<FILEFORMATVERSION>${format}<`).replace(/<REL>[\s\S]*?<\/REL>\n/g, '').replace(/<RELC>[\s\S]*?<\/RELC>\n/g, '') }]
+    const constraintId = (format: string) => {
+      expect(bare(format)[0]!.text).not.toContain('<REL>')
+      const r = save(bare(format), (t) => [...t, { schema: 'shop', name: 'payment', type: 'table', comment: null, columns: [column('id', 'bigint', { nullable: false, isPrimaryKey: true }), column('invoice_id', 'bigint', { nullable: false })], primaryKey: ['id'], foreignKeys: [{ name: 'fk_payment_invoice_id', columns: ['invoice_id'], refSchema: 'shop', refTable: 'invoice', refColumns: ['id'] }], indexes: [] }])
+      expect(readDezign(r.files[0]!.text).tables.find((t) => t.name === 'payment')!.foreignKeys).toHaveLength(1)
+      const [, rel, constraint] = /<REL>[\s\S]*?<ID>([^<]*)<\/ID>[\s\S]*?<CONSTRAINT>[\s\S]*?<ID>([^<]*)<\/ID>/.exec(r.files[0]!.text)!
+      return { rel, constraint }
+    }
+    expect(constraintId('60').constraint).toBe('1')
+    const now = constraintId('140')
+    expect(now.constraint).toBe(`${now.rel}-FK`)
+  })
+
+  // DeZign works in one Windows code page. A character reference is no way around it: 14.9.3 showed `&#345;`
+  // as typed and saved it as `&amp;#345;`.
+  it('writes a character the file\'s code page lacks as its plain letter, never as a character reference', () => {
+    // (ñ as windows-1252 bytes, more of them than the fixture has Czech letters, makes this a Western file.)
+    const western: DezignFile[] = [{ path: 'shop.dez', text: dez.replace('<TEXT>Prodej</TEXT>', `<TEXT>Se\xf1or ${'\xf1'.repeat(60)}</TEXT>`) }]
+    expect(readDezign(western[0]!.text).encoding).toBe('windows-1252')
+    const r = save(western, (t) => void t[0]!.columns.push(column('note', 'varchar(20)', { comment: 'Žluťoučký kůň & ł' })))
+    const out = r.files[0]!.text
+    expect(out).not.toContain('&#')
+    // Ž and ý are in the Western code page too; ť, č, ů and ň are not, and ł has no plain letter.
+    expect(out).toContain('<DESC>\x8elutou\x63k\xfd kun &amp; ?</DESC>')
+    expect(readDezign(out).tables[0]!.columns.at(-1)!.comment).toBe('Žlutoucký kun & ?')
+  })
+
+  // Node 24.5 reads windows-1252 as ISO-8859-1 (0x80–0x9F as control characters): the reader has its own table.
+  it('reads and writes the Western code page\'s own characters (€ „ “ – Š ž)', () => {
+    const western: DezignFile[] = [{ path: 'shop.dez', text: dez.replace('<TEXT>Prodej</TEXT>', `<TEXT>\x80 \x84a\x93 \x96 \x8a\x9e ${'\xf1'.repeat(60)}</TEXT>`) }]
+    const model = readDezign(western[0]!.text)
+    expect(model.encoding).toBe('windows-1252')
+    expect(model.diagrams.flatMap((d) => d.notes.map((n) => n.text)).join(' ')).toContain('€ „a“ – Šž')
+    const r = save(western, (t) => void t[0]!.columns.push(column('price_note', 'varchar(20)', { comment: 'Cena v € – „přibližně“' })))
+    expect(r.files[0]!.text).toContain('<DESC>Cena v \x80 \x96 \x84pribli\x9en\xec\x93</DESC>'.replace('\xec', 'e'))
+  })
+
+  // Projects that came to DeZign 14 from an older version: numbers for tables, `ATTR-<table>-<n>-<token>` for columns.
+  // DeZign 14.9.3 renumbered plain numbers written there, and the new relationship lost its columns.
+  it('gives new columns and indexes ids of the project\'s own kind', () => {
+    const token = 'D5609BB05BCDF7D9'
+    let indexes = 0
+    const text = dez
+      .replace(/(<(?:ID|ATTRIBUTEID|KEYID|FOREIGNKEYID|IDXCOLATTRID)>)([AB])(\d)/g, (_, tag: string, table: string, n: string) => `${tag}ATTR-${table === 'A' ? 10 : 20}-${n}-${token}`)
+      .replace(/(<INDEX>\n<NAME>[^<]*<\/NAME>\n)/g, (_, head: string) => `${head}<ID>IDX-20-${++indexes}-${token}</ID>\n`)
+    const styled: DezignFile[] = [{ path: 'shop.dez', text }]
+    expect(indexes).toBeGreaterThan(1)
+    expect(readDezign(styled[0]!.text).tables.map((t) => t.foreignKeys.length)).toEqual(readDezign(dez).tables.map((t) => t.foreignKeys.length))
+    const r = save(styled, (t) => {
+      t[0]!.columns.push(column('note', 'varchar(20)'))
+      t[0]!.indexes.push({ name: 'customer_note', columns: ['note'], unique: false, primary: false })
+      return [...t, { schema: 'shop', name: 'payment', type: 'table', comment: null, columns: [column('id', 'bigint', { nullable: false, isPrimaryKey: true }), column('invoice_id', 'bigint', { nullable: false })], primaryKey: ['id'], foreignKeys: [{ name: 'fk_payment_invoice_id', columns: ['invoice_id'], refSchema: 'shop', refTable: 'invoice', refColumns: ['id'] }], indexes: [] }]
+    })
+    const out = r.files[0]!.text
+    const columns = [...out.matchAll(/<ATTR>\s*<NAME>([^<]*)<\/NAME>\s*<ID>([^<]*)<\/ID>/g)].map((m) => `${m[1]}=${m[2]}`)
+    const payment = /<ENT>\s*<NAME>payment<\/NAME>\s*<ID>([^<]*)<\/ID>/.exec(out)![1]!
+    expect(columns).toEqual(expect.arrayContaining([expect.stringMatching(/^note=ATTR-10-\d+-\w+$/), expect.stringMatching(new RegExp(`^id=ATTR-${payment}-1-\\w+$`)), expect.stringMatching(new RegExp(`^invoice_id=ATTR-${payment}-2-\\w+$`))]))
+    expect(out).toMatch(new RegExp(`<FOREIGNKEYID>ATTR-${payment}-2-\\w+</FOREIGNKEYID>`))
+    expect(out).toMatch(/<INDEX>\s*<NAME>customer_note<\/NAME>[\s\S]*?<ID>IDX-10-\d+-\w+<\/ID>/)
+    expect(readDezign(out).tables.find((t) => t.name === 'payment')!.foreignKeys).toHaveLength(1)
+  })
+
+  it('does not hand a copied column or table the labels, custom properties or character set of its neighbour', () => {
+    const labelled: DezignFile[] = [{ path: 'shop.dez', text: dez.replace(/(<ATTR>\n<NAME>[^<]*<\/NAME>\n<ID>[^<]*<\/ID>\n)/g, '$1<OBJLABELS>Personal data\n</OBJLABELS>\n<CHARSET>utf8mb4</CHARSET>\n').replace(/(<ENT>\n<NAME>[^<]*<\/NAME>\n<ID>[^<]*<\/ID>\n)/g, '$1<OBJLABELS>Core\n</OBJLABELS>\n') }]
+    const count = (text: string, tag: string) => text.split(`<${tag}>`).length - 1
+    const before = { labels: count(labelled[0]!.text, 'OBJLABELS'), charsets: count(labelled[0]!.text, 'CHARSET') }
+    expect(before.labels).toBeGreaterThan(3)
+    const r = save(labelled, (t) => {
+      t[0]!.columns.push(column('note', 'varchar(20)'))
+      return [...t, { schema: 'shop', name: 'payment', type: 'table', comment: null, columns: [column('id', 'bigint', { nullable: false, isPrimaryKey: true })], primaryKey: ['id'], foreignKeys: [], indexes: [] }]
+    })
+    expect(r.changes.map((c) => c.kind).sort()).toEqual(['add_column', 'add_table'])
+    expect({ labels: count(r.files[0]!.text, 'OBJLABELS'), charsets: count(r.files[0]!.text, 'CHARSET') }).toEqual(before)
+  })
+
+  it('takes the lines from views to a dropped table out with it (DeZign 14.5 draws views)', () => {
+    const link = (id: string, table: string) => `<VIEWCONNECTION>\n<NAME></NAME>\n<ID>${id}</ID>\n<PARENTOBJECTID>V1</PARENTOBJECTID>\n<CHILDOBJECTID>${table}</CHILDOBJECTID>\n</VIEWCONNECTION>`
+    const line = (id: string) => `<VIEWCONNECTOR>\n<ID>${id}</ID>\n<DIAGRAMID>1</DIAGRAMID>\n</VIEWCONNECTOR>`
+    const text = dez
+      .replace('<NAME>v_open</NAME>', '<NAME>v_open</NAME>\n<ID>V1</ID>')
+      .replace('</VIEWS>', `</VIEWS>\n<VIEWCONNECTIONS>\n${link('VC1', '10')}\n${link('VC2', '20')}\n</VIEWCONNECTIONS>`)
+      .replace('</ENTITYCONTROLS>', `</ENTITYCONTROLS>\n<VIEWCONNECTORS>\n${line('VC1')}\n${line('VC2')}\n</VIEWCONNECTORS>`)
+    expect(dezignIntegrity(text)).toEqual(dezignIntegrity(dez))
+    const r = save([{ path: 'shop.dez', text }], (t) => t.filter((x) => x.name !== 'invoice'))
+    const out = r.files[0]!.text
+    expect(out).toContain('<ID>VC1</ID>')
+    expect(out).not.toContain('VC2')
+    expect(dezignIntegrity(out)).toEqual(dezignIntegrity(dez))
+    // A line left without its table is a broken reference.
+    expect(dezignIntegrity(text.replace('<CHILDOBJECTID>20</CHILDOBJECTID>\n</VIEWCONNECTION>', '<CHILDOBJECTID>99</CHILDOBJECTID>\n</VIEWCONNECTION>')).some((p) => p.startsWith('view connection VC2'))).toBe(true)
+  })
+
+  // Formats before DeZign 14: numbers for everything, and counters DeZign takes its next id from.
+  it('moves the id counters of an older file on when it hands out higher ids, and only then', () => {
+    const text = dez
+      .replace(/(<(?:ID|ATTRIBUTEID|KEYID|FOREIGNKEYID|IDXCOLATTRID)>)[AB](\d)/g, '$1$2')
+      .replace('<DBID>postgresql16</DBID>', '<DBID>postgresql16</DBID>\n<LASTID>31</LASTID>')
+      .replace(/(<ENT>\n<NAME>[^<]*<\/NAME>\n<ID>[^<]*<\/ID>\n)/g, '$1<ATTRLASTID>1</ATTRLASTID>\n')
+    const old: DezignFile[] = [{ path: 'shop.dez', text }]
+    expect(save(old, () => {})).toEqual({ files: [], deleted: [], changes: [] })
+    const r = save(old, (t) => {
+      t[0]!.columns.push(column('note', 'varchar(20)'))
+      return [...t, { schema: 'shop', name: 'payment', type: 'table', comment: null, columns: [column('id', 'bigint', { nullable: false, isPrimaryKey: true })], primaryKey: ['id'], foreignKeys: [], indexes: [] }]
+    })
+    const out = r.files[0]!.text
+    const counter = (table: string) => new RegExp(`<NAME>${table}</NAME>\\n<ID>\\d+</ID>\\n<ATTRLASTID>(\\d+)</ATTRLASTID>`).exec(out)![1]
+    const added = /<NAME>note<\/NAME>\s*<ID>(\d+)<\/ID>/.exec(out)![1]
+    expect(counter('customer')).toBe(added)
+    expect(counter('invoice')).toBe('1')
+    const payment = /<NAME>payment<\/NAME>\n<ID>(\d+)<\/ID>/.exec(out)![1]!
+    expect(Number(/<LASTID>(\d+)<\/LASTID>/.exec(out)![1])).toBeGreaterThanOrEqual(Number(payment))
+  })
+
   it('writes changed check constraints: a column check that changed becomes a table check', () => {
     const r = save(single, (t) => {
       t[0]!.checks = [{ expression: 'credit >= 0 and credit < 1000000', name: 'credit_range' }]
@@ -1131,6 +1256,64 @@ Ref: shop.orders.customer_id > shop.customers.id [delete: cascade]
     n = 0
     return newDezignProject(tables, { database, newId: () => `ID-${++n}`, today: '2026-11-10', positions: { 'shop.orders': { x: 500, y: 60 } } })
   }
+
+  // DeZign makes names from their templates again when it opens a project (seen in 14.9.3: `orders_by_customer`
+  // came back as `IDX_orders_1`). Its own files keep a typed name as its own template.
+  it('writes a typed name as its own template, and a name the project\'s pattern gives with the pattern', () => {
+    const file = make()
+    const pair = (name: string) => new RegExp(`<NAME>${name}</NAME>\\s*<NAMETEMPLATE>([^<]*)</NAMETEMPLATE>`).exec(file)?.[1]
+    expect(pair('orders_by_customer')).toBe('orders_by_customer')
+    expect(pair('email_filled')).toBe('email_filled')
+    expect(pair('PK_customers')).toBe('PK_%table%')
+    expect(pair('customers_orders')).toBe('%parent%_%child%')
+    // (The name the model has for a unique column is kept as well: scripts made here use it.)
+    expect(pair('ux_customers_email')).toBe('ux_customers_email')
+    const named = newDezignProject(parseDbml(`${dbml.replace(/\n  customer_id bigint \[not null, ref: > shop.customers.id\]/, '\n  customer_id bigint [not null]').replace('Ref: shop', 'Ref placed_by: shop')}`).tables, { today: '2026-11-10' })
+    expect(named).toMatch(/<REL>\s*<NAME>placed_by<\/NAME>\s*<NAMETEMPLATE>placed_by<\/NAMETEMPLATE>/)
+    expect(named).toMatch(/<CONSTRAINT>\s*<NAME>placed_by<\/NAME>\s*<NAMETEMPLATE>%relname%<\/NAMETEMPLATE>/)
+    expect(readDezign(named).tables[1]!.foreignKeys[0]!.name).toBe('placed_by')
+  })
+
+  // DeZign names things from their patterns again when it opens a project: 14.9.3 turned `StateOrProvince_ZipCode`
+  // into `StateOrProvince_renamed_ZipCode` after we renamed the table. The file now says what DeZign will say.
+  it('names made from a pattern follow a renamed table; typed names stay', () => {
+    const file = make()
+    const viaDbml = (list: TableInfo[]) => parseDbml(toDbml(list)).tables
+    const base = viaDbml(readDezign(file).tables)
+    const target = viaDbml(readDezign(file).tables)
+    target.find((t) => t.name === 'customers')!.name = 'clients'
+    for (const t of target) for (const fk of t.foreignKeys) if (fk.refTable === 'customers') fk.refTable = 'clients'
+    const saved = saveToDezign([{ path: 'm.dez', text: file }], base, viaDbml(target), { normalize: viaDbml })
+    const out = saved.files[0]!.text
+    expect(saved.changes.map((c) => c.kind)).toEqual(['rename_table'])
+    expect(out).toMatch(/<REL>\s*<NAME>clients_orders<\/NAME>\s*<NAMETEMPLATE>%parent%_%child%<\/NAMETEMPLATE>/)
+    expect(out).toMatch(/<CONSTRAINT>\s*<NAME>clients_orders<\/NAME>\s*<NAMETEMPLATE>%relname%<\/NAMETEMPLATE>/)
+    expect(out).toContain('<NAME>PK_clients</NAME>')
+    expect(out).toContain('<NAME>email_filled</NAME>')
+    expect(out).not.toContain('customers_orders')
+  })
+
+  it('writes a new name of an index, a unique constraint, a check and a foreign key into the element that has it', () => {
+    const file = make()
+    const viaDbml = (list: TableInfo[]) => parseDbml(toDbml(list)).tables
+    const base = viaDbml(readDezign(file).tables)
+    const target = viaDbml(readDezign(file).tables)
+    const [customers, orders] = [target.find((t) => t.name === 'customers')!, target.find((t) => t.name === 'orders')!]
+    customers.checks![0]!.name = 'email_not_empty'
+    customers.indexes.find((ix) => ix.unique && !ix.primary)!.name = 'uq_customer_mail'
+    orders.indexes.find((ix) => !ix.unique && !ix.primary)!.name = 'orders_customer_placed'
+    orders.foreignKeys[0]!.name = 'orders_customer_fk'
+    const saved = saveToDezign([{ path: 'm.dez', text: file }], base, viaDbml(target), { normalize: viaDbml })
+    expect(saved.changes.map((c) => `${c.kind} ${c.name}`).sort()).toEqual(['rename_check email_filled → email_not_empty', 'rename_index orders_by_customer → orders_customer_placed', 'rename_index ux_customers_email → uq_customer_mail', 'rename_relationship customers_orders → orders_customer_fk'])
+    const out = saved.files[0]!.text
+    for (const name of ['email_not_empty', 'uq_customer_mail', 'orders_customer_placed', 'orders_customer_fk']) expect(out).toMatch(new RegExp(`<NAME>${name}</NAME>\\s*<NAMETEMPLATE>${name}</NAMETEMPLATE>`))
+    // The relationship itself keeps its name; nothing else in the file moved.
+    expect(out).toMatch(/<REL>\s*<NAME>customers_orders<\/NAME>/)
+    expect(out.split('\n').length).toBe(file.split('\n').length)
+    const again = viaDbml(readDezign(out).tables)
+    expect(again.find((t) => t.name === 'orders')!.foreignKeys[0]!.name).toBe('orders_customer_fk')
+    expect(saveToDezign([{ path: 'm.dez', text: out }], again, again, { normalize: viaDbml }).changes).toEqual([])
+  })
 
   it('holds the whole model and passes the reference check', () => {
     const file = make()
