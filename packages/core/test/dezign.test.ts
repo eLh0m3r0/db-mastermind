@@ -254,7 +254,10 @@ describe('DeZign for Databases models', () => {
   })
 
   it('says what it left out instead of dropping it silently', () => {
-    expect(readDezign(dez).leftOut).toEqual({ domains: 1, views: 1, procedures: 0, sequences: 1, triggers: 0, checks: 0, relationshipsWithoutColumns: 1, subdiagrams: 1 })
+    expect(readDezign(dez).leftOut).toEqual({ domains: 1, views: 1, procedures: 0, sequences: 1, triggers: 0, checks: 0, relationshipsWithoutColumns: 1, subdiagrams: 1, objectNotes: 0 })
+    // DeZign's "Notes" next to a description are counted, not dropped silently, and stay in the file.
+    const noted = dez.replace('<NAME>customer</NAME>', '<NAME>customer</NAME>\n<NOTE>Ask the owner before changing</NOTE>')
+    expect(readDezign(noted).leftOut.objectNotes).toBe(1)
     // The column's check constraint is part of the model.
     expect(readDezign(dez).tables[0]!.checks).toEqual([{ expression: 'credit >= 0' }])
   })

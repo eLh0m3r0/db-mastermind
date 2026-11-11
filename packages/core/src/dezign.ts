@@ -36,6 +36,11 @@ export interface DezignLeftOut {
   relationshipsWithoutColumns: number
   /** Diagrams besides the main one. */
   subdiagrams: number
+  /**
+   * Notes of tables, columns and relationships: DeZign keeps a "Notes" text next to the description, which is the
+   * comment here. They stay in the file as they are.
+   */
+  objectNotes: number
 }
 
 export interface DezignSqlObject {
@@ -268,7 +273,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   }
 
   const formatVersion = text(dezign, 'FILEFORMATVERSION') || text(kid(kid(version, 'PROJECTSETTINGS'), 'COMMONSETTINGS'), 'FILEFORMATVERSION')
-  const leftOut: DezignLeftOut = { domains: 0, views: 0, procedures: 0, sequences: 0, triggers: 0, checks: 0, relationshipsWithoutColumns: 0, subdiagrams: 0 }
+  const leftOut: DezignLeftOut = { domains: 0, views: 0, procedures: 0, sequences: 0, triggers: 0, checks: 0, relationshipsWithoutColumns: 0, subdiagrams: 0, objectNotes: 0 }
 
   const domains = new Map(kids(kid(dict, 'DOMAINS'), 'DOMAIN').map((d) => [text(d, 'ID'), d]))
   leftOut.domains = domains.size
@@ -305,6 +310,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
 
   for (const ent of kids(kid(dict, 'ENTITIES'), 'ENT')) {
     const pkIds = idsOf(kid(ent, 'PKCON'))
+    leftOut.objectNotes += [ent, ...kids(kid(ent, 'ATTRIBUTES'), 'ATTR')].filter((el) => text(el, 'NOTE')).length
     // (A key without a name is written without one: the database names it.)
     const pkName = text(kid(ent, 'PKCON'), 'NAME')
     if (pkIds.length) primaryKeys.names[`${(text(ent, 'SCHEMA') || text(ent, 'SCHEMANAME')).toLowerCase()}.${text(ent, 'NAME').toLowerCase()}`] = pkName
@@ -375,6 +381,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   // A relationship from a subtype cluster points at the cluster; the cluster names its supertype entity.
   const subcategories = new Map(kids(kid(dict, 'SUBCATEGORIES'), 'SUBCAT').map((s) => [text(s, 'ID'), text(s, 'AOID')]))
   for (const rel of kids(kid(dict, 'RELATIONSHIPS'), 'REL')) {
+    if (text(rel, 'NOTE')) leftOut.objectNotes++
     const parentId = text(rel, 'PARENTOBJECTID')
     const parent = entities.get(parentId) ?? entities.get(subcategories.get(parentId) ?? '')
     const child = entities.get(text(rel, 'CHILDOBJECTID'))

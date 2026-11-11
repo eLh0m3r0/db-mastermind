@@ -331,8 +331,8 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ Domains: a column keeps the domain it follows (`[domain: 'name']` in the model, with the domain's type), a new
   column can be given one, and a type of its own takes a column out of its domain. The project's domains are
   listed in the model as a note; they are made and changed in DeZign
-- ✅ What the model can't show (relationships drawn without columns) is listed with counts when the file opens,
-  never dropped silently
+- ✅ What the model can't show (relationships drawn without columns, the "Notes" DeZign keeps next to a
+  description) is listed with counts when the file opens, never dropped silently, and stays in the file
 - ✅ A large diagram opens with all of it in view (the view is fitted to where the tables are, not to the ones
   already drawn: a model of several hundred tables used to open with a third outside the window)
 - ✅ Opening never changes the DeZign file; Save as makes a `.dbml` model of it
