@@ -1,0 +1,137 @@
+// A team's day with a DeZign model and a real PostgreSQL, through the window: the model names its own schema,
+// the database is empty except for somebody else's table. Compare writes the script (schema, tables, keys,
+// check), the script runs, and the model and the database are then identical; the model moves on (a column,
+// a table, a check, a column gone) and the ALTER script brings the database along.
+// Needs the `postgres` service of docker-compose.test.yml.
+import { _electron as electron } from '@playwright/test'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+const dir = mkdtempSync(join(tmpdir(), 'dbm-ui95-'))
+const el = (tag, body) => `<${tag}>\n${body}\n</${tag}>`
+const attr = (id, name, type, size = '', extra = '') => el('ATTR', `<NAME>${name}</NAME>\n<ID>${id}</ID>\n<DESC></DESC>\n<DOMAINID></DOMAINID>\n<DT>\n<DTLISTNAME>${type}</DTLISTNAME>\n${size}<SD>1</SD>\n<INC>1</INC>\n</DT>\n${extra}`)
+const notNull = '<NNCON>\n<VALUE>1</VALUE>\n</NNCON>\n'
+const ent = (id, name, pk, attrs, more = '') => el('ENT', `<NAME>${name}</NAME>\n<ID>${id}</ID>\n<SCHEMA>sales</SCHEMA>\n<DESC></DESC>\n<PKCON>\n<ATTRIBUTEIDS>\n<ATTRIBUTEID>${pk}</ATTRIBUTEID>\n</ATTRIBUTEIDS>\n</PKCON>\n<ATTRIBUTES>\n${attrs.join('\n')}\n</ATTRIBUTES>\n${more}`)
+const rel = el('REL', '<NAME>customer_invoice</NAME>\n<ID>40</ID>\n<PARENTOBJECTID>10</PARENTOBJECTID>\n<CHILDOBJECTID>20</CHILDOBJECTID>\n<UPDATERULE>0</UPDATERULE>\n<DELETERULE>2</DELETERULE>\n<PAIRS>\n<PAIR>\n<KEYID>A1</KEYID>\n<FOREIGNKEYID>B2</FOREIGNKEYID>\n</PAIR>\n</PAIRS>')
+const entities = [
+  // The invoice comes first and references the customer below it; names in capitals need their quotes.
+  ent('20', 'Invoice', 'B1', [attr('B1', 'id', 'INTEGER', '', notNull), attr('B2', 'customer_id', 'INTEGER', '', notNull), attr('B3', 'Total', 'NUMERIC', '<LE>10</LE>\n<PR>2</PR>\n', `${notNull}<DEFCON>\n<VALUE>0</VALUE>\n</DEFCON>\n`), attr('B4', 'state', 'CHARACTER VARYING', '<LE>12</LE>\n', '<DEFCON>\n<VALUE>new</VALUE>\n</DEFCON>\n')],
+    el('CONSTRAINTS', el('CONSTRAINT', '<NAME>invoice_total_ok</NAME>\n<ID>C1</ID>\n<VALUE>Total &gt;= 0</VALUE>\n<CONLEVEL>2</CONLEVEL>\n<CONTYPE>1</CONTYPE>\n<ATTRIBUTEIDS>\n<ATTRIBUTEID>B3</ATTRIBUTEID>\n</ATTRIBUTEIDS>'))),
+  ent('10', 'customer', 'A1', [attr('A1', 'id', 'INTEGER', '', notNull), attr('A2', 'name', 'CHARACTER VARYING', '<LE>120</LE>\n', notNull), attr('A3', 'since', 'TIMESTAMP', '', '<DEFCON>\n<VALUE>CURRENT_TIMESTAMP</VALUE>\n</DEFCON>\n')]),
+]
+const entc = (id, l) => el('ENTC', `<ID>${id}</ID>\n<DIAGRAMID>1</DIAGRAMID>\n<W>240</W>\n<H>100</H>\n<L>${l}</L>\n<T>0</T>\n<BRUSH>0,16119285</BRUSH>`)
+const settings = el('PROJECTSETTINGS', el('COMMONSETTINGS', '<PROJECTNAME /></PROJECTNAME />\n<FILEFORMATVERSION>140</FILEFORMATVERSION>'))
+const dez = join(dir, 'team.dez')
+writeFileSync(
+  dez,
+  `<?xml version="1.0" encoding="iso-8859-1"?><dezign>\n<VERSION>\n${settings}\n<DATADICT>\n<DBID>postgresql16</DBID>\n<DOMAINS>\n</DOMAINS>\n<ENTITIES>\n${entities.join('\n')}\n</ENTITIES>\n<RELATIONSHIPS>\n${rel}\n</RELATIONSHIPS>\n</DATADICT>\n<DIAGRAMS>\n${el('DIAGRAM', '<ID>1</ID>\n<NAME>Main</NAME>\n<ISMAINDIAGRAM>1</ISMAINDIAGRAM>')}\n<ENTITYCONTROLS>\n${entc('20', 0)}\n${entc('10', 600)}\n</ENTITYCONTROLS>\n</DIAGRAMS>\n</VERSION>\n</dezign>\n`,
+  'latin1',
+)
+
+const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, HOME: join(dir, 'home'), DBM_USER_DATA: join(dir, 'data'), DBM_NO_UPDATE_CHECK: '1', DBM_LANGUAGE: 'en' } })
+const win = await app.firstWindow()
+win.setDefaultTimeout(30000)
+const errors = []
+win.on('pageerror', (e) => errors.push(e.message))
+const api = (fn, ...args) => win.evaluate(([fn, args]) => window.mastermind.api[fn](...args), [fn, args])
+const DB = 'dbm_e2e95'
+let failed = 0
+const check = (label, ok, detail = '') => {
+  if (!ok) failed++
+  console.log(`${label}: ${ok ? 'ok' : 'FAILED'}${detail ? ` ${detail}` : ''}`)
+}
+let n = 0
+const sql = async (connectionId, text) => {
+  const r = await api('runQuery', { runId: `e2e95-${++n}`, connectionId, sql: text })
+  const bad = (Array.isArray(r) ? r : (r?.results ?? [r])).find((x) => x?.error)
+  if (bad) throw new Error(`${bad.error.message ?? bad.error}\n${String(bad.sql ?? '').slice(0, 200)}`)
+  return r
+}
+/** Opens the compare of the model with its database and returns the script it writes ('' when identical). */
+const compare = async () => {
+  await win.getByText('team.dez', { exact: true }).first().click()
+  await win.getByRole('button', { name: /Compare with Team DB/ }).click()
+  await win.getByRole('button', { name: 'Compare', exact: true }).last().click()
+  // Earlier compare tabs stay in the page, hidden: only what is on screen counts.
+  const shown = (text) => win.evaluate((text) => [...document.querySelectorAll('span, div, h3, p')].some((e) => e.offsetParent !== null && e.childElementCount === 0 && e.textContent.includes(text)), text)
+  for (const until = Date.now() + 30000; Date.now() < until && !(await shown('The schemas are identical')) && !(await shown('Migration for Team DB')); ) await win.waitForTimeout(200)
+  await win.waitForTimeout(300)
+  if (await shown('The schemas are identical')) return ''
+  return win.evaluate(() => [...document.querySelectorAll('pre')].filter((e) => e.offsetParent !== null).pop()?.innerText ?? '')
+}
+try {
+  await win.waitForTimeout(800)
+  const admin = await api('saveConnection', { id: '', name: 'Server', driver: 'postgres', host: '127.0.0.1', port: 54329, user: 'postgres', password: 'mastermind', database: 'mastermind' })
+  await api('connect', admin.id)
+  await sql(admin.id, `DROP DATABASE IF EXISTS ${DB}`)
+  await sql(admin.id, `CREATE DATABASE ${DB}`)
+  const team = await api('saveConnection', { id: '', name: 'Team DB', driver: 'postgres', host: '127.0.0.1', port: 54329, user: 'postgres', password: 'mastermind', database: DB })
+  await api('connect', team.id)
+  // Somebody else's table, in the schema every PostgreSQL database starts with.
+  await sql(team.id, 'CREATE TABLE public.legacy (id int primary key)')
+  await win.reload()
+  await win.waitForTimeout(1000)
+
+  await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }) }, dez)
+  await win.keyboard.press('Meta+k')
+  await win.keyboard.type('Open model')
+  await win.keyboard.press('Enter')
+  await win.locator('.react-flow__node:visible').first().waitFor({ timeout: 30000 })
+  await win.getByTestId('model-database').selectOption({ label: 'Team DB' })
+
+  // 1. The first script: the model's schema, both tables (in the model's order), the key between them, the check.
+  const create = await compare()
+  check('script makes the schema of the model', /CREATE SCHEMA IF NOT EXISTS "sales"/.test(create))
+  check('tables go to that schema, not to public', /CREATE TABLE "sales"\."Invoice"/.test(create) && /CREATE TABLE "sales"\."customer"/.test(create) && !/"public"\."(Invoice|customer)"/.test(create))
+  check('the foreign key comes after both tables', create.indexOf('FOREIGN KEY') > create.indexOf('CREATE TABLE "sales"."customer"'))
+  check('the check names its column as the database knows it', /CONSTRAINT "invoice_total_ok" CHECK \("Total" >= 0\)/.test(create))
+  check('a word typed as a text default is a string', /DEFAULT 'new'/.test(create))
+  check('nothing of the other table is touched', !/legacy/.test(create))
+  await sql(team.id, create)
+  check('after running it the model and the database are identical', (await compare()) === '')
+
+  // 2. The model moves on, typed as a person would type it in the editor.
+  await win.getByText('team.dez', { exact: true }).first().click()
+  const text = (await api('openModelFile', dez)).text
+  const next = text
+    .replace(/(\n\s*)name ("character varying\(120\)"|character varying\(120\)|varchar\(120\))/, '$1name varchar(200)')
+    .replace(/\n\s*state [^\n]*/, '')
+    .replace(/(Table sales\.customer \{)/, '$1\n  email varchar(255)')
+    .concat("\nTable sales.payment {\n  id integer [pk]\n  invoice_id integer [not null, ref: > sales.\"Invoice\".id]\n  amount numeric(10,2) [not null]\n\n  checks {\n    `amount > 0` [name: 'payment_positive']\n  }\n}\n")
+  check('the edit applies to the model text', next !== text && /email varchar\(255\)/.test(next) && !/\n\s*state /.test(next), next === text ? '(the text did not change)' : '')
+  await win.locator('.cm-content:visible').first().click()
+  await win.keyboard.press('Meta+a')
+  await win.keyboard.insertText(next)
+  await win.waitForTimeout(900)
+  check('the edited model parses', (await win.locator('.text-warning button:visible').count()) === 0)
+
+  const alter = await compare()
+  check('ALTER: the new column', /ALTER TABLE "sales"\."customer" ADD COLUMN "email" varchar\(255\)/.test(alter))
+  check('ALTER: the longer name', /ALTER COLUMN "name" TYPE varchar\(200\)/.test(alter))
+  check('ALTER: the column that left', /ALTER TABLE "sales"\."Invoice" DROP COLUMN "state"/.test(alter))
+  check('ALTER: the new table with its key and check', /CREATE TABLE "sales"\."payment"/.test(alter) && /CONSTRAINT "payment_positive" CHECK \(amount > 0\)/.test(alter) && /REFERENCES "sales"\."Invoice"/.test(alter))
+  check('ALTER: nothing that did not change', !/"Total"|invoice_total_ok|"since"|legacy/.test(alter), alter.split('\n').length + ' lines')
+  await sql(team.id, alter)
+  check('after the ALTER script they are identical again', (await compare()) === '')
+
+  // 3. What the database really has.
+  const schema = await api('getSchema', team.id, true)
+  const tables = (schema.tables ?? []).filter((t) => t.schema === 'sales')
+  check('the database has the three tables in the schema', tables.map((t) => t.name).sort().join(',') === 'Invoice,customer,payment')
+  check('with both checks', tables.flatMap((t) => (t.checks ?? []).map((c) => c.name)).sort().join(',') === 'invoice_total_ok,payment_positive')
+  check('and the other table is still there', (schema.tables ?? []).some((t) => t.schema === 'public' && t.name === 'legacy'))
+
+  await api('disconnect', team.id)
+  await sql(admin.id, `DROP DATABASE IF EXISTS ${DB}`)
+} catch (err) {
+  failed++
+  console.log('FAILED', String(err.message).split('\n').slice(0, 3).join(' | '))
+  // What the window shows, to see why (a made-up model: nothing private in it).
+  console.log(((await win.evaluate(() => document.body.innerText).catch(() => '')) || '').replace(/\s+/g, ' ').slice(-1200))
+} finally {
+  console.log('errors:', JSON.stringify(errors), '| failed checks:', failed)
+  await app.close()
+  rmSync(dir, { recursive: true, force: true })
+  process.exit(failed || errors.length ? 1 : 0)
+}

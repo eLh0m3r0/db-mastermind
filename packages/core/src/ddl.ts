@@ -1011,9 +1011,10 @@ export const COMMON_TYPES: Record<DriverId, string[]> = {
  * Changes that make `target` match `source` (schema compare, e.g. dev → prod). Tables and columns are matched by
  * name (case-insensitively); anything only in the target is dropped unless `keepExtra` is set. Schemas may be
  * named differently on the two sides (`shop` → `public`); where both sides have a schema of the same name, a
- * table is matched with the one in its own schema first, and a new table stays in its schema.
+ * table is matched with the one in its own schema first, and a new table stays in its schema. With `ownSchemas`
+ * (a model, which names its schemas on purpose) a new table always goes to the schema it names.
  */
-export function compareSchemas(source: TableInfo[], target: TableInfo[], options: { keepExtra?: boolean } = {}): SchemaChange[] {
+export function compareSchemas(source: TableInfo[], target: TableInfo[], options: { keepExtra?: boolean; ownSchemas?: boolean } = {}): SchemaChange[] {
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
   const drafts: DesignTable[] = []
   const targetSchema = target[0]?.schema
@@ -1032,7 +1033,8 @@ export function compareSchemas(source: TableInfo[], target: TableInfo[], options
     const draft = toDesignTable(s)
     if (!t) {
       // New table: created in the target's schema, referencing the target's tables, with its own identity.
-      draft.schema = draft.schema && targetSchemas.has(draft.schema.toLowerCase()) ? draft.schema : (targetSchema ?? draft.schema)
+      const stays = (schema: string | undefined) => !!schema && (options.ownSchemas || targetSchemas.has(schema.toLowerCase()))
+      draft.schema = stays(draft.schema) ? draft.schema : (targetSchema ?? draft.schema)
       draft.originalName = undefined
       for (const c of draft.columns) {
         c.originalName = undefined
@@ -1041,7 +1043,7 @@ export function compareSchemas(source: TableInfo[], target: TableInfo[], options
       for (const f of draft.foreignKeys) {
         f.originalName = undefined
         f.name = undefined
-        f.refSchema = inTarget(f.refTable, f.refSchema)?.schema ?? (f.refSchema && targetSchemas.has(f.refSchema.toLowerCase()) ? f.refSchema : (targetSchema ?? f.refSchema))
+        f.refSchema = inTarget(f.refTable, f.refSchema)?.schema ?? (stays(f.refSchema) ? f.refSchema : (targetSchema ?? f.refSchema))
       }
       for (const i of draft.indexes) {
         i.originalName = undefined

@@ -79,8 +79,9 @@ export function CompareView({ tab }: { tab: CompareTab }) {
     const pick = (snap: SchemaSnapshot, schema?: string) => snap.tables.filter((x) => !schema || (x.schema ?? '') === schema)
     // Across engines, source types are first written the target's way (boolean → bit, text → nvarchar(max)…).
     const source = pick(snapshots.source, tab.sourceSchema)
-    return compareSchemas(crossEngine && target ? translateTables(source, target.driver) : source, pick(snapshots.target, tab.targetSchema), { keepExtra })
-  }, [snapshots, tab.sourceSchema, tab.targetSchema, keepExtra, crossEngine, target])
+    // A model names its schemas on purpose: its new tables go there unless a schema of the database was picked.
+    return compareSchemas(crossEngine && target ? translateTables(source, target.driver) : source, pick(snapshots.target, tab.targetSchema), { keepExtra, ownSchemas: tab.sourceModel !== undefined && !tab.targetSchema })
+  }, [snapshots, tab.sourceSchema, tab.targetSchema, tab.sourceModel, keepExtra, crossEngine, target])
 
   const byTable = useMemo(() => {
     const map = new Map<string, SchemaChange[]>()

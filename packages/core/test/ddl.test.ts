@@ -275,6 +275,10 @@ describe('compareSchemas', () => {
     // A table for a schema the database has stays there; elsewhere it goes where the database's tables are.
     const more = parseDbml('Table audit.log {\n  id int [pk]\n}\nTable other.thing {\n  id int [pk]\n}').tables
     expect(compareSchemas([...tables, ...more], tables).map((c) => (c.kind === 'create_table' ? c.table.schema : c.kind))).toEqual(['audit', 'sales'])
+    // A model names its schemas on purpose: its new tables go there, and the script makes the schema.
+    const own = compareSchemas([...tables, ...more], tables, { ownSchemas: true })
+    expect(own.map((c) => (c.kind === 'create_table' ? c.table.schema : c.kind))).toEqual(['audit', 'other'])
+    expect(generateMigration(own, getDialect('postgres'), tables).statements.filter((sql) => sql.includes('SCHEMA'))).toEqual(['CREATE SCHEMA IF NOT EXISTS "other"'])
   })
 
   it('says which view stands in the way of a drop', () => {
