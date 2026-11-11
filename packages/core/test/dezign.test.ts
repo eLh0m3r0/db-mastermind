@@ -1071,6 +1071,29 @@ ${rel('30', 'Customer_Invoice', '<PAIR>\n<KEYID>C1</KEYID>\n<FOREIGNKEYID>I2</FO
   })
 })
 
+describe('what DeZign 14 keeps where', () => {
+  it('reads "convert domains" and the name templates from the project settings', () => {
+    const domainUse = `<DOMAINS>\n<DOMAIN>\n<NAME>CODE</NAME>\n<ID>D7</ID>\n<DT>\n<DTLISTNAME>VARCHAR</DTLISTNAME>\n<LE>40</LE>\n</DT>\n</DOMAIN>\n</DOMAINS>`
+    const withSettings = (convert: string) =>
+      `<?xml version="1.0" encoding="iso-8859-1"?><dezign>\n<VERSION>\n<PROJECTSETTINGS>\n<COMMONSETTINGS>\n<FILEFORMATVERSION>140</FILEFORMATVERSION>\n</COMMONSETTINGS>\n<NAMETEMPLATES>\n<PKCONNAMETEMPLATE>%table%_PK</PKCONNAMETEMPLATE>\n<TUCONNAMETEMPLATE>%table%_%counter%_UQ</TUCONNAMETEMPLATE>\n</NAMETEMPLATES>\n<GenDB_Options>\n<CONVERTDOMAINS>${convert}</CONVERTDOMAINS>\n</GenDB_Options>\n<UpdDB_Options>\n<CONVERTDOMAINS>0</CONVERTDOMAINS>\n</UpdDB_Options>\n</PROJECTSETTINGS>\n<DATADICT>\n<DBID>postgresql16</DBID>\n${domainUse}\n<ENTITIES>\n</ENTITIES>\n</DATADICT>\n</VERSION>\n</dezign>`
+    // The setting of the Generate dialog decides, not the one of another dialog further down.
+    expect(readDezign(withSettings('1')).scripting.domains).toEqual([])
+    expect(readDezign(withSettings('')).scripting.domains.map((d) => d.name)).toEqual(['CODE'])
+    expect(readDezign(withSettings('1')).nameTemplates).toEqual({ PKCONNAMETEMPLATE: '%table%_PK', TUCONNAMETEMPLATE: '%table%_%counter%_UQ' })
+    expect(readDezign(withSettings('1')).scripting.primaryKeys.template).toBe('%table%_PK')
+  })
+
+  it('puts a new diagram with the other diagrams and keeps the fields of what it copies', () => {
+    const viaDbml = (tables: TableInfo[]) => parseDbml(toDbml(tables)).tables
+    const tables = viaDbml(readDezign(dez).tables)
+    const saved = saveToDezign([{ path: 'shop.dez', text: dez }], tables, tables, { normalize: viaDbml, diagrams: { 'new:1': { name: 'Another', exact: true, tables: ['shop.customer'] } } }).files[0]!.text
+    // Every DIAGRAM stands before the first control, as in the file it came from.
+    expect(saved.lastIndexOf('<DIAGRAM>')).toBeLessThan(saved.indexOf('<ENTC>'))
+    expect(saved.match(/<DIAGRAM>/g)).toHaveLength((dez.match(/<DIAGRAM>/g) ?? []).length + 1)
+    expect(dezignIntegrity(saved)).toEqual([])
+  })
+})
+
 describe('a new DeZign project from a model made here', () => {
   const dbml = `
 Table shop.customers {
@@ -1115,6 +1138,15 @@ Ref: shop.orders.customer_id > shop.customers.id [delete: cascade]
     expect(customers!.indexes).toEqual([{ name: 'ux_customers_email', columns: ['email'], unique: true, primary: false, constraint: true }])
     expect(orders!.foreignKeys).toEqual([{ name: 'customers_orders', columns: ['customer_id'], refSchema: 'shop', refTable: 'customers', refColumns: ['id'], onDelete: 'CASCADE' }])
     expect(orders!.indexes).toEqual([{ name: 'orders_by_customer', columns: ['customer_id', 'placed'], unique: false, primary: false }])
+    // Shaped as DeZign 14 writes a project: its settings sections, and every constraint with the template it is named by.
+    for (const section of ['NAMETEMPLATES', 'REPOSITORYSETTINGS', 'GenDB_DBParams', 'GenDB_Options', 'UpdDB_Options', 'MiscSettings']) expect(file, section).toContain(`<${section}>`)
+    expect(file).toMatch(/<PKCON>\n<NAME>PK_customers<\/NAME>\n<NAMETEMPLATE>PK_%table%<\/NAMETEMPLATE>/)
+    expect(file).toMatch(/<REL>\n<NAME>customers_orders<\/NAME>\n<NAMETEMPLATE>%parent%_%child%<\/NAMETEMPLATE>/)
+    expect(file).toMatch(/<NNCON>\n<NAME>[^<]*<\/NAME>\n<NAMETEMPLATE>NN_%table%_%column%<\/NAMETEMPLATE>/)
+    expect(file).not.toContain('<VIRTUALREL>')
+    // Read back, the project says how its scripts are to be: key names by its template, domains kept.
+    expect(model.nameTemplates.PKCONNAMETEMPLATE).toBe('PK_%table%')
+    expect(model.scripting.primaryKeys).toMatchObject({ template: 'PK_%table%', names: { 'shop.customers': 'PK_customers' } })
     // The table somebody placed is where they put it; the other one sits on the grid; the relationship is drawn.
     expect(model.positions).toEqual({ 'shop.customers': { x: 0, y: 0 }, 'shop.orders': { x: 460, y: 20 } })
     expect(file).toMatch(/<RELATIONSHIPCONNECTORS>\s*<RELC>/)

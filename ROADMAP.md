@@ -361,6 +361,14 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ Before anything is written: the changes are listed for confirmation, the result is read back and compared with
   the edited model (a mismatch writes nothing), the files as they were are copied to `<data>/dezign-backups`
 - ✅ A project that changed on disk since it was opened (a colleague, Git, DeZign) is not overwritten
+- ✅ The shape of what is written, against what DeZign writes (`packages/core/test/dezign-shape.test.ts` with
+  `DBM_DEZ_SAMPLES`): from DeZign's own files a grammar is taken (which elements each element holds, which it
+  always holds, in which order), per file format and per file. A project made from scratch and every model
+  saved after edits (37 public models, DeZign 5 to 14, and a folder project) must fit it. It found, and the
+  writer now has: the settings sections DeZign 14 writes into every project, `NAMETEMPLATE` next to every
+  constraint and relationship name, a new diagram placed with the other diagrams (it was written after the
+  controls), copied tables and columns keeping every field of their neighbours, "no domain" written the file's
+  way, a table's indexes before its constraints, new constraints and indexes shaped like the project's own
 - ⬜ Verified in DeZign: open saved files of every kind of edit (14-day trial on Windows, or a colleague's license).
   The files are ready to hand over: `DBM_DEZ_KIT_FROM=<a model DeZign wrote> DBM_DEZ_KIT_TO=<folder>` with
   `packages/core/test/dezign-kit.test.ts` writes one file per kind of edit, three projects made from scratch and

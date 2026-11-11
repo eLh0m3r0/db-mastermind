@@ -84,6 +84,8 @@ export interface DezignModel {
   sqlObjects: DezignSqlObject[]
   /** What the project decides about the scripts made from it. */
   scripting: DezignScripting
+  /** The project's name templates by setting (`PKCONNAMETEMPLATE` → `PK_%table%`): a new object is named by them. */
+  nameTemplates: Record<string, string>
   leftOut: DezignLeftOut
 }
 
@@ -288,9 +290,14 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   }
   const entities = new Map<string, Entity>()
   const tables: TableInfo[] = []
+  // Settings sit in the data dictionary in old files and in the project settings since DeZign 12.
+  const projectSettings = kid(version, 'PROJECTSETTINGS')
+  const nameTemplates: Record<string, string> = {}
+  for (const holder of [kid(dict, 'DDSETTINGS'), kid(projectSettings, 'NAMETEMPLATES')]) for (const s of kids(holder)) if (/NAMETEMPLATE$/.test(s.tag) && text(holder, s.tag)) nameTemplates[s.tag] = text(holder, s.tag)
+  const convertDomains = text(kid(dict, 'DDSETTINGS'), 'CONVERTDOMAINS') === '1' || text(kid(projectSettings, 'GenDB_Options'), 'CONVERTDOMAINS') === '1'
   const anyKey = kids(kid(dict, 'ENTITIES'), 'ENT').map((e) => text(kid(e, 'PKCON'), 'NAMETEMPLATE')).find(Boolean)
   const uniqueConstraints: string[] = []
-  const primaryKeys: DezignKeyNames = { names: {}, template: text(kid(dict, 'DDSETTINGS'), 'PKCONNAMETEMPLATE') || anyKey || undefined }
+  const primaryKeys: DezignKeyNames = { names: {}, template: nameTemplates.PKCONNAMETEMPLATE || anyKey || undefined }
 
   for (const ent of kids(kid(dict, 'ENTITIES'), 'ENT')) {
     const pkIds = idsOf(kid(ent, 'PKCON'))
@@ -483,7 +490,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const positions = main?.positions ?? {}
   const layout = { diagramId: mainId, ...(main?.layout ?? { originX: 0, originY: 0, scaleX: 1, scaleY: 1 }) }
 
-  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, diagrams: described, sqlObjects, domains: domainList.map(({ name, dataType }) => ({ name, dataType })), scripting: { primaryKeys, domains: text(kid(dict, 'DDSETTINGS'), 'CONVERTDOMAINS') === '1' ? [] : domainList, uniqueConstraints }, leftOut }
+  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, diagrams: described, sqlObjects, domains: domainList.map(({ name, dataType }) => ({ name, dataType })), scripting: { primaryKeys, domains: convertDomains ? [] : domainList, uniqueConstraints }, nameTemplates, leftOut }
 }
 
 const PROJECT_SECTIONS: [folder: string, element: string][] = [
@@ -552,7 +559,8 @@ export function dezignIntegrity(binary: string): string[] {
       if (attrs.has(attrId)) problems.push(`duplicate attribute id ${attrId} in entity ${id}`)
       attrs.add(attrId)
       const domain = raw(attr, 'DOMAINID')
-      if (domain && domain !== '0' && !domains.has(domain)) problems.push(`attribute ${attrId}: unknown domain ${domain}`)
+      // (No domain is empty, 0, or -1 in the files of DeZign 4 to 6.)
+      if (domain && domain !== '0' && domain !== '-1' && !domains.has(domain)) problems.push(`attribute ${attrId}: unknown domain ${domain}`)
     }
     entities.set(id, attrs)
     for (const con of [kid(ent, 'PKCON'), ...kids(kid(ent, 'CONSTRAINTS'), 'CONSTRAINT')]) {

@@ -249,7 +249,13 @@ class Project {
     if (!this.folder) {
       const parent = this.container(kind, true)!
       if (!parent.children.length) parent.children.push(this.nl)
-      parent.children.push(el, this.nl)
+      // DeZign keeps the elements of one kind together and in its own order (every DIAGRAM before the CONTROLS):
+      // a new one goes after the last of its kind, or before what must follow.
+      const last = parent.children.findLastIndex((c) => typeof c !== 'string' && c.tag === el.tag)
+      const follower = last === -1 && el.tag === 'DIAGRAM' ? parent.children.findIndex((c) => typeof c !== 'string' && c.tag === 'CONTROLS') : -1
+      if (last !== -1) parent.children.splice(last + 1, 0, this.nl, el)
+      else if (follower !== -1) parent.children.splice(follower, 0, el, this.nl)
+      else parent.children.push(el, this.nl)
       return { el }
     }
     const path = this.freePath(kind, name)
@@ -416,6 +422,8 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     if (!list) insert(constraint, (list = container('ATTRIBUTEIDS', [])))
     fill(list, ids.map((id) => leaf('ATTRIBUTEID', id)))
   }
+  /** `NAME` and, in projects that have name templates, the `NAMETEMPLATE` DeZign writes next to it. */
+  const named = (setting: string): El[] => (source.nameTemplates[setting] ? [leaf('NAME'), leaf('NAMETEMPLATE', source.nameTemplates[setting])] : [leaf('NAME')])
   const fromTemplate = (template: string, values: Record<string, string>) => template.replace(/%(\w+)%/g, (whole, key: string) => values[lower(key)] ?? whole)
 
   // --- ids --------------------------------------------------------------------------------------------------
@@ -435,6 +443,14 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
   const schemaOf = (el: El) => text(el, 'SCHEMA') || text(el, 'SCHEMANAME') || undefined
   const entities = new Map<string, Entity>()
   for (const slot of project.list('ENT')) entities.set(tableKey({ schema: schemaOf(slot.el), name: text(slot.el, 'NAME') }), entityOf(slot))
+  const everyAttr = () => [...entities.values()].flatMap((e) => [...e.attrs.values()])
+  // "No domain" is -1 in the files of DeZign 4 to 6 and empty since: a column is taken off its domain the file's way.
+  const noDomain = everyAttr().some((a) => text(a, 'DOMAINID') === '-1') ? '-1' : ''
+  /** A column constraint of that kind from anywhere in the project, as the shape for a new one. */
+  const anyConstraint = (tag: string): El | undefined => {
+    for (const a of everyAttr()) if (kid(a, tag)) return kid(a, tag)
+    return undefined
+  }
   // Folder projects name entity files `schema.name`, `name` or by id, depending on the DeZign version.
   const sample = project.list('ENT')[0]
   const entityFileName = (el: El) => {
@@ -463,7 +479,7 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     setOptional(dt, 'ITMS', listed?.[2] ?? '', [])
     setOptional(dt, 'AN', identity ? '1' : '', [])
     // A column with its own type no longer follows a domain.
-    if (kid(attr, 'DOMAINID')) set(attr, 'DOMAINID', '')
+    if (kid(attr, 'DOMAINID')) set(attr, 'DOMAINID', noDomain)
   }
   // Old formats write a column's constraint elements only when they hold something.
   const CONSTRAINTS = { NNCON: ['NN', '5'], CCON: ['CC', '1'], DEFCON: ['DEF', '6'] } as const
@@ -471,7 +487,20 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     let con = kid(attr, tag)
     if (!con && create) {
       const id = text(attr, 'ID')
-      con = container(tag, [leaf('NAME'), leaf('ID', /^\d+$/.test(id) ? '0' : `${id}-${CONSTRAINTS[tag][0]}`), leaf('CONLEVEL', '1'), leaf('CONTYPE', CONSTRAINTS[tag][1]), container('ATTRIBUTEIDS', [leaf('ATTRIBUTEID', id)])])
+      const own = /^\d+$/.test(id) ? '0' : `${id}-${CONSTRAINTS[tag][0]}`
+      // Shaped like the column constraints the file already has (of this kind, or of another: they differ only in
+      // their type and value), so it carries whatever this DeZign version writes into one.
+      const like = anyConstraint(tag) ?? anyConstraint('NNCON') ?? anyConstraint('DEFCON') ?? anyConstraint('CCON')
+      if (like) {
+        con = clone(like)
+        Object.assign(con, { tag, open: `<${tag}>`, close: `</${tag}>` })
+        remove(con, kid(con, 'VALUE'))
+        if (kid(con, 'NAME')) set(con, 'NAME', '')
+        if (kid(con, 'NAMETEMPLATE') && like.tag !== tag) set(con, 'NAMETEMPLATE', source.nameTemplates[tag === 'NNCON' ? 'NOTNULLCONNAMETEMPLATE' : tag === 'CCON' ? 'CCONNAMETEMPLATE' : 'DEFAULTCONNAMETEMPLATE'] ?? '')
+        set(con, 'ID', own)
+        set(con, 'CONTYPE', CONSTRAINTS[tag][1])
+        setIds(con, [id])
+      } else con = container(tag, [leaf('NAME'), leaf('ID', own), leaf('CONLEVEL', '1'), leaf('CONTYPE', CONSTRAINTS[tag][1]), container('ATTRIBUTEIDS', [leaf('ATTRIBUTEID', id)])])
       insert(attr, con, tag === 'NNCON' ? ['CCON', 'DEFCON'] : tag === 'CCON' ? ['DEFCON'] : [])
     }
     return con
@@ -495,7 +524,7 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
   const domainsByName = new Map(project.list('DOMAIN').map((d) => [lower(text(d.el, 'NAME')), d.el]))
   const setDomain = (attr: El, table: string, column: ColumnInfo) => {
     if (!column.domain) {
-      if (kid(attr, 'DOMAINID')) set(attr, 'DOMAINID', '')
+      if (kid(attr, 'DOMAINID') && text(attr, 'DOMAINID') !== noDomain && text(attr, 'DOMAINID') !== '-1') set(attr, 'DOMAINID', noDomain)
       return
     }
     const domain = domainsByName.get(lower(column.domain))
@@ -522,8 +551,9 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     if (template) {
       attr = clone(template, [[text(template, 'ID'), id]])
       // What belonged to the column it was copied from.
-      for (const tag of ['PKGNAME', 'PKGITEM', 'COLLATE', 'AUTONUMBERDEFAULT', 'POSNR']) remove(attr, kid(attr, tag))
-      for (const tag of ['DESC', 'NOTE', 'DESCRIPTION', 'DOMAINID']) if (kid(attr, tag)) set(attr, tag, '')
+      for (const tag of ['PKGNAME', 'PKGITEM', 'COLLATE', 'AUTONUMBERDEFAULT']) remove(attr, kid(attr, tag))
+      for (const tag of ['DESC', 'NOTE', 'DESCRIPTION']) if (kid(attr, tag)) set(attr, tag, '')
+      if (kid(attr, 'DOMAINID')) set(attr, 'DOMAINID', noDomain)
       for (const tag of ['NNCON', 'CCON', 'DEFCON']) {
         const con = kid(attr, tag)
         if (!con) continue
@@ -531,7 +561,7 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
         if (kid(con, 'NAME')) set(con, 'NAME', '')
       }
     } else {
-      const con = (tag: string, suffix: string, type: string) => container(tag, [leaf('NAME'), leaf('ID', `${id}-${suffix}`), leaf('CONLEVEL', '1'), leaf('CONTYPE', type), container('ATTRIBUTEIDS', [leaf('ATTRIBUTEID', id)])])
+      const con = (tag: string, suffix: string, type: string) => container(tag, [...named(tag === 'NNCON' ? 'NOTNULLCONNAMETEMPLATE' : tag === 'CCON' ? 'CCONNAMETEMPLATE' : 'DEFAULTCONNAMETEMPLATE'), leaf('ID', `${id}-${suffix}`), leaf('CONLEVEL', '1'), leaf('CONTYPE', type), container('ATTRIBUTEIDS', [leaf('ATTRIBUTEID', id)])])
       attr = container('ATTR', [leaf('NAME'), leaf('ID', id), leaf('DESC'), leaf('DOMAINID'), container('DT', [leaf('DTLISTNAME'), leaf('SD', '1'), leaf('INC', '1')]), con('NNCON', 'NN', '5'), con('CCON', 'CC', '1'), con('DEFCON', 'DEF', '6')])
     }
     set(attr, 'NAME', column.name)
@@ -670,7 +700,7 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     const idOf = (name: string) => text(entity.attrs.get(lower(name)), 'ID')
     if (!base || base.primaryKey.map(lower).join(',') !== next.primaryKey.map(lower).join(',')) {
       let pk = kid(entity.el, 'PKCON')
-      if (!pk) insert(entity.el, (pk = container('PKCON', [leaf('NAME'), leaf('ID', `${entity.id}-PK`), leaf('CONLEVEL', '2'), leaf('CONTYPE', '3'), container('ATTRIBUTEIDS', [])])), ['ATTRIBUTES'])
+      if (!pk) insert(entity.el, (pk = container('PKCON', [...named('PKCONNAMETEMPLATE'), leaf('ID', `${entity.id}-PK`), leaf('CONLEVEL', '2'), leaf('CONTYPE', '3'), container('ATTRIBUTEIDS', [])])), ['ATTRIBUTES'])
       setIds(pk, next.primaryKey.map(idOf).filter(Boolean))
       if (base) changes.push({ kind: 'set_primary_key', table: label, name: next.primaryKey.join(', ') })
     }
@@ -729,8 +759,7 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
       let list = kid(entity.el, 'CONSTRAINTS')
       if (!list) insert(entity.el, (list = container('CONSTRAINTS', [])))
       const id = newChildId(kids(list, 'CONSTRAINT').map((c) => text(c, 'ID')))
-      const template = anyOf((e) => kids(kid(e, 'CONSTRAINTS'), 'CONSTRAINT').find((c) => text(c, 'CONTYPE') === '1'))
-      const con = template ? clone(template, [[text(template, 'ID'), id]]) : container('CONSTRAINT', [leaf('NAME'), leaf('ID', id), leaf('VALUE'), leaf('CONLEVEL', '2'), leaf('CONTYPE', '1'), container('ATTRIBUTEIDS', [])])
+      const con = tableConstraint('1', id)
       for (const tag of ['DESC', 'NOTE']) if (kid(con, tag)) set(con, tag, '')
       set(con, 'NAME', check.name || `TCC_${label}_${kids(list, 'CONSTRAINT').length + 1}`)
       set(con, 'VALUE', check.expression, ['CONLEVEL', 'CONTYPE', 'ATTRIBUTEIDS'])
@@ -750,6 +779,27 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     }
   }
 
+  /**
+   * A new check ('1') or unique ('2') constraint of a table, shaped like one the project has: of the same kind,
+   * or else any constraint of a table or of a relationship (they hold the same fields), so it carries whatever
+   * this DeZign version writes into a constraint.
+   */
+  const tableConstraint = (type: '1' | '2', id: string): El => {
+    const sameKind = anyOf((e) => kids(kid(e, 'CONSTRAINTS'), 'CONSTRAINT').find((c) => text(c, 'CONTYPE') === type))
+    const like = sameKind ?? anyOf((e) => kids(kid(e, 'CONSTRAINTS'), 'CONSTRAINT')[0]) ?? project.list('REL').map((r) => kid(r.el, 'CONSTRAINT')).find(Boolean)
+    const setting = type === '1' ? 'TCCONNAMETEMPLATE' : 'TUCONNAMETEMPLATE'
+    if (!like) return container('CONSTRAINT', [...named(setting), leaf('ID', id), ...(type === '1' ? [leaf('VALUE')] : []), leaf('CONLEVEL', '2'), leaf('CONTYPE', type), container('ATTRIBUTEIDS', [])])
+    const con = clone(like)
+    set(con, 'ID', id, ['POSNR', 'SCHEMA', 'DESC', 'NOTE', 'VALUE', 'CONLEVEL', 'CONTYPE', 'ATTRIBUTEIDS'])
+    if (like !== sameKind) {
+      remove(con, kid(con, 'VALUE'))
+      set(con, 'CONLEVEL', '2', ['CONTYPE', 'ATTRIBUTEIDS'])
+      set(con, 'CONTYPE', type, ['ATTRIBUTEIDS'])
+      if (kid(con, 'NAMETEMPLATE')) set(con, 'NAMETEMPLATE', source.nameTemplates[setting] ?? '')
+      setIds(con, [])
+    }
+    return con
+  }
   const anyOf = (pick: (entity: El) => El | undefined) => {
     for (const e of entities.values()) {
       const found = pick(e.el)
@@ -764,8 +814,7 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
       let list = kid(entity.el, 'CONSTRAINTS')
       if (!list) insert(entity.el, (list = container('CONSTRAINTS', [])))
       const id = newChildId(kids(list, 'CONSTRAINT').map((c) => text(c, 'ID')))
-      const template = anyOf((e) => kids(kid(e, 'CONSTRAINTS'), 'CONSTRAINT').find((c) => text(c, 'CONTYPE') === '2'))
-      const con = template ? clone(template, [[text(template, 'ID'), id]]) : container('CONSTRAINT', [leaf('NAME'), leaf('ID', id), leaf('CONLEVEL', '2'), leaf('CONTYPE', '2'), container('ATTRIBUTEIDS', [])])
+      const con = tableConstraint('2', id)
       for (const tag of ['DESC', 'NOTE']) if (kid(con, tag)) set(con, tag, '')
       set(con, 'NAME', ix.name || `TUC_${table}_${kids(list, 'CONSTRAINT').length + 1}`)
       setIds(con, ids)
@@ -773,17 +822,27 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
       return
     }
     let list = kid(entity.el, 'INDEXES')
-    if (!list) insert(entity.el, (list = container('INDEXES', [])))
+    // (DeZign keeps a table's indexes before its triggers and constraints.)
+    if (!list) insert(entity.el, (list = container('INDEXES', [])), ['TRIGGERS', 'CONSTRAINTS'])
     const id = newChildId(kids(list, 'INDEX').map((c) => text(c, 'ID')))
-    const template = anyOf((e) => kids(kid(e, 'INDEXES'), 'INDEX').find((i) => text(i, 'AUTOIDXTYPE') === '0' || !kid(i, 'AUTOIDXTYPE')))
-    const index = template ? clone(template, [[text(template, 'ID'), id]]) : container('INDEX', [leaf('NAME'), leaf('ID', id), leaf('RELID', '0'), leaf('AUTOIDXTYPE', '0'), container('IDXCOLS', [])])
+    // Shaped like an index somebody made in this project, or else like one DeZign made itself (for a key): the
+    // same element, turned into an ordinary index.
+    const own = anyOf((e) => kids(kid(e, 'INDEXES'), 'INDEX').find((i) => text(i, 'AUTOIDXTYPE') === '0' || !kid(i, 'AUTOIDXTYPE')))
+    const template = own ?? anyOf((e) => kids(kid(e, 'INDEXES'), 'INDEX')[0])
+    const index = template ? clone(template, [[text(template, 'ID'), id]]) : container('INDEX', [...named('INDEXNAMETEMPLATE'), leaf('ID', id), leaf('RELID', '0'), leaf('AUTOIDXTYPE', '0'), container('IDXCOLS', [])])
+    if (template && template !== own) {
+      set(index, 'ID', id)
+      if (kid(index, 'AUTOIDXTYPE')) set(index, 'AUTOIDXTYPE', '0')
+      if (kid(index, 'RELID')) set(index, 'RELID', '0')
+      if (kid(index, 'NAMETEMPLATE')) set(index, 'NAMETEMPLATE', source.nameTemplates.INDEXNAMETEMPLATE ?? '')
+    }
     for (const tag of ['DESC', 'NOTE']) if (kid(index, tag)) set(index, tag, '')
     remove(index, kid(index, 'INDEXTYPE'))
     if (ix.unique) insert(index, leaf('INDEXTYPE', 'UNIQUE'), ['RELID', 'AUTOIDXTYPE', 'IDXCOLS'])
     set(index, 'NAME', ix.name || `IDX_${table}_${kids(list, 'INDEX').length + 1}`)
     let cols = kid(index, 'IDXCOLS')
     if (!cols) insert(index, (cols = container('IDXCOLS', [])))
-    const colTemplate = kids(cols, 'IDXCOL')[0]
+    const colTemplate = kids(cols, 'IDXCOL')[0] ?? anyOf((e) => kids(kid(e, 'INDEXES'), 'INDEX').flatMap((i) => kids(kid(i, 'IDXCOLS'), 'IDXCOL'))[0])
     fill(
       cols,
       ix.columns.map((name, i) => {
@@ -875,7 +934,12 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     let el: El
     if (template) {
       el = clone(template, [[text(template, 'ID'), id]])
-      for (const tag of ['INDEXES', 'CONSTRAINTS', 'TRIGGERS', 'ABBR', 'DESCRIPTION', 'POSNR']) remove(el, kid(el, tag))
+      for (const tag of ['ABBR', 'DESCRIPTION']) if (kid(el, tag)) set(el, tag, '')
+      // The lists stay, emptied: a DeZign version that writes them into every table writes them into an empty one too.
+      for (const tag of ['INDEXES', 'CONSTRAINTS', 'TRIGGERS']) {
+        const list = kid(el, tag)
+        if (list) fill(list, [])
+      }
       for (const tag of ['DESC', 'NOTE', 'BEGINTABLESCR', 'ENDTABLESCR']) if (kid(el, tag)) set(el, tag, '')
       const attributes = kid(el, 'ATTRIBUTES')
       if (attributes) fill(attributes, [])
@@ -885,9 +949,12 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
         if (kid(pk, 'NAME')) set(pk, 'NAME', text(pk, 'NAMETEMPLATE') ? fromTemplate(text(pk, 'NAMETEMPLATE'), { table: table.name }) : '')
       }
     } else {
-      el = container('ENT', [leaf('NAME'), leaf('ID', id), leaf('SCHEMA'), leaf('DESC'), container('PKCON', [leaf('NAME'), leaf('ID', `${id}-PK`), leaf('CONLEVEL', '2'), leaf('CONTYPE', '3'), container('ATTRIBUTEIDS', [])]), container('ATTRIBUTES', [])])
+      el = container('ENT', [leaf('NAME'), leaf('ID', id), leaf('SCHEMA'), leaf('DESC'), container('PKCON', [...named('PKCONNAMETEMPLATE'), leaf('ID', `${id}-PK`), leaf('CONLEVEL', '2'), leaf('CONTYPE', '3'), container('ATTRIBUTEIDS', [])]), container('ATTRIBUTES', [])])
     }
     set(el, 'NAME', table.name)
+    // A key made here is named by the project's template, as DeZign names one.
+    const madeKey = kid(el, 'PKCON')
+    if (!template && madeKey && table.primaryKey.length && text(madeKey, 'NAMETEMPLATE')) set(madeKey, 'NAME', fromTemplate(text(madeKey, 'NAMETEMPLATE'), { table: table.name }))
     set(el, kid(el, 'SCHEMANAME') ? 'SCHEMANAME' : 'SCHEMA', table.schema ?? '', ['DESC', 'NOTE', 'PKCON'])
     if (table.comment) set(el, 'DESC', table.comment, ['NOTE', 'PKCON', 'ATTRIBUTES'])
     const entity: Entity = { slot: { el }, el, id, attrs: new Map() }
@@ -1038,17 +1105,16 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     const el = template
       ? clone(template, [[text(template, 'ID'), id]])
       : container('REL', [
-          leaf('NAME'),
+          ...named('RELNAMETEMPLATE'),
           leaf('ID', id),
           leaf('PARENTOBJECTID'),
           leaf('CHILDOBJECTID'),
-          leaf('VIRTUALREL', '0'),
           leaf('CARDINALITY', '0'),
           leaf('RELTYPE', '1'),
           leaf('MANDATORYPARENT', '0'),
           leaf('UPDATERULE', '0'),
           leaf('DELETERULE', '0'),
-          container('CONSTRAINT', [leaf('NAME'), leaf('ID', `${id}-FK`), leaf('CONLEVEL', '2'), leaf('CONTYPE', '4'), container('ATTRIBUTEIDS', [])]),
+          container('CONSTRAINT', [...named('FKCONNAMETEMPLATE'), leaf('ID', `${id}-FK`), leaf('CONLEVEL', '2'), leaf('CONTYPE', '4'), container('ATTRIBUTEIDS', [])]),
           container('PAIRS', []),
         ])
     for (const tag of ['DESC', 'NOTE']) if (kid(el, tag)) set(el, tag, '')
@@ -1066,7 +1132,7 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     set(el, 'UPDATERULE', ruleCode(fk.onUpdate), ['DELETERULE', 'CONSTRAINT', 'PAIRS'])
     set(el, 'DELETERULE', ruleCode(fk.onDelete), ['CONSTRAINT', 'PAIRS'])
     let constraint = kid(el, 'CONSTRAINT')
-    if (!constraint) insert(el, (constraint = container('CONSTRAINT', [leaf('NAME'), leaf('ID', `${id}-FK`), leaf('CONLEVEL', '2'), leaf('CONTYPE', '4'), container('ATTRIBUTEIDS', [])])), ['PAIRS'])
+    if (!constraint) insert(el, (constraint = container('CONSTRAINT', [...named('FKCONNAMETEMPLATE'), leaf('ID', `${id}-FK`), leaf('CONLEVEL', '2'), leaf('CONTYPE', '4'), container('ATTRIBUTEIDS', [])])), ['PAIRS'])
     set(constraint, 'NAME', text(constraint, 'NAMETEMPLATE') ? fromTemplate(text(constraint, 'NAMETEMPLATE'), { relname: name, parent: parentName, child: table.name }) : name)
     setIds(constraint, fkIds)
     let pairList = kid(el, 'PAIRS')

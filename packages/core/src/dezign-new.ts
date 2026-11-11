@@ -22,6 +22,11 @@ export function dezignDatabaseFor(driver: DriverId | undefined): DezignDatabase 
 const leaves = (pairs: [string, string][]) => pairs.map(([tag, value]) => `<${tag}>${value}</${tag}>`).join('\n')
 const section = (tag: string, body = '') => `<${tag}>\n${body ? `${body}\n` : ''}</${tag}>`
 
+const GENERATE_OPTIONS =
+  'UNSELECTEDOBJECTS DONOTUSECOMMENTS DONOTUSEDEFAULTS DONOTUSETABLEOPTIONS DONOTUSECOLLATIONS DONOTUSECHARSETS DONOTUSETRIGGERS DONOTUSECHECKCONSTRAINTS DONOTUSEPRIMARYKEYS DONOTUSEFOREIGNKEYS DONOTUSEALTERNATEKEYS DONOTUSEINDEXESONPK DONOTUSEINDEXESONFK DONOTUSEINDEXESONAK DONOTUSEOTHERINDEXES DONOTUSEPKCONNAMES DONOTUSEFKCONNAMES DONOTUSEUNIQUECONNAMES DONOTUSECHECKCONNAMES DONOTUSEDEFAULTCONNAMES DONOTUSENOTNULLCONNAMES DONOTUSECONSTRAINTOPTIONS DONOTUSETABLESCRIPTS DONOTUSECOMMENTSINCODE GLOBALPREFIX CONVERTDOMAINS DONOTUSEDATABASESCRIPTS CHECKMODEL GENERATIONDIRECTIVE ARCHIVEMODEL CHANGETEXTFORMAT'.split(
+    ' ',
+  )
+
 function emptyProject(database: string, diagramId: string, projectId: string, today: string): string {
   const common = leaves([
     ['PROJECTFILENAME', ''],
@@ -127,7 +132,32 @@ function emptyProject(database: string, diagramId: string, projectId: string, to
     ['ENTLABELDISPLAYTYPE', '3'],
     ['NOTATION', '0'],
   ])
-  const settings = [section('COMMONSETTINGS', common), section('NAMETEMPLATES', names)].join('\n')
+  // The sections DeZign 14 writes into every project, with what a project that has not generated or compared
+  // anything yet holds in them (no file paths, no server names).
+  const indexChoices = leaves([['DONOTUSESEQUENCESEED', '1'], ['DONOTUSEINDEXESONPK', '1'], ['DONOTUSEINDEXESONFK', '1'], ['DONOTUSEINDEXESONAK', '1']])
+  const settings = [
+    section('COMMONSETTINGS', common),
+    section('NAMETEMPLATES', names),
+    section('REPOSITORYSETTINGS'),
+    section('STOREDFILTERS', leaves([['ADDREMOVEOBJECTSFILTER', '']])),
+    section('ImpDB_DBParams'),
+    section('ImpDB_Options'),
+    section('GenDB_DBParams', leaves([['SQLCREATEFILE', ''], ['SQLDROPFILE', ''], ['DBID', database]])),
+    // Every choice of the Generate dialog, as DeZign leaves them in a new project.
+    section('GenDB_Options', leaves(GENERATE_OPTIONS.map((tag) => [tag, tag === 'DONOTUSENOTNULLCONNAMES' || tag === 'CHANGETEXTFORMAT' ? '1' : tag === 'ARCHIVEMODEL' ? '0' : '']))),
+    section('AltDB_DBParams'),
+    section('AltDB_Options'),
+    section('UpdModel_DBParams'),
+    section('UpdModel_Options', indexChoices),
+    section('AltModel_Options'),
+    section('UpdDB_DBParams'),
+    section('UpdDB_Options', indexChoices),
+    section('CompVer_DBParams'),
+    section('CompVer_Options'),
+    section('Merge_Settings'),
+    section('Rep_Settings'),
+    section('MiscSettings', leaves([['RULESFORHIDINGATTRIBUTES', ''], ['CONGENDIRECTIVES', ''], ['FILTERS', '']])),
+  ].join('\n')
   const dictionary = [`<DBID>${database}</DBID>`, ...['DOMAINS', 'ENTITIES', 'SUBCATEGORIES', 'TEXTAREAS', 'GROUPBOXES', 'STAMPS', 'SEQUENCES', 'PROCEDURES', 'VIEWS', 'RELATIONSHIPS', 'SUBCATEGORYCONNECTIONS', 'VIEWCONNECTIONS', 'USERDEFINEDPROPERTIES'].map((tag) => section(tag))].join('\n')
   const controls = ['ENTITYCONTROLS', 'SUBCATEGORYCONTROLS', 'TEXTAREACONTROLS', 'STAMPCONTROLS', 'GROUPBOXESCONTROLS', 'VIEWCONTROLS', 'RELATIONSHIPCONNECTORS', 'SUBCATEGORYCONNECTORS', 'VIEWCONNECTORS'].map((tag) => section(tag)).join('\n')
   const diagrams = [section('DisplayPreferences', display), section('DIAGRAM', diagram), section('CONTROLS', controls)].join('\n')
