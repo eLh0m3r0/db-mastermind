@@ -299,6 +299,8 @@ describe('DeZign for Databases models', () => {
       { kind: 'sequence', name: 'invoice_no', schema: 'shop', sql: 'CREATE SEQUENCE shop.invoice_no INCREMENT BY 1 START WITH 1000' },
       { kind: 'view', name: 'v_open', schema: 'shop', sql: 'CREATE VIEW shop.v_open AS\nSELECT id FROM shop.invoice WHERE issued IS NULL' },
     ])
+    // A sequence that starts at 0 needs a minimum to match: databases default it to 1.
+    expect(readDezign(dez.replace('<SEED>1000</SEED>', '<SEED>0</SEED>')).sqlObjects[0]!.sql).toBe('CREATE SEQUENCE shop.invoice_no INCREMENT BY 1 START WITH 0 MINVALUE 0')
   })
 
   it('becomes DBML that reads back the same', () => {

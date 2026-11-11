@@ -355,7 +355,10 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   for (const seq of kids(kid(dict, 'SEQUENCES'))) {
     const q = qualified(seq)
     const part = (tag: string, sql: string) => (/^-?\d+$/.test(text(seq, tag)) ? ` ${sql} ${text(seq, tag)}` : '')
-    if (q.name) sqlObjects.push({ kind: 'sequence', name: q.name, schema: q.schema, sql: `CREATE SEQUENCE ${q.full}${part('INCREMENT', 'INCREMENT BY')}${part('SEED', 'START WITH')}${part('MIN', 'MINVALUE')}${part('MAX', 'MAXVALUE')}${text(seq, 'CYCLE') === '1' ? ' CYCLE' : ''}` })
+    // A sequence that starts below 1 with no minimum of its own: databases default the minimum to 1 and refuse it.
+    const seed = Number(text(seq, 'SEED'))
+    const floor = !part('MIN', 'MINVALUE') && /^-?\d+$/.test(text(seq, 'SEED')) && seed < 1 && !text(seq, 'INCREMENT').startsWith('-') ? ` MINVALUE ${seed}` : ''
+    if (q.name) sqlObjects.push({ kind: 'sequence', name: q.name, schema: q.schema, sql: `CREATE SEQUENCE ${q.full}${part('INCREMENT', 'INCREMENT BY')}${part('SEED', 'START WITH')}${part('MIN', 'MINVALUE')}${floor}${part('MAX', 'MAXVALUE')}${text(seq, 'CYCLE') === '1' ? ' CYCLE' : ''}` })
   }
   for (const view of kids(kid(dict, 'VIEWS'), 'VIEW')) {
     const q = qualified(view)

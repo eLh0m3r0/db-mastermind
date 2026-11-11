@@ -438,6 +438,15 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
     if (c.kind === 'add_foreign_key' && c.fk.name) taken.add(c.fk.name.toLowerCase())
     if (c.kind === 'add_index' && c.index.name) taken.add(c.index.name.toLowerCase())
   }
+  // A model's tables may live in schemas the database does not have yet.
+  // (Each database has one schema from the start; `dbo` in a PostgreSQL model is a schema like any other.)
+  const builtIn = d.id === 'postgres' ? 'public' : d.id === 'mssql' ? 'dbo' : d.id === 'duckdb' ? 'main' : ''
+  const present = new Set(tables.map((t) => t.schema?.toLowerCase()))
+  for (const schema of new Set(changes.flatMap((c) => (c.kind === 'create_table' && c.table.schema ? [c.table.schema] : [])))) {
+    if (present.has(schema.toLowerCase()) || schema.toLowerCase() === builtIn) continue
+    if (d.id === 'mssql') statements.push(`IF SCHEMA_ID(${literalComment(schema, 'mssql')}) IS NULL EXEC(${literalComment(`CREATE SCHEMA ${id(schema)}`, 'mssql')})`)
+    else if (d.id === 'postgres' || isMy || d.id === 'duckdb') statements.push(`CREATE SCHEMA IF NOT EXISTS ${id(schema)}`)
+  }
   // A new table may reference one created further down, or a column an existing table only gets in this
   // migration: the foreign keys of new tables wait until everything else is in place.
   const laterForeignKeys: { sql: string; undo: string | null }[] = []
@@ -730,6 +739,15 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
     }
   }
 
+  // A view that reads what is being dropped can't be put back as it was: the database refuses the drop, and
+  // the script says so before anyone runs it.
+  const mentions = (v: TableInfo, name: string) => new RegExp(`(^|[^\\w$])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\w$])`, 'i').test(v.definition ?? '')
+  for (const c of changes) {
+    if (c.kind !== 'drop_table' && c.kind !== 'drop_column') continue
+    const readers = tables.filter((v) => v.type !== 'table' && mentions(v, c.table.name) && (c.kind === 'drop_table' || mentions(v, c.column)))
+    if (readers.length) warnings.push({ level: 'danger', message: `${readers.map((v) => v.name).join(', ')} ${readers.length === 1 ? 'reads' : 'read'} ${c.table.name}${c.kind === 'drop_column' ? `.${c.column}` : ''}: change or drop the view first, or the database refuses this.` })
+  }
+
   // Views that read the affected tables are dropped first and recreated from their saved definition.
   const dependents = tables.filter(
     (v) => v.type !== 'table' && v.definition && [...viewSensitive].some((name) => new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(v.definition!)),
@@ -946,18 +964,30 @@ export const COMMON_TYPES: Record<DriverId, string[]> = {
 
 /**
  * Changes that make `target` match `source` (schema compare, e.g. dev → prod). Tables and columns are matched by
- * name (case-insensitively); anything only in the target is dropped unless `keepExtra` is set.
+ * name (case-insensitively); anything only in the target is dropped unless `keepExtra` is set. Schemas may be
+ * named differently on the two sides (`shop` → `public`); where both sides have a schema of the same name, a
+ * table is matched with the one in its own schema first, and a new table stays in its schema.
  */
 export function compareSchemas(source: TableInfo[], target: TableInfo[], options: { keepExtra?: boolean } = {}): SchemaChange[] {
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
   const drafts: DesignTable[] = []
   const targetSchema = target[0]?.schema
+  const targetSchemas = new Set(target.map((t) => (t.schema ?? '').toLowerCase()))
+  /** The target's table of that name: the one in the same schema when several schemas have one. */
+  const inTarget = (name: string, schema: string | undefined) => {
+    const named = target.filter((x) => x.type === 'table' && same(x.name, name))
+    return named.find((x) => same(x.schema ?? '', schema ?? '')) ?? named[0]
+  }
+  const taken = new Set<TableInfo>()
   for (const s of source.filter((t) => t.type === 'table')) {
-    const t = target.find((x) => x.type === 'table' && same(x.name, s.name))
+    const found = inTarget(s.name, s.schema)
+    // A table of another schema that already stands for a source table is not this one's match.
+    const t = found && !taken.has(found) ? found : undefined
+    if (t) taken.add(t)
     const draft = toDesignTable(s)
     if (!t) {
       // New table: created in the target's schema, referencing the target's tables, with its own identity.
-      draft.schema = targetSchema ?? draft.schema
+      draft.schema = draft.schema && targetSchemas.has(draft.schema.toLowerCase()) ? draft.schema : (targetSchema ?? draft.schema)
       draft.originalName = undefined
       for (const c of draft.columns) {
         c.originalName = undefined
@@ -966,7 +996,7 @@ export function compareSchemas(source: TableInfo[], target: TableInfo[], options
       for (const f of draft.foreignKeys) {
         f.originalName = undefined
         f.name = undefined
-        f.refSchema = target.find((x) => same(x.name, f.refTable))?.schema ?? targetSchema ?? f.refSchema
+        f.refSchema = inTarget(f.refTable, f.refSchema)?.schema ?? (f.refSchema && targetSchemas.has(f.refSchema.toLowerCase()) ? f.refSchema : (targetSchema ?? f.refSchema))
       }
       for (const i of draft.indexes) {
         i.originalName = undefined
@@ -997,7 +1027,7 @@ export function compareSchemas(source: TableInfo[], target: TableInfo[], options
       matched.add(match)
       if (match) Object.assign(f, { name: match.name, originalName: match.name, columns: match.columns, refColumns: match.refColumns, onDelete: match.onDelete })
       // References point into the target's schema, not the source's.
-      f.refSchema = target.find((x) => same(x.name, f.refTable))?.schema ?? t.schema
+      f.refSchema = inTarget(f.refTable, f.refSchema)?.schema ?? t.schema
     }
     for (const i of draft.indexes) {
       const match = t.indexes.find((x) => !matched.has(x) && !x.primary && cols(x.columns) === cols(i.columns) && x.unique === i.unique)
@@ -1014,7 +1044,7 @@ export function compareSchemas(source: TableInfo[], target: TableInfo[], options
     drafts.push(draft)
   }
   if (!options.keepExtra) {
-    for (const t of target.filter((x) => x.type === 'table' && !source.some((s) => s.type === 'table' && same(s.name, x.name)))) {
+    for (const t of target.filter((x) => x.type === 'table' && !taken.has(x))) {
       drafts.push({ ...toDesignTable(t), dropped: true })
     }
   }

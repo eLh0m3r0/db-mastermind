@@ -293,12 +293,26 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ Open `.dez` files (DeZign 4 to 14, file formats 41–140) as a model: Open model in the Model tab or the command
   palette. Tables, columns, types, keys, relationships with their rules, unique constraints, indexes, defaults,
   comments, schemas. Checked on public models of formats 41, 51, 60, 120, 140
-- ✅ Folder projects (`.dezproj`, one file per object; archived versions are not read). A real project of 305
-  tables, 3,000 columns and 540 relationships opens and draws in under a second
+- ✅ Folder projects (`.dezproj`, one file per object; archived versions are not read). A large real project
+  (hundreds of tables) opens and draws in under a second
 - ✅ The layout of the main diagram comes along (spread to the size of our tables)
 - ✅ Text in the Windows code page DeZign wrote it in (Czech reads correctly; the file's own `iso-8859-1` label is wrong)
 - ✅ Everything a model already does works on it: DDL for any database, ALTER script against a live database,
   compare with a `.dbml` or another DeZign file, data dictionary, AI review
+- ✅ Proven on real databases: the DDL of each of 26 public models (DeZign 4 to 14; PostgreSQL, MySQL, SQL Server,
+  Oracle, Firebird and database-independent ones) runs on the model's own database (PostgreSQL 17, MySQL 8.4,
+  SQL Server 2022; the others translated to PostgreSQL), and the model compared with what the database then has
+  shows no difference. Each model is then edited at random forty times over (new, renamed and dropped tables and
+  columns, types, keys, indexes, relationships) and the ALTER script of every round runs and leaves no difference
+  either: 8,000 statements. `packages/core/test/dezign-realworld.integration.test.ts`, with a model of its own in CI
+- ✅ What that turned up, fixed for every model and every schema compare: foreign keys of new tables wait until
+  everything they reference exists; made-up constraint names never repeat; related tables are dropped in an
+  order that works; a key that loses a column goes before the column; PostgreSQL type changes under a default;
+  one type under its many names (`varchar` and `character varying`, `numeric(8)` and `numeric(8,0)`, `serial`)
+  and one default under its spellings are no longer a difference; index columns with capitals; MySQL defaults
+- ✅ DDL for the model's own database keeps its types as they are written; for another database they are
+  translated, now including Oracle `NUMBER`, MySQL display widths and `ENUM`, and DeZign's database-independent
+  types. `ENUM` values, text defaults typed without quotes and a domain's check (`value …`) come out as valid SQL
 - ✅ Views, sequences, procedures and triggers of the project are kept as the SQL it holds for them and added to
   the generated DDL script (as comments when the script is for another database than the project's)
 - ✅ Domains: a column keeps the domain it follows (`[domain: 'name']` in the model, with the domain's type), a new
@@ -307,7 +321,7 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ What the model can't show (relationships drawn without columns) is listed with counts when the file opens,
   never dropped silently
 - ✅ A large diagram opens with all of it in view (the view is fitted to where the tables are, not to the ones
-  already drawn: a 305-table model used to open with a third outside the window)
+  already drawn: a model of several hundred tables used to open with a third outside the window)
 - ✅ Opening never changes the DeZign file; Save as makes a `.dbml` model of it
 - ✅ A model needs no connection: File → Open Model (⌘O), "Open a model" on the start page, a file dropped on the
   window, or the file itself (command line, double-click; `.dbml` is registered on macOS and Windows, DeZign files

@@ -255,6 +255,38 @@ describe('compareSchemas', () => {
     expect(sqlFor([parent, table('s', supported.columns, { foreignKeys: [fk('x', 'p', 'parent'), fk('y', 'p', 'parent')] })], [parent, withKey])).toEqual([])
   })
 
+  it('makes the schemas a model needs and keeps tables of the same name in their own schema', () => {
+    const { tables } = parseDbml('Table sales.orders {\n  id int [pk]\n}\nTable audit.orders {\n  id int [pk]\n  at timestamp\n}\nTable public.plain {\n  id int [pk]\n}')
+    const pg = createScript(tables, getDialect('postgres'))
+    expect(pg).toContain('CREATE SCHEMA IF NOT EXISTS "sales";\nCREATE SCHEMA IF NOT EXISTS "audit";\nCREATE TABLE "sales"."orders"')
+    expect(pg).not.toContain('SCHEMA IF NOT EXISTS "public"')
+    expect(createScript(tables, getDialect('mssql'))).toContain("IF SCHEMA_ID(N'sales') IS NULL EXEC(N'CREATE SCHEMA [sales]')")
+    expect(createScript(tables, getDialect('oracle'))).not.toContain('CREATE SCHEMA')
+    // `dbo` and `main` are only there from the start in the databases that call their own schema so.
+    const moved = parseDbml('Table dbo.a {\n  id int [pk]\n}\nTable main.b {\n  id int [pk]\n}').tables
+    expect(createScript(moved, getDialect('postgres'))).toContain('CREATE SCHEMA IF NOT EXISTS "dbo";\nCREATE SCHEMA IF NOT EXISTS "main";')
+    expect(createScript(moved, getDialect('mssql'))).not.toContain("SCHEMA_ID(N'dbo')")
+    // A database that has both schemas: each table is compared with its namesake in its own schema.
+    const database = structuredClone(tables)
+    database[1]!.columns.pop()
+    const changes = compareSchemas(tables, database)
+    expect(changes.map((c) => [c.kind, c.table.schema])).toEqual([['add_column', 'audit']])
+    expect(generateMigration(changes, getDialect('postgres'), database).statements).toEqual(['ALTER TABLE "audit"."orders" ADD COLUMN "at" timestamp'])
+    // A table for a schema the database has stays there; elsewhere it goes where the database's tables are.
+    const more = parseDbml('Table audit.log {\n  id int [pk]\n}\nTable other.thing {\n  id int [pk]\n}').tables
+    expect(compareSchemas([...tables, ...more], tables).map((c) => (c.kind === 'create_table' ? c.table.schema : c.kind))).toEqual(['audit', 'sales'])
+  })
+
+  it('says which view stands in the way of a drop', () => {
+    const { tables } = parseDbml('Table orders {\n  id int [pk]\n  note text\n  total int\n}\nTable old {\n  id int [pk]\n}')
+    const view: TableInfo = { name: 'v_totals', type: 'view', columns: [], primaryKey: [], foreignKeys: [], indexes: [], definition: 'SELECT id, total FROM orders' }
+    const next = [{ ...tables[0]!, columns: tables[0]!.columns.filter((c) => c.name !== 'total' && c.name !== 'note') }]
+    const { warnings } = generateMigration(compareSchemas(next, tables), getDialect('postgres'), [...tables, view])
+    const about = warnings.filter((w) => w.message.startsWith('v_totals')).map((w) => w.message)
+    // The view reads orders.total; it does not read orders.note or the table that goes.
+    expect(about).toEqual(['v_totals reads orders.total: change or drop the view first, or the database refuses this.'])
+  })
+
   it('writes a migration as a Liquibase changelog with its rollback', () => {
     const { tables } = parseDbml('Table customers {\n  id int [pk]\n  email varchar(120)\n}')
     const draft = toDesignTable(tables[0]!)
