@@ -5,7 +5,7 @@ import { Compartment, EditorState } from '@codemirror/state'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
 import { AlertTriangle, Archive, Database, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare, Plus } from 'lucide-react'
-import { checkModel, createScript, dezignDriver, dezignMigrationOptions, dezignWrapScript, fixModelIssue, unquotedNames, getDialect, parseDbml, toDbml, updateModelFromDatabase, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
+import { checkModel, createScript, dezignDriver, dezignMigrationOptions, dezignWrapScript, dropScript, fixModelIssue, unquotedNames, getDialect, parseDbml, toDbml, updateModelFromDatabase, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { DRIVERS } from '../connections/drivers'
@@ -338,10 +338,24 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     }
   }
 
+  /** Where a script goes: the database's editor, or a file for a model on its own. */
+  const deliver = (script: string, title: string, file: string) => {
+    if (connection) newQuery(tab.connectionId, script, title)
+    else void api.saveSqlFile(script, file).then((path) => path && toast({ kind: 'success', message: t('Script saved'), detail: path }), (err) => toast({ kind: 'error', message: t('Could not save the script'), detail: errorMessage(err) }))
+  }
+  /** The DROP script DeZign writes next to the CREATE one: for the model's own database (or the one it is compared with). */
+  const dropFor = () => {
+    const id = dezignDriver(tab.sqlDatabase) ?? connection?.driver ?? 'postgres'
+    const d = DRIVERS.find((x) => x.id === id) ?? DRIVERS[0]!
+    const named = tab.source?.kind === 'dezign' ? unquotedNames(model.tables, d.id) : model.tables
+    const views = (tab.sqlObjects ?? []).filter((o) => o.kind === 'view' && dezignDriver(tab.sqlDatabase) === d.id).map((o) => `DROP VIEW ${o.schema ? `${o.schema}.` : ''}${o.name};`)
+    const script = `-- ${t('Drops everything the model creates in {db}: run it only on a database you mean to empty.', { db: d.label })}\n${views.length ? `${views.join('\n')}\n\n` : ''}${dropScript(named, getDialect(d.id), dezignMigrationOptions(tab.scripting, d.id))}`
+    deliver(script, `DROP · ${d.label}`, `${fileName.replace(/\.\w+$/, '') || 'model'}-drop-${d.id}.sql`)
+  }
   const ddlMenu = (anchor: HTMLElement) =>
     openMenu(
       anchor,
-      DRIVERS.map((d) => ({
+      [...DRIVERS.map((d) => ({
         label: d.label,
         onClick: () => {
           // A DeZign project's names are created as DeZign's own scripts create them: without quotes.
@@ -353,14 +367,16 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           const body = `${createScript(named, getDialect(d.id), { translateTypes: true, from: own ?? connection?.driver, ...dezignMigrationOptions(tab.scripting, d.id) })}${sqlObjectsScript(tab.sqlObjects, tab.sqlDatabase, d.id)}`
           const script = `-- ${t('Model as {db} DDL', { db: d.label })}\n${note}${own === d.id ? dezignWrapScript(body, tab.scripting, 'create') : body}`
           // With a database the script opens in its editor; a model on its own saves it as a file.
-          if (connection) newQuery(tab.connectionId, script, `DDL · ${d.label}`)
-          else void api.saveSqlFile(script, `${fileName.replace(/\.\w+$/, '') || 'model'}-${d.id}.sql`).then((path) => path && toast({ kind: 'success', message: t('Script saved'), detail: path }), (err) => toast({ kind: 'error', message: t('Could not save the script'), detail: errorMessage(err) }))
+          deliver(script, `DDL · ${d.label}`, `${fileName.replace(/\.\w+$/, '') || 'model'}-${d.id}.sql`)
         },
       })),
+      'separator',
+      { label: t('DROP script…'), onClick: dropFor }],
     )
 
   // Checks that run by themselves on a model that parses.
-  const issues = useMemo(() => (model.errors.length ? [] : checkModel(model.tables)), [model])
+  // The limits of the database the model is for: the project's own, or the one it is compared with.
+  const issues = useMemo(() => (model.errors.length ? [] : checkModel(model.tables, { driver: dezignDriver(tab.sqlDatabase) ?? connection?.driver })), [model, tab.sqlDatabase, connection?.driver])
   const [showIssues, setShowIssues] = useState(false)
   const jumpToIssue = (issue: ModelIssue) => {
     const name = issue.table.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

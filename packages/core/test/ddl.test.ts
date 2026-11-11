@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareSchemas, createScript, designId, findChangedChecks, diffTable, generateMigration, getDialect, guessRenames, impactChecks, liquibaseChangelog, migrationScript, parseDbml, toDesignTable, type TableInfo } from '../src/index.js'
+import { compareSchemas, createScript, designId, dropScript, findChangedChecks, diffTable, generateMigration, getDialect, guessRenames, impactChecks, liquibaseChangelog, migrationScript, parseDbml, toDesignTable, type TableInfo } from '../src/index.js'
 
 const orders: TableInfo = {
   schema: 'public',
@@ -111,6 +111,17 @@ describe('schema diff & migration', () => {
     const m = generateMigration(diffTable(orders, draft), getDialect('postgres'))
     expect(m.statements).toEqual(['DROP TABLE "public"."orders"'])
     expect(m.warnings[0]!.level).toBe('danger')
+  })
+})
+
+describe('dropScript', () => {
+  it('drops a model\'s tables children first, and the domains it made after them', () => {
+    const { tables } = parseDbml("Table shop.customer {\n  id int [pk]\n  code varchar(3) [domain: 'Code_T']\n}\nTable shop.invoice {\n  id int [pk]\n  customer_id int [ref: > shop.customer.id]\n}\nTable shop.line {\n  id int [pk]\n  invoice_id int [ref: > shop.invoice.id]\n}")
+    const sql = dropScript(tables, getDialect('postgres'), { domains: [{ name: 'Code_T', dataType: 'varchar(3)' }, { name: 'unused', dataType: 'int' }] })
+    const order = ['"line"', '"invoice"', '"customer"', 'DROP DOMAIN code_t'].map((x) => sql.indexOf(x))
+    expect(order.every((x, i) => x > -1 && (i === 0 || x > order[i - 1]!))).toBe(true)
+    expect(sql).not.toContain('unused')
+    expect(dropScript(tables, getDialect('mysql'), { domains: [{ name: 'Code_T', dataType: 'varchar(3)' }] })).not.toContain('DOMAIN')
   })
 })
 

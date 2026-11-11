@@ -1,4 +1,4 @@
-import type { ForeignKeyInfo, TableInfo } from './types.js'
+import type { DriverId, ForeignKeyInfo, TableInfo } from './types.js'
 
 /**
  * Checks a model for the things reviewers always look for: tables without a key, foreign keys that cannot work
@@ -18,6 +18,13 @@ export type ModelIssueKind =
   | 'fk_without_index'
   | 'missing_relationship'
   | 'naming'
+  | 'name_too_long'
+
+/**
+ * The longest name each database keeps. PostgreSQL cuts a longer one to 63 bytes without a word (two long
+ * constraint names can then become one); the others refuse it. SQLite and DuckDB have no limit that matters.
+ */
+export const NAME_LIMITS: Partial<Record<DriverId, number>> = { postgres: 63, mysql: 64, mariadb: 64, mssql: 128, oracle: 128, clickhouse: 255, bigquery: 300, trino: 255 }
 
 export interface ModelIssue {
   kind: ModelIssueKind
@@ -131,8 +138,11 @@ export function suggestRelationships(tables: TableInfo[]): ModelIssue[] {
   return out
 }
 
-export function checkModel(tables: TableInfo[]): ModelIssue[] {
+export function checkModel(tables: TableInfo[], options: { /** The database the model is for: its limits apply. */ driver?: DriverId } = {}): ModelIssue[] {
   const issues: ModelIssue[] = []
+  const limit = options.driver ? NAME_LIMITS[options.driver] : undefined
+  // (In bytes: PostgreSQL and MySQL count UTF-8 bytes, a Czech letter is two.)
+  const tooLong = (name: string | undefined) => !!limit && !!name && new TextEncoder().encode(name).length > limit
   const real = tables.filter((t) => t.type === 'table')
   const tableStyle = prevailing(real.map((t) => t.name))
   const columnStyle = prevailing(real.flatMap((t) => t.columns.map((c) => c.name)))
@@ -144,6 +154,14 @@ export function checkModel(tables: TableInfo[]): ModelIssue[] {
       continue
     }
     if (!table.primaryKey.length) issues.push({ kind: 'no_primary_key', severity: 'warning', ...at })
+    if (limit) {
+      const long = (name: string | undefined, column?: string) => tooLong(name) && issues.push({ kind: 'name_too_long', severity: 'warning', ...at, ...(column ? { column } : {}), detail: `${name!.length} > ${limit}` })
+      long(table.name)
+      for (const c of table.columns) long(c.name, c.name)
+      for (const ix of table.indexes) if (!ix.primary) long(ix.name, ix.name)
+      for (const fk of table.foreignKeys) long(fk.name, fk.name)
+      for (const check of table.checks ?? []) long(check.name, check.name)
+    }
 
     const indexes = table.indexes.filter((ix) => !ix.primary)
     const columnsKey = (cols: string[]) => cols.map(lower).join(',')

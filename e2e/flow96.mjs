@@ -82,6 +82,12 @@ try {
   await win.getByText('Script saved').waitFor({ timeout: 10000 })
   const script = readFileSync(sql, 'utf8')
   console.log('ddl with the project scripts:', script.includes('SET search_path = shop;'), script.trimEnd().endsWith('ANALYZE;'), script.indexOf('SET search_path') < script.indexOf('CREATE TABLE'), /COMMENT ON COLUMN/.test(script))
+  // The DROP script DeZign writes next to it: children before the tables they point at.
+  await win.getByRole('button', { name: /^SQL DDL/ }).click()
+  await win.getByText('DROP script…').click()
+  await win.getByText('Script saved').last().waitFor({ timeout: 10000 })
+  const drop = readFileSync(sql, 'utf8')
+  console.log('drop script:', drop.indexOf('DROP TABLE "shop"."invoice"') > -1 && drop.indexOf('DROP TABLE "shop"."invoice"') < drop.indexOf('DROP TABLE "shop"."customer"'), !/CREATE/.test(drop))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow96.png') })
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])

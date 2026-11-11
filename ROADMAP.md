@@ -399,6 +399,10 @@ Not a clone: their features, rethought and connected to live databases, the know
   files of DeZign 4 to 11 get their id counters (`LASTID`, `ATTRLASTID`, …) moved on with new objects
 - ⬜ Subtype clusters and the domains themselves edited from the model (today they are kept as they are)
 
+- ✅ The DROP script DeZign writes next to the CREATE one (SQL DDL → DROP script…): views, then the tables in an
+  order their foreign keys allow, then the domains the model made
+- ✅ Model check for names longer than the model's database keeps (PostgreSQL 63 bytes, cut without a word:
+  two long constraint names become one; MySQL 64, SQL Server and Oracle 128), counted in bytes as they count
 - ✅ A diagram shows its tables as DeZign does: its attribute display level (all columns, keys, primary keys,
   first 10 or 20, names only), data types or none, and the columns hidden in one table's box. Changed in the
   diagram's toolbar, saved into the project; codes checked by setting them in DeZign 14.9.3

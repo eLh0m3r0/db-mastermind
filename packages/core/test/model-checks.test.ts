@@ -5,6 +5,16 @@ const model = (dbml: string) => parseDbml(dbml).tables
 const kinds = (dbml: string) => checkModel(model(dbml)).map((i) => `${i.kind} ${i.table}${i.column ? `.${i.column}` : ''}${i.detail ? ` → ${i.detail}` : ''}`)
 
 describe('model checks', () => {
+  it('finds names longer than the model\'s database keeps (PostgreSQL cuts them to 63 bytes without a word)', () => {
+    const long = `${'a'.repeat(61)}_id`
+    const { tables } = parseDbml(`Table t {\n  id int [pk]\n  ${long} int\n  indexes {\n    ${long} [name: 'ix_${'b'.repeat(61)}']\n  }\n}\nTable "${'č'.repeat(32)}" {\n  id int [pk]\n}`)
+    const found = (driver?: 'postgres' | 'mssql') => checkModel(tables, { driver }).filter((i) => i.kind === 'name_too_long').map((i) => `${i.table}.${i.column ?? ''}`)
+    // (64 Czech letters' bytes: "č" is two in UTF-8.)
+    expect(found('postgres')).toEqual([`t.${long}`, `t.ix_${'b'.repeat(61)}`, `${'č'.repeat(32)}.`])
+    expect(found('mssql')).toEqual([])
+    expect(found()).toEqual([])
+  })
+
   it('finds nothing in a tidy model', () => {
     expect(
       kinds(`

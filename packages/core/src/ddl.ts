@@ -1350,6 +1350,19 @@ export function unquotedName<T extends string | undefined>(name: T, driver: Driv
   return (driver === 'postgres' ? name.toLowerCase() : driver === 'oracle' ? name.toUpperCase() : name) as T
 }
 
+/**
+ * DROP script for a whole model, as DeZign generates one next to the CREATE script: the tables in an order their
+ * foreign keys allow (children first), and the domains the model made in PostgreSQL after them.
+ */
+export function dropScript(tables: TableInfo[], dialect: Dialect, options: Pick<MigrationOptions, 'domains'> = {}): string {
+  const real = tables.filter((t) => t.type === 'table')
+  const migration = generateMigration(compareSchemas([], real), dialect, real)
+  const used = new Set(real.flatMap((t) => t.columns.map((c) => c.domain?.toLowerCase()).filter(Boolean)))
+  const domains = dialect.id === 'postgres' ? (options.domains ?? []).filter((d) => used.has(d.name.toLowerCase())) : []
+  const tail = domains.map((d) => `DROP DOMAIN ${/^[A-Za-z_][A-Za-z0-9_$]*$/.test(d.name) ? d.name.toLowerCase() : dialect.quoteIdent(d.name)};`)
+  return migrationScript({ ...migration, statements: [...migration.statements, ...tail] }, dialect)
+}
+
 /** CREATE script for a whole model (forward engineering), in any dialect. */
 export function createScript(tables: TableInfo[], dialect: Dialect, options: { translateTypes?: boolean; /** The database the model's types were written for: for that one they are left as written. */ from?: DriverId } & MigrationOptions = {}): string {
   const source = options.translateTypes ? translateTables(tables, dialect.id, options.from) : tables

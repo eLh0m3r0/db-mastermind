@@ -14,6 +14,7 @@ const LABELS: Record<ModelIssueKind, string> = {
   fk_without_index: 'Foreign key without an index',
   missing_relationship: 'Possible relationship (same name and type as a key)',
   naming: 'Name in a different style than the rest of the model',
+  name_too_long: 'Name longer than the database keeps',
 }
 const FIX: Partial<Record<ModelIssueKind, string>> = {
   duplicate_index: 'Remove',
