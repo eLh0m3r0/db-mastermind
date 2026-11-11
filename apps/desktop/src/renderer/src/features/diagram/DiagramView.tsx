@@ -9,6 +9,7 @@ import {
   Handle,
   MarkerType,
   MiniMap,
+  NodeResizeControl,
   Position,
   ReactFlow,
   ReactFlowProvider,
@@ -23,7 +24,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { toPng, toSvg } from 'html-to-image'
-import { Bookmark, Copy, Download, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Route, Search, Layers, Redo, Sparkles, StickyNote, Table2, Undo, Undo2, Users, X } from 'lucide-react'
+import { Bookmark, Copy, Download, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Route, Search, Layers, Redo, Sparkles, SquareDashed, StickyNote, Table2, Undo, Undo2, Users, X } from 'lucide-react'
 import {
   designId,
   designToTableInfo,
@@ -253,11 +254,23 @@ const NoteNode = memo(function NoteNode({ data }: NodeProps<Node<NoteNodeData>>)
   )
 })
 
-/** A captioned frame behind the tables: it shows what belongs together and takes no clicks. */
-const BoxNode = memo(function BoxNode({ data }: NodeProps<Node<{ title: string; w: number; h: number }>>) {
+/**
+ * A captioned frame behind the tables (DeZign's group box): it shows what belongs together. Only its caption bar
+ * and its corner take the pointer, to move and to resize it; the tables inside stay clickable.
+ */
+const BoxNode = memo(function BoxNode({ data }: NodeProps<Node<{ title: string; w: number; h: number; onResize: (w: number, h: number) => void }>>) {
   return (
     <div style={{ width: data.w, height: data.h }} className="pointer-events-none rounded-lg border-2 border-dashed border-fg-faint/50 bg-accent/5" data-testid="diagram-box">
-      {data.title && <div className="px-3 py-1.5 text-[13px] font-semibold text-fg-muted">{data.title}</div>}
+      <div className="dbm-box-handle pointer-events-auto cursor-move px-3 py-1.5 text-[13px] font-semibold text-fg-muted" title={t('Drag to move the frame; right-click to rename or remove it')}>
+        {data.title || '\u00a0'}
+      </div>
+      <NodeResizeControl
+        position="bottom-right"
+        minWidth={80}
+        minHeight={60}
+        className="pointer-events-auto !h-3 !w-3 !border-0 !bg-fg-faint/60"
+        onResizeEnd={(_, p) => data.onResize(Math.round(p.width), Math.round(p.height))}
+      />
     </div>
   )
 })
@@ -368,13 +381,13 @@ function nodeHeight(t: TableInfo, shown: Shown, fk: Set<string>, ref: Set<string
   return HEADER + visible * ROW + (showsMore(shown) && visible < t.columns.length ? ROW : 0) + 2
 }
 
-function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; modelDriver?: DriverId; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display'>>) => void }) {
+function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; modelDriver?: DriverId; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
   const tr = useT()
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const loadSchema = useConnections((s) => s.loadSchema)
   const openTab = useWorkspace((s) => s.open)
   const updateTab = useWorkspace((s) => s.update)
-  const patchLayout = (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display'>>) => (onLayout ? onLayout(patch) : updateTab(tab.id, patch))
+  const patchLayout = (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => (onLayout ? onLayout(patch) : updateTab(tab.id, patch))
   const dark = useSettings((s) => s.dark)
   // A model (DBML) replaces the live schema; designing it writes the result back to the DBML text.
   const schema = model ?? runtime?.schema
@@ -938,11 +951,33 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
 
   // Sticky notes live in their own node list so table re-layouts never drop them.
   const [noteNodes, setNoteNodes, onNoteNodesChange] = useNodesState<Node<NoteNodeData>>([])
+  const latestBoxes = useRef(tab.boxes)
+  latestBoxes.current = tab.boxes
+  const setBoxes = (boxes: NonNullable<DiagramTab['boxes']>) => patchLayout({ boxes })
   // Their ids start like a note's, so nothing that acts on tables takes them for one.
   const boxNodes = useMemo(
-    () => (tab.boxes ?? []).map((box) => ({ id: `note:box:${box.id}`, type: 'box', position: { x: box.x, y: box.y }, data: { title: box.title, w: box.w, h: box.h }, draggable: false, selectable: false, focusable: false, zIndex: -1 })),
+    () =>
+      (tab.boxes ?? []).map((box) => ({
+        id: `note:box:${box.id}`,
+        type: 'box',
+        position: { x: box.x, y: box.y },
+        data: { title: box.title, w: box.w, h: box.h, onResize: (w: number, h: number) => setBoxes((latestBoxes.current ?? []).map((x) => (x.id === box.id ? { ...x, w, h } : x))) },
+        dragHandle: '.dbm-box-handle',
+        selectable: false,
+        focusable: false,
+        zIndex: -1,
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [tab.boxes],
   )
+  // Dragged frames show where they are going until the drop saves the place.
+  const [boxDrag, setBoxDrag] = useState<{ id: string; x: number; y: number } | null>(null)
+  const addBox = async () => {
+    const title = await askText({ title: tr('New frame'), message: tr('A frame groups tables on the diagram (DeZign: group box). Drag it by its caption, resize it at its corner.'), confirmLabel: tr('Add') })
+    if (!title) return
+    const center = flow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
+    setBoxes([...(tab.boxes ?? []), { id: uid('box'), title, x: Math.round(center.x - 200), y: Math.round(center.y - 150), w: 400, h: 300 }])
+  }
   const latestNotes = useRef(tab.notes)
   latestNotes.current = tab.notes
   const setNotes = (notes: DiagramNote[]) => patchLayout({ notes: notes.length ? notes : undefined })
@@ -1140,6 +1175,9 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
         )}
         <IconButton label={tr('Add a note')} onClick={addNote}>
           <StickyNote size={14} />
+        </IconButton>
+        <IconButton label={tr('Add a frame')} onClick={() => void addBox()} data-testid="diagram-add-box">
+          <SquareDashed size={14} />
         </IconButton>
         <Button size="sm" variant="ghost" icon={<LayoutGrid size={13} />} onClick={resetLayout}>
           {tr('Auto layout')}
@@ -1388,7 +1426,7 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
           </defs>
         </svg>
         <ReactFlow
-          nodes={[...(boxNodes as unknown as typeof nodes), ...nodes, ...(noteNodes as unknown as typeof nodes)]}
+          nodes={[...(boxNodes.map((b) => (boxDrag?.id === b.id ? { ...b, position: { x: boxDrag.x, y: boxDrag.y } } : b)) as unknown as typeof nodes), ...nodes, ...(noteNodes as unknown as typeof nodes)]}
           edges={edges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
@@ -1403,7 +1441,13 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
           onPaneClick={() => setSelected(null)}
           onNodeMouseEnter={(_, n) => !isNote(n.id) && setHovered(n.id)}
           onNodeMouseLeave={() => setHovered(null)}
+          onNodeDrag={(_, node) => node.id.startsWith('note:box:') && setBoxDrag({ id: node.id, x: node.position.x, y: node.position.y })}
           onNodeDragStop={(_, node) => {
+            if (node.id.startsWith('note:box:')) {
+              setBoxDrag(null)
+              setBoxes((tab.boxes ?? []).map((x) => (`note:box:${x.id}` === node.id ? { ...x, x: Math.round(node.position.x), y: Math.round(node.position.y) } : x)))
+              return
+            }
             if (isNote(node.id)) {
               setNotes((tab.notes ?? []).map((x) => (`note:${x.id}` === node.id ? { ...x, x: Math.round(node.position.x), y: Math.round(node.position.y) } : x)))
               return
@@ -1419,7 +1463,19 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
           }}
           onNodeDoubleClick={(_, n) => !isNote(n.id) && openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name })}
           onNodeContextMenu={(e, n) =>
-            !isNote(n.id) &&
+            n.id.startsWith('note:box:')
+              ? openMenu(e, [
+                  {
+                    label: tr('Rename frame…'),
+                    onClick: async () => {
+                      const box = tab.boxes?.find((x) => `note:box:${x.id}` === n.id)
+                      const title = box && (await askText({ title: tr('Rename frame'), value: box.title, confirmLabel: tr('Rename') }))
+                      if (box && title) setBoxes((tab.boxes ?? []).map((x) => (x.id === box.id ? { ...x, title } : x)))
+                    },
+                  },
+                  { label: tr('Remove frame'), onClick: () => setBoxes((tab.boxes ?? []).filter((x) => `note:box:${x.id}` !== n.id)) },
+                ])
+              : !isNote(n.id) &&
             openMenu(e, [
               { label: tr('Open data'), icon: <Table2 size={13} />, onClick: () => openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name }) },
               { label: tr('Open structure'), onClick: () => openTab({ kind: 'structure', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: tr('{name} · structure', { name: n.data.table.name }) }) },
@@ -1520,7 +1576,7 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
   )
 }
 
-export function DiagramView({ tab, model, modelDriver, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display'>>) => void }) {
+export function DiagramView({ tab, model, modelDriver, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
   return (
     <ReactFlowProvider>
       <DiagramInner tab={tab} model={model} modelDriver={modelDriver} onApplyModel={onApplyModel} onLayout={onLayout} />

@@ -162,7 +162,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
 
   /** A model opened from a DeZign project goes back into it: the changes are listed first, the old files are kept. */
   const saveToSource = async (source: NonNullable<ModelTab['source']>) => {
-    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, notes: tab.notes, colors: tab.colors, diagrams: tab.diagrams, display: tab.display, removedDiagrams: tab.removedDiagrams, layout: !!source.layout, defaultSchema: liveSchema?.defaultSchema }
+    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, notes: tab.notes, colors: tab.colors, diagrams: tab.diagrams, display: tab.display, boxes: tab.boxes, removedDiagrams: tab.removedDiagrams, layout: !!source.layout, defaultSchema: liveSchema?.defaultSchema }
     const name = source.path.split(/[\\/]/).pop() ?? ''
     try {
       const preview = await api.saveDezignModel({ ...request, dryRun: true })

@@ -62,6 +62,9 @@ const CHANGE_LABELS: Record<DezignChange['kind'], string> = {
   drop_note: 'removed note',
   color_table: 'table color',
   diagram_display: 'what the tables show',
+  add_box: 'new frame',
+  drop_box: 'removed frame',
+  alter_box: 'changed frame',
   rename_diagram: 'renamed diagram',
   drop_diagram: 'removed diagram',
 }

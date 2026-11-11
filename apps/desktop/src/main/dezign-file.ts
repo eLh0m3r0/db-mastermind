@@ -119,14 +119,15 @@ export async function saveDezignModel(request: DezignSaveRequest): Promise<Dezig
     const known = model.diagrams.find((d) => d.id === diagramId)?.notes ?? []
     return known.map((o) => edited?.find((n) => n.id === o.id) ?? o)
   }
-  // What the tables show, with the hidden columns keyed as the file names its tables.
+  // What the tables show, with the hidden columns keyed as the file names its tables. Frames change only where the
+  // tab sends its list (a request without one, from an older tab or the API, leaves them as they are).
   const displayOf = (display: DezignSaveRequest['display']) => (display ? { ...display, hidden: display.hidden ? Object.fromEntries(withBare(Object.entries(display.hidden))) : undefined } : undefined)
   for (const d of request.diagrams ?? []) {
-    if (request.layout) Object.assign(diagrams[d.id]!, { notes: d.notes ?? [], colors: colorChanges(d.id, d.colors), display: displayOf(d.display) })
+    if (request.layout) Object.assign(diagrams[d.id]!, { notes: d.notes ?? [], colors: colorChanges(d.id, d.colors), display: displayOf(d.display), ...(d.boxes ? { boxes: d.boxes } : {}) })
     else diagrams[d.id]!.notes = keepingAll(d.id, d.notes)
   }
   const main = model.layout.diagramId
-  if (main) diagrams[main] = request.layout ? { notes: request.notes ?? [], colors: colorChanges(main, request.colors), display: displayOf(request.display) } : { notes: keepingAll(main, request.notes) }
+  if (main) diagrams[main] = request.layout ? { notes: request.notes ?? [], colors: colorChanges(main, request.colors), display: displayOf(request.display), ...(request.boxes ? { boxes: request.boxes } : {}) } : { notes: keepingAll(main, request.notes) }
   for (const id of request.removedDiagrams ?? []) if (id !== main) diagrams[id] = { remove: true }
   const result = saveToDezign(files, viaDbml(model.tables), edited.tables, { node: NODE, fallbackEncoding, positions, diagrams, normalize: viaDbml })
   const outcome: DezignSaveOutcome = { changes: result.changes, written: result.files.length, deleted: result.deleted.length, hash: request.hash }

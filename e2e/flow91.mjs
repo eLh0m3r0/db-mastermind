@@ -165,6 +165,35 @@ try {
   const billing = /<DIAGRAM>\n<ID>2<\/ID>[\s\S]*?<\/DIAGRAM>/.exec(third)?.[0] ?? ''
   console.log('in the file:', /<NAME>Fakturace<\/NAME>/.test(billing), /<DISPLAYLEVEL>2<\/DISPLAYLEVEL>/.test(billing), /<VISIBLEATTR>0<\/VISIBLEATTR>/.test(billing), 'Customers gone:', !third.includes('<NAME>Customers</NAME>'), (third.match(/<DIAGRAM>/g) ?? []).length, 'diagrams')
 
+  // Frames (DeZign's group boxes): a new one, one moved by its caption and renamed; saved into the project.
+  await win.getByTestId('model-area').selectOption({ label: 'Whole model' })
+  await win.waitForTimeout(1200)
+  await win.getByTestId('diagram-add-box').click()
+  await win.getByRole('textbox').last().fill('Sklad')
+  await win.getByRole('button', { name: 'Add', exact: true }).click()
+  await win.waitForTimeout(800)
+  const caption = win.locator('[data-testid="diagram-box"] .dbm-box-handle').filter({ hasText: 'Billing' })
+  const at = await caption.boundingBox()
+  await win.mouse.move(at.x + 20, at.y + at.height / 2)
+  await win.mouse.down()
+  await win.mouse.move(at.x + 80, at.y + at.height / 2 + 40, { steps: 10 })
+  await win.mouse.up()
+  await win.waitForTimeout(600)
+  await caption.click({ button: 'right' })
+  await win.getByText('Rename frame…').click()
+  await win.getByRole('textbox').last().fill('Fakturace a platby')
+  await win.getByRole('button', { name: 'Rename', exact: true }).click()
+  await win.waitForTimeout(600)
+  await win.getByRole('button', { name: 'Save', exact: true }).click()
+  await win.getByText(/Write these changes into shop\.dez\?/).waitFor({ timeout: 10000 })
+  const listed3 = await win.locator('[role="dialog"], .fixed').filter({ hasText: 'Write these changes' }).last().innerText()
+  console.log('confirm lists frames:', /new frame: Sklad/.test(listed3), /changed frame: Fakturace a platby/.test(listed3))
+  await win.getByRole('button', { name: 'Write to the DeZign file' }).click()
+  await win.getByText(/Saved to shop\.dez/).last().waitFor({ timeout: 10000 })
+  const fourth = readFileSync(dez, 'latin1')
+  const movedBox = /<GROUPBOXC>\n<ID>G1<\/ID>[\s\S]*?<L>(\d+)<\/L>/.exec(fourth)?.[1]
+  console.log('frames in the file:', /<OBJECTCAPTION>Sklad<\/OBJECTCAPTION>/.test(fourth), /<OBJECTCAPTION>Fakturace a platby<\/OBJECTCAPTION>/.test(fourth), (fourth.match(/<GROUPBOXC>/g) ?? []).length, 'moved:', movedBox !== undefined && movedBox !== '840')
+
   // Notes and colors of the diagram are saved too: a recolored table and a new note are listed as changes, and a
   // tab that never loaded the file's notes (an older build) cannot remove them.
   const state = await win.evaluate(async (path) => {

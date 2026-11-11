@@ -407,6 +407,8 @@ Not a clone: their features, rethought and connected to live databases, the know
   first 10 or 20, names only), data types or none, and the columns hidden in one table's box. Changed in the
   diagram's toolbar (columns of one table: its menu → Columns shown), saved into the project; codes checked by
   setting them in DeZign 14.9.3
+- ✅ Frames (DeZign's group boxes) edited on the diagram: added ("Add a frame"), moved by their caption, resized at
+  their corner, renamed and removed from their menu; saved into the project and opened by DeZign 14.9.3 as saved
 - ✅ Diagrams of a DeZign project renamed and removed (the tables stay; whatever was drawn on the diagram goes
   with it). DeZign 14.9.3 opens the saved files and keeps them as saved
 - ✅ Archive a version (the model's "Archive version…", as DeZign's File → Versions → Archive current version): the

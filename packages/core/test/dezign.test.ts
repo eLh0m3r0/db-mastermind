@@ -469,6 +469,24 @@ describe('saving back into a DeZign project', () => {
     }
   })
 
+  it('saves group boxes: moved, resized and renamed, a new one, and one taken away', () => {
+    const main = readDezign(dez).diagrams.find((d) => d.main)!
+    expect(main.boxes.map((b) => b.title)).toEqual(['Fakturace'])
+    const box = main.boxes[0]!
+    const r = saveToDezign(single, model(single), model(single), { normalize: viaDbml, newId: () => 'GB-NEW', diagrams: { [main.id]: { boxes: [{ ...box, title: 'Faktury', x: box.x + 100, w: box.w + 50 }, { id: 'new', title: 'Sklad', x: 10, y: 600, w: 300, h: 200 }] } } })
+    expect(r.changes.map((c) => `${c.kind} ${c.table}`)).toEqual(['alter_box Faktury', 'add_box Sklad'])
+    const after = readDezign(r.files[0]!.text).diagrams.find((d) => d.main)!
+    expect(after.boxes.map((b) => b.title)).toEqual(['Faktury', 'Sklad'])
+    expect(after.boxes[0]!.w).toBeGreaterThan(box.w)
+    expect(after.boxes[1]).toMatchObject({ x: 10, y: 600, w: 300, h: 200 })
+    expect(dezignIntegrity(r.files[0]!.text)).toEqual(dezignIntegrity(dez))
+    const gone = saveToDezign(r.files, model(r.files), model(r.files), { normalize: viaDbml, diagrams: { [main.id]: { boxes: [] } } })
+    expect(gone.changes.map((c) => c.kind)).toEqual(['drop_box', 'drop_box'])
+    expect(gone.files[0]!.text).not.toMatch(/<GROUPBOX>/)
+    // The same list again: nothing to write.
+    expect(saveToDezign(r.files, model(r.files), model(r.files), { normalize: viaDbml, diagrams: { [main.id]: { boxes: after.boxes } } }).files).toEqual([])
+  })
+
   it('writes nothing when the model was not edited', () => {
     expect(save(single, () => {})).toEqual({ files: [], deleted: [], changes: [] })
     expect(save(folder, () => {})).toEqual({ files: [], deleted: [], changes: [] })

@@ -68,6 +68,9 @@ export type DezignChangeKind =
   | 'drop_note'
   | 'color_table'
   | 'diagram_display'
+  | 'add_box'
+  | 'drop_box'
+  | 'alter_box'
   | 'rename_diagram'
   | 'drop_diagram'
 
@@ -120,6 +123,8 @@ export interface SaveDezignOptions {
       display?: Partial<DezignDisplay>
       /** Takes the diagram out of the project, with everything drawn on it (never the main diagram). */
       remove?: boolean
+      /** All the group boxes the diagram should have, as `DezignDiagram.boxes` (unknown ids are new ones). */
+      boxes?: { id: string; title: string; x: number; y: number; w: number; h: number }[]
     }
   >
   /** Ids for new objects (default: random GUIDs, or the next number in files that number their objects). */
@@ -132,7 +137,7 @@ export interface SaveDezignOptions {
 }
 
 type El = DezignElement
-type Kind = 'DOMAIN' | 'ENT' | 'REL' | 'ENTC' | 'RELC' | 'DIAGRAM' | 'SUBCAT' | 'SUBCONN' | 'SUBCATC' | 'SUBCONNC' | 'TEXTAR' | 'TEXTC' | 'VIEWCONN' | 'VIEWCONNC'
+type Kind = 'DOMAIN' | 'ENT' | 'REL' | 'ENTC' | 'RELC' | 'DIAGRAM' | 'SUBCAT' | 'SUBCONN' | 'SUBCATC' | 'SUBCONNC' | 'TEXTAR' | 'TEXTC' | 'VIEWCONN' | 'VIEWCONNC' | 'GROUPBOX' | 'GROUPBOXC'
 
 interface Slot {
   el: El
@@ -155,6 +160,8 @@ const SINGLE: Record<Kind, string[]> = {
   TEXTC: ['DIAGRAMS', 'CONTROLS', 'TEXTAREACONTROLS'],
   VIEWCONN: ['DATADICT', 'VIEWCONNECTIONS'],
   VIEWCONNC: ['DIAGRAMS', 'CONTROLS', 'VIEWCONNECTORS'],
+  GROUPBOX: ['DATADICT', 'GROUPBOXES'],
+  GROUPBOXC: ['DIAGRAMS', 'CONTROLS', 'GROUPBOXESCONTROLS'],
 }
 const FOLDER: Record<Kind, string> = {
   DOMAIN: 'data dictionary/domains',
@@ -171,9 +178,11 @@ const FOLDER: Record<Kind, string> = {
   TEXTC: 'diagrams/diagramobjects/textareacontrols',
   VIEWCONN: 'data dictionary/viewconnections',
   VIEWCONNC: 'diagrams/diagramobjects/viewconnectors',
+  GROUPBOX: 'data dictionary/groupboxes',
+  GROUPBOXC: 'diagrams/diagramobjects/groupboxcontrols',
 }
 
-const DIAGRAM_OBJECT_DIRS = ['diagrams/diagramobjects/groupboxcontrols', 'diagrams/diagramobjects/stampcontrols', 'diagrams/diagramobjects/viewcontrols']
+const DIAGRAM_OBJECT_DIRS = ['diagrams/diagramobjects/stampcontrols', 'diagrams/diagramobjects/viewcontrols']
 
 const lower = (s: string) => s.toLowerCase()
 const tableKey = (t: { schema?: string; name: string }) => lower(`${t.schema ?? ''}.${t.name}`)
@@ -336,7 +345,7 @@ class Project {
     const onIt = (el: El) => (el.children.some((c) => typeof c !== 'string' && c.tag === 'DIAGRAMID' && c.children.join('').trim() === diagramId))
     if (!this.folder) {
       const controls = kid(kid(this.version, 'DIAGRAMS'), 'CONTROLS')
-      for (const list of ['GROUPBOXESCONTROLS', 'GROUPBOXCONTROLS', 'STAMPCONTROLS', 'VIEWCONTROLS']) {
+      for (const list of ['STAMPCONTROLS', 'VIEWCONTROLS']) {
         const parent = kid(controls, list)
         if (!parent) continue
         for (const el of kids(parent).filter(onIt)) {
@@ -1188,7 +1197,7 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     if (known && wanted.remove && text(known.el, 'ISMAINDIAGRAM') !== '1' && key !== layout.diagramId) {
       // Everything drawn on it goes with it; the tables, notes and frames themselves stay in the project.
       const name = text(known.el, 'NAME')
-      for (const kind of ['ENTC', 'RELC', 'TEXTC', 'SUBCATC', 'SUBCONNC', 'VIEWCONNC'] as const) for (const c of project.list(kind)) if (text(c.el, 'DIAGRAMID') === key) project.remove(kind, c)
+      for (const kind of ['ENTC', 'RELC', 'TEXTC', 'SUBCATC', 'SUBCONNC', 'VIEWCONNC', 'GROUPBOXC'] as const) for (const c of project.list(kind)) if (text(c.el, 'DIAGRAMID') === key) project.remove(kind, c)
       project.removeDiagramObjects(key)
       project.remove('DIAGRAM', known)
       changes.push({ kind: 'drop_diagram', table: name })
@@ -1552,6 +1561,65 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       if (text(control.el, 'BRUSH').split(',')[1]?.trim() === fill) continue
       set(control.el, 'BRUSH', `${style?.trim() || '0'},${fill}`, ['PEN', 'FONT', 'TR', 'AS'])
       changes.push({ kind: 'color_table', table: text(entity.el, 'NAME') })
+    }
+  }
+
+  // Group boxes (captioned frames) of each diagram whose list was given: moved, resized or renamed, new, gone.
+  for (const [diagramId, wanted] of diagramRequests) {
+    if (!wanted.boxes) continue
+    const l = diagramId === layout.diagramId ? layout : (source.diagrams.find((d) => d.id === diagramId)?.layout ?? { originX: 0, originY: 0, scaleX: 1, scaleY: 1 })
+    const size = (w: number, h: number) => ({ w: Math.max(20, Math.round(w / l.scaleX)), h: Math.max(20, Math.round(h / l.scaleY)) })
+    const onDiagram = (c: Slot) => !kid(c.el, 'DIAGRAMID') || text(c.el, 'DIAGRAMID') === diagramId
+    const titled = (id: string) => project.list('GROUPBOX').find((x) => text(x.el, 'ID') === id)
+    const keep = new Set(wanted.boxes.map((b) => b.id))
+    for (const control of project.list('GROUPBOXC').filter(onDiagram)) {
+      const id = text(control.el, 'ID')
+      if (keep.has(id)) continue
+      const box = titled(id)
+      project.remove('GROUPBOXC', control)
+      if (box && !project.list('GROUPBOXC').some((c) => text(c.el, 'ID') === id)) project.remove('GROUPBOX', box)
+      changes.push({ kind: 'drop_box', table: box ? text(box.el, 'OBJECTCAPTION') || text(box.el, 'NAME') : id })
+    }
+    for (const wantedBox of wanted.boxes) {
+      const at = toDiagram(diagramId, wantedBox)
+      const dims = size(wantedBox.w, wantedBox.h)
+      let box = titled(wantedBox.id)
+      const control = project.list('GROUPBOXC').find((c) => text(c.el, 'ID') === wantedBox.id && onDiagram(c))
+      if (box && control) {
+        let changed = false
+        if (text(box.el, 'OBJECTCAPTION') !== wantedBox.title) {
+          set(box.el, 'OBJECTCAPTION', wantedBox.title)
+          changed = true
+        }
+        const near = (tag: string, value: number) => Math.abs(Number(text(control.el, tag)) - value) <= 2
+        if (!near('L', at.l) || !near('T', at.t) || !near('W', dims.w) || !near('H', dims.h)) {
+          for (const [tag, value] of [['W', dims.w], ['H', dims.h], ['L', at.l], ['T', at.t]] as const) set(control.el, tag, String(value))
+          changed = true
+        }
+        if (changed) changes.push({ kind: 'alter_box', table: wantedBox.title })
+        continue
+      }
+      const id = box ? wantedBox.id : newObjectId()
+      if (!box) {
+        const template = project.list('GROUPBOX')[0]?.el
+        const el = template ? clone(template, [[text(template, 'ID'), id]]) : container('GROUPBOX', [leaf('NAME'), leaf('ID', id), leaf('OBJECTCAPTION')])
+        for (const tag of ['DESC', 'NOTE']) if (kid(el, tag)) set(el, tag, '')
+        set(el, 'NAME', `Groupbox${project.list('GROUPBOX').length + 1}`)
+        set(el, 'ID', id)
+        set(el, 'OBJECTCAPTION', wantedBox.title)
+        const sample = project.list('GROUPBOX')[0]
+        box = project.add('GROUPBOX', el, sample && project.fileStem(sample) !== text(sample.el, 'ID') ? text(el, 'NAME') : id)
+      }
+      // As DeZign 14.9.3 draws a new one: pale fill, grey dashed line, bold caption.
+      const template = project.list('GROUPBOXC')[0]?.el
+      const el = template
+        ? clone(template)
+        : container('GROUPBOXC', [leaf('ID'), leaf('DIAGRAMID'), leaf('W'), leaf('H'), leaf('L'), leaf('T'), leaf('BRUSH', '0,16775912'), leaf('PEN', '2,1,4,8421504'), leaf('FONT', 'Arial,10,B,0,clWindowText,0'), leaf('TR', '0'), leaf('AS', '0'), leaf('ROUNDED', '15'), leaf('ALIGNMENT', '0'), leaf('ALIGNMENTTYPE', '0')])
+      set(el, 'ID', id)
+      if (kid(el, 'DIAGRAMID') || diagramId) set(el, 'DIAGRAMID', diagramId, ['W'])
+      for (const [tag, value] of [['W', dims.w], ['H', dims.h], ['L', at.l], ['T', at.t]] as const) set(el, tag, String(value))
+      project.add('GROUPBOXC', el, controlNameLike('GROUPBOXC', 'groupboxc', diagramId, id))
+      changes.push({ kind: 'add_box', table: wantedBox.title })
     }
   }
 

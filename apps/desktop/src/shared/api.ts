@@ -540,6 +540,8 @@ export interface DezignSaveRequest {
   diagrams?: ModelDiagram[]
   /** What the main diagram's tables show. */
   display?: DiagramDisplay
+  /** The main diagram's frames (group boxes), all of them. */
+  boxes?: DiagramBox[]
   /** Diagrams of the project to take out of it (ids). */
   removedDiagrams?: string[]
   /** Schema the window puts schema-less tables under (keys of `positions`). */
