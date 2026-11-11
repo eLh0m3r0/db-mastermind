@@ -94,12 +94,20 @@ export interface DezignModel {
 export interface DezignScripting {
   primaryKeys: DezignKeyNames
   domains: ModelDomain[]
+  /** The names of the project's UNIQUE constraints (as opposed to its unique indexes), lower case. */
+  uniqueConstraints: string[]
 }
 
 /** The options for a script or migration of a DeZign project's model, for `driver`: names as DeZign's scripts have them. */
 export function dezignMigrationOptions(scripting: DezignScripting | undefined, driver: DriverId): MigrationOptions {
   if (!scripting) return {}
-  return { primaryKeyName: (table) => unquotedName(dezignKeyName(scripting.primaryKeys, table), driver), domains: scripting.domains }
+  const unique = new Set(scripting.uniqueConstraints ?? [])
+  return {
+    primaryKeyName: (table) => unquotedName(dezignKeyName(scripting.primaryKeys, table), driver),
+    domains: scripting.domains,
+    // A constraint of the project is a constraint in the database; anything else goes by what the model says of it.
+    uniqueConstraint: (_table, name) => (name && unique.has(name.toLowerCase()) ? true : undefined),
+  }
 }
 
 /** Primary key names of a project: by table (`schema.table`, lower case) and the template for a new table (`PK_%table%`). */
@@ -281,6 +289,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const entities = new Map<string, Entity>()
   const tables: TableInfo[] = []
   const anyKey = kids(kid(dict, 'ENTITIES'), 'ENT').map((e) => text(kid(e, 'PKCON'), 'NAMETEMPLATE')).find(Boolean)
+  const uniqueConstraints: string[] = []
   const primaryKeys: DezignKeyNames = { names: {}, template: text(kid(dict, 'DDSETTINGS'), 'PKCONNAMETEMPLATE') || anyKey || undefined }
 
   for (const ent of kids(kid(dict, 'ENTITIES'), 'ENT')) {
@@ -327,6 +336,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
       }
       const cols = idsOf(con).map((id) => columnNames.get(id)).filter((c): c is string => !!c)
       if (cols.length) indexes.push({ name: text(con, 'NAME') || `${tableName}_${cols.join('_')}_key`, columns: cols, unique: true, primary: false, constraint: true })
+      if (cols.length && text(con, 'NAME')) uniqueConstraints.push(text(con, 'NAME').toLowerCase())
     }
     for (const ix of kids(kid(ent, 'INDEXES'), 'INDEX')) {
       const cols = kids(kid(ix, 'IDXCOLS'), 'IDXCOL').map((c) => columnNames.get(text(c, 'IDXCOLATTRID')) ?? text(c, 'NAME')).filter(Boolean)
@@ -473,7 +483,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const positions = main?.positions ?? {}
   const layout = { diagramId: mainId, ...(main?.layout ?? { originX: 0, originY: 0, scaleX: 1, scaleY: 1 }) }
 
-  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, diagrams: described, sqlObjects, domains: domainList.map(({ name, dataType }) => ({ name, dataType })), scripting: { primaryKeys, domains: text(kid(dict, 'DDSETTINGS'), 'CONVERTDOMAINS') === '1' ? [] : domainList }, leftOut }
+  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, diagrams: described, sqlObjects, domains: domainList.map(({ name, dataType }) => ({ name, dataType })), scripting: { primaryKeys, domains: text(kid(dict, 'DDSETTINGS'), 'CONVERTDOMAINS') === '1' ? [] : domainList, uniqueConstraints }, leftOut }
 }
 
 const PROJECT_SECTIONS: [folder: string, element: string][] = [

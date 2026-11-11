@@ -119,7 +119,21 @@ try {
   await sql(team.id, alter)
   check('after the ALTER script they are identical again', (await compare()) === '')
 
-  // 3. What the database really has.
+  // 3. A check keeps its name and gets another condition: the database is asked, and the check is replaced.
+  await win.getByText('team.dez', { exact: true }).first().click()
+  const loosened = next.replace('`Total >= 0`', '`Total >= 0 AND Total < 1000000`')
+  check('the condition is edited in the model text', loosened !== next)
+  await win.locator('.cm-content:visible').first().click()
+  await win.keyboard.press('Meta+a')
+  await win.keyboard.insertText(loosened)
+  await win.waitForTimeout(900)
+  const recheck = await compare()
+  check('a changed condition under the same name is seen', /DROP CONSTRAINT "invoice_total_ok"/.test(recheck) && /ADD CONSTRAINT "invoice_total_ok" CHECK \(Total >= 0 AND Total < 1000000\)/.test(recheck), recheck.split('\n').length + ' lines')
+  check('and nothing else is touched for it', !/CREATE TABLE|ADD COLUMN|DROP COLUMN|payment_positive/.test(recheck))
+  await sql(team.id, recheck)
+  check('after replacing the check they are identical', (await compare()) === '')
+
+  // 4. What the database really has.
   const schema = await api('getSchema', team.id, true)
   const tables = (schema.tables ?? []).filter((t) => t.schema === 'sales')
   check('the database has the three tables in the schema', tables.map((t) => t.name).sort().join(',') === 'customer,invoice,payment')

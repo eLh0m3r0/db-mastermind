@@ -42,6 +42,8 @@ export interface DesignIndex {
   originalName?: string
   columns: string[]
   unique: boolean
+  /** A UNIQUE constraint of the table rather than a unique index: created as one where the database has them. */
+  constraint?: boolean
 }
 
 export interface DesignTable {
@@ -129,7 +131,7 @@ export function toDesignTable(t: TableInfo): DesignTable {
       .map((f) => ({ id: designId('f'), name: f.name, originalName: f.name, columns: [...f.columns], refSchema: f.refSchema, refTable: f.refTable, refColumns: [...f.refColumns], onDelete: f.onDelete, onUpdate: f.onUpdate })),
     indexes: t.indexes
       .filter((i) => !i.primary)
-      .map((i) => ({ id: designId('i'), name: i.name, originalName: i.name, columns: [...i.columns], unique: i.unique })),
+      .map((i) => ({ id: designId('i'), name: i.name, originalName: i.name, columns: [...i.columns], unique: i.unique, ...(i.constraint ? { constraint: true } : {}) })),
     ...(t.checks?.length ? { checks: t.checks.map((c) => ({ ...c })) } : {}),
   }
 }
@@ -195,7 +197,42 @@ function balanced(text: string): boolean {
 }
 
 /** Changes needed to turn `original` (live table, or undefined for a new one) into `draft`. */
-export function diffTable(original: TableInfo | undefined, draftIn: DesignTable): SchemaChange[] {
+export interface DiffOptions {
+  /**
+   * Whether a check the model and the database both have under one name has another condition in the model.
+   * Only the database can tell (see `DatabaseService.canonicalChecks`); without it a same-named check is the same.
+   */
+  checkChanged?: (table: TableRef, name: string) => boolean
+}
+
+/** What `DatabaseService.canonicalChecks` says of one condition. */
+export type CanonicalCheck = { definition: string } | { missingColumn: true } | null
+
+/**
+ * The checks of a model whose condition differs from the same-named check of the database, found by asking
+ * the database how it would store the model's condition (`canonical`). The result is `DiffOptions.checkChanged`.
+ */
+export async function findChangedChecks(
+  model: TableInfo[],
+  database: TableInfo[],
+  canonical: (items: { table: TableRef; check: CheckInfo }[]) => Promise<CanonicalCheck[]>,
+): Promise<NonNullable<DiffOptions['checkChanged']>> {
+  const key = (table: string, name: string) => `${table}\u0000${name}`.toLowerCase()
+  const asked: { table: TableRef; check: CheckInfo; live: string }[] = []
+  for (const t of model) {
+    const named = database.filter((x) => x.type === 'table' && x.name.toLowerCase() === t.name.toLowerCase())
+    const live = named.find((x) => (x.schema ?? '').toLowerCase() === (t.schema ?? '').toLowerCase()) ?? named[0]
+    for (const check of t.checks ?? []) {
+      const twin = check.name && live?.checks?.find((c) => c.name?.toLowerCase() === check.name!.toLowerCase())
+      if (live && twin) asked.push({ table: { schema: live.schema, name: live.name }, check, live: twin.expression })
+    }
+  }
+  const answers = asked.length ? await canonical(asked.map(({ table, check }) => ({ table, check }))) : []
+  const changed = new Set(asked.filter((a, i) => { const answer = answers[i]; return !!answer && ('missingColumn' in answer || answer.definition.trim() !== a.live.trim()) }).map((a) => key(a.table.name, a.check.name!)))
+  return (table, name) => changed.has(key(table.name, name))
+}
+
+export function diffTable(original: TableInfo | undefined, draftIn: DesignTable, options: DiffOptions = {}): SchemaChange[] {
   let draft = draftIn
   if (!original) return draft.dropped ? [] : [{ kind: 'create_table', table: draft }]
   const ref: TableRef = { schema: original.schema, name: original.name }
@@ -298,8 +335,12 @@ export function diffTable(original: TableInfo | undefined, draftIn: DesignTable)
     const columns = draftIn.columns.map((c) => c.name)
     for (const check of wanted.filter((c) => c.name)) {
       const name = check.name!.toLowerCase()
-      if (live.has(name)) kept.add(name)
-      else changes.push({ kind: 'add_check', table: current, check, columns })
+      if (!live.has(name)) changes.push({ kind: 'add_check', table: current, check, columns })
+      else {
+        kept.add(name)
+        // The same name with another condition: the old one goes, the model's comes.
+        if (options.checkChanged?.(ref, check.name!)) changes.push({ kind: 'drop_check', table: ref, name: live.get(name)!.name!, before: live.get(name)! }, { kind: 'add_check', table: current, check, columns })
+      }
     }
     const unnamed = wanted.filter((c) => !c.name)
     const spare = original.checks.filter((c) => !kept.has((c.name ?? '').toLowerCase()))
@@ -309,14 +350,14 @@ export function diffTable(original: TableInfo | undefined, draftIn: DesignTable)
   return changes
 }
 
-export function diffTables(originals: TableInfo[], drafts: DesignTable[]): SchemaChange[] {
+export function diffTables(originals: TableInfo[], drafts: DesignTable[], options: DiffOptions = {}): SchemaChange[] {
   const byName = (d: DesignTable) =>
     d.originalName ? originals.find((t) => t.name === d.originalName && (t.schema ?? '') === (d.schema ?? '')) : undefined
   const drops: SchemaChange[] = []
   const creates: SchemaChange[] = []
   const alters: SchemaChange[] = []
   for (const d of drafts) {
-    for (const change of diffTable(byName(d), d)) {
+    for (const change of diffTable(byName(d), d, options)) {
       if (change.kind === 'create_table') creates.push(change)
       else if (change.kind === 'drop_table') drops.push(change)
       else alters.push(change)
@@ -374,7 +415,7 @@ function literalComment(text: string, driver: DriverId): string {
  * bare has to be quoted as well where that changes which column it is (PostgreSQL folds bare names to lower
  * case, Oracle to upper). In a check that belongs to one column, `value` stands for that column.
  */
-function checkCondition(check: CheckInfo, columns: { name: string }[], d: Dialect): string {
+export function checkCondition(check: CheckInfo, columns: { name: string }[], d: Dialect): string {
   const folded = d.id === 'postgres' ? (n: string) => n.toLowerCase() : d.id === 'oracle' ? (n: string) => n.toUpperCase() : null
   const placeholder = check.column && !columns.some((c) => c.name.toLowerCase() === 'value') ? check.column : null
   return check.expression.replace(/'(?:[^']|'')*'|"(?:[^"]|"")*"|`[^`]*`|\[[^\]]*\]|[A-Za-z_][\w$]*/g, (word, offset: number, whole: string) => {
@@ -464,6 +505,11 @@ export interface MigrationOptions {
   primaryKeyName?: (table: TableRef) => string | undefined
   /** The model's named types, for a database that has them (PostgreSQL): columns that follow one are typed by it. */
   domains?: ModelDomain[]
+  /**
+   * Whether a unique index of the model is a UNIQUE constraint, where the model knows better than the index's own
+   * `constraint` flag (a DeZign project: everything unique that is not one of its unique indexes).
+   */
+  uniqueConstraint?: (table: TableRef, name: string | undefined) => boolean | undefined
 }
 
 /** Renders a change set as SQL. `tables` is the live schema (needed by MySQL MODIFY and SQLite rebuilds). */
@@ -518,6 +564,9 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
   const fresh = (prefix: string, table: string, columns: string[]): string => {
     return numbered(constraintName(prefix, table, columns))
   }
+  // A UNIQUE constraint is made as one, not as the unique index that would enforce the same.
+  const constraints = d.id === 'postgres' || d.id === 'mssql' || d.id === 'oracle' || isMy
+  const isConstraint = (table: TableRef, ix: DesignIndex) => constraints && ix.unique && (options.uniqueConstraint?.(table, ix.name) ?? !!ix.constraint)
   /** `CONSTRAINT "name" ` for a primary key, or nothing where the model leaves the key unnamed. */
   const keyClause = (table: TableRef, columns: string[]) => {
     const own = options.primaryKeyName?.(table)
@@ -602,6 +651,11 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
         const fkKey = (f: DesignForeignKey) => JSON.stringify([f.columns, f.refSchema ?? '', f.refTable, f.refColumns, f.onDelete ?? '', f.onUpdate ?? ''])
         const foreignKeys = t.foreignKeys.filter((f, i, all) => all.findIndex((x) => fkKey(x) === fkKey(f)) === i).map((f) => ({ ...f, name: given.get(f) ?? fresh('fk', t.name, f.columns) }))
         if (inlineFks) for (const fk of foreignKeys) lines.push(`  ${fkClause(fk, t.name, d)}`)
+        // (PostgreSQL folds two identical UNIQUE constraints of one CREATE TABLE into one: the second of a model
+        // that has two is added after the table, so the database has what the model has.)
+        const uniques = t.indexes.filter((x) => isConstraint(ref, x))
+        const repeated = uniques.filter((x, i) => uniques.findIndex((y) => same(y.columns, x.columns)) !== i || same(x.columns, t.primaryKey))
+        for (const ix of uniques.filter((x) => !repeated.includes(x))) lines.push(`  CONSTRAINT ${id(given.get(ix) ?? fresh('ux', t.name, ix.columns))} UNIQUE (${ix.columns.map(id).join(', ')})`)
         // (A check the column has from its domain is the domain's here.)
         for (const check of (t.checks ?? []).filter((c) => !(c.column && viaDomain.has(`${t.name}\u0000${c.column}`.toLowerCase())))) lines.push(`  ${check.name ? `CONSTRAINT ${id(check.name)} ` : ''}CHECK (${checkCondition(check, t.columns, d)})`)
         let sql = `CREATE TABLE ${q(ref)} (\n${lines.join(',\n')}\n)`
@@ -614,7 +668,8 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
             laterForeignKeys.push({ sql: `ALTER TABLE ${q(ref)} ADD ${fkClause(fk, t.name, d)}`, undo })
           }
         }
-        for (const ix of t.indexes) {
+        for (const ix of repeated) statements.push(`ALTER TABLE ${q(ref)} ADD CONSTRAINT ${id(given.get(ix) ?? fresh('ux', t.name, ix.columns))} UNIQUE (${ix.columns.map(id).join(', ')})`)
+        for (const ix of t.indexes.filter((x) => !isConstraint(ref, x))) {
           statements.push(createIndexSql(given.get(ix) ?? fresh(ix.unique ? 'ux' : 'ix', t.name, ix.columns), ref, ix.columns, ix.unique, d))
         }
         statements.push(...commentStatements(ref, t.comment ?? null, t.columns, d))
@@ -764,15 +819,24 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
       case 'add_index': {
         const ix = change.index
         const name = given.get(ix) ?? fresh(ix.unique ? 'ux' : 'ix', change.table.name, ix.columns)
-        statements.push(createIndexSql(name, change.table, ix.columns, ix.unique, d))
-        rollback.unshift(dropIndexSql(name, change.table, d))
+        if (isConstraint(change.table, ix)) {
+          statements.push(`ALTER TABLE ${q(change.table)} ADD CONSTRAINT ${id(name)} UNIQUE (${ix.columns.map(id).join(', ')})`)
+          rollback.unshift(isMy ? dropIndexSql(name, change.table, d) : `ALTER TABLE ${q(change.table)} DROP CONSTRAINT ${id(name)}`)
+        } else {
+          statements.push(createIndexSql(name, change.table, ix.columns, ix.unique, d))
+          rollback.unshift(dropIndexSql(name, change.table, d))
+        }
         if (ix.unique) warnings.push({ level: 'info', message: `Unique index ${name} fails if duplicates already exist.` })
         break
       }
       case 'drop_index': {
         if (change.before.constraint && (d.id === 'postgres' || d.id === 'mssql' || d.id === 'oracle')) statements.push(`ALTER TABLE ${q(change.table)} DROP CONSTRAINT ${id(change.name)}`)
         else statements.push(dropIndexSql(change.name, change.table, d))
-        rollback.unshift(createIndexSql(change.name, change.table, change.before.columns, change.before.unique, d))
+        rollback.unshift(
+          change.before.constraint && constraints
+            ? `ALTER TABLE ${q(change.table)} ADD CONSTRAINT ${id(change.name)} UNIQUE (${change.before.columns.map(id).join(', ')})`
+            : createIndexSql(change.name, change.table, change.before.columns, change.before.unique, d),
+        )
         break
       }
       case 'set_primary_key': {
@@ -1018,7 +1082,7 @@ export function designToTableInfo(t: DesignTable): TableInfo {
       onDelete: f.onDelete,
       onUpdate: f.onUpdate,
     })),
-    indexes: t.indexes.map((i) => ({ name: i.name ?? i.id, columns: i.columns, unique: i.unique, primary: false })),
+    indexes: t.indexes.map((i) => ({ name: i.name ?? i.id, columns: i.columns, unique: i.unique, primary: false, ...(i.constraint ? { constraint: true } : {}) })),
     // A check written on a column follows the column through a rename.
     ...(t.checks?.length ? { checks: t.checks.map((c) => ({ ...c, ...(c.column ? { column: t.columns.find((x) => x.originalName === c.column)?.name ?? c.column } : {}) })) } : {}),
   }
@@ -1088,7 +1152,7 @@ export const COMMON_TYPES: Record<DriverId, string[]> = {
  * source is a model, which names things on purpose) a new table always goes to the schema it names and keeps
  * the names of its relationships and indexes.
  */
-export function compareSchemas(source: TableInfo[], target: TableInfo[], options: { keepExtra?: boolean; model?: boolean } = {}): SchemaChange[] {
+export function compareSchemas(source: TableInfo[], target: TableInfo[], options: { keepExtra?: boolean; model?: boolean } & DiffOptions = {}): SchemaChange[] {
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
   const drafts: DesignTable[] = []
   const targetSchema = target[0]?.schema
@@ -1169,7 +1233,7 @@ export function compareSchemas(source: TableInfo[], target: TableInfo[], options
       drafts.push({ ...toDesignTable(t), dropped: true })
     }
   }
-  return diffTables(target, drafts)
+  return diffTables(target, drafts, options)
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareSchemas, createScript, designId, diffTable, generateMigration, getDialect, impactChecks, liquibaseChangelog, migrationScript, parseDbml, toDesignTable, type TableInfo } from '../src/index.js'
+import { compareSchemas, createScript, designId, findChangedChecks, diffTable, generateMigration, getDialect, impactChecks, liquibaseChangelog, migrationScript, parseDbml, toDesignTable, type TableInfo } from '../src/index.js'
 
 const orders: TableInfo = {
   schema: 'public',
@@ -309,6 +309,10 @@ describe('compareSchemas', () => {
       'ALTER TABLE "Item" ADD CHECK ("qty" > 0)',
     ])
     expect(generateMigration(compareSchemas(database([]), live), getDialect('mysql'), live).statements).toEqual(['ALTER TABLE `Item` DROP CHECK `price_ok`', 'ALTER TABLE `Item` DROP CHECK `Item_qty_check`', 'ALTER TABLE `Item` DROP CHECK `old_rule`'])
+    // Same name, another condition: nothing by itself; replaced when the database says the condition differs.
+    const agreed = database([{ name: 'price_ok', expression: 'x' }, { name: 'qty_cap', expression: 'qty < 1000' }, { name: 'auto', expression: 'z' }])
+    expect(compareSchemas(model, agreed)).toEqual([])
+    expect(generateMigration(compareSchemas(model, agreed, { checkChanged: (_t, name) => name === 'qty_cap' }), pg, agreed).statements).toEqual(['ALTER TABLE "Item" DROP CONSTRAINT "qty_cap"', 'ALTER TABLE "Item" ADD CONSTRAINT "qty_cap" CHECK (qty < 1000)'])
     // A database whose driver does not report checks: no change either way.
     expect(compareSchemas(model, database(undefined))).toEqual([])
     // In agreement: nothing to do.
@@ -328,6 +332,41 @@ describe('compareSchemas', () => {
     const child: TableInfo = { name: 'c', type: 'table', columns: tables[0]!.columns, primaryKey: [], foreignKeys: [{ name: 'c_p', columns: ['b_id'], refTable: 'p', refColumns: ['id'] }], indexes: [] }
     const bare = (t: TableInfo): TableInfo => ({ ...t, foreignKeys: [], indexes: [] })
     expect(generateMigration(compareSchemas([bare(parent), bare(child)], [parent, child]), getDialect('postgres'), [parent, child]).statements).toEqual(['ALTER TABLE "c" DROP CONSTRAINT "c_p"', 'DROP INDEX "ux_p"'])
+  })
+
+  it('makes a UNIQUE constraint as a constraint and a unique index as an index', () => {
+    const { tables } = parseDbml("Table t {\n  id int [pk]\n  email varchar(90) [unique]\n  a int\n  b int\n  indexes {\n    (a, b) [unique, name: 'ux_pair']\n  }\n}")
+    const pg = createScript(tables, getDialect('postgres'))
+    expect(pg).toContain('  CONSTRAINT "ux_t_email" UNIQUE ("email")\n)')
+    expect(pg).toContain('CREATE UNIQUE INDEX "ux_pair" ON "t" ("a", "b")')
+    expect(createScript(tables, getDialect('mssql'))).toContain('CONSTRAINT [ux_t_email] UNIQUE ([email])')
+    // SQLite keeps the index: it can't add the constraint to a table later, so both are made one way.
+    expect(createScript(tables, getDialect('sqlite'))).toContain('CREATE UNIQUE INDEX "ux_t_email" ON "t" ("email")')
+    // On an existing table, with its way back; and the model may know better than the flag.
+    const bare: TableInfo[] = [{ ...tables[0]!, indexes: [] }]
+    const added = generateMigration(compareSchemas(tables, bare), getDialect('postgres'), bare, { uniqueConstraint: (_t, name) => (name === 'ux_pair' ? true : undefined) })
+    expect(added.statements).toEqual(['ALTER TABLE "t" ADD CONSTRAINT "ux_t_email" UNIQUE ("email")', 'ALTER TABLE "t" ADD CONSTRAINT "ux_pair" UNIQUE ("a", "b")'])
+    expect(added.rollback).toEqual(['ALTER TABLE "t" DROP CONSTRAINT "ux_pair"', 'ALTER TABLE "t" DROP CONSTRAINT "ux_t_email"'])
+    // A database that has them as constraints matches the model either way.
+    const live: TableInfo[] = [{ ...tables[0]!, indexes: tables[0]!.indexes.map((i) => ({ ...i, constraint: true })) }]
+    expect(compareSchemas(tables, live)).toEqual([])
+  })
+
+  it('asks the database which checks of the same name have another condition', async () => {
+    const { tables } = parseDbml("Table item {\n  id int [pk]\n  qty int\n\n  checks {\n    `qty IN (1, 2)` [name: 'qty_ok']\n    `id > 0` [name: 'id_ok']\n    `qty > 5` [name: 'only_in_model']\n    `qty < 9`\n  }\n}")
+    const live: TableInfo[] = [{ ...tables[0]!, schema: 'public', checks: [{ name: 'QTY_OK', expression: 'qty = ANY (ARRAY[1, 2])' }, { name: 'id_ok', expression: 'id > 1' }, { name: 'other', expression: 'true' }] }]
+    const asked: string[] = []
+    // The database's way of writing each condition: the first is what the table has, the second is not.
+    const changed = await findChangedChecks(tables, live, async (items) => {
+      asked.push(...items.map((i) => `${i.table.schema}.${i.table.name}: ${i.check.name}`))
+      return items.map((i) => (i.check.name === 'qty_ok' ? { definition: 'qty = ANY (ARRAY[1, 2])' } : { definition: 'id > 0' }))
+    })
+    // Only checks both sides have under one name are asked about.
+    expect(asked).toEqual(['public.item: qty_ok', 'public.item: id_ok'])
+    expect([changed({ name: 'item' }, 'qty_ok'), changed({ name: 'item' }, 'id_ok'), changed({ name: 'item' }, 'only_in_model')]).toEqual([false, true, false])
+    // A database that can't say (null) leaves the checks alone; a missing column is a change.
+    const unknown = await findChangedChecks(tables, live, async (items) => items.map((i) => (i.check.name === 'qty_ok' ? null : { missingColumn: true })))
+    expect([unknown({ name: 'item' }, 'qty_ok'), unknown({ name: 'item' }, 'id_ok')]).toEqual([false, true])
   })
 
   it('writes a migration as a Liquibase changelog with its rollback', () => {

@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync, appendFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { mutate, random } from './dezign-fuzz.js'
-import { assembleDezignProject, compareSchemas, createScript, DatabaseService, dezignDriver, dezignMigrationOptions, generateMigration, getDialect, migrationScript, parseDbml, readDezign, toDbml, translateTables, unquotedName, unquotedNames, type ConnectionConfig, type DezignScripting, type DezignSqlObject, type DriverId, type TableInfo } from '../src/index.js'
+import { assembleDezignProject, compareSchemas, createScript, DatabaseService, dezignDriver, dezignMigrationOptions, findChangedChecks, generateMigration, getDialect, migrationScript, parseDbml, readDezign, toDbml, translateTables, unquotedName, unquotedNames, type ConnectionConfig, type DezignScripting, type DezignSqlObject, type DriverId, type TableInfo } from '../src/index.js'
 
 /**
  * Real DeZign models against real databases: the DDL generated from each model in DBM_DEZ_SAMPLES is run on the
@@ -55,11 +55,20 @@ function sensible(edited: TableInfo[], live: TableInfo[], checked: Set<string>):
   const kind = (type: string) => (/char|text/i.test(type) ? 'text' : /int|numeric|decimal|serial/i.test(type) ? 'number' : type.toLowerCase())
   for (const t of edited) {
     const before = live.find((x) => x.name === t.name)
+    // A foreign key needs something unique to point at: one whose target lost its key or unique index goes too.
+    t.foreignKeys = t.foreignKeys.filter((f) => {
+      const target = edited.find((x) => x.name === f.refTable)
+      const columns = [...f.refColumns].sort().join(',')
+      return !target || [...target.primaryKey].sort().join(',') === columns || target.indexes.some((i) => i.unique && [...i.columns].sort().join(',') === columns)
+    })
     for (const c of t.checks ?? []) for (const word of c.expression.match(/[A-Za-z_][\w$]*/g) ?? []) checked.add(word)
     // The random checks name a column, which a later random rename leaves behind.
     if (t.checks) t.checks = t.checks.filter((c) => t.columns.some((x) => x.name === /^[\w$]+/.exec(c.expression)?.[0]))
     for (const c of t.columns) {
       const was = before?.columns.find((x) => x.name === c.name)
+      // (A column typed by a domain of the database keeps it: what converts to what is the domain's business.)
+      const builtIn = /^(character|varchar|char|text|integer|int|bigint|smallint|numeric|decimal|serial|bigserial|boolean|date|timestamp|time|double|real|uuid|json|jsonb|bytea)\b/i
+      if (was && !builtIn.test(was.dataType) && c.dataType !== was.dataType) Object.assign(c, { dataType: was.dataType, defaultValue: was.defaultValue ?? null })
       if (was && kind(was.dataType) !== kind(c.dataType) && kind(was.dataType) !== 'text' && kind(c.dataType) !== 'text') c.dataType = was.dataType
       // A check in the database compares the column as the type it has (`quantity > 0`).
       if (was && checked.has(c.name)) c.dataType = was.dataType
@@ -99,7 +108,10 @@ async function exercise(svc: DatabaseService, n: number, model: { tables: TableI
   const errors = outcomes.filter((o) => o.error)
   const mine = (t: TableInfo) => t.type === 'table'
   const live = (await svc.schema(config.id, true)).tables.filter(mine)
-  const changes = errors.length ? [] : compareSchemas(translateTables(tables, driver, from), live, { keepExtra: false, model: true })
+  // The database is asked how it stores the model's check conditions (PostgreSQL): right after its own script it
+  // must say "as the table has them" for every one, or every compare would want to replace the checks.
+  const checkChanged = errors.length ? undefined : await findChangedChecks(translateTables(tables, driver, from), live, (items) => svc.canonicalChecks(config.id, items))
+  const changes = errors.length ? [] : compareSchemas(translateTables(tables, driver, from), live, { keepExtra: false, model: true, checkChanged })
   const kinds = changes.reduce<Record<string, number>>((all, c) => ({ ...all, [c.kind]: (all[c.kind] ?? 0) + 1 }), {})
   // The kind of error, without the names in it.
   const firstError = errors[0]?.error?.message.replace(/"[^"]*"|'[^']*'|`[^`]*`/g, '"…"').replace(/\b[\w$]*_[\w$]*\b/g, 'x').split(/\s+/).slice(0, 6).join(' ') ?? ''
@@ -118,8 +130,8 @@ async function exercise(svc: DatabaseService, n: number, model: { tables: TableI
   report(`#${n + 1} ${model.targetDatabase} on ${driver}${driver === native ? '' : ' (translated)'} schemas=${schemas.length} tables=${tables.length} created=${live.length} failed statements=${errors.length}/${outcomes.length} differences=${JSON.stringify(kinds)} ${ok ? 'ok' : `${invalidModel ? 'MODEL NOT VALID' : 'PROBLEM'} ${firstError}${firstKind}`}`)
   // Details name things from the model: for public samples only.
   if (!ok && process.env.DBM_DEZ_DEBUG) {
-    for (const o of errors.slice(0, 3)) console.log(`#${n + 1} ERROR ${o.error?.message}\n   ${o.sql.replace(/\s+/g, ' ').slice(0, 400)}`)
-    for (const c of changes.slice(0, 6)) console.log(`#${n + 1} CHANGE ${JSON.stringify(c).slice(0, 700)}`)
+    for (const o of errors.slice(0, 3)) report(`#${n + 1} ERROR ${o.error?.message}\n   ${o.sql.replace(/\s+/g, ' ').slice(0, 400)}`)
+    for (const c of changes.slice(0, 6)) report(`#${n + 1} CHANGE ${JSON.stringify(c).slice(0, 700)}`)
   }
   // A model drawn for this database must come out exactly; a translated one carries its own database's types.
   if (!ok && driver === native && !invalidModel) failures.push(`#${n + 1}`)
@@ -166,9 +178,9 @@ async function exercise(svc: DatabaseService, n: number, model: { tables: TableI
       // The kind of error, without the names in it.
       totals.error ||= failed[0]?.error?.message.replace(/"[^"]*"|'[^']*'/g, '"…"').replace(/\b[\w$]*_[\w$]*\b/g, 'x').split(/\s+/).slice(0, 6).join(' ') ?? ''
       if ((failed.length || left.length) && process.env.DBM_DEZ_DEBUG) {
-        console.log(`#${n + 1} ROUND ${round + 1} EDITS ${edits.join(', ')}`)
-        for (const o of failed.slice(0, 2)) console.log(`#${n + 1} ALTER ERROR ${o.error?.message}\n   ${o.sql.replace(/\s+/g, ' ').slice(0, 500)}`)
-        for (const c of left.slice(0, 5)) console.log(`#${n + 1} LEFT ${JSON.stringify(c).slice(0, 700)}`)
+        report(`#${n + 1} ROUND ${round + 1} EDITS ${edits.join(', ')}`)
+        for (const o of failed.slice(0, 2)) report(`#${n + 1} ALTER ERROR ${o.error?.message}\n   ${o.sql.replace(/\s+/g, ' ').slice(0, 500)}`)
+        for (const c of left.slice(0, 5)) report(`#${n + 1} LEFT ${JSON.stringify(c).slice(0, 700)}`)
       }
       current = after
     }
@@ -299,7 +311,7 @@ describe.skipIf(!pairs || skipped.includes('postgres'))('our script makes the da
         const toTheirs = compareSchemas(theirs, mine, { keepExtra: false })
         // Every name a constraint or index has, by kind: the two databases should use the same ones.
         const names = (tables: TableInfo[]) =>
-          new Set(tables.flatMap((t) => [...t.indexes.map((i) => `${i.primary ? 'key' : i.unique ? 'unique' : 'index'} ${t.name}.${i.name}`), ...t.foreignKeys.map((f) => `foreign key ${t.name}.${f.name}`), ...(t.checks ?? []).map((c) => `check ${t.name}.${c.name}`)]))
+          new Set(tables.flatMap((t) => [...t.indexes.map((i) => `${i.primary ? 'key' : i.unique ? (i.constraint ? 'unique constraint' : 'unique index') : 'index'} ${t.name}.${i.name}`), ...t.foreignKeys.map((f) => `foreign key ${t.name}.${f.name}`), ...(t.checks ?? []).map((c) => `check ${t.name}.${c.name}`)]))
         const [a, b] = [names(theirs), names(mine)]
         const onlyTheirs = [...a].filter((x) => !b.has(x))
         const onlyOurs = [...b].filter((x) => !a.has(x))

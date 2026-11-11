@@ -320,7 +320,8 @@ Not a clone: their features, rethought and connected to live databases, the know
   quoted it would be a different column than the one DeZign's script made), domains as types of the database
   where the project keeps them (`CREATE DOMAIN`, columns typed by it), primary keys named by the project's own
   names and template (`PK_%table%`), foreign keys by their relationships, unique constraints and indexes by
-  their names. A database whose columns are typed by the domains no longer shows as different from the model
+  their names, and a UNIQUE constraint is made as a constraint of its table (a unique index stays an index).
+  A database whose columns are typed by the domains no longer shows as different from the model
 - ✅ Relationship names are part of the model (`Ref name: a.b > c.d`), read from DeZign and written back
 - ✅ The whole day through the window, on a real PostgreSQL (e2e/flow95): a DeZign model with its own schema
   against a database that has other people's tables; compare, script, run, identical; edit the model; ALTER
@@ -385,7 +386,9 @@ Not a clone: their features, rethought and connected to live databases, the know
   model has and the database lacks is added and one the model no longer has is dropped. They go by name (a
   database stores a condition rewritten its own way, so conditions can't be compared as text); a check without
   a name in the model stands for one the database named itself. A named check whose condition changed is not
-  noticed: give it a new name (⬜ ask the database to compare the two conditions)
+  noticed by the text, so the database is asked: on PostgreSQL the model's condition is put on a temporary copy
+  of the table's columns (rolled back) and read back as PostgreSQL stores it; if that differs from what the
+  table has, the check is replaced under its name (MySQL and SQL Server: a renamed check, for now)
 - ✅ DBML `TablePartial` (reusable column sets, e.g. audit columns) with `~name` injection
 - ✅ Blocks the model does not hold (Project, notes, Records, TablePartial) stay as written when the model is
   rewritten from the canvas or by a fix

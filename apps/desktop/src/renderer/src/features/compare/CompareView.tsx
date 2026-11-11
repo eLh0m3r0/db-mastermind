@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 import { ArrowRight, GitCompare, Minus, Pencil, Plus } from 'lucide-react'
-import { compareSchemas, dezignMigrationOptions, generateMigration, getDialect, migrationScript, parseDbml, translateTables, unquotedNames, type SchemaChange, type SchemaSnapshot } from '@dbmastermind/core/browser'
+import { compareSchemas, dezignMigrationOptions, findChangedChecks, generateMigration, getDialect, migrationScript, parseDbml, translateTables, unquotedNames, type SchemaChange, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Checkbox, Select } from '@/components/ui/Input'
+import { api } from '@/lib/api'
 import { useT } from '@/lib/i18n'
 import { cn, errorMessage } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
@@ -24,7 +25,7 @@ export function CompareView({ tab }: { tab: CompareTab }) {
   const connect = useConnections((s) => s.connect)
   const updateTab = useWorkspace((s) => s.update)
   const newQuery = useWorkspace((s) => s.newQuery)
-  const [snapshots, setSnapshots] = useState<{ source: SchemaSnapshot; target: SchemaSnapshot } | null>(null)
+  const [snapshots, setSnapshots] = useState<{ source: SchemaSnapshot; target: SchemaSnapshot; checkChanged?: (table: { schema?: string; name: string }, name: string) => boolean } | null>(null)
   const [busy, setBusy] = useState(false)
   const [keepExtra, setKeepExtra] = useState(true)
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
@@ -59,7 +60,9 @@ export function CompareView({ tab }: { tab: CompareTab }) {
         // A DeZign project's names are the ones DeZign's own scripts create: bare, so PostgreSQL stores them in lower case.
         const tables = tab.sourceUnquoted && target ? unquotedNames(model.tables, target.driver) : model.tables
         const schemas = [...new Set(tables.map((x) => x.schema ?? ''))]
-        setSnapshots({ source: { tables, schemas, routines: [], defaultSchema: targetSnap.defaultSchema, capturedAt: '' }, target: targetSnap })
+        // A check of the same name may have another condition in the model: the database says (it stores conditions rewritten).
+        const checkChanged = await findChangedChecks(tables, targetSnap.tables, (items) => api.canonicalChecks(tab.connectionId, items)).catch(() => undefined)
+        setSnapshots({ source: { tables, schemas, routines: [], defaultSchema: targetSnap.defaultSchema, capturedAt: '' }, target: targetSnap, checkChanged })
         setExcluded(new Set())
         return
       }
@@ -82,7 +85,7 @@ export function CompareView({ tab }: { tab: CompareTab }) {
     // Across engines, source types are first written the target's way (boolean → bit, text → nvarchar(max)…).
     const source = pick(snapshots.source, tab.sourceSchema)
     // A model names its schemas on purpose: its new tables go there unless a schema of the database was picked.
-    return compareSchemas(crossEngine && target ? translateTables(source, target.driver) : source, pick(snapshots.target, tab.targetSchema), { keepExtra, model: tab.sourceModel !== undefined && !tab.targetSchema })
+    return compareSchemas(crossEngine && target ? translateTables(source, target.driver) : source, pick(snapshots.target, tab.targetSchema), { keepExtra, model: tab.sourceModel !== undefined && !tab.targetSchema, checkChanged: snapshots.checkChanged })
   }, [snapshots, tab.sourceSchema, tab.targetSchema, tab.sourceModel, keepExtra, crossEngine, target])
 
   const byTable = useMemo(() => {

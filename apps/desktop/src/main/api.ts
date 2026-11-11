@@ -373,6 +373,10 @@ export const api: MastermindApi = {
     await ensureConnected(connectionId)
     return db.schema(connectionId, refresh)
   },
+  async canonicalChecks(connectionId, items) {
+    await ensureConnected(connectionId)
+    return db.canonicalChecks(connectionId, items)
+  },
   async listDatabases(connectionId) {
     await ensureConnected(connectionId)
     return db.driver(connectionId).listDatabases()

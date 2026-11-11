@@ -1,3 +1,4 @@
+import { checkCondition } from './ddl.js'
 import { qualify } from './dialect.js'
 import { ReadOnlyViolationError, type DatabaseDriver, type StreamBatch, type StreamOptions } from './driver.js'
 import { BigQueryDriver } from './drivers/bigquery.js'
@@ -15,7 +16,7 @@ import { bindParameters, extractParameters } from './parameters.js'
 import { KnowledgeBase, relationToForeignKey } from './knowledge.js'
 import { findTable } from './schema-utils.js'
 import { classifyStatement, fitsReadOnlyTransaction, isReadOnlyCondition, isReadOnlyScript, splitStatements } from './sql-split.js'
-import type { ConnectionConfig, SchemaSnapshot, ServerInfo, StatementOutcome, TableInfo, TablePage, TableRef } from './types.js'
+import type { CheckInfo, ConnectionConfig, SchemaSnapshot, ServerInfo, StatementOutcome, TableInfo, TablePage, TableRef } from './types.js'
 
 export function createDriver(config: ConnectionConfig): DatabaseDriver {
   switch (config.driver) {
@@ -178,6 +179,47 @@ export class DatabaseService {
   async findTable(id: string, ref: TableRef): Promise<TableInfo | undefined> {
     const snapshot = await this.schema(id)
     return findTable(snapshot, ref)
+  }
+
+  /**
+   * A check's condition as the database itself would store it on that table, to compare a model's condition with
+   * the one the table has (a database rewrites a condition when it takes it: `x IN (1, 2)` comes back as
+   * `x = ANY (ARRAY[1, 2])`). PostgreSQL only: the condition is put on a temporary copy of the table's columns in a
+   * transaction that is rolled back. `null` where the database can't say (another engine, a read-only connection,
+   * a condition it refuses); `missingColumn` when the condition names a column the table does not have.
+   */
+  async canonicalChecks(id: string, items: { table: TableRef; check: CheckInfo }[]): Promise<({ definition: string } | { missingColumn: true } | null)[]> {
+    const entry = this.get(id)
+    if (entry.config.driver !== 'postgres') return items.map(() => null)
+    const d = entry.driver.dialect
+    const out: ({ definition: string } | { missingColumn: true } | null)[] = []
+    for (const { table, check } of items) {
+      try {
+        const live = await this.findTable(id, table)
+        if (!live) {
+          out.push(null)
+          continue
+        }
+        const probe = 'dbm_check_probe'
+        const outcomes = await this.runScript(
+          id,
+          [
+            'BEGIN',
+            `CREATE TEMP TABLE ${probe} (LIKE ${live.schema ? `${d.quoteIdent(live.schema)}.` : ''}${d.quoteIdent(live.name)}) ON COMMIT DROP`,
+            `ALTER TABLE ${probe} ADD CONSTRAINT ${probe}_c CHECK (${checkCondition(check, live.columns, d)})`,
+            `SELECT pg_get_constraintdef(oid, true) FROM pg_constraint WHERE conrelid = '${probe}'::regclass AND conname = '${probe}_c'`,
+            'ROLLBACK',
+          ].join(';\n'),
+          { continueOnError: true },
+        )
+        const failed = outcomes.find((o) => o.error)
+        const definition = /^CHECK \((.*)\)(?: NOT VALID| NO INHERIT)*$/s.exec(String(outcomes[3]?.results?.[0]?.rows[0]?.[0] ?? ''))?.[1]
+        out.push(failed ? (failed.error?.code === '42703' ? { missingColumn: true } : null) : definition ? { definition } : null)
+      } catch {
+        out.push(null)
+      }
+    }
+    return out
   }
 
   private assertAllowed(entry: OpenConnection, sql: string) {

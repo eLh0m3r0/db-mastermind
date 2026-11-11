@@ -2,6 +2,8 @@ import type {
   ConnectionConfig,
   AiPermissions,
   DataCompareResult,
+  CanonicalCheck,
+  CheckInfo,
   DesignTable,
   DezignChange,
   DezignLeftOut,
@@ -602,6 +604,8 @@ export interface MastermindApi {
   createSampleDatabase(): Promise<string>
 
   getSchema(connectionId: string, refresh?: boolean): Promise<SchemaSnapshot>
+  /** How the database would store each check's condition on its table (PostgreSQL), to tell a changed condition. */
+  canonicalChecks(connectionId: string, items: { table: TableRef; check: CheckInfo }[]): Promise<CanonicalCheck[]>
   listDatabases(connectionId: string): Promise<string[]>
 
   runQuery(request: RunQueryRequest): Promise<StatementOutcome[]>
@@ -769,6 +773,7 @@ export const API_METHODS = [
   'exportConnections',
   'createSampleDatabase',
   'getSchema',
+  'canonicalChecks',
   'listDatabases',
   'runQuery',
   'cancelQuery',

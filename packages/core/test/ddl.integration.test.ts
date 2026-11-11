@@ -5,6 +5,7 @@ import {
   DatabaseService,
   designId,
   diffTables,
+  findChangedChecks,
   findTable,
   generateMigration,
   getDialect,
@@ -126,6 +127,26 @@ for (const engine of engines.filter((e) => e.id !== 'duckdb')) {
         expect(added.checks).toHaveLength(before.checks!.length + 2)
         // The model and the database now agree, however the database spells the conditions.
         expect(compareSchemas([model], [added])).toEqual([])
+        // The same name with another condition: only the database can tell (PostgreSQL), and then the check is replaced.
+        if (engine.id === 'postgres') {
+          const same = await findChangedChecks([model], [added], (items) => svc.canonicalChecks(config.id, items))
+          expect(compareSchemas([model], [added], { checkChanged: same })).toEqual([])
+          // Written another way, it is still the same condition.
+          const respelled: TableInfo = { ...model, checks: model.checks!.map((c) => (c.name === 'dbm_name_filled' ? { ...c, expression: "(  NAME != '' )" } : c)) }
+          expect(compareSchemas([respelled], [added], { checkChanged: await findChangedChecks([respelled], [added], (items) => svc.canonicalChecks(config.id, items)) })).toEqual([])
+          const edited: TableInfo = { ...model, checks: model.checks!.map((c) => (c.name === 'dbm_name_filled' ? { ...c, expression: "name <> '' AND name <> 'x'" } : c)) }
+          const changed = await findChangedChecks([edited], [added], (items) => svc.canonicalChecks(config.id, items))
+          const migration = generateMigration(compareSchemas([edited], [added], { checkChanged: changed }), dialect, [added])
+          expect(migration.statements.map((sql) => sql.split(' ').slice(3, 5).join(' '))).toEqual(['DROP CONSTRAINT', 'ADD CONSTRAINT'])
+          expect((await svc.runScript(config.id, migrationScript(migration, dialect))).find((o) => o.error)).toBeUndefined()
+          const replaced = await customers()
+          expect(replaced.checks!.find((c) => c.name === 'dbm_name_filled')!.expression).toContain("'x'")
+          expect(compareSchemas([edited], [replaced], { checkChanged: await findChangedChecks([edited], [replaced], (items) => svc.canonicalChecks(config.id, items)) })).toEqual([])
+          // A condition on a column the table does not have is another condition for sure.
+          const elsewhere: TableInfo = { ...model, checks: [{ name: 'dbm_name_filled', expression: 'no_such_column > 0' }] }
+          expect((await findChangedChecks([elsewhere], [replaced], (items) => svc.canonicalChecks(config.id, items)))({ name: 'customers' }, 'dbm_name_filled')).toBe(true)
+          Object.assign(added, replaced)
+        }
         // Checks the model no longer has leave the database.
         expect(await run(before, added)).toHaveLength(2)
         expect((await customers()).checks).toHaveLength(before.checks!.length)
