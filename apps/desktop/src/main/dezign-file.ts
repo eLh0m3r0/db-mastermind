@@ -68,7 +68,7 @@ export async function openDezignModel(path: string): Promise<OpenedModelFile> {
       boxes: model.diagrams.find((d) => d.main)?.boxes ?? [],
       sqlObjects: model.sqlObjects,
       targetDatabase: model.targetDatabase,
-      diagrams: model.diagrams.filter((d) => !d.main && d.tables.length).map(({ id, name, tables, positions, colors, notes, boxes }) => ({ id, name, tables, positions, colors: paletteColors(colors), notes, boxes })),
+      diagrams: model.diagrams.filter((d) => !d.main).map(({ id, name, tables, positions, colors, notes, boxes }) => ({ id, name, tables, positions, colors: paletteColors(colors), notes, boxes })),
       // Of the tables alone: the note above is ours, not the project's.
       hash: fingerprint(plain),
     },

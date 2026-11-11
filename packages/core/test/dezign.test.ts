@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { mutate, random } from './dezign-fuzz.js'
+import { diagramsAsLoaded, mutate, mutateDiagrams, random } from './dezign-fuzz.js'
+
+// More chains for a long local run: DBM_FUZZ_CHAINS=500 npx vitest run --root packages/core test/dezign.test.ts
+const CHAINS = Number(process.env.DBM_FUZZ_CHAINS) || 0
 import { applyDezignSave, assembleDezignProject, detectDezignEncoding, dezignIntegrity, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 // Hand-written models in DeZign's layout (no file from a real project is kept in the repository).
@@ -346,6 +349,7 @@ describe('DeZign for Databases models', () => {
 
   it('rejects files that are not DeZign models', () => {
     expect(() => readDezign('<project><table/></project>')).toThrow(/not a DeZign/)
+    expect(() => readDezign('<dezign><VERSION>\n<FILEFORMATVERSIONNUMBER>30</FILEFORMATVERSIONNUMBER>\n<DBID>postgresql7</DBID>\n</VERSION></dezign>')).toThrow(/file format 30, older than/)
   })
 })
 
@@ -529,6 +533,15 @@ describe('saving back into a DeZign project', () => {
     expect(readDezign(r.files[0]!.text).positions).toEqual(readDezign(dez).positions)
   })
 
+  it('reports the notes of a diagram that shows no table, and empty notes', () => {
+    const lonely = dez.replace("<TEXTC>\n<ID>T1</ID>\n<DIAGRAMID>1</DIAGRAMID>", "<TEXTC>\n<ID>T1</ID>\n<DIAGRAMID>3</DIAGRAMID>").replace(diagram('2', 0), `${diagram('2', 0)}\n${diagram('3', 0)}`).replace('<TEXT>Prodej</TEXT>', '<TEXT></TEXT>')
+    const third = readDezign(lonely).diagrams[2]!
+    expect(third).toMatchObject({ id: '3', tables: [], notes: [{ id: 'T1', text: '', x: 90, y: 10 }] })
+    // Sent back as loaded, nothing is taken away.
+    const tables = model([{ path: 'shop.dez', text: lonely }])
+    expect(saveToDezign([{ path: 'shop.dez', text: lonely }], tables, tables, { normalize: viaDbml, diagrams: diagramsAsLoaded(readDezign(lonely)) }).changes).toEqual([])
+  })
+
   it('saves the text and place of an edited text area', () => {
     const tables = model(single)
     const r = saveToDezign(single, tables, model(single), { normalize: viaDbml, diagrams: { '1': { notes: [{ id: 'T1', text: 'Prodej a fakturace', x: 40, y: -40 }] } } })
@@ -625,7 +638,7 @@ describe('saving back into a DeZign project', () => {
   it('survives chains of random edits: each save reads back as edited, keeps every reference valid and is final', { timeout: 120_000 }, () => {
     const counts: Record<string, number> = {}
     for (const [label, start] of [['file', single], ['folder', folder]] as const) {
-      for (let seed = 1; seed <= 25; seed++) {
+      for (let seed = 1; seed <= (CHAINS || 25); seed++) {
         const rnd = random(seed)
         let files = start
         for (let step = 0; step < 6; step++) {
@@ -738,32 +751,17 @@ ${ent('30', 'other', 'R1')}
   })
 
   it('survives chains of random diagram edits: tables joining and leaving diagrams, new diagrams, notes, colors', { timeout: 120_000 }, () => {
-    type Wanted = NonNullable<NonNullable<Parameters<typeof saveToDezign>[3]>['diagrams']>
     const done: Record<string, number> = {}
     for (const [label, start] of [['file', single], ['folder', folder]] as const) {
-      for (let seed = 1; seed <= 20; seed++) {
+      for (let seed = 1; seed <= (CHAINS || 20); seed++) {
         const rnd = random(seed * 31)
-        const pick = <T,>(list: T[]) => list[Math.floor(rnd() * list.length)]
         let files = start
         const binary = () => (files.length > 1 ? assembleDezignProject(files) : files[0]!.text)
-        // What a tab that loaded the project would send back unchanged.
-        const asIs = (): Wanted => Object.fromEntries(readDezign(binary()).diagrams.map((d) => [d.id, d.main ? { notes: d.notes } : { exact: true, tables: d.tables, positions: d.positions, notes: d.notes }]))
+        const asIs = () => diagramsAsLoaded(readDezign(binary()))
         for (let step = 0; step < 6; step++) {
           const tables = model(files)
-          const keys = tables.map((t) => `${t.schema ?? ''}.${t.name}`)
           const wanted = asIs()
-          const others = Object.entries(wanted).filter(([, w]) => w.exact)
-          const op = pick(['join', 'leave', 'new', 'note', 'unnote', 'renote', 'color', 'move'])!
-          const [, target] = pick(others) ?? []
-          const any = pick(Object.values(wanted))
-          if (op === 'join' && target) target.tables = [...new Set([...target.tables!, pick(keys)!])]
-          else if (op === 'leave' && target?.tables?.length) target.tables = target.tables.filter((k) => k !== pick(target.tables!))
-          else if (op === 'new') wanted[`new:${seed}:${step}`] = { name: `Diagram ${seed}.${step}`, exact: true, tables: keys.filter(() => rnd() < 0.6), positions: {} }
-          else if (op === 'note' && any) any.notes = [...(any.notes ?? []), { id: `tmp-${step}`, text: `Poznámka ${step} & <další>`, x: Math.round(rnd() * 500), y: Math.round(rnd() * 500) }]
-          else if (op === 'unnote' && any?.notes?.length) any.notes = any.notes.slice(1)
-          else if (op === 'renote' && any?.notes?.length) any.notes = any.notes.map((n, i) => (i ? n : { ...n, text: `${n.text} (upraveno)`, x: n.x + 40 }))
-          else if (op === 'color' && any) any.colors = { [pick(keys)!]: pick(['#cfe0f7', '#fbe3c5', null])! }
-          else if (op === 'move' && target?.tables?.length) target.positions = { ...target.positions, [target.tables[0]!]: { x: Math.round(rnd() * 900), y: Math.round(rnd() * 900) } }
+          const op = mutateDiagrams(wanted, tables.map((t) => `${t.schema ?? ''}.${t.name}`), rnd, seed * 10 + step)
           const where = `${label} seed ${seed} step ${step} (${op})`
           let saved
           try {
@@ -781,7 +779,39 @@ ${ent('30', 'other', 'R1')}
         }
       }
     }
-    expect(Object.keys(done)).toHaveLength(8)
+    expect(Object.keys(done).filter((k) => k !== 'nothing')).toHaveLength(8)
+  })
+
+  it('survives chains that mix model and diagram edits, as a working session does', { timeout: 600_000 }, () => {
+    for (const [label, start] of [['file', single], ['folder', folder]] as const) {
+      for (let seed = 1; seed <= (CHAINS || 15); seed++) {
+        const rnd = random(seed * 977)
+        let files = start
+        const binary = () => (files.length > 1 ? assembleDezignProject(files) : files[0]!.text)
+        for (let step = 0; step < 8; step++) {
+          const base = model(files)
+          const edited = model(files)
+          const ops = [rnd() < 0.7 ? mutate(edited, rnd, seed * 10 + step) : 'nothing']
+          const target = viaDbml(edited)
+          const wanted = diagramsAsLoaded(readDezign(binary()))
+          // Diagrams are told about the model as it is after the edit: a renamed or dropped table is not on them by its old name.
+          const keys = target.map((t) => `${t.schema ?? ''}.${t.name}`)
+          for (const w of Object.values(wanted)) if (w.tables) w.tables = w.tables.filter((k) => keys.includes(k))
+          if (rnd() < 0.6) ops.push(mutateDiagrams(wanted, keys, rnd, seed * 10 + step))
+          const where = `${label} seed ${seed} step ${step} (${ops.join(' + ')})`
+          let saved
+          try {
+            saved = saveToDezign(files, base, target, { normalize: viaDbml, diagrams: wanted })
+          } catch (err) {
+            throw new Error(`${where}: ${err instanceof Error ? err.message : String(err)}`)
+          }
+          files = applyDezignSave(files, saved)
+          expect(dezignIntegrity(binary()), where).toEqual([])
+          const again = saveToDezign(files, model(files), model(files), { normalize: viaDbml, diagrams: diagramsAsLoaded(readDezign(binary())) })
+          expect(again.changes, where).toEqual([])
+        }
+      }
+    }
   })
 
   it('finds references that point nowhere', () => {

@@ -247,4 +247,15 @@ Note reminder {
     expect(model.tables[0]!.columns[0]).toMatchObject({ dataType: 'char(2)', domain: 'country_code', comment: 'ISO', nullable: false })
     expect(toDbml(model.tables)).toContain("code char(2) [not null, domain: 'country_code', note: 'ISO']")
   })
+
+  it('reads references between names with hyphens and spaces', () => {
+    const dbml = `Table "user" {\n  "user-id" varchar(40) [pk]\n}\nTable appointment {\n  "app-id" varchar(40) [pk]\n  "user-id" varchar(40)\n  "booked - by" varchar(40)\n}\nRef: appointment."user-id" > "user"."user-id" [delete: cascade]\nRef: appointment."booked - by" - "user"."user-id"\nRef: appointment."app-id"`
+    const model = parseDbml(dbml)
+    expect(model.errors).toEqual([{ line: 11, message: `Can't read reference: appointment."app-id"` }])
+    expect(model.tables[1]!.foreignKeys.map((f) => `${f.columns} > ${f.refTable}.${f.refColumns} ${f.onDelete ?? ''}`.trim())).toEqual(['user-id > user.user-id CASCADE', 'booked - by > user.user-id'])
+    // And writes them so that they read back.
+    const again = parseDbml(toDbml(model.tables))
+    expect(again.errors).toEqual([])
+    expect(again.tables[1]!.foreignKeys).toHaveLength(2)
+  })
 })

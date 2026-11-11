@@ -580,6 +580,7 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     const baseCols = base?.columns ?? []
     const baseIds = new Map([...entity.attrs].map(([name, a]) => [name, text(a, 'ID')]))
     const droppedIds: string[] = []
+    const orphanedChecks: string[] = []
     const keep = new Map<ColumnInfo, El>()
     const matched = new Set<ColumnInfo>()
     for (const c of next.columns) {
@@ -609,6 +610,9 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
       const attr = entity.attrs.get(lower(b.name))
       if (!attr) continue
       droppedIds.push(text(attr, 'ID'))
+      // The column's own check goes with it; if the model still has that check, it comes back as the table's.
+      const own = text(kid(attr, 'CCON'), 'VALUE')
+      if (own) orphanedChecks.push(own)
       remove(kid(entity.el, 'ATTRIBUTES'), attr)
       changes.push({ kind: 'drop_column', table: label, name: b.name })
     }
@@ -671,24 +675,34 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     const nextIndexes = next.indexes.filter((ix) => !ix.primary)
     const baseIndexes = (base?.indexes ?? []).filter((ix) => !ix.primary)
     const keyOf = (unique: boolean, ids: (string | undefined)[]) => `${unique ? 'u' : 'i'}:${ids.join(',')}`
-    const baseKeys = new Map(baseIndexes.map((ix) => [keyOf(ix.unique, ix.columns.map((c) => baseIds.get(lower(c)))), ix]))
-    const nextKeys = new Map(nextIndexes.map((ix) => [keyOf(ix.unique, ix.columns.map(idOf)), ix]))
-    const indexIds = (ix: El) => kids(kid(ix, 'IDXCOLS'), 'IDXCOL').map((c) => text(c, 'IDXCOLATTRID'))
-    for (const [key, ix] of baseKeys) {
-      if (nextKeys.has(key)) continue
-      const constraints = kid(entity.el, 'CONSTRAINTS')
-      const con = kids(constraints, 'CONSTRAINT').find((c) => text(c, 'CONTYPE') === '2' && keyOf(true, idsOf(c)) === key)
-      const indexes = kid(entity.el, 'INDEXES')
-      const index = kids(indexes, 'INDEX').find((i) => keyOf(/unique/i.test(text(i, 'INDEXTYPE')), indexIds(i)) === key)
-      if (con) remove(constraints, con)
-      else if (index) remove(indexes, index)
-      else continue
-      changes.push({ kind: 'drop_index', table: label, name: ix.columns.join(', ') })
+    // Counted, not just listed: a model can hold two indexes on the same columns, and each is one in the file.
+    const byKey = (list: IndexInfo[], key: (ix: IndexInfo) => string) => {
+      const map = new Map<string, IndexInfo[]>()
+      for (const ix of list) map.set(key(ix), [...(map.get(key(ix)) ?? []), ix])
+      return map
     }
-    for (const [key, ix] of nextKeys) {
-      if (baseKeys.has(key)) continue
-      addIndex(entity, label, ix)
-      if (base) changes.push({ kind: 'add_index', table: label, name: ix.columns.join(', ') })
+    const baseKeys = byKey(baseIndexes, (ix) => keyOf(ix.unique, ix.columns.map((c) => baseIds.get(lower(c)))))
+    const nextKeys = byKey(nextIndexes, (ix) => keyOf(ix.unique, ix.columns.map(idOf)))
+    const indexIds = (ix: El) => kids(kid(ix, 'IDXCOLS'), 'IDXCOL').map((c) => text(c, 'IDXCOLATTRID'))
+    const constraintsFor = (key: string) => kids(kid(entity.el, 'CONSTRAINTS'), 'CONSTRAINT').filter((c) => text(c, 'CONTYPE') === '2' && keyOf(true, idsOf(c)) === key)
+    const indexesFor = (key: string) => kids(kid(entity.el, 'INDEXES'), 'INDEX').filter((i) => keyOf(/unique/i.test(text(i, 'INDEXTYPE')), indexIds(i)) === key)
+    for (const [key, list] of baseKeys) {
+      for (const ix of list.slice(nextKeys.get(key)?.length ?? 0)) {
+        // Of a unique constraint and a unique index on the same columns, the index goes first.
+        const index = indexesFor(key)[0]
+        const con = constraintsFor(key)[0]
+        if (index) remove(kid(entity.el, 'INDEXES'), index)
+        else if (con) remove(kid(entity.el, 'CONSTRAINTS'), con)
+        else continue
+        changes.push({ kind: 'drop_index', table: label, name: ix.columns.join(', ') })
+      }
+    }
+    for (const [key, list] of nextKeys) {
+      for (const ix of list.slice(baseKeys.get(key)?.length ?? 0)) {
+        // A second unique on the same columns cannot be another constraint: two of those read as one.
+        addIndex(entity, label, ix, ix.unique && constraintsFor(key).length > 0)
+        if (base) changes.push({ kind: 'add_index', table: label, name: ix.columns.join(', ') })
+      }
     }
     // Check constraints, compared by their condition. A column's own check that changed becomes a table check
     // (the same thing to the database); new ones list the columns their condition names.
@@ -705,8 +719,9 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
       else continue
       changes.push({ kind: 'drop_check', table: label, name: key })
     }
+    const orphaned = new Set(orphanedChecks.map(exprKey))
     for (const [key, check] of nextChecks) {
-      if (baseChecks.has(key)) continue
+      if (baseChecks.has(key) && !orphaned.has(key)) continue
       let list = kid(entity.el, 'CONSTRAINTS')
       if (!list) insert(entity.el, (list = container('CONSTRAINTS', [])))
       const id = newChildId(kids(list, 'CONSTRAINT').map((c) => text(c, 'ID')))
@@ -718,7 +733,7 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
       const mentioned = new Set((check.expression.toLowerCase().match(/[a-z_][\w$]*/g) ?? []))
       setIds(con, next.columns.filter((c) => mentioned.has(lower(c.name))).map((c) => idOf(c.name)).filter(Boolean))
       insert(list, con)
-      if (base) changes.push({ kind: 'add_check', table: label, name: check.expression })
+      if (base && !orphaned.has(key)) changes.push({ kind: 'add_check', table: label, name: check.expression })
     }
     // A dropped column also leaves whatever else listed it (automatic indexes, keys the model does not show).
     for (const id of droppedIds) {
@@ -738,9 +753,10 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     }
     return undefined
   }
-  const addIndex = (entity: Entity, table: string, ix: IndexInfo) => {
+  /** A unique index is written as a unique constraint (the form DeZign's own files use most) unless told otherwise. */
+  const addIndex = (entity: Entity, table: string, ix: IndexInfo, asIndex = false) => {
     const ids = ix.columns.map((c) => text(entity.attrs.get(lower(c)), 'ID')).filter(Boolean)
-    if (ix.unique) {
+    if (ix.unique && !asIndex) {
       let list = kid(entity.el, 'CONSTRAINTS')
       if (!list) insert(entity.el, (list = container('CONSTRAINTS', [])))
       const id = newChildId(kids(list, 'CONSTRAINT').map((c) => text(c, 'ID')))
@@ -759,6 +775,7 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     const index = template ? clone(template, [[text(template, 'ID'), id]]) : container('INDEX', [leaf('NAME'), leaf('ID', id), leaf('RELID', '0'), leaf('AUTOIDXTYPE', '0'), container('IDXCOLS', [])])
     for (const tag of ['DESC', 'NOTE']) if (kid(index, tag)) set(index, tag, '')
     remove(index, kid(index, 'INDEXTYPE'))
+    if (ix.unique) insert(index, leaf('INDEXTYPE', 'UNIQUE'), ['RELID', 'AUTOIDXTYPE', 'IDXCOLS'])
     set(index, 'NAME', ix.name || `IDX_${table}_${kids(list, 'INDEX').length + 1}`)
     let cols = kid(index, 'IDXCOLS')
     if (!cols) insert(index, (cols = container('IDXCOLS', [])))
@@ -969,36 +986,45 @@ export function saveToDezign(files: DezignFile[], baseline: TableInfo[], target:
     const pairsOf = fk.columns.map((c, i) => `${attrs.get(child)?.get(lower(c)) ?? '?'}>${attrs.get(parentKey)?.get(lower(fk.refColumns[i] ?? '')) ?? '?'}`)
     return { sig: `${ents.get(child) ?? '?'}|${ents.get(parentKey) ?? '?'}|${pairsOf.join(',')}`, parentKey }
   }
-  const before = new Map<string, { table: TableInfo; fk: ForeignKeyInfo }>()
-  for (const { base } of pairs) for (const fk of base.foreignKeys.filter((f) => !f.virtual)) before.set(signature(base, fk, baseEntityIds, baseAttrIds).sig, { table: base, fk })
-  const after = new Map<string, { table: TableInfo; fk: ForeignKeyInfo; parentKey: string }>()
+  // Counted by signature, not just listed: a model can hold the same relationship twice, and each is one in the file.
+  const push = <T,>(map: Map<string, T[]>, key: string, value: T) => map.set(key, [...(map.get(key) ?? []), value])
+  const before = new Map<string, { table: TableInfo; fk: ForeignKeyInfo }[]>()
+  for (const { base } of pairs) for (const fk of base.foreignKeys.filter((f) => !f.virtual)) push(before, signature(base, fk, baseEntityIds, baseAttrIds).sig, { table: base, fk })
+  const after = new Map<string, { table: TableInfo; fk: ForeignKeyInfo; parentKey: string }[]>()
   for (const table of target.filter((t) => t.type === 'table')) {
     for (const fk of table.foreignKeys.filter((f) => !f.virtual)) {
       const { sig, parentKey } = signature(table, fk, entityIds, attrIds)
-      if (!sig.includes('?')) after.set(sig, { table, fk, parentKey })
+      if (!sig.includes('?')) push(after, sig, { table, fk, parentKey })
     }
   }
   const ruleCode = (rule: string | undefined) => String(Math.max(0, DEZIGN_RULES.indexOf(rule?.toUpperCase() === 'NO ACTION' ? undefined : rule?.toUpperCase())))
   const sameRule = (a: string | undefined, b: string | undefined) => ruleCode(a) === ruleCode(b)
 
+  const met = new Map<string, number>()
   for (const slot of project.list('REL')) {
     const sig = signatureOfRel(slot.el)
     const was = before.get(sig)
-    const now = after.get(sig)
-    if (was && !now) {
+    // A relationship the model never showed (drawn without columns, virtual) is not the model's to remove.
+    if (!was) continue
+    const nth = met.get(sig) ?? 0
+    met.set(sig, nth + 1)
+    const now = after.get(sig)?.[nth]
+    const old = was[Math.min(nth, was.length - 1)]!
+    if (!now) {
       const relId = text(slot.el, 'ID')
       project.remove('REL', slot)
       for (const c of project.list('RELC')) if (text(c.el, 'ID') === relId) project.remove('RELC', c)
-      changes.push({ kind: 'drop_relationship', table: was.table.name, name: was.fk.refTable })
-    } else if (was && now && (!sameRule(was.fk.onDelete, now.fk.onDelete) || !sameRule(was.fk.onUpdate, now.fk.onUpdate))) {
+      changes.push({ kind: 'drop_relationship', table: old.table.name, name: old.fk.refTable })
+    } else if (!sameRule(old.fk.onDelete, now.fk.onDelete) || !sameRule(old.fk.onUpdate, now.fk.onUpdate)) {
       set(slot.el, 'UPDATERULE', ruleCode(now.fk.onUpdate), ['DELETERULE', 'CONSTRAINT', 'PAIRS'])
       set(slot.el, 'DELETERULE', ruleCode(now.fk.onDelete), ['CONSTRAINT', 'PAIRS'])
       changes.push({ kind: 'alter_relationship', table: now.table.name, name: now.fk.refTable })
     }
   }
-  const existing = new Set(project.list('REL').map((s) => signatureOfRel(s.el)))
-  for (const [sig, { table, fk, parentKey }] of after) {
-    if (before.has(sig) || existing.has(sig)) continue
+  const existing = new Map<string, number>()
+  for (const slot of project.list('REL')) existing.set(signatureOfRel(slot.el), (existing.get(signatureOfRel(slot.el)) ?? 0) + 1)
+  for (const [sig, { table, fk, parentKey }] of [...after].flatMap(([key, list]) => list.slice(existing.get(key) ?? 0).map((item) => [key, item] as const))) {
+    void sig
     const child = entities.get(tableKey(table))!
     const parent = entities.get(parentKey)!
     const id = newObjectId()

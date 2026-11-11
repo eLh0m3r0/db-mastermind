@@ -1,7 +1,7 @@
 import { appendFileSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { mutate, random } from './dezign-fuzz.js'
+import { diagramsAsLoaded, mutate, mutateDiagrams, random } from './dezign-fuzz.js'
 import { applyDezignSave, assembleDezignProject, dezignIntegrity, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 /**
@@ -17,7 +17,7 @@ function find(dir: string, out: string[] = []): string[] {
     const path = join(dir, name)
     if (statSync(path).isDirectory()) {
       if (name.toLowerCase() !== 'archived versions') find(path, out)
-    } else if (/\.(dez|dezproj)$/i.test(name)) out.push(path)
+    } else if (/\.dezproj$/i.test(name) || (/\.dez$/i.test(name) && !/<FILEFORMATVERSIONNUMBER>/.test(readFileSync(path, 'latin1').slice(0, 600)))) out.push(path)
   }
   return out
 }
@@ -46,6 +46,7 @@ describe.skipIf(!root)('DeZign models on this machine', () => {
       )
       expect(model.tables.length).toBeGreaterThan(0)
       // Counts only: a failed comparison of the errors themselves would print text from the model.
+      if (back.errors.length && process.env.DBM_DEZ_DEBUG) console.log(`DBML errors of #${n + 1}:`, back.errors.slice(0, 4))
       expect(back.errors.length).toBe(0)
       expect(back.tables.length).toBe(model.tables.length)
       expect(back.tables.reduce((s, t) => s + t.columns.length, 0)).toBe(count((t) => t.columns.length))
@@ -101,7 +102,7 @@ describe.skipIf(!root)('DeZign models on this machine', () => {
       const known = new Set(dezignIntegrity(binary(start)))
       const ops: Record<string, number> = {}
       let failed = ''
-      for (let seed = 1; seed <= 3 && !failed; seed++) {
+      for (let seed = 1; seed <= (Number(process.env.DBM_FUZZ_CHAINS) || 3) && !failed; seed++) {
         const rnd = random(seed * 7919 + n)
         let files = start
         for (let step = 0; step < 5; step++) {
@@ -124,6 +125,48 @@ describe.skipIf(!root)('DeZign models on this machine', () => {
         }
       }
       report(`#${n + 1} ${folder ? 'folder' : 'file'} random edits=${Object.values(ops).reduce((a, b) => a + b, 0)} known problems=${known.size} ${failed ? `FAILED ${failed}` : 'ok'}`)
+      expect(failed).toBe('')
+    })
+  })
+
+  it('survives chains that mix model and diagram edits', { timeout: 900_000 }, () => {
+    const viaDbml = (tables: TableInfo[]) => parseDbml(toDbml(tables)).tables
+    const chains = Number(process.env.DBM_FUZZ_CHAINS) || 3
+    find(root!).forEach((file, n) => {
+      const folder = /\.dezproj$/i.test(file)
+      const start: DezignFile[] = folder ? projectFiles(join(file, '..')) : [{ path: 'model.dez', text: readFileSync(file, 'latin1') }]
+      const binary = (files: DezignFile[]) => (folder ? assembleDezignProject(files) : files[0]!.text)
+      const read = (files: DezignFile[]) => viaDbml(readDezign(binary(files)).tables)
+      const known = new Set(dezignIntegrity(binary(start)))
+      let edits = 0
+      let failed = ''
+      for (let seed = 1; seed <= chains && !failed; seed++) {
+        const rnd = random(seed * 104729 + n)
+        let files = start
+        for (let step = 0; step < 5; step++) {
+          const base = read(files)
+          const edited = read(files)
+          const ops = [rnd() < 0.7 ? mutate(edited, rnd, seed * 100 + step) : 'nothing']
+          const target = viaDbml(edited)
+          const wanted = diagramsAsLoaded(readDezign(binary(files)))
+          const keys = target.map((t) => `${t.schema ?? ''}.${t.name}`)
+          for (const w of Object.values(wanted)) if (w.tables) w.tables = w.tables.filter((k) => keys.includes(k))
+          if (rnd() < 0.7) ops.push(mutateDiagrams(wanted, keys, rnd, seed * 100 + step))
+          try {
+            const saved = saveToDezign(files, base, target, { normalize: viaDbml, diagrams: wanted })
+            files = applyDezignSave(files, saved)
+            const broken = dezignIntegrity(binary(files)).filter((p) => !known.has(p))
+            if (broken.length) throw new Error(`${broken.length} broken references`)
+            const again = saveToDezign(files, read(files), read(files), { normalize: viaDbml, diagrams: diagramsAsLoaded(readDezign(binary(files))) })
+            if (again.changes.length) throw new Error(`a second save changed something (${again.changes.map((c) => c.kind).join(',')})`)
+            edits++
+          } catch (err) {
+            failed = `seed ${seed} step ${step} ${ops.join('+')}: ${(err instanceof Error ? err.message : String(err)).replace(/"[^"]*"/g, '"…"').slice(0, 140)}`
+            break
+          }
+        }
+      }
+      report(`#${n + 1} ${folder ? 'folder' : 'file'} mixed edits=${edits} ${failed ? `FAILED ${failed}` : 'ok'}`)
       expect(failed).toBe('')
     })
   })

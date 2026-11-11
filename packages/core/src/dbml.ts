@@ -312,9 +312,22 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
       i = end + 1
       continue
     }
-    const ref = /^Ref(?:\s+[\w$"]+)?\s*:\s*(.+?)\s*([<>-])\s*(.+?)\s*(\[(.*)\])?\s*$/i.exec(line)
-    if (ref) {
-      refs.push({ line: lineNo, from: ref[1]!, op: ref[2]!, to: ref[3]!, settings: ref[5] ?? '' })
+    const refLine = /^Ref(?:\s+[\w$"]+)?\s*:\s*(.+?)\s*(\[([^\]]*)\])?\s*$/i.exec(line)
+    if (refLine) {
+      // The operator is the first <, > or - outside quotes: a name like "user-id" has a hyphen of its own.
+      const body = refLine[1]!
+      let quote: string | null = null
+      let at = -1
+      for (let k = 0; k < body.length && at === -1; k++) {
+        const ch = body[k]!
+        if (quote) quote = ch === quote ? null : quote
+        else if (ch === '"' || ch === '`') quote = ch
+        else if (ch === '<' || ch === '>' || ch === '-') at = k
+      }
+      const from = at === -1 ? '' : body.slice(0, at).trim()
+      const to = at === -1 ? '' : body.slice(at + 1).trim()
+      if (from && to) refs.push({ line: lineNo, from, op: body[at]!, to, settings: refLine[3] ?? '' })
+      else errors.push({ line: lineNo, message: `Can't read reference: ${body}` })
       i++
       continue
     }

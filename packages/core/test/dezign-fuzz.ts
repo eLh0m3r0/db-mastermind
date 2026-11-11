@@ -1,4 +1,4 @@
-import type { TableInfo } from '../src/index.js'
+import type { DezignModel, SaveDezignOptions, TableInfo } from '../src/index.js'
 
 /** Deterministic random numbers: a failing run can be repeated from its seed. */
 export function random(seed: number): () => number {
@@ -147,4 +147,31 @@ export function mutate(tables: TableInfo[], rnd: () => number, serial: number): 
     if (ops[name]!()) return name
   }
   return 'nothing'
+}
+
+export type DiagramEdits = NonNullable<SaveDezignOptions['diagrams']>
+
+/** What a tab that loaded the project's diagrams would send back with nothing changed. */
+export function diagramsAsLoaded(model: DezignModel): DiagramEdits {
+  return Object.fromEntries(model.diagrams.map((d) => [d.id, d.main ? { notes: d.notes } : { exact: true, tables: d.tables, positions: d.positions, notes: d.notes }]))
+}
+
+/** One random edit of the diagrams: a table joins or leaves one, a new diagram, a note added, removed or edited, a color, a move. Returns its name. */
+export function mutateDiagrams(wanted: DiagramEdits, keys: string[], rnd: () => number, serial: number): string {
+  const pick = <T>(list: T[]): T | undefined => list[Math.floor(rnd() * list.length)]
+  const op = pick(['join', 'leave', 'new', 'note', 'unnote', 'renote', 'color', 'move'])!
+  const target = pick(Object.values(wanted).filter((w) => w.exact))
+  const any = pick(Object.values(wanted))
+  if (op === 'join' && target && keys.length) target.tables = [...new Set([...(target.tables ?? []), pick(keys)!])]
+  else if (op === 'leave' && target?.tables?.length) {
+    const gone = pick(target.tables)
+    target.tables = target.tables.filter((k) => k !== gone)
+  } else if (op === 'new') wanted[`new:${serial}`] = { name: `Diagram ${serial}`, exact: true, tables: keys.filter(() => rnd() < 0.6).slice(0, 40), positions: {} }
+  else if (op === 'note' && any) any.notes = [...(any.notes ?? []), { id: `tmp-${serial}`, text: `Poznámka ${serial} & <další>`, x: Math.round(rnd() * 500), y: Math.round(rnd() * 500) }]
+  else if (op === 'unnote' && any?.notes?.length) any.notes = any.notes.slice(1)
+  else if (op === 'renote' && any?.notes?.length) any.notes = any.notes.map((n, i) => (i ? n : { ...n, text: `${n.text} (upraveno)`, x: n.x + 40 }))
+  else if (op === 'color' && any && keys.length) any.colors = { [pick(keys)!]: pick(['#cfe0f7', '#fbe3c5', null])! }
+  else if (op === 'move' && target?.tables?.length) target.positions = { ...target.positions, [target.tables[0]!]: { x: Math.round(rnd() * 900), y: Math.round(rnd() * 900) } }
+  else return 'nothing'
+  return op
 }

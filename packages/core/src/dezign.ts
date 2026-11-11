@@ -193,7 +193,12 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   // Archived versions carry VERSIONINFO; the working model does not.
   const version = options.archived !== undefined ? versions.filter((v) => kid(v, 'VERSIONINFO'))[options.archived] : (versions.find((v) => !kid(v, 'VERSIONINFO')) ?? versions[0])
   const dict = kid(version, 'DATADICT')
-  if (!dezign || !dict) throw new Error(options.archived !== undefined ? 'The archived version is not in the file' : 'This is not a DeZign for Databases model')
+  if (!dezign || !dict) {
+    // DeZign 3 and older (2003) kept everything flat under VERSION: a different layout, not read here.
+    const old = /<FILEFORMATVERSIONNUMBER>(\d+)</.exec(binary)?.[1]
+    if (dezign && old) throw new Error(`This file is in DeZign's file format ${old}, older than the formats that can be read here (41 and later, DeZign 4 onwards). Open it in a newer DeZign and save it again.`)
+    throw new Error(options.archived !== undefined ? 'The archived version is not in the file' : 'This is not a DeZign for Databases model')
+  }
 
   const formatVersion = text(dezign, 'FILEFORMATVERSION') || text(kid(kid(version, 'PROJECTSETTINGS'), 'COMMONSETTINGS'), 'FILEFORMATVERSION')
   const leftOut: DezignLeftOut = { domains: 0, views: 0, procedures: 0, sequences: 0, triggers: 0, checks: 0, relationshipsWithoutColumns: 0, subdiagrams: 0 }
@@ -366,12 +371,12 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const diagramOf = (id: string, name: string, main: boolean): DezignDiagram => {
     const controls = allControls.filter((c) => c.diagram === id)
     const out: DezignDiagram = { id, name, main, tables: [], positions: {}, colors: {}, notes: [], boxes: [], layout: { originX: 0, originY: 0, scaleX: 1, scaleY: 1 } }
-    if (!controls.length) return out
-    // DeZign's tables are smaller than the target's: spread the layout by the typical size ratio.
-    const sx = node ? Math.min(3, Math.max(1, median(controls.filter((c) => c.w > 0).map((c) => node.width / c.w)))) : 1
-    const sy = node ? Math.min(3, Math.max(1, median(controls.filter((c) => c.h > 0).map((c) => (node.header + node.row * c.entity.table.columns.length) / c.h)))) : 1
-    const minX = Math.min(...controls.map((c) => c.x))
-    const minY = Math.min(...controls.map((c) => c.y))
+    // DeZign's tables are smaller than the target's: spread the layout by the typical size ratio. A diagram
+    // without tables (only notes or frames so far) keeps DeZign's own coordinates.
+    const sx = node && controls.length ? Math.min(3, Math.max(1, median(controls.filter((c) => c.w > 0).map((c) => node.width / c.w)))) : 1
+    const sy = node && controls.length ? Math.min(3, Math.max(1, median(controls.filter((c) => c.h > 0).map((c) => (node.header + node.row * c.entity.table.columns.length) / c.h)))) : 1
+    const minX = controls.length ? Math.min(...controls.map((c) => c.x)) : 0
+    const minY = controls.length ? Math.min(...controls.map((c) => c.y)) : 0
     out.layout = { originX: minX, originY: minY, scaleX: sx, scaleY: sy }
     for (const c of controls) {
       const key = `${c.entity.table.schema ?? ''}.${c.entity.table.name}`
@@ -380,9 +385,10 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
       if (c.fill && c.fill !== defaultFill && hex(c.fill)) out.colors[key] = hex(c.fill)
     }
     for (const c of noteControls) {
-      if ((kid(c, 'DIAGRAMID') ? text(c, 'DIAGRAMID') : mainId) !== id || !noteTexts.get(text(c, 'ID'))) continue
+      // An empty text area is still one: left out, a writer told "these are all the notes" would remove it.
+      if ((kid(c, 'DIAGRAMID') ? text(c, 'DIAGRAMID') : mainId) !== id || !noteTexts.has(text(c, 'ID'))) continue
       const [x, y] = [Number(text(c, 'L')), Number(text(c, 'T'))]
-      if (Number.isFinite(x) && Number.isFinite(y)) out.notes.push({ id: text(c, 'ID'), text: noteTexts.get(text(c, 'ID'))!, x: Math.round((x - minX) * sx), y: Math.round((y - minY) * sy) })
+      if (Number.isFinite(x) && Number.isFinite(y)) out.notes.push({ id: text(c, 'ID'), text: noteTexts.get(text(c, 'ID')) ?? '', x: Math.round((x - minX) * sx), y: Math.round((y - minY) * sy) })
     }
     for (const c of boxControls) {
       if ((kid(c, 'DIAGRAMID') ? text(c, 'DIAGRAMID') : mainId) !== id) continue
@@ -392,7 +398,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
     return out
   }
   // Old single-diagram files have controls without a diagram to belong to.
-  const described = diagrams.length ? diagrams.map((d) => diagramOf(text(d, 'ID'), text(d, 'NAME'), text(d, 'ID') === mainId)) : allControls.length ? [diagramOf(mainId, '', true)] : []
+  const described = diagrams.length ? diagrams.map((d) => diagramOf(text(d, 'ID'), text(d, 'NAME'), text(d, 'ID') === mainId)) : allControls.length || noteControls.length ? [diagramOf(mainId, '', true)] : []
   const main = described.find((d) => d.main)
   const positions = main?.positions ?? {}
   const layout = { diagramId: mainId, ...(main?.layout ?? { originX: 0, originY: 0, scaleX: 1, scaleY: 1 }) }
