@@ -66,10 +66,11 @@ export async function openDezignModel(path: string): Promise<OpenedModelFile> {
       colors: paletteColors(model.diagrams.find((d) => d.main)?.colors ?? {}),
       notes: model.diagrams.find((d) => d.main)?.notes ?? [],
       boxes: model.diagrams.find((d) => d.main)?.boxes ?? [],
+      display: model.diagrams.find((d) => d.main)?.display,
       sqlObjects: model.sqlObjects,
       targetDatabase: model.targetDatabase,
       scripting: model.scripting,
-      diagrams: model.diagrams.filter((d) => !d.main).map(({ id, name, tables, positions, colors, notes, boxes }) => ({ id, name, tables, positions, colors: paletteColors(colors), notes, boxes })),
+      diagrams: model.diagrams.filter((d) => !d.main).map(({ id, name, tables, positions, colors, notes, boxes, display }) => ({ id, name, tables, positions, colors: paletteColors(colors), notes, boxes, display })),
       // Of the tables alone: the note above is ours, not the project's.
       hash: fingerprint(plain),
     },
@@ -118,12 +119,15 @@ export async function saveDezignModel(request: DezignSaveRequest): Promise<Dezig
     const known = model.diagrams.find((d) => d.id === diagramId)?.notes ?? []
     return known.map((o) => edited?.find((n) => n.id === o.id) ?? o)
   }
+  // What the tables show, with the hidden columns keyed as the file names its tables.
+  const displayOf = (display: DezignSaveRequest['display']) => (display ? { ...display, hidden: display.hidden ? Object.fromEntries(withBare(Object.entries(display.hidden))) : undefined } : undefined)
   for (const d of request.diagrams ?? []) {
-    if (request.layout) Object.assign(diagrams[d.id]!, { notes: d.notes ?? [], colors: colorChanges(d.id, d.colors) })
+    if (request.layout) Object.assign(diagrams[d.id]!, { notes: d.notes ?? [], colors: colorChanges(d.id, d.colors), display: displayOf(d.display) })
     else diagrams[d.id]!.notes = keepingAll(d.id, d.notes)
   }
   const main = model.layout.diagramId
-  if (main) diagrams[main] = request.layout ? { notes: request.notes ?? [], colors: colorChanges(main, request.colors) } : { notes: keepingAll(main, request.notes) }
+  if (main) diagrams[main] = request.layout ? { notes: request.notes ?? [], colors: colorChanges(main, request.colors), display: displayOf(request.display) } : { notes: keepingAll(main, request.notes) }
+  for (const id of request.removedDiagrams ?? []) if (id !== main) diagrams[id] = { remove: true }
   const result = saveToDezign(files, viaDbml(model.tables), edited.tables, { node: NODE, fallbackEncoding, positions, diagrams, normalize: viaDbml })
   const outcome: DezignSaveOutcome = { changes: result.changes, written: result.files.length, deleted: result.deleted.length, hash: request.hash }
   if (request.dryRun || (!result.files.length && !result.deleted.length)) return outcome

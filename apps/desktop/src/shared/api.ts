@@ -255,6 +255,14 @@ export interface ChangeSet {
   createdAt: string
 }
 
+/** What a diagram's tables show (from a DeZign diagram: its display level, data type display and hidden columns). */
+export interface DiagramDisplay {
+  columns: 'all' | 'keys' | 'primary' | 'none' | 'first10' | 'first20'
+  types: 'none' | 'type' | 'domain'
+  /** Columns hidden in a table's box, by table key. */
+  hidden?: Record<string, string[]>
+}
+
 /** A captioned frame behind the tables of a diagram (read from the model's source; not edited here). */
 export interface DiagramBox {
   id: string
@@ -454,6 +462,8 @@ export interface OpenedModelFile {
     colors: Record<string, number>
     notes: DiagramNote[]
     boxes: DiagramBox[]
+    /** What the main diagram's tables show. */
+    display?: DiagramDisplay
     /** Views, sequences, procedures and triggers of the source as SQL, and the database they are written for. */
     sqlObjects: DezignSqlObject[]
     targetDatabase: string
@@ -477,6 +487,7 @@ export interface ModelDiagram {
   colors?: Record<string, number>
   notes?: DiagramNote[]
   boxes?: DiagramBox[]
+  display?: DiagramDisplay
 }
 
 export interface DiagramPdfRequest {
@@ -527,6 +538,10 @@ export interface DezignSaveRequest {
    */
   layout?: boolean
   diagrams?: ModelDiagram[]
+  /** What the main diagram's tables show. */
+  display?: DiagramDisplay
+  /** Diagrams of the project to take out of it (ids). */
+  removedDiagrams?: string[]
   /** Schema the window puts schema-less tables under (keys of `positions`). */
   defaultSchema?: string
   /** Only report what would change. */

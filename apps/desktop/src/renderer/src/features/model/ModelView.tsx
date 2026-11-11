@@ -162,7 +162,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
 
   /** A model opened from a DeZign project goes back into it: the changes are listed first, the old files are kept. */
   const saveToSource = async (source: NonNullable<ModelTab['source']>) => {
-    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, notes: tab.notes, colors: tab.colors, diagrams: tab.diagrams, layout: !!source.layout, defaultSchema: liveSchema?.defaultSchema }
+    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, notes: tab.notes, colors: tab.colors, diagrams: tab.diagrams, display: tab.display, removedDiagrams: tab.removedDiagrams, layout: !!source.layout, defaultSchema: liveSchema?.defaultSchema }
     const name = source.path.split(/[\\/]/).pop() ?? ''
     try {
       const preview = await api.saveDezignModel({ ...request, dryRun: true })
@@ -432,7 +432,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const keyOf = (x: { schema?: string; name: string }) => `${x.schema ?? ''}.${x.name}`
   const inArea = (x: { schema?: string; name: string }) => (diagram ? diagram.tables.includes(keyOf(x)) : group ? group.includes(x.name) : true)
   const shown = useMemo<SchemaSnapshot>(() => (diagram || group ? { ...snapshot, tables: snapshot.tables.filter(inArea) } : snapshot), [area, snapshot, model.groups, tab.diagrams])
-  const diagramTab = { ...tab, kind: 'diagram', colors: { ...groupColors, ...(diagram ? diagram.colors : tab.colors) }, notes: diagram ? diagram.notes : tab.notes, boxes: diagram ? diagram.boxes : tab.boxes, positions: diagram ? diagram.positions : tab.positions, tables: diagram ? diagram.tables : undefined } as unknown as DiagramTab
+  const diagramTab = { ...tab, kind: 'diagram', colors: { ...groupColors, ...(diagram ? diagram.colors : tab.colors) }, notes: diagram ? diagram.notes : tab.notes, boxes: diagram ? diagram.boxes : tab.boxes, positions: diagram ? diagram.positions : tab.positions, tables: diagram ? diagram.tables : undefined, display: diagram ? diagram.display : tab.display } as unknown as DiagramTab
   /** A new diagram of the project the model came from: empty at first, tables are added from the search above the canvas. */
   const newDiagram = async () => {
     const name = (await askText({ title: t('New diagram'), message: t('A diagram shows a part of the model: add tables with the search above the canvas, take them off from their menu. The tables stay in the model.'), placeholder: t('Name of the diagram'), confirmLabel: t('Create') }))?.trim()
@@ -440,6 +440,20 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     const id = `new:${crypto.randomUUID()}`
     updateTab(tab.id, { dirty: true, diagrams: [...(tab.diagrams ?? []), { id, name, tables: [], positions: {} }] })
     setArea(`d:${id}`)
+  }
+  /** A diagram of the project under another name, or out of it (the tables stay in the model). */
+  const renameDiagram = async (id: string) => {
+    const d = tab.diagrams?.find((x) => x.id === id)
+    if (!d) return
+    const name = await askText({ title: t('Rename diagram'), value: d.name, confirmLabel: t('Rename') })
+    if (name && name !== d.name) patchDiagram(id, () => ({ name }))
+  }
+  const removeDiagram = async (id: string) => {
+    const d = tab.diagrams?.find((x) => x.id === id)
+    if (!d) return
+    if (!(await confirmAction({ title: t('Remove the diagram {name}?', { name: d.name }), message: t('The tables stay in the model; only this diagram (its layout, notes and frames) goes. Save takes it out of the DeZign project too.'), confirmLabel: t('Remove'), danger: true }))) return
+    setArea('')
+    updateTab(tab.id, { dirty: true, diagrams: tab.diagrams?.filter((x) => x.id !== id), removedDiagrams: id.startsWith('new:') ? tab.removedDiagrams : [...(tab.removedDiagrams ?? []), id] })
   }
   const patchDiagram = (id: string, patch: (d: NonNullable<ModelTab['diagrams']>[number]) => Partial<NonNullable<ModelTab['diagrams']>[number]>) =>
     updateTab(tab.id, { dirty: tab.source ? true : tab.dirty, diagrams: tab.diagrams?.map((d) => (d.id === id ? { ...d, ...patch(d) } : d)) })
@@ -508,7 +522,12 @@ export function ModelView({ tab }: { tab: ModelTab }) {
         </Button>
         <div className="flex-1" />
         {(areaNames.length > 0 || !!tab.diagrams?.length || !!tab.source) && (
-          <Select inputSize="sm" className="w-44" value={area} onChange={(e) => (e.target.value === '+' ? void newDiagram() : setArea(e.target.value))} title={t('Subject areas: the model’s TableGroups and the diagrams of the project it came from')} data-testid="model-area">
+          <Select
+            inputSize="sm"
+            className="w-44"
+            value={area}
+            onChange={(e) => (e.target.value === '+' ? void newDiagram() : e.target.value === '~rename' ? void renameDiagram(area.slice(2)) : e.target.value === '~remove' ? void removeDiagram(area.slice(2)) : setArea(e.target.value))}
+            title={t('Subject areas: the model’s TableGroups and the diagrams of the project it came from')} data-testid="model-area">
             <option value="">{tab.source ? t('Whole model') : t('All areas')}</option>
             {areaNames.map((g) => (
               <option key={`g:${g}`} value={`g:${g}`}>
@@ -521,6 +540,8 @@ export function ModelView({ tab }: { tab: ModelTab }) {
               </option>
             ))}
             {tab.source && <option value="+">{t('New diagram…')}</option>}
+            {tab.source && area.startsWith('d:') && <option value="~rename">{t('Rename this diagram…')}</option>}
+            {tab.source && area.startsWith('d:') && <option value="~remove">{t('Remove this diagram…')}</option>}
           </Select>
         )}
         <IssuesChip issues={issues} open={showIssues} onToggle={() => setShowIssues((v) => !v)} />

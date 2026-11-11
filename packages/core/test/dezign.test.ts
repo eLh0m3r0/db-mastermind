@@ -428,6 +428,47 @@ describe('saving back into a DeZign project', () => {
     expect(readDezign(`<dezign>\n${body.replace(/^<\?xml[^>]*\?>/, '')}\n</dezign>`, { archived: 0 }).tables).toEqual(readDezign(assembleDezignProject(folder)).tables)
   })
 
+  // DISPLAYLEVEL and VISIBLEATTR as DeZign 14.9.3 wrote them when they were set in its Diagram menu.
+  it('reads and writes what a diagram\'s tables show: display level, data types, hidden columns', () => {
+    const shown = (text: string) => dez.replace('<NAME>d2</NAME>\n<ISMAINDIAGRAM>0</ISMAINDIAGRAM>', `<NAME>d2</NAME>\n<ISMAINDIAGRAM>0</ISMAINDIAGRAM>\n${text}`)
+    const text = shown('<DISPLAYLEVEL>2</DISPLAYLEVEL>\n<VISIBLEATTR>4</VISIBLEATTR>').replace('<BRUSH>0,16119285</BRUSH>\n</ENTC>', '<BRUSH>0,16119285</BRUSH>\n<HIDDENATTR>A2,\r\nA3</HIDDENATTR>\n</ENTC>')
+    expect(text).toContain('<VISIBLEATTR>4<')
+    const d2 = readDezign(text).diagrams.find((d) => d.name === 'd2')!
+    expect(d2.display).toEqual({ columns: 'primary', types: 'domain' })
+    const main = readDezign(text).diagrams.find((d) => d.main)!
+    expect(main.display).toEqual({ columns: 'all', types: 'type', hidden: { 'shop.customer': ['email', 'credit'] } })
+    const files: DezignFile[] = [{ path: 'shop.dez', text }]
+    const r = saveToDezign(files, model(files), model(files), { normalize: viaDbml, diagrams: { [d2.id]: { display: { columns: 'keys', types: 'none' } }, [main.id]: { display: { hidden: { 'shop.customer': ['credit'] } } } } })
+    expect(r.changes.map((c) => c.kind)).toEqual(['diagram_display', 'diagram_display'])
+    const after = readDezign(r.files[0]!.text)
+    expect(after.diagrams.find((d) => d.name === 'd2')!.display).toEqual({ columns: 'keys', types: 'none' })
+    expect(after.diagrams.find((d) => d.main)!.display.hidden).toEqual({ 'shop.customer': ['credit'] })
+    expect(r.files[0]!.text).toContain('<HIDDENATTR>A3</HIDDENATTR>')
+    // Asked for what it is already: nothing to write.
+    expect(saveToDezign(r.files, model(r.files), model(r.files), { normalize: viaDbml, diagrams: { [d2.id]: { display: { columns: 'keys', types: 'none' } } } }).files).toEqual([])
+  })
+
+  it('renames a diagram and takes one out with everything drawn on it, never the main one', () => {
+    const d2 = readDezign(dez).diagrams.find((d) => !d.main)!
+    const main = readDezign(dez).diagrams.find((d) => d.main)!
+    const renamed = saveToDezign(single, model(single), model(single), { normalize: viaDbml, diagrams: { [d2.id]: { name: 'Fakturace' } } })
+    expect(renamed.changes).toEqual([{ kind: 'rename_diagram', table: 'Fakturace', name: 'd2' }])
+    expect(readDezign(renamed.files[0]!.text).diagrams.map((d) => d.name)).toContain('Fakturace')
+    const gone = saveToDezign(single, model(single), model(single), { normalize: viaDbml, diagrams: { [d2.id]: { remove: true }, [main.id]: { remove: true } } })
+    expect(gone.changes).toEqual([{ kind: 'drop_diagram', table: 'd2' }])
+    const out = gone.files[0]!.text
+    expect(readDezign(out).diagrams.map((d) => d.id)).toEqual([main.id])
+    expect(out).not.toMatch(new RegExp(`<DIAGRAMID>${d2.id}</DIAGRAMID>`))
+    expect(readDezign(out).tables).toEqual(readDezign(dez).tables)
+    expect(dezignIntegrity(out)).toEqual(dezignIntegrity(dez))
+    // A folder project loses the diagram's files.
+    const fd = readDezign(assembleDezignProject(folder)).diagrams
+    if (fd.length > 1) {
+      const f = saveToDezign(folder, model(folder), model(folder), { normalize: viaDbml, diagrams: { [fd.find((d) => !d.main)!.id]: { remove: true } } })
+      expect(f.deleted.length).toBeGreaterThan(0)
+    }
+  })
+
   it('writes nothing when the model was not edited', () => {
     expect(save(single, () => {})).toEqual({ files: [], deleted: [], changes: [] })
     expect(save(folder, () => {})).toEqual({ files: [], deleted: [], changes: [] })

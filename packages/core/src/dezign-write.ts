@@ -9,6 +9,8 @@ import {
   readDezign,
   serializeDezignXml,
   unescapeDezignText,
+  DEZIGN_COLUMNS_SHOWN,
+  type DezignDisplay,
   type DezignElement,
   type DezignEncoding,
   type DezignModel,
@@ -65,6 +67,9 @@ export type DezignChangeKind =
   | 'add_note'
   | 'drop_note'
   | 'color_table'
+  | 'diagram_display'
+  | 'rename_diagram'
+  | 'drop_diagram'
 
 export interface DezignChange {
   kind: DezignChangeKind
@@ -111,6 +116,10 @@ export interface SaveDezignOptions {
       notes?: { id: string; text: string; x: number; y: number }[]
       /** Fill colors to change, by table key: `#rrggbb`, or null for the project's usual color. */
       colors?: Record<string, string | null>
+      /** What the tables show (see `DezignDisplay`); `hidden` lists every table whose hidden columns change. */
+      display?: Partial<DezignDisplay>
+      /** Takes the diagram out of the project, with everything drawn on it (never the main diagram). */
+      remove?: boolean
     }
   >
   /** Ids for new objects (default: random GUIDs, or the next number in files that number their objects). */
@@ -163,6 +172,8 @@ const FOLDER: Record<Kind, string> = {
   VIEWCONN: 'data dictionary/viewconnections',
   VIEWCONNC: 'diagrams/diagramobjects/viewconnectors',
 }
+
+const DIAGRAM_OBJECT_DIRS = ['diagrams/diagramobjects/groupboxcontrols', 'diagrams/diagramobjects/stampcontrols', 'diagrams/diagramobjects/viewcontrols']
 
 const lower = (s: string) => s.toLowerCase()
 const tableKey = (t: { schema?: string; name: string }) => lower(`${t.schema ?? ''}.${t.name}`)
@@ -242,9 +253,10 @@ class Project {
       const path = f.path.replaceAll('\\', '/')
       const dir = lower(path.slice(0, Math.max(0, path.lastIndexOf('/'))))
       const kind = (Object.keys(FOLDER) as Kind[]).find((k) => FOLDER[k] === dir)
-      if (!kind || !/\.xml$/i.test(path)) continue
+      // (Group boxes, stamps and views on diagrams are only ever removed with their diagram.)
+      if ((!kind && !DIAGRAM_OBJECT_DIRS.includes(dir)) || !/\.xml$/i.test(path)) continue
       this.docs.set(path, { root: parseDezignXml(f.text), original: f.text })
-      if (!this.dirs.has(kind)) this.dirs.set(kind, path.slice(0, path.lastIndexOf('/')))
+      if (kind && !this.dirs.has(kind)) this.dirs.set(kind, path.slice(0, path.lastIndexOf('/')))
       const decl = /^﻿?\s*<\?xml[^>]*\?>/.exec(f.text)
       if (decl) this.header = decl[0]
     }
@@ -317,6 +329,30 @@ class Project {
     if (i === -1) return
     const next = parent.children[i + 1]
     parent.children.splice(i, typeof next === 'string' && !next.trim() ? 2 : 1)
+  }
+
+  /** The group boxes, stamps and views drawn on a diagram (kinds the writer does not otherwise touch). */
+  removeDiagramObjects(diagramId: string): void {
+    const onIt = (el: El) => (el.children.some((c) => typeof c !== 'string' && c.tag === 'DIAGRAMID' && c.children.join('').trim() === diagramId))
+    if (!this.folder) {
+      const controls = kid(kid(this.version, 'DIAGRAMS'), 'CONTROLS')
+      for (const list of ['GROUPBOXESCONTROLS', 'GROUPBOXCONTROLS', 'STAMPCONTROLS', 'VIEWCONTROLS']) {
+        const parent = kid(controls, list)
+        if (!parent) continue
+        for (const el of kids(parent).filter(onIt)) {
+          const i = parent.children.indexOf(el)
+          const next = parent.children[i + 1]
+          parent.children.splice(i, typeof next === 'string' && !next.trim() ? 2 : 1)
+        }
+      }
+      return
+    }
+    for (const [path, doc] of this.docs) {
+      const dir = lower(path.slice(0, Math.max(0, path.lastIndexOf('/'))))
+      if (!DIAGRAM_OBJECT_DIRS.includes(dir)) continue
+      const el = kids(doc.root)[0]
+      if (el && onIt(el)) this.deleted.add(path)
+    }
   }
 
   /** Folder projects name some files after the object: keep that true after a rename. */
@@ -1148,7 +1184,23 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
   const diagramRequests: [id: string, wanted: NonNullable<SaveDezignOptions['diagrams']>[string]][] = []
   for (const [key, wanted] of Object.entries(options.diagrams ?? {})) {
     const existing = project.list('DIAGRAM')
-    if (key === layout.diagramId || existing.some((d) => text(d.el, 'ID') === key) || wanted.name === undefined) {
+    const known = existing.find((d) => text(d.el, 'ID') === key)
+    if (known && wanted.remove && text(known.el, 'ISMAINDIAGRAM') !== '1' && key !== layout.diagramId) {
+      // Everything drawn on it goes with it; the tables, notes and frames themselves stay in the project.
+      const name = text(known.el, 'NAME')
+      for (const kind of ['ENTC', 'RELC', 'TEXTC', 'SUBCATC', 'SUBCONNC', 'VIEWCONNC'] as const) for (const c of project.list(kind)) if (text(c.el, 'DIAGRAMID') === key) project.remove(kind, c)
+      project.removeDiagramObjects(key)
+      project.remove('DIAGRAM', known)
+      changes.push({ kind: 'drop_diagram', table: name })
+      continue
+    }
+    if (key === layout.diagramId || known || wanted.name === undefined) {
+      // A diagram of the project under a new name.
+      if (known && wanted.name !== undefined && wanted.name.trim() && wanted.name !== text(known.el, 'NAME')) {
+        const was = text(known.el, 'NAME')
+        set(known.el, 'NAME', wanted.name)
+        changes.push({ kind: 'rename_diagram', table: wanted.name, name: was })
+      }
       diagramRequests.push([key, wanted])
       continue
     }
@@ -1501,6 +1553,41 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       set(control.el, 'BRUSH', `${style?.trim() || '0'},${fill}`, ['PEN', 'FONT', 'TR', 'AS'])
       changes.push({ kind: 'color_table', table: text(entity.el, 'NAME') })
     }
+  }
+
+  // What the tables of a diagram show: DeZign's display level and data type display, and the columns hidden in a
+  // table's box (attribute ids, comma separated).
+  for (const [diagramId, wanted] of diagramRequests) {
+    const display = wanted.display
+    if (!display) continue
+    const diagram = project.list('DIAGRAM').find((d) => text(d.el, 'ID') === diagramId)?.el
+    let changed = false
+    if (diagram && display.columns) {
+      const level = String(DEZIGN_COLUMNS_SHOWN.indexOf(display.columns))
+      if (level !== '-1' && kid(diagram, 'DISPLAYLEVEL') && text(diagram, 'DISPLAYLEVEL') !== level) {
+        set(diagram, 'DISPLAYLEVEL', level)
+        changed = true
+      }
+    }
+    if (diagram && display.types && kid(diagram, 'VISIBLEATTR')) {
+      // DeZign has the type and the physical type (and with the domain each): a choice of the same kind stays.
+      const now = text(diagram, 'VISIBLEATTR')
+      const kind = now === '1' || now === '3' ? 'type' : now === '2' || now === '4' ? 'domain' : 'none'
+      if (kind !== display.types) {
+        set(diagram, 'VISIBLEATTR', display.types === 'none' ? '0' : display.types === 'type' ? '3' : '4')
+        changed = true
+      }
+    }
+    for (const [key, names] of Object.entries(display.hidden ?? {})) {
+      const entity = entities.get(lower(key))
+      const control = entity && controlsOf(diagramId).find((c) => text(c.el, 'ID') === entity.id)
+      if (!entity || !control) continue
+      const ids = names.map((n) => text(entity.attrs.get(lower(n)), 'ID')).filter(Boolean).join(',')
+      if (text(control.el, 'HIDDENATTR') === ids) continue
+      if (kid(control.el, 'HIDDENATTR') || ids) set(control.el, 'HIDDENATTR', ids, ['ATTRCLIST'])
+      changed = true
+    }
+    if (changed) changes.push({ kind: 'diagram_display', table: text(diagram, 'NAME') || diagramId })
   }
 
   // Formats before DeZign 14 keep counters of the ids handed out, for the project, its diagrams and each table's

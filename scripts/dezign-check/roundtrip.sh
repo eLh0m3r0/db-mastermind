@@ -25,6 +25,8 @@ windows_path() { echo "Z:$(echo "$1" | sed 's#/#\\#g')"; }
 crop() { import -window root "$out/.screen.png" 2>/dev/null; convert "$out/.screen.png" -crop "$1" +repage "$2" 2>/dev/null; rm -f "$out/.screen.png"; }
 
 for model in "$@"; do
+ # (A second try when DeZign showed nothing at all: it was still starting after a restart.)
+ for attempt in 1 2; do
   if [ -d "$model" ]; then label=$(basename "$model"); file=$(ls "$model"/*.dezproj | head -1); else label=$(basename "$model" .dez); file="$model"; fi
   alive || bash "$here/start.sh" >/dev/null
   xdotool mousemove 960 30 click 1; sleep 0.5
@@ -32,7 +34,7 @@ for model in "$@"; do
   for _ in $(seq 30); do sleep 2; named | grep -q 'Open Project' && break; done
   sleep 2; xdotool type --delay 20 "$(windows_path "$file")"; sleep 0.6; xdotool key Return; sleep 4
   for _ in $(seq 10); do [ -z "$(named)" ] && break; sleep 2; done   # the Open dialog is gone
-  seen=""; converted=0
+  seen=""; converted=0; answered=0
   for _ in $(seq 75); do                                         # DeZign can take a minute to close the project before
     d=$(dialogs | head -1)
     size=${d%%+*}; x=$(echo "$d" | cut -d+ -f2); y=$(echo "$d" | cut -d+ -f3)
@@ -46,6 +48,10 @@ for model in "$@"; do
       xdotool mousemove $((x + 258)) $((y + 96)) click 1         # "Save changes to <the project before>?": No
     elif [ "$converted" = 1 ]; then
       converted=2; crop "$d" "$out/$label-converted.png"; xdotool key Return   # "File converted succesfully.": OK
+    elif [ -n "$ANSWER_NO" ] && [ "$answered" = 0 ]; then
+      # ANSWER_NO=1: one yes/no question about the project is answered No. A project whose columns come from
+      # attribute packages this DeZign does not have asks whether to delete those columns.
+      answered=1; seen="${seen}no;"; crop "$d" "$out/$label-question.png"; xdotool mousemove $((x + 300)) $((y + 96)) click 1
     else break; fi                                               # a message about this very project
     sleep 4
   done
@@ -72,8 +78,11 @@ for model in "$@"; do
     if [ -n "$after" ]; then crop "$(dialogs | head -1)" "$out/$label-savedialog.png"; xdotool key Escape; sleep 2; xdotool key Escape; sleep 1; left="$after"; fi
     if [ -s "$back/$label.dez" ] || ls "$back/$label"/*.dezproj >/dev/null 2>&1; then ok="$ok+SAVED"; else ok="$ok+NOT-SAVED"; fi
   fi
+  if [ "$ok" = NOT-OPEN ] && [ -z "$seen$left" ] && [ "$attempt" = 1 ]; then pkill -x dezign.exe; sleep 10; continue; fi
   echo "$ok | $label | asked: ${seen:-nothing} | left open: ${left:-nothing}" | tee -a "$out/result.txt"
   # Whatever went wrong must not reach the next model: DeZign starts again.
-  case "$ok" in OPEN+SAVED) ;; *) pkill -x dezign.exe; sleep 3 ;; esac
+  case "$ok" in OPEN+SAVED) ;; *) pkill -x dezign.exe; sleep 10 ;; esac
+  break
+ done
 done
 echo DONE >> "$out/result.txt"

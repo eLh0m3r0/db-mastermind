@@ -399,6 +399,11 @@ Not a clone: their features, rethought and connected to live databases, the know
   files of DeZign 4 to 11 get their id counters (`LASTID`, `ATTRLASTID`, …) moved on with new objects
 - ⬜ Subtype clusters and the domains themselves edited from the model (today they are kept as they are)
 
+- ✅ A diagram shows its tables as DeZign does: its attribute display level (all columns, keys, primary keys,
+  first 10 or 20, names only), data types or none, and the columns hidden in one table's box. Changed in the
+  diagram's toolbar, saved into the project; codes checked by setting them in DeZign 14.9.3
+- ✅ Diagrams of a DeZign project renamed and removed (the tables stay; whatever was drawn on the diagram goes
+  with it). DeZign 14.9.3 opens the saved files and keeps them as saved
 - ✅ Archive a version (the model's "Archive version…", as DeZign's File → Versions → Archive current version): the
   project as it is saved is kept in it, in a single file as another VERSION element, in a folder project as a
   file in `archived versions`; numbered past the project's own. Byte for byte what DeZign 14.9.3 writes for the

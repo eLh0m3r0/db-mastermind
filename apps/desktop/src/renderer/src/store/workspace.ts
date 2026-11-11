@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { DesignTable, FilterNode, SortSpec, TableRef, DezignScripting, DezignSqlObject } from '@dbmastermind/core/browser'
-import type { DiagramNote, ModelDiagram, DiagramBox } from '@shared/api'
+import type { DiagramNote, ModelDiagram, DiagramBox, DiagramDisplay } from '@shared/api'
 import { api } from '@/lib/api'
 import { debounce, uid } from '@/lib/utils'
 import { t, tp } from '@/lib/i18n'
@@ -51,6 +51,8 @@ export interface DiagramTab extends BaseTab {
   notes?: DiagramNote[]
   /** Frames behind the tables (from a model's source). */
   boxes?: DiagramBox[]
+  /** What the tables show: which columns, their types, columns hidden per table (a DeZign diagram's setting). */
+  display?: DiagramDisplay
 }
 
 export interface KnowledgeTab extends BaseTab {
@@ -104,8 +106,12 @@ export interface ModelTab extends BaseTab {
   colors?: Record<string, number>
   notes?: DiagramNote[]
   boxes?: DiagramBox[]
+  /** What the tables of the model's main diagram show. */
+  display?: DiagramDisplay
   /** Named diagrams of the model (from the source): subsets of its tables with their own layout. */
   diagrams?: ModelDiagram[]
+  /** Diagrams of the source taken out here: Save takes them out of the project too. */
+  removedDiagrams?: string[]
 }
 
 /** Pinned query results; without `dashboardId` it lists the connection's dashboards. */

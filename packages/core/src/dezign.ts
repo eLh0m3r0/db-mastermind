@@ -68,7 +68,28 @@ export interface DezignDiagram {
   boxes: { id: string; title: string; x: number; y: number; w: number; h: number }[]
   /** `x = (L - originX) * scaleX`: lets a writer turn positions back into DeZign's coordinates. */
   layout: { originX: number; originY: number; scaleX: number; scaleY: number }
+  /** What the diagram's tables show (DeZign: Diagram → Entity display options). */
+  display: DezignDisplay
 }
+
+/**
+ * What a diagram's tables show. `columns` is DeZign's attribute display level (DISPLAYLEVEL 0–5: all, keys,
+ * primary keys, none, first 10, first 20), `types` its data type display (VISIBLEATTR 0 none, 1/3 the type,
+ * 2/4 the domain where the column has one), `hidden` the columns hidden in one table's box (HIDDENATTR of the
+ * diagram object), by table key. Codes checked by setting them in DeZign 14.9.3.
+ */
+export interface DezignDisplay {
+  columns: DezignColumnsShown
+  types: 'none' | 'type' | 'domain'
+  hidden?: Record<string, string[]>
+}
+export type DezignColumnsShown = 'all' | 'keys' | 'primary' | 'none' | 'first10' | 'first20'
+export const DEZIGN_COLUMNS_SHOWN: DezignColumnsShown[] = ['all', 'keys', 'primary', 'none', 'first10', 'first20']
+export const dezignDisplayOf = (displayLevel: string, visibleAttr: string): DezignDisplay => ({
+  columns: DEZIGN_COLUMNS_SHOWN[Number(displayLevel)] ?? 'all',
+  // (No setting at all: types shown, as a diagram here shows them.)
+  types: visibleAttr === '1' || visibleAttr === '3' || visibleAttr === '' ? 'type' : visibleAttr === '2' || visibleAttr === '4' ? 'domain' : 'none',
+})
 
 export interface DezignModel {
   /** `FILEFORMATVERSION`: 41, 51, 60, 120, 140… (the DeZign version times ten). */
@@ -485,8 +506,8 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const node = options.node
   const median = (values: number[]) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 1
   const allControls = kids(kid(kid(diagramsEl, 'CONTROLS'), 'ENTITYCONTROLS'), 'ENTC')
-    .map((c) => ({ diagram: kid(c, 'DIAGRAMID') ? text(c, 'DIAGRAMID') : mainId, entity: entities.get(text(c, 'ID')), x: Number(text(c, 'L')), y: Number(text(c, 'T')), w: Number(text(c, 'W')), h: Number(text(c, 'H')), fill: text(c, 'BRUSH').split(',')[1]?.trim() ?? '' }))
-    .filter((c): c is { diagram: string; entity: Entity; x: number; y: number; w: number; h: number; fill: string } => !!c.entity && Number.isFinite(c.x) && Number.isFinite(c.y))
+    .map((c) => ({ diagram: kid(c, 'DIAGRAMID') ? text(c, 'DIAGRAMID') : mainId, entity: entities.get(text(c, 'ID')), x: Number(text(c, 'L')), y: Number(text(c, 'T')), w: Number(text(c, 'W')), h: Number(text(c, 'H')), fill: text(c, 'BRUSH').split(',')[1]?.trim() ?? '', hidden: text(c, 'HIDDENATTR') }))
+    .filter((c): c is { diagram: string; entity: Entity; x: number; y: number; w: number; h: number; fill: string; hidden: string } => !!c.entity && Number.isFinite(c.x) && Number.isFinite(c.y))
   // Delphi colors are 0x00BBGGRR.
   const hex = (color: string) => {
     const n = Number(color)
@@ -500,7 +521,8 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const boxControls = [...kids(kid(kid(diagramsEl, 'CONTROLS'), 'GROUPBOXESCONTROLS')), ...kids(kid(kid(diagramsEl, 'CONTROLS'), 'GROUPBOXCONTROLS'))]
   const diagramOf = (id: string, name: string, main: boolean): DezignDiagram => {
     const controls = allControls.filter((c) => c.diagram === id)
-    const out: DezignDiagram = { id, name, main, tables: [], positions: {}, colors: {}, notes: [], boxes: [], layout: { originX: 0, originY: 0, scaleX: 1, scaleY: 1 } }
+    const element = diagrams.find((d) => text(d, 'ID') === id)
+    const out: DezignDiagram = { id, name, main, tables: [], positions: {}, colors: {}, notes: [], boxes: [], layout: { originX: 0, originY: 0, scaleX: 1, scaleY: 1 }, display: element ? dezignDisplayOf(text(element, 'DISPLAYLEVEL'), text(element, 'VISIBLEATTR')) : { columns: 'all', types: 'type' } }
     // DeZign's tables are smaller than the target's: spread the layout by the typical size ratio. A diagram
     // without tables (only notes or frames so far) keeps DeZign's own coordinates.
     const sx = node && controls.length ? Math.min(3, Math.max(1, median(controls.filter((c) => c.w > 0).map((c) => node.width / c.w)))) : 1
@@ -513,6 +535,9 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
       out.tables.push(key)
       out.positions[key] = { x: Math.round((c.x - minX) * sx), y: Math.round((c.y - minY) * sy) }
       if (c.fill && c.fill !== defaultFill && hex(c.fill)) out.colors[key] = hex(c.fill)
+      // (A list of attribute ids, comma separated, over several lines.)
+      const hidden = c.hidden.split(/[,\r\n]+/).map((id) => c.entity.columns.get(id.trim())).filter((n): n is string => !!n)
+      if (hidden.length) (out.display.hidden ??= {})[key] = hidden
     }
     for (const c of noteControls) {
       // An empty text area is still one: left out, a writer told "these are all the notes" would remove it.

@@ -12,8 +12,9 @@ const ent = (id, name, desc, pk, attrs) => el('ENT', `<NAME>${name}</NAME>\n<ID>
 const rel = (id, name, parent, child, key, fk) => el('REL', `<NAME>${name}</NAME>\n<ID>${id}</ID>\n<PARENTOBJECTID>${parent}</PARENTOBJECTID>\n<CHILDOBJECTID>${child}</CHILDOBJECTID>\n<UPDATERULE>0</UPDATERULE>\n<DELETERULE>2</DELETERULE>\n<PAIRS>\n<PAIR>\n<KEYID>${key}</KEYID>\n<FOREIGNKEYID>${fk}</FOREIGNKEYID>\n</PAIR>\n</PAIRS>`)
 const entc = (id, l, t, brush = '0,16119285') => el('ENTC', `<ID>${id}</ID>\n<DIAGRAMID>1</DIAGRAMID>\n<W>240</W>\n<H>100</H>\n<L>${l}</L>\n<T>${t}</T>\n<BRUSH>${brush}</BRUSH>`)
 const settings = el('PROJECTSETTINGS', el('COMMONSETTINGS', '<PROJECTNAME /></PROJECTNAME />\n<FILEFORMATVERSION>140</FILEFORMATVERSION>'))
-const diagram = el('DIAGRAM', '<ID>1</ID>\n<NAME>Main</NAME>\n<ISMAINDIAGRAM>1</ISMAINDIAGRAM>')
-const billing = el('DIAGRAM', '<ID>2</ID>\n<NAME>Billing</NAME>\n<ISMAINDIAGRAM>0</ISMAINDIAGRAM>')
+// (Display level 0 and data type display 3: all columns with their types, as DeZign writes them.)
+const diagram = el('DIAGRAM', '<ID>1</ID>\n<NAME>Main</NAME>\n<ISMAINDIAGRAM>1</ISMAINDIAGRAM>\n<DISPLAYLEVEL>0</DISPLAYLEVEL>\n<VISIBLEATTR>3</VISIBLEATTR>')
+const billing = el('DIAGRAM', '<ID>2</ID>\n<NAME>Billing</NAME>\n<ISMAINDIAGRAM>0</ISMAINDIAGRAM>\n<DISPLAYLEVEL>0</DISPLAYLEVEL>\n<VISIBLEATTR>3</VISIBLEATTR>')
 // "Zákazník" in Windows-1250 bytes under DeZign's Latin-1 declaration.
 const entities = [
   ent('10', 'customer', 'Z\xe1kazn\xedk, kter\xfd plat\xed \xf8\xe1dn\xec', 'A1', [attr('A1', 'id', 'BIGINT', '<NNCON>\n<VALUE>1</VALUE>\n</NNCON>'), attr('A2', 'name', 'TEXT')]),
@@ -136,6 +137,33 @@ try {
   await win.getByRole('button', { name: 'Save', exact: true }).click()
   await win.getByText(/Nothing to save/).last().waitFor({ timeout: 10000 })
   console.log('second save untouched:', readFileSync(dez, 'latin1') === after)
+
+  // A diagram's own display (as DeZign's Diagram → Entity display options), its name, and a diagram taken out.
+  await win.getByTestId('model-area').selectOption({ label: 'Billing (2)' })
+  await win.waitForTimeout(1200)
+  await win.getByTestId('diagram-columns').selectOption('primary')
+  await win.getByRole('checkbox', { name: 'Types' }).uncheck().catch(() => win.getByText('Types', { exact: true }).click())
+  await win.waitForTimeout(800)
+  const rows = await win.locator('.react-flow__node[data-id="shop.invoice"] .border-t').count()
+  console.log('billing shows primary keys only:', rows === 1, 'no types:', (await win.locator('.react-flow__node[data-id="shop.invoice"]').innerText()).includes('bigint') === false)
+  await win.getByTestId('model-area').selectOption('~rename')
+  await win.getByRole('textbox').last().fill('Fakturace')
+  await win.getByRole('button', { name: 'Rename', exact: true }).click()
+  await win.waitForTimeout(600)
+  await win.getByTestId('model-area').selectOption({ label: 'Customers (1)' })
+  await win.waitForTimeout(800)
+  await win.getByTestId('model-area').selectOption('~remove')
+  await win.getByRole('button', { name: 'Remove', exact: true }).click()
+  await win.waitForTimeout(600)
+  await win.getByRole('button', { name: 'Save', exact: true }).click()
+  await win.getByText(/Write these changes into shop\.dez\?/).waitFor({ timeout: 10000 })
+  const listed2 = await win.locator('[role="dialog"], .fixed').filter({ hasText: 'Write these changes' }).last().innerText()
+  console.log('confirm lists display, rename, removal:', /what the tables show: Fakturace/.test(listed2), /renamed diagram: Fakturace \(Billing\)/.test(listed2), /removed diagram: Customers/.test(listed2))
+  await win.getByRole('button', { name: 'Write to the DeZign file' }).click()
+  await win.getByText(/Saved to shop\.dez/).last().waitFor({ timeout: 10000 })
+  const third = readFileSync(dez, 'latin1')
+  const billing = /<DIAGRAM>\n<ID>2<\/ID>[\s\S]*?<\/DIAGRAM>/.exec(third)?.[0] ?? ''
+  console.log('in the file:', /<NAME>Fakturace<\/NAME>/.test(billing), /<DISPLAYLEVEL>2<\/DISPLAYLEVEL>/.test(billing), /<VISIBLEATTR>0<\/VISIBLEATTR>/.test(billing), 'Customers gone:', !third.includes('<NAME>Customers</NAME>'), (third.match(/<DIAGRAM>/g) ?? []).length, 'diagrams')
 
   // Notes and colors of the diagram are saved too: a recolored table and a new note are listed as changes, and a
   // tab that never loaded the file's notes (an older build) cannot remove them.

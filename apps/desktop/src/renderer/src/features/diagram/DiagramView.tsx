@@ -57,7 +57,7 @@ import { useSettings } from '@/store/settings'
 import { askAi, toast } from '@/store/ui'
 import { driverLabel } from '../connections/drivers'
 import { useWorkspace, type DiagramTab } from '@/store/workspace'
-import type { SavedDiagram, DiagramNote } from '@shared/api'
+import type { SavedDiagram, DiagramNote, DiagramDisplay } from '@shared/api'
 import { MigrationModal } from './MigrationModal'
 import { TableEditor } from './TableEditor'
 import { formatDate, t, tp, useT } from '@/lib/i18n'
@@ -74,7 +74,8 @@ interface TableNodeData extends Record<string, unknown> {
   table: TableInfo
   status: DesignStatus
   design: boolean
-  keysOnly: boolean
+  /** Which columns and what of them the box shows (a DeZign diagram's own setting, or the toolbar's). */
+  shown: Shown
   highlighted: boolean
   dimmed: boolean
   focus: boolean
@@ -84,13 +85,41 @@ interface TableNodeData extends Record<string, unknown> {
   color?: number
 }
 
-function visibleColumns(t: TableInfo, keysOnly: boolean, fkColumns: Set<string>, referenced: Set<string>) {
-  return keysOnly ? t.columns.filter((c) => c.isPrimaryKey || fkColumns.has(c.name) || referenced.has(c.name)) : t.columns
+type DezignColumnsShown = DiagramDisplay['columns']
+/** What a table box shows: DeZign's attribute display level and data type display, and columns hidden in this box. */
+export interface Shown {
+  columns: DezignColumnsShown
+  types: 'none' | 'type' | 'domain'
+  hidden?: string[]
 }
+const ALL: DiagramDisplay = { columns: 'all', types: 'type' }
+
+function visibleColumns(t: TableInfo, shown: Shown, fkColumns: Set<string>, referenced: Set<string>) {
+  const hidden = new Set(shown.hidden ?? [])
+  const cols = t.columns.filter((c) => !hidden.has(c.name))
+  switch (shown.columns) {
+    case 'keys':
+      return cols.filter((c) => c.isPrimaryKey || fkColumns.has(c.name) || referenced.has(c.name))
+    case 'primary':
+      return cols.filter((c) => c.isPrimaryKey)
+    case 'none':
+      return []
+    case 'first10':
+      return cols.slice(0, 10)
+    case 'first20':
+      return cols.slice(0, 20)
+    default:
+      return cols
+  }
+}
+/** The "+ n more columns" line: where a level leaves columns out, not where the user hid some on purpose. */
+const showsMore = (shown: Shown) => shown.columns === 'keys' || shown.columns === 'first10' || shown.columns === 'first20'
 
 const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData>>) {
-  const { table, keysOnly, fkColumns, referencedColumns } = data
-  const cols = visibleColumns(table, keysOnly, fkColumns, referencedColumns)
+  const { table, shown, fkColumns, referencedColumns } = data
+  const cols = visibleColumns(table, shown, fkColumns, referencedColumns)
+  // Relationship lines of columns the box does not show end at its header.
+  const offBox = table.columns.filter((c) => !cols.includes(c) && (fkColumns.has(c.name) || referencedColumns.has(c.name)))
   // While a key is being dragged, the whole table is where it can be dropped (a column's own dot still names that column).
   const connecting = useConnection((c) => c.inProgress)
   return (
@@ -147,12 +176,18 @@ const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData
             <span className="w-[10px] shrink-0" />
           )}
           <span className={cn('truncate', c.isPrimaryKey && 'font-semibold')}>{c.name}</span>
-          <span className="ml-auto max-w-[45%] shrink-0 truncate font-mono text-[10px] text-fg-faint">{c.dataType}</span>
+          {shown.types !== 'none' && <span className="ml-auto max-w-[45%] shrink-0 truncate font-mono text-[10px] text-fg-faint">{shown.types === 'domain' && c.domain ? c.domain : c.dataType}</span>}
           {!c.nullable && !c.isPrimaryKey && <span className="text-[9px] text-fg-faint">NN</span>}
           <Handle type="source" position={Position.Right} id={`s-${c.name}`} className={cn('!z-10 !h-1.5 !w-1.5 !min-w-0 !border-0', data.design ? '!h-2.5 !w-2.5 !bg-accent' : '!bg-transparent')} />
         </div>
       ))}
-      {keysOnly && cols.length < table.columns.length && (
+      {offBox.map((c) => (
+        <span key={c.name}>
+          <Handle type="target" position={Position.Left} id={`t-${c.name}`} isConnectable={false} className="!pointer-events-none !opacity-0" style={{ top: HEADER / 2 }} />
+          <Handle type="source" position={Position.Right} id={`s-${c.name}`} isConnectable={false} className="!pointer-events-none !opacity-0" style={{ top: HEADER / 2 }} />
+        </span>
+      ))}
+      {showsMore(shown) && cols.length < table.columns.length && (
         <div className="border-t border-line px-2.5 text-[10.5px] text-fg-faint" style={{ height: ROW, lineHeight: `${ROW}px` }}>
           + {table.columns.length - cols.length} more columns
         </div>
@@ -279,8 +314,10 @@ function neighbourhood(snapshot: SchemaSnapshot, focus: TableInfo, depth: number
 type Point = { x: number; y: number }
 
 /** Vertical center of a column's row (where its handles sit), from the node's top edge (1px border included). */
-function columnY(t: TableInfo, keysOnly: boolean, fk: Set<string>, ref: Set<string>, column: string): number {
-  const i = Math.max(0, visibleColumns(t, keysOnly, fk, ref).findIndex((c) => c.name === column))
+function columnY(t: TableInfo, shown: Shown, fk: Set<string>, ref: Set<string>, column: string): number {
+  const i = visibleColumns(t, shown, fk, ref).findIndex((c) => c.name === column)
+  // (A column the box does not show: its line ends at the header.)
+  if (i === -1) return HEADER / 2
   return 1 + HEADER + i * ROW + ROW / 2
 }
 
@@ -326,18 +363,18 @@ const RoutedEdge = memo(function RoutedEdge(props: EdgeProps<Edge<{ route?: Poin
 
 const edgeTypes = { routed: RoutedEdge }
 
-function nodeHeight(t: TableInfo, keysOnly: boolean, fk: Set<string>, ref: Set<string>): number {
-  const visible = visibleColumns(t, keysOnly, fk, ref).length
-  return HEADER + visible * ROW + (keysOnly && visible < t.columns.length ? ROW : 0) + 2
+function nodeHeight(t: TableInfo, shown: Shown, fk: Set<string>, ref: Set<string>): number {
+  const visible = visibleColumns(t, shown, fk, ref).length
+  return HEADER + visible * ROW + (showsMore(shown) && visible < t.columns.length ? ROW : 0) + 2
 }
 
-function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; modelDriver?: DriverId; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables'>>) => void }) {
+function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; modelDriver?: DriverId; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display'>>) => void }) {
   const tr = useT()
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const loadSchema = useConnections((s) => s.loadSchema)
   const openTab = useWorkspace((s) => s.open)
   const updateTab = useWorkspace((s) => s.update)
-  const patchLayout = (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables'>>) => (onLayout ? onLayout(patch) : updateTab(tab.id, patch))
+  const patchLayout = (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display'>>) => (onLayout ? onLayout(patch) : updateTab(tab.id, patch))
   const dark = useSettings((s) => s.dark)
   // A model (DBML) replaces the live schema; designing it writes the result back to the DBML text.
   const schema = model ?? runtime?.schema
@@ -349,7 +386,9 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
   const [depth, setDepth] = useState(1)
   /** Second table: show only the join path from the focused table to it. */
   const [pathTo, setPathTo] = useState<string>()
-  const [keysOnly, setKeysOnly] = useState(false)
+  // A DeZign diagram's own display setting; the toolbar changes it (and Save takes it to the project).
+  const shownAs: DiagramDisplay = tab.display ?? ALL
+  const shownFor = (key: string): Shown => ({ columns: shownAs.columns, types: shownAs.types, hidden: shownAs.hidden?.[key] })
   const [search, setSearch] = useState('')
   const [hovered, setHovered] = useState<string | null>(null)
   const [layouting, setLayouting] = useState(false)
@@ -577,7 +616,7 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
     table: d.info,
     status: d.status,
     design,
-    keysOnly,
+    shown: shownFor(d.key),
     highlighted: false,
     dimmed: false,
     focus: d.info.name === focusName,
@@ -586,7 +625,7 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
     color: tab.colors?.[d.key],
   })
   // Re-layout only when the set of tables changes, not on every edit.
-  const structure = `${liveTables.map(keyOf).join('|')}#${keysOnly}`
+  const structure = `${liveTables.map(keyOf).join('|')}#${shownAs.columns}#${JSON.stringify(shownAs.hidden ?? {})}`
 
   const layout = useCallback(async () => {
     const { display, columnSets, edges } = latest.current
@@ -627,11 +666,11 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
           return {
             id: key,
             width: WIDTH,
-            height: nodeHeight(t, keysOnly, fk, ref),
+            height: nodeHeight(t, shownFor(key), fk, ref),
             layoutOptions: { 'elk.portConstraints': 'FIXED_POS' },
             ports: [
-              ...[...out].map((c) => ({ id: `${key}::s-${c}`, x: WIDTH, y: columnY(t, keysOnly, fk, ref, c), width: 0, height: 0, layoutOptions: { 'elk.port.side': 'EAST' } })),
-              ...[...inn].map((c) => ({ id: `${key}::t-${c}`, x: 0, y: columnY(t, keysOnly, fk, ref, c), width: 0, height: 0, layoutOptions: { 'elk.port.side': 'WEST' } })),
+              ...[...out].map((c) => ({ id: `${key}::s-${c}`, x: WIDTH, y: columnY(t, shownFor(key), fk, ref, c), width: 0, height: 0, layoutOptions: { 'elk.port.side': 'EAST' } })),
+              ...[...inn].map((c) => ({ id: `${key}::t-${c}`, x: 0, y: columnY(t, shownFor(key), fk, ref, c), width: 0, height: 0, layoutOptions: { 'elk.port.side': 'WEST' } })),
             ],
           }
         }),
@@ -1061,7 +1100,22 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
             </Select>
           )
         )}
-        <Checkbox checked={keysOnly} onChange={setKeysOnly} label={tr('Keys only')} />
+        <Select
+          inputSize="sm"
+          className="h-7 w-auto text-[12px]"
+          value={shownAs.columns}
+          onChange={(e) => patchLayout({ display: { ...shownAs, columns: e.target.value as DezignColumnsShown } })}
+          title={tr('Which columns the tables show')}
+          data-testid="diagram-columns"
+        >
+          <option value="all">{tr('All columns')}</option>
+          <option value="keys">{tr('Keys only')}</option>
+          <option value="primary">{tr('Primary keys')}</option>
+          <option value="first10">{tr('First 10 columns')}</option>
+          <option value="first20">{tr('First 20 columns')}</option>
+          <option value="none">{tr('Table names only')}</option>
+        </Select>
+        <Checkbox checked={shownAs.types !== 'none'} onChange={(on) => patchLayout({ display: { ...shownAs, types: on ? 'type' : 'none' } })} label={tr('Types')} />
         {!design && (
           <span className="shrink-0 text-[11.5px] text-fg-faint">
             {tp(tables.length, { one: '{n} table', many: '{n} tables' })} · {tp(edges.length, { one: '{n} relationship', many: '{n} relationships' })}
@@ -1453,7 +1507,7 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
   )
 }
 
-export function DiagramView({ tab, model, modelDriver, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables'>>) => void }) {
+export function DiagramView({ tab, model, modelDriver, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display'>>) => void }) {
   return (
     <ReactFlowProvider>
       <DiagramInner tab={tab} model={model} modelDriver={modelDriver} onApplyModel={onApplyModel} onLayout={onLayout} />

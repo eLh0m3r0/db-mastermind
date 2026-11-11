@@ -93,7 +93,7 @@ try {
   await win.waitForTimeout(4000)
   console.log(tag, 'demo:', JSON.stringify(await crossings()), 'routed', await win.locator('path.dbm-routed').count(), 'stepped', await win.locator('path.dbm-stepped').count())
   await win.screenshot({ path: `${out}/r22-demo-${tag}.png` })
-  await win.getByRole('checkbox', { name: 'Keys only' }).check().catch(() => win.getByText('Keys only').click())
+  await win.getByTestId('diagram-columns').selectOption('keys')
   await win.waitForTimeout(3000)
   console.log(tag, 'demo keys only:', JSON.stringify(await crossings()))
 } catch (err) {
