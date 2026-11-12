@@ -168,7 +168,11 @@ const TYPE_ALIASES: [RegExp, string][] = [
 const normType = (type: string) => {
   const t = type.toLowerCase().replace(/\s+/g, ' ').replace(/\s*([(),])\s*/g, '$1').trim()
   const named = TYPE_ALIASES.find(([pattern]) => pattern.test(t))
-  return (named ? t.replace(named[0], named[1]) : t).replace(/^numeric\((\d+)\)$/, 'numeric($1,0)')
+  return (named ? t.replace(named[0], named[1]) : t)
+    .replace(/^numeric\((\d+)\)$/, 'numeric($1,0)')
+    // SQL Server's default precision of its date and time types, written out or not.
+    .replace(/^(datetime2|datetimeoffset|time)\(7\)$/, '$1')
+    .replace(/^float\(53\)$/, 'float')
 }
 /** A bare `numeric` is the database's default precision: 10 digits in MySQL, 18 in SQL Server, any number in PostgreSQL. */
 const typesDiffer = (model: string, database: string) => {
@@ -193,7 +197,7 @@ const normDefault = (value: string | null | undefined) => {
     if (/^\((.*)\)$/s.test(v) && balanced(v.slice(1, -1))) v = v.slice(1, -1).trim()
   }
   if (/^(now\(\)|current_timestamp(\(\))?|localtimestamp|getdate\(\)|sysdatetime\(\))$/i.test(v)) return 'now()'
-  if (/^(current_date|curdate\(\)|cast\(getdate\(\) as date\)|trunc\(sysdate\))$/i.test(v)) return 'current_date'
+  if (/^(current_date|curdate\(\)|cast\(getdate\(\) as date\)|convert\(\s*["[]?date["\]]?\s*,\s*getdate\(\)\s*\)|trunc\(sysdate\))$/i.test(v)) return 'current_date'
   if (/^n'.*'$/is.test(v)) v = v.slice(1)
   // MySQL takes "…" for a string as well.
   if (/^"[^"']*"$/.test(v)) v = `'${v.slice(1, -1)}'`

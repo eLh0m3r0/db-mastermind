@@ -93,6 +93,10 @@ jobs:
         run: |
           scripts/tls-test-servers.sh "$RUNNER_TEMP/tls" "${{ job.services.postgres.network }}"
           echo "DBM_TLS_DIR=$RUNNER_TEMP/tls" >> "$GITHUB_ENV"
+      - name: sqlpackage (SQL Server's own scripting of a database, for the dump test)
+        run: |
+          for i in 1 2 3; do dotnet tool install --global microsoft.sqlpackage --version 170.5.96 && break; sleep $((i * 15)); done
+          echo "DBM_SQLPACKAGE=$HOME/.dotnet/tools/sqlpackage" >> "$GITHUB_ENV"
       - run: npm run test:integration
       - name: Build desktop bundles
         run: npx electron-vite build

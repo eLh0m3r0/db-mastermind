@@ -49,6 +49,23 @@ describe('DDL import', () => {
     expect([t('items').schema, t('items').columns.map((c) => c.dataType), t('items').columns[0]!.isIdentity]).toEqual([undefined, ['int', 'tinyint(1)', 'text', 'varchar(50)'], true])
   })
 
+  it('reads a SQL Server script as sqlpackage writes it', async () => {
+    const { tables, skipped } = await tablesFromDdl(`CREATE TABLE [dbo].[shift] (
+    [id]      INT                IDENTITY (1, 1) NOT NULL,
+    [opens]   TIME (7)           NULL,
+    [day]     DATE               CONSTRAINT [DF_shift_day] DEFAULT (CONVERT([date],getdate())) NOT NULL,
+    [rate]    FLOAT (53)         NULL,
+    [at]      DATETIMEOFFSET (7) NULL,
+    CONSTRAINT [PK_shift] PRIMARY KEY CLUSTERED ([id] ASC)
+);
+
+GO
+`)
+    expect(skipped).toEqual([])
+    const model = parseDbml("Table dbo.shift {\n  id int [pk, increment]\n  opens time\n  day date [not null, default: `CAST(GETDATE() AS date)`]\n  rate float\n  at datetimeoffset\n}\n").tables
+    expect(compareSchemas(model, tables).map((c) => `${c.kind} ${'column' in c ? c.column : ''}`)).toEqual([])
+  })
+
   it('takes foreign keys as written: cycles, a table that references itself, actions', async () => {
     const { tables, skipped } = await tablesFromDdl(`
       CREATE TABLE a (id integer PRIMARY KEY, b_id integer NOT NULL, CONSTRAINT a_b FOREIGN KEY (b_id) REFERENCES b (id) ON DELETE CASCADE);

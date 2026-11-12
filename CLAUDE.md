@@ -71,6 +71,7 @@ npm run dev                   # desktop app with HMR
   don't compare across types). Its dialect has empty begin/commit: code that wraps scripts must skip empty ones.
   Rows are read-only (no primary key reported; the sorting key shows as an `ORDER BY` index).
 - New dependencies: pin an exact version published at least two weeks ago.
+- Model vs. SQL script (core/ddl-import.ts): DuckDB reads a script's structure, but types, schemas, identities, defaults, comments and foreign keys are taken from the script's own text (`asDeclared`, `withoutForeignKeys`); text inside literals is never rewritten (`outsideStrings`). `ddl-dump.integration.test.ts` dumps a model's database with the databases' own tools and reads it back: pg_dump/mysqldump through `docker exec`, SQL Server's sqlpackage through `DBM_SQLPACKAGE` (CI: `dotnet tool install -g microsoft.sqlpackage`) or `DBM_SQLPACKAGE_IN_CONTAINER` (the linux-x64 zip from aka.ms/sqlpackage-linux copied into the mssql container: on an ARM Mac it runs only there).
 - Things that touch the user's machine in tests (MCP client configs, DataGrip, team folders) run against a temp
   `HOME` / `DBM_USER_DATA`; never against the real configuration.
 - electron-updater is CommonJS with a lazy `autoUpdater` export: load it through `loadAutoUpdater()` (falls back to

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareSchemas, createScript, designId, dropScript, findChangedChecks, diffTable, generateMigration, getDialect, guessRenames, impactChecks, liquibaseChangelog, migrationScript, parseDbml, toDesignTable, type TableInfo } from '../src/index.js'
+import { compareSchemas, createScript, designId, dropScript, findChangedChecks, diffTable, generateMigration, getDialect, guessRenames, impactChecks, liquibaseChangelog, migrationScript, parseDbml, sameType, toDesignTable, type TableInfo } from '../src/index.js'
 
 const orders: TableInfo = {
   schema: 'public',
@@ -111,6 +111,16 @@ describe('schema diff & migration', () => {
     const m = generateMigration(diffTable(orders, draft), getDialect('postgres'))
     expect(m.statements).toEqual(['DROP TABLE "public"."orders"'])
     expect(m.warnings[0]!.level).toBe('danger')
+  })
+})
+
+describe('sameType', () => {
+  it("knows SQL Server's default precision of datetime2 and datetimeoffset", () => {
+    expect(sameType('datetime2', 'datetime2(7)')).toBe(true)
+    expect(sameType('DATETIMEOFFSET(7)', 'datetimeoffset')).toBe(true)
+    expect(sameType('datetime2(3)', 'datetime2')).toBe(false)
+    expect(sameType('time(7)', 'time')).toBe(true)
+    expect(sameType('float(53)', 'float')).toBe(true)
   })
 })
 

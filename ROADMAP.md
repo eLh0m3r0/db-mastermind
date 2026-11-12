@@ -429,8 +429,8 @@ Not a clone: their features, rethought and connected to live databases, the know
   production, as DeZign's "compare model to SQL script"): the changes and the ALTER script. The script is read as
   it declares its tables — types with their lengths, schemas, identities (also pg_dump's separate `ADD GENERATED`
   and `nextval` defaults), defaults, comments (MySQL `COMMENT`, SQL Server `MS_Description`), foreign keys with
-  their actions, references between schemas and in cycles. Tested on real dumps: a model created in PostgreSQL and
-  MySQL, dumped by pg_dump/mysqldump, reads back with no difference (`ddl-dump.integration.test.ts`; a real
+  their actions, references between schemas and in cycles. Tested on real dumps: a model created in PostgreSQL,
+  MySQL and SQL Server, dumped by pg_dump, mysqldump and Microsoft's sqlpackage, reads back with no difference (`ddl-dump.integration.test.ts`; a real
   project of hundreds of tables too). "Import SQL…" reads scripts the same way
 - ✅ A PostgreSQL model's script for MySQL and SQL Server runs there: serial becomes an identity integer (one per
   table where the database allows only one; in MySQL it leads a unique key), `time with time zone` the time,

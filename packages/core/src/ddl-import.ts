@@ -49,6 +49,8 @@ function normalize(sql: string): string {
       .replace(/\bWITH\s*\((?:[^()]|\([^)]*\))*\)\s*(ON\s+"?PRIMARY"?)?/gi, '')
       .replace(/\bON\s+PRIMARY\b/gi, '')
       .replace(/\bCLUSTERED\b|\bNONCLUSTERED\b/gi, '')
+      // DuckDB's TIME takes no precision (SQL Server writes time(7)); the script's own type is kept (asDeclared).
+      .replace(/\bTIME\s*\(\s*\d+\s*\)/gi, 'TIME')
       .replace(/\bDATETIME2\b|\bSMALLDATETIME\b/gi, 'TIMESTAMP')
       .replace(/\bDATETIME\b/gi, 'TIMESTAMP')
       .replace(/\b(TINYTEXT|MEDIUMTEXT|LONGTEXT|NTEXT)\b/gi, 'TEXT')

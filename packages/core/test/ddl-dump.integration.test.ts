@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { assembleDezignProject, compareSchemas, createScript, DatabaseService, dezignDriver, dezignMigrationOptions, getDialect, parseDbml, readDezign, tablesFromDdl, toDbml, translateTables, unquotedNames, type ConnectionConfig, type DriverId, type TableInfo } from '../src/index.js'
@@ -115,9 +116,36 @@ for (const driver of ['postgres', 'mysql'] as const) {
   })
 }
 
-// SQL Server has no dump tool in its container: the models are created there, translated, without a failure.
-describe.skipIf(skipped.includes('mssql') || !containerFor(14339))('a model translated for SQL Server is created there', () => {
-  it('runs every statement of the CREATE script', { timeout: 600_000 }, async () => {
+// SQL Server: the models are created there, translated, without a failure. With Microsoft's sqlpackage the
+// database is also scripted by it (`/Action:Extract /p:ExtractTarget=File`) and that script must read back as the
+// translated model. DBM_SQLPACKAGE: the tool on this machine (CI: `dotnet tool install -g microsoft.sqlpackage`);
+// DBM_SQLPACKAGE_IN_CONTAINER: its path inside the SQL Server container (Linux x64 only, so on an ARM Mac).
+const msContainer = skipped.includes('mssql') ? undefined : containerFor(14339)
+const sqlpackage = process.env.DBM_SQLPACKAGE
+const sqlpackageInContainer = process.env.DBM_SQLPACKAGE_IN_CONTAINER
+
+/** The database as sqlpackage scripts it. */
+function scriptedBySqlpackage(database: string, password: string): string {
+  const options = (server: string, file: string) => ['/Action:Extract', `/SourceServerName:${server}`, `/SourceDatabaseName:${database}`, '/SourceUser:sa', `/SourcePassword:${password}`, '/SourceTrustServerCertificate:True', `/TargetFile:${file}`, '/p:ExtractTarget=File', '/Quiet:True']
+  if (sqlpackage) {
+    const dir = mkdtempSync(join(tmpdir(), 'dbm-sqlpackage-'))
+    try {
+      execFileSync(sqlpackage, options('localhost,14339', join(dir, 'db.sql')), { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+      return readFileSync(join(dir, 'db.sql'), 'utf8')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+  const file = `/tmp/${database}.sql`
+  execFileSync('docker', ['exec', msContainer!, sqlpackageInContainer!, ...options('localhost', file)], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  try {
+    return execFileSync('docker', ['exec', msContainer!, 'cat', file], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
+  } finally {
+    execFileSync('docker', ['exec', msContainer!, 'rm', '-f', file])
+  }
+}
+describe.skipIf(!msContainer)('a model translated for SQL Server is created there', () => {
+  it('runs every statement of the CREATE script', { timeout: 1_200_000 }, async () => {
     const svc = new DatabaseService()
     const server: ConnectionConfig = { id: 'dump-ms', name: 'dump', driver: 'mssql', host: '127.0.0.1', port: 14339, user: 'sa', password: 'Mastermind!2026', database: 'master', options: { trustServerCertificate: true } }
     const failures: string[] = []
@@ -137,6 +165,18 @@ describe.skipIf(skipped.includes('mssql') || !containerFor(14339))('a model tran
         const live = (await svc.schema(config.id, true)).tables.filter((t) => t.type === 'table').length
         report(`${model.label} mssql: tables=${tables.length} created=${live} failed=${failed}`)
         if (failed || live !== tables.length) failures.push(`${model.label}: ${failed} failed, ${live}/${tables.length} tables`)
+        if ((sqlpackage || sqlpackageInContainer) && !failed) {
+          const dump = scriptedBySqlpackage(space, server.password!)
+          const read = await tablesFromDdl(dump)
+          const expected = translateTables(tables, 'mssql', model.driver)
+          const changes = compareSchemas(expected, read.tables)
+          const kinds: Record<string, number> = {}
+          for (const c of changes) kinds[c.kind] = (kinds[c.kind] ?? 0) + 1
+          for (const x of read.skipped) report(`${model.label} sqlpackage skipped: ${x.sql.trim().split(/\s+/).slice(0, 2).join(' ').toUpperCase().replace(/[^A-Z ]/g, '')} | ${x.error.replace(/"[^"]*"|'[^']*'/g, 'Q').split(/\s+/).slice(0, 12).map((w) => (/^[A-Z][a-z]+:?$|^[a-z]{1,9}[:!.,]?$|^[A-Z_]{2,}$|^Q$/.test(w) && !/_/.test(w) ? w : 'x')).join(' ')}`)
+          if (process.env.DBM_DUMP_SHAPES) for (const c of changes as any[]) report(`${model.label} SHAPE ${c.kind} ${c.kind === 'alter_column' ? `${Object.entries(c.changes).filter(([, v]) => v).map(([k]) => k).join('+')} ${c.after.dataType}→${c.before.dataType} default ${c.after.defaultValue == null ? 'none' : String(c.after.defaultValue).replace(/[A-Za-z_]\w*/g, (w: string) => (/^(cast|getdate|sysdatetime|date|as|null)$/i.test(w) ? w : 'x'))}→${c.before.defaultValue == null ? 'none' : String(c.before.defaultValue).replace(/[A-Za-z_]\w*/g, (w: string) => (/^(cast|getdate|sysdatetime|date|as|null|convert)$/i.test(w) ? w : 'x'))} comment ${(c.after.comment ?? '').length}→${(c.before.comment ?? '').length}` : ''}`)
+          report(`${model.label} sqlpackage: read=${read.tables.length} skipped=${read.skipped.length} differences=${JSON.stringify(kinds)}`)
+          if (read.skipped.length || changes.length) failures.push(`${model.label}: sqlpackage script skipped ${read.skipped.length}, differences ${JSON.stringify(kinds)}`)
+        }
         await svc.disconnect(config.id)
         await svc.runScript(server.id, `DROP DATABASE IF EXISTS ${space}`)
       }
