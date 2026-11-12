@@ -174,6 +174,11 @@ export interface NewDezignOptions {
   newId?: () => string
   /** The date written as created and modified (default: today). */
   today?: string
+  /**
+   * Named types the columns follow (`ColumnInfo.domain`): made in the project first. A column that follows a
+   * domain not listed here has its own type.
+   */
+  domains?: { name: string; dataType: string }[]
 }
 
 /** The content of a new `.dez` file (a binary string, one char per byte) holding `tables`. */
@@ -199,6 +204,10 @@ export function newDezignProject(tables: TableInfo[], options: NewDezignOptions 
   const inWestern = new Set(Array.from({ length: 128 }, (_, i) => western.decode(Uint8Array.of(i + 128))))
   const encoding = [...all].some((ch) => ch.codePointAt(0)! > 127 && !inWestern.has(ch)) ? 'windows-1250' : 'windows-1252'
   const empty = emptyProject(DEZIGN_DATABASES[database], newId(), newId(), options.today ?? new Date().toISOString().slice(0, 10))
-  const saved = saveToDezign([{ path: 'model.dez', text: empty }], [], real, { positions, encoding, newId })
+  // Domains as the target database writes their types; a column that follows one the project will not have keeps its own type.
+  const domains = (options.domains ?? []).map((d) => ({ ...d, dataType: translateTables([{ name: 'd', type: 'table', columns: [{ name: 'c', ordinal: 1, dataType: d.dataType, nullable: true, isPrimaryKey: false, isIdentity: false }], primaryKey: [], foreignKeys: [], indexes: [] }], database)[0]!.columns[0]!.dataType }))
+  const known = new Set(domains.map((d) => d.name.toLowerCase()))
+  const typed = real.map((t) => ({ ...t, columns: t.columns.map((c) => (c.domain && !known.has(c.domain.toLowerCase()) ? { ...c, domain: undefined } : c)) }))
+  const saved = saveToDezign([{ path: 'model.dez', text: empty }], [], typed, { positions, encoding, newId, domains })
   return saved.files[0]?.text ?? empty
 }

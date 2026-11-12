@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { copyFile, mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative } from 'node:path'
 import { app } from 'electron'
-import { archiveDezignVersion, assembleDezignProject, dezignAsFolder, dezignDatabaseFor, listDezignVersions, newDezignProject, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '@dbmastermind/core'
+import { archiveDezignVersion, assembleDezignProject, dezignAsFolder, dezignDomainsNote, dezignDomainsOfModel, dezignDatabaseFor, listDezignVersions, newDezignProject, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '@dbmastermind/core'
 import type { DezignSaveOutcome, DezignSaveRequest, ModelExportLayout, ModelVersion, OpenedModelFile } from '@shared/api'
 import { dataPath } from './storage'
 import { paletteFill, paletteIndex } from './palette'
@@ -51,9 +51,7 @@ export async function openDezignModel(path: string): Promise<OpenedModelFile> {
   const { model } = read(await load(path), isProject(path))
   const plain = toDbml(model.tables)
   // The project's domains are listed in the model as a note: a column follows one through its `domain` setting.
-  const domains = model.domains.length
-    ? [`Note domains {\n'''\nDomains of the DeZign project. A column follows one with [domain: 'name'] and has its type:\n${model.domains.map((d) => `  ${d.name}: ${d.dataType}`).join('\n')}\n'''\n}`]
-    : []
+  const domains = model.domains.length ? [dezignDomainsNote(model.domains)] : []
   const text = toDbml(model.tables, { extras: domains })
   return {
     path,
@@ -165,7 +163,8 @@ export async function exportDezignModel(path: string, dbml: string, layout: Mode
   if (model.errors.length) throw new Error(`The model has errors (line ${model.errors[0]!.line}): fix them before saving.`)
   // Tables without a schema sit under the connection's default schema in the window's diagram.
   const positions = Object.fromEntries(Object.entries(layout.positions ?? {}).map(([key, p]) => [layout.defaultSchema && key.startsWith(`${layout.defaultSchema}.`) ? key.slice(layout.defaultSchema.length) : key, p]))
-  const text = newDezignProject(model.tables, { database: dezignDatabaseFor(layout.driver), positions })
+  // The model's domains are made in the new project, so its columns can follow them there too.
+  const text = newDezignProject(model.tables, { database: dezignDatabaseFor(layout.driver), positions, domains: dezignDomainsOfModel(dbml) })
   if (extname(path).toLowerCase() === '.dezproj') {
     const name = basename(path, extname(path))
     const dir = join(dirname(path), name)

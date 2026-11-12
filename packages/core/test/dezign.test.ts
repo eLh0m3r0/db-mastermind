@@ -3,7 +3,7 @@ import { diagramsAsLoaded, mutate, mutateDiagrams, random } from './dezign-fuzz.
 
 // More chains for a long local run: DBM_FUZZ_CHAINS=500 npx vitest run --root packages/core test/dezign.test.ts
 const CHAINS = Number(process.env.DBM_FUZZ_CHAINS) || 0
-import { applyDezignSave, archiveDezignVersion, assembleDezignProject, dezignAsFolder, compareSchemas, createScript, detectDezignEncoding, dezignDriver, dezignFolderAsVersion, dezignIntegrity, dezignMigrationOptions, dezignWrapScript, generateMigration, getDialect, unquotedNames, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
+import { applyDezignSave, archiveDezignVersion, assembleDezignProject, dezignAsFolder, dezignDomainsOfModel, withDezignDomains, compareSchemas, createScript, detectDezignEncoding, dezignDriver, dezignFolderAsVersion, dezignIntegrity, dezignMigrationOptions, dezignWrapScript, generateMigration, getDialect, unquotedNames, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 // Hand-written models in DeZign's layout (no file from a real project is kept in the repository).
 const attr = (id: string, name: string, type: string, extra = '', more = '') =>
@@ -1465,6 +1465,17 @@ Ref: shop.orders.customer_id > shop.customers.id [delete: cascade]
 
   // DeZign makes names from their templates again when it opens a project (seen in 14.9.3: `orders_by_customer`
   // came back as `IDX_orders_1`). Its own files keep a typed name as its own template.
+  it('makes the model\'s domains in a new project, and its columns follow them there', () => {
+    const dbml = withDezignDomains("Table shop.account {\n  id integer [pk]\n  balance numeric(12,2) [domain: 'money_t']\n  note text [domain: 'gone_t']\n}", [{ name: 'money_t', dataType: 'numeric(12,2)' }])
+    expect(dezignDomainsOfModel(dbml)).toEqual([{ name: 'money_t', dataType: 'numeric(12,2)' }])
+    const file = newDezignProject(parseDbml(dbml).tables, { domains: dezignDomainsOfModel(dbml) })
+    const read = readDezign(file)
+    expect(read.domains).toEqual([{ name: 'money_t', dataType: 'numeric(12,2)' }])
+    // (A domain the model does not list: the column keeps its own type.)
+    expect(read.tables[0]!.columns.map((c) => `${c.name} ${c.domain ?? '-'}`)).toEqual(['id -', 'balance money_t', 'note -'])
+    expect(withDezignDomains(dbml, [])).not.toContain('Note domains')
+  })
+
   it('writes a typed name as its own template, and a name the project\'s pattern gives with the pattern', () => {
     const file = make()
     const pair = (name: string) => new RegExp(`<NAME>${name}</NAME>\\s*<NAMETEMPLATE>([^<]*)</NAMETEMPLATE>`).exec(file)?.[1]

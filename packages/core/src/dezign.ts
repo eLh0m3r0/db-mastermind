@@ -713,3 +713,29 @@ export function listDezignVersions(binary: string, options: Pick<ReadDezignOptio
     return { number: field('VERSIONNUMBER'), label: field('VERSIONLABEL'), date: field('VERSIONDATE'), comments: field('VERSIONCOMMENTS') }
   })
 }
+
+// A DeZign model opens with its domains listed in a note, one `  name: type` line each: that note is the model's
+// list of domains (a column follows one with `[domain: 'name']`), so the text stays the one thing holding the model.
+const DOMAINS_NOTE = /Note domains \{\r?\n'''\r?\n[^\n]*\n([\s\S]*?)\r?\n'''\r?\n\}/
+const DOMAINS_HEADER = "Domains of the DeZign project. A column follows one with [domain: 'name'] and has its type:"
+
+/** The domains a model's domains note lists. */
+export function dezignDomainsOfModel(dbml: string): { name: string; dataType: string }[] {
+  return (DOMAINS_NOTE.exec(dbml)?.[1] ?? '')
+    .split(/\r?\n/)
+    .map((line) => /^ {2}(.+?): (.+)$/.exec(line))
+    .filter((m): m is RegExpExecArray => !!m)
+    .map((m) => ({ name: m[1]!.trim(), dataType: m[2]!.trim() }))
+}
+
+/** The domains note for `domains` ('' for none). */
+export function dezignDomainsNote(domains: { name: string; dataType: string }[]): string {
+  return domains.length ? `Note domains {\n'''\n${DOMAINS_HEADER}\n${domains.map((d) => `  ${d.name}: ${d.dataType}`).join('\n')}\n'''\n}` : ''
+}
+
+/** The model with its domains note saying `domains` (added at the end when it has none). */
+export function withDezignDomains(dbml: string, domains: { name: string; dataType: string }[]): string {
+  const note = dezignDomainsNote(domains)
+  if (DOMAINS_NOTE.test(dbml)) return dbml.replace(DOMAINS_NOTE, note)
+  return note ? `${dbml.replace(/\s*$/, '')}\n\n${note}\n` : dbml
+}

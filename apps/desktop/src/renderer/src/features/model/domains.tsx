@@ -4,6 +4,7 @@ import { Button, IconButton } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { useT } from '@/lib/i18n'
+import { dezignDomainsOfModel, withDezignDomains } from '@dbmastermind/core/browser'
 
 /** A domain of a DeZign project: a named type that columns follow (`[domain: 'name']`). */
 export interface ModelDomainDef {
@@ -11,26 +12,9 @@ export interface ModelDomainDef {
   dataType: string
 }
 
-// The note a DeZign model opens with lists its domains, one `  name: type` line each (see main/dezign-file.ts):
-// that note is the model's list of domains, so the text stays the one thing that holds the model.
-const NOTE = /Note domains \{\n'''\n[^\n]*\n([\s\S]*?)\n'''\n\}/
-const HEADER = "Domains of the DeZign project. A column follows one with [domain: 'name'] and has its type:"
-
-export function domainsOfText(text: string): ModelDomainDef[] {
-  const body = NOTE.exec(text)?.[1] ?? ''
-  return body
-    .split('\n')
-    .map((line) => /^ {2}(.+?): (.+)$/.exec(line))
-    .filter((m): m is RegExpExecArray => !!m)
-    .map((m) => ({ name: m[1]!.trim(), dataType: m[2]!.trim() }))
-}
-
-/** The text with its domains note saying `domains` (added at the end when it has none). */
-export function withDomains(text: string, domains: ModelDomainDef[]): string {
-  const note = domains.length ? `Note domains {\n'''\n${HEADER}\n${domains.map((d) => `  ${d.name}: ${d.dataType}`).join('\n')}\n'''\n}` : ''
-  if (NOTE.test(text)) return text.replace(NOTE, note)
-  return note ? `${text.replace(/\s*$/, '')}\n\n${note}\n` : text
-}
+// The model's domains note is its list of domains (core: dezignDomainsOfModel).
+export const domainsOfText = (text: string): ModelDomainDef[] => dezignDomainsOfModel(text)
+export const withDomains = (text: string, domains: ModelDomainDef[]): string => withDezignDomains(text, domains)
 
 /**
  * The project's domains: a new type for one of them goes to every column that follows it (as DeZign propagates
