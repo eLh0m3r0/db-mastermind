@@ -139,6 +139,15 @@ try {
   await write()
   text = await modelText()
   console.log('copy and paste:', /Table shop\.invoice /.test(copied) && /Table shop\.line /.test(copied), /Table shop\.invoice_copy/.test(text), /shop\.line_copy\.invoice_id > shop\.invoice_copy\.id/.test(text))
+
+  // ⌘A selects every table; the zoom shows as a percentage and goes back to 100 % on a click.
+  await win.locator('.react-flow__pane:visible').click({ position: { x: 20, y: 20 } })
+  await win.keyboard.press('Meta+a')
+  const all = await win.locator('.react-flow__node.selected:visible').count()
+  const zoomBefore = await win.getByTestId('zoom-level').innerText()
+  await win.getByTestId('zoom-level').click()
+  await win.waitForTimeout(400)
+  console.log('select all and zoom:', all === (await win.locator('.react-flow__node:visible').count()), /%/.test(zoomBefore), (await win.getByTestId('zoom-level').innerText()).trim() === '100 %')
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow97.png') })
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])

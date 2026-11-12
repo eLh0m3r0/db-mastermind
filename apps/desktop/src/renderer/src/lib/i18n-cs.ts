@@ -927,6 +927,7 @@ export const cs: Record<string, string> = {
   'Could not save the model': 'Model se nepodařilo uložit',
   'Could not open the model': 'Model se nepodařilo otevřít',
   'Open this version': 'Otevřít tuto verzi',
+  'Back to 100 %': 'Zpět na 100 %',
   'Objects': 'Objekty',
   'Text (DBML)': 'Text (DBML)',
   'The model’s tables, relationships, domains and views': 'Tabulky, vazby, domény a pohledy modelu',

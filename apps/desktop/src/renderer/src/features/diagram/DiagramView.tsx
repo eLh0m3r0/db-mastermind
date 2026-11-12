@@ -17,6 +17,7 @@ import {
   useConnection,
   useNodesState,
   useReactFlow,
+  useViewport,
   type Edge,
   type EdgeProps,
   type Node,
@@ -300,6 +301,19 @@ const EXPORT_STYLE_PROPERTIES = [
   '--text-muted', '--text-faint', '--warning', '--bg', '--bg-subtle', '--bg-elevated', '--accent', '--accent-soft', '--border', '--border-strong',
 ]
 const isNote = (id: string) => id.startsWith('note:')
+
+/** The zoom as a percentage (DeZign shows it too); a click goes back to 100 %. */
+function ZoomLevel() {
+  const { zoom } = useViewport()
+  const flow = useReactFlow()
+  return (
+    <Panel position="bottom-left" className="!mb-2 !ml-14">
+      <button type="button" className="rounded border border-line bg-elevated px-1.5 py-0.5 font-mono text-[11px] text-fg-muted hover:text-fg" title={t('Back to 100 %')} onClick={() => void flow.zoomTo(1, { duration: 200 })} data-testid="zoom-level">
+        {Math.round(zoom * 100)} %
+      </button>
+    </Panel>
+  )
+}
 
 /** Asked from outside the canvas (the model's object browser); `n` makes the same request again a new one. */
 export type DiagramRequest = ({ kind: 'locate'; key: string } | { kind: 'table'; key: string } | { kind: 'relationship'; key: string; fk: string }) & { n: number }
@@ -1069,11 +1083,19 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, re
       if (outside(e)) return
       if (clip.current.paste(e.clipboardData?.getData('text/plain') ?? '')) e.preventDefault()
     }
+    // ⌘A: every table of the canvas.
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'a' || outside(e)) return
+      e.preventDefault()
+      setNodes((list) => list.map((n) => (isNote(n.id) || n.selected ? n : { ...n, selected: true })))
+    }
     window.addEventListener('copy', onCopy)
     window.addEventListener('paste', onPaste)
+    window.addEventListener('keydown', onKey)
     return () => {
       window.removeEventListener('copy', onCopy)
       window.removeEventListener('paste', onPaste)
+      window.removeEventListener('keydown', onKey)
     }
   }, [model, onApplyModel])
   // A request from the object browser: show the table (selected, in the middle), or open a dialog.
@@ -1825,11 +1847,15 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, re
           minZoom={0.05}
           maxZoom={2}
           proOptions={{ hideAttribution: true }}
+          // A model handles as in DeZign: dragging on the empty canvas selects tables, the wheel (two fingers)
+          // scrolls, ⌘ with the wheel zooms. A database's diagram keeps the usual drag-to-pan.
+          {...(model && onApplyModel ? { selectionOnDrag: true, panOnDrag: [1], panOnScroll: true, zoomActivationKeyCode: 'Meta' } : {})}
           onlyRenderVisibleElements={tables.length > 80}
           defaultEdgeOptions={{ markerEnd: { type: MarkerType.Arrow } }}
         >
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--border-strong)" />
           <Controls showInteractive={false} />
+          <ZoomLevel />
           {selectedCount >= 2 && (
             // Several tables selected (Shift-drag a box, or ⌘-click): line them up or spread them evenly.
             <Panel position="top-center" className="flex items-center gap-0.5 rounded-lg border border-line bg-elevated px-1.5 py-1 shadow-md" data-testid="arrange-bar">
