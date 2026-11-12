@@ -397,6 +397,8 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ A copied column, table or relationship does not take its neighbour's labels, custom properties, character
   set or relationship phrases; a dropped table takes the lines from views to it along (DeZign 14.5 draws views);
   files of DeZign 4 to 11 get their id counters (`LASTID`, `ATTRLASTID`, …) moved on with new objects
+- ✅ The diagram of a DeZign project draws relationships as DeZign does: identifying ones (the parent's key is part
+  of the child's key) solid, the others dashed
 - ⬜ Subtype clusters edited from the model (today they are kept as they are)
 
 - ✅ The DROP script DeZign writes next to the CREATE one (SQL DDL → DROP script…): views, then the tables in an

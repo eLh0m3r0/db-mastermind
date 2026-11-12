@@ -127,7 +127,12 @@ try {
   await win.waitForTimeout(500)
   const versionView = await win.evaluate(() => ({ nodes: [...document.querySelectorAll('.react-flow__node')].filter((e) => e.offsetParent !== null).length, text: [...document.querySelectorAll('.cm-content')].filter((e) => e.offsetParent !== null).map((e) => e.innerText).join('\n') }))
   console.log('open the archived version:', versionView.nodes >= 2, /Table shop\.customer/.test(versionView.text), !/money_t/.test(versionView.text), readFileSync(dez, 'latin1') === domainFile)
+  const dashed = () => win.evaluate(() => [...document.querySelectorAll('.react-flow__edge path')].filter((e) => e.getBoundingClientRect().width > 0 && /stroke-dasharray:\s*6/.test(e.getAttribute('style') ?? '')).length)
+  const dashedInVersion = await dashed()
   await win.getByText('shop.dez', { exact: true }).first().click()
+  await win.waitForTimeout(600)
+  // As DeZign draws it: a relationship whose key is not part of the child's key is dashed.
+  console.log('non-identifying dashed in the project, not in a plain model:', (await dashed()) > 0, dashedInVersion === 0)
 
   // The project's begin and end scripts go around the DDL made for its own database.
   await win.getByRole('button', { name: /^SQL DDL/ }).click()

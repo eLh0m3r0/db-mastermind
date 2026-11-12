@@ -381,7 +381,7 @@ function nodeHeight(t: TableInfo, shown: Shown, fk: Set<string>, ref: Set<string
   return HEADER + visible * ROW + (showsMore(shown) && visible < t.columns.length ? ROW : 0) + 2
 }
 
-function DiagramInner({ tab, model, modelDriver, domains, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; modelDriver?: DriverId; domains?: { name: string; dataType: string }[]; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
+function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; modelDriver?: DriverId; domains?: { name: string; dataType: string }[]; dashNonIdentifying?: boolean; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
   const tr = useT()
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const loadSchema = useConnections((s) => s.loadSchema)
@@ -598,6 +598,8 @@ function DiagramInner({ tab, model, modelDriver, domains, onApplyModel, onLayout
         if (!targetKey) continue
         const active = hovered === source || hovered === targetKey
         const optional = fk.columns.some((c) => t.columns.find((x) => x.name === c)?.nullable)
+        // Identifying: the parent's key is part of the child's own key (DeZign draws it solid, the others dashed).
+        const identifying = fk.columns.length > 0 && fk.columns.every((c) => t.primaryKey.includes(c))
         out.push({
           id: `${source}:${fk.name}`,
           source,
@@ -613,7 +615,7 @@ function DiagramInner({ tab, model, modelDriver, domains, onApplyModel, onLayout
           style: {
             stroke: active ? 'var(--accent)' : fk.virtual ? 'var(--warning)' : 'var(--text-faint)',
             strokeWidth: active ? 2 : 1.3,
-            strokeDasharray: fk.virtual ? '5 4' : undefined,
+            strokeDasharray: fk.virtual ? '5 4' : dashNonIdentifying && !identifying ? '6 4' : undefined,
           },
           label: active ? fk.columns.join(', ') : undefined,
           labelStyle: { fontSize: 10, fill: 'var(--text-muted)' },
@@ -622,7 +624,7 @@ function DiagramInner({ tab, model, modelDriver, domains, onApplyModel, onLayout
       }
     }
     return out
-  }, [tables, hovered, keyByName, routes])
+  }, [tables, hovered, keyByName, routes, dashNonIdentifying])
 
   const latest = useRef({ display, columnSets, edges })
   latest.current = { display, columnSets, edges }
@@ -1578,10 +1580,10 @@ function DiagramInner({ tab, model, modelDriver, domains, onApplyModel, onLayout
   )
 }
 
-export function DiagramView({ tab, model, modelDriver, domains, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; /** The project's domains, offered for columns. */ domains?: { name: string; dataType: string }[]; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
+export function DiagramView({ tab, model, modelDriver, domains, dashNonIdentifying, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; /** The project's domains, offered for columns. */ domains?: { name: string; dataType: string }[]; /** Lines of relationships whose key is not part of the child's primary key are dashed, as DeZign draws them. */ dashNonIdentifying?: boolean; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
   return (
     <ReactFlowProvider>
-      <DiagramInner tab={tab} model={model} modelDriver={modelDriver} domains={domains} onApplyModel={onApplyModel} onLayout={onLayout} />
+      <DiagramInner tab={tab} model={model} modelDriver={modelDriver} domains={domains} dashNonIdentifying={dashNonIdentifying} onApplyModel={onApplyModel} onLayout={onLayout} />
     </ReactFlowProvider>
   )
 }

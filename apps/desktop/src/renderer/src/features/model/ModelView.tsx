@@ -679,6 +679,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
               model={diagram ? snapshot : shown}
               modelDriver={dezignDriver(tab.sqlDatabase)}
               domains={domains}
+              dashNonIdentifying={tab.source?.kind === 'dezign'}
               onLayout={(patch) => (diagram ? patchDiagram(diagram.id, () => ({ ...patch, ...('positions' in patch ? { positions: patch.positions ?? {} } : {}) })) : updateTab(tab.id, { ...patch, dirty: tab.source ? true : tab.dirty }))}
               onApplyModel={(tables) => {
                 // Editing one area keeps the model's other tables; tables added there join the area.
