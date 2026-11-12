@@ -51,6 +51,8 @@ const openModel = async () => {
   await win.keyboard.type('Open model')
   await win.keyboard.press('Enter')
   await win.waitForTimeout(2500)
+  // (A DeZign project opens on its objects: this flow works with the model's text.)
+  await win.getByRole('button', { name: 'Text (DBML)' }).last().click().catch(() => {})
 }
 const positions = () => win.evaluate(() => Object.fromEntries([...document.querySelectorAll('.react-flow__node')].map((n) => [n.getAttribute('data-id'), /translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\)/.exec(n.style.transform)?.slice(1).map(Number)])))
 try {

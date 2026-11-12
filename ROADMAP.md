@@ -503,6 +503,10 @@ Not a clone: their features, rethought and connected to live databases, the know
   changes before OK), double-click a relationship's line for its dialog (name, parent table, the columns, the
   cardinality as pictures, identifying, mandatory parent, on delete/update, a preview of the line). A table's menu
   has Properties…. A database's diagram still opens a table's data on double-click
+- ✅ The model's objects next to the diagram, as DeZign's object browser (Objects / Text switch; a DeZign project
+  opens on its objects): tables, relationships, domains and views, found by name without diacritics; a click shows
+  the table on the diagram (on the whole model's when the diagram shown doesn't have it), a double-click opens the
+  table's or the relationship's dialog. The DBML text stays one click away
 - ✅ Writing the canvas into the model keeps the whole model: tables the canvas didn't show (another schema, a focus,
   past the first 400) stay as they were (they used to be left out); a model's canvas shows all its schemas
 - ✅ The Notes DeZign keeps next to a description, of tables and columns: `Remarks:` in a table, `remarks:` on a

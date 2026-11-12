@@ -114,6 +114,9 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   tabulka patří. Pravým tlačítkem tabulku zduplikujete nebo smažete; klávesa Delete smaže vybrané tabulky (v panelu
   je jde vrátit). Více tabulek vyberete tažením s klávesou Shift nebo klikáním s Shiftem a v liště nahoře je
   zarovnáte nebo rovnoměrně rozmístíte; tabulky se při přesunu přichytávají k mřížce. ⌘Z vrací i přesuny.
+- **Objekty modelu:** vlevo od diagramu je přepínač *Objekty / Text*. Objekty (u projektu z DeZignu výchozí)
+  ukazují tabulky, vazby, domény a pohledy s hledáním; kliknutím tabulku najdete v diagramu, dvojklikem otevřete
+  její dialog. Text modelu (DBML) je o jedno kliknutí dál pro ty, kdo ho rádi píší.
 - **Dialogy jako v DeZignu:** dvojklikem na tabulku modelu otevřete její dialog: sloupce v mřížce (název, typ,
   PK, NOT NULL, autoinkrement, výchozí hodnota, doména, komentář; pod mřížkou poznámky a řazení vybraného
   sloupce), indexy a kontroly, cizí klíče, popis a náhled SQL. Dvojklikem na čáru vazby otevřete dialog vazby:

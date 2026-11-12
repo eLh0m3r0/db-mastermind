@@ -27,6 +27,8 @@ try {
   await win.locator('.react-flow__node[data-id="shop.customer"]').waitFor({ timeout: 20000 })
   console.log('opened without a connection:', await win.locator('.react-flow__node').count(), 'tables')
 
+  await win.getByRole('button', { name: 'Text (DBML)' }).last().click()
+
   await win.getByRole('button', { name: 'Design', exact: true }).click()
   await win.waitForTimeout(500)
   // Dragging from a table's own dot to another table makes the key column and the foreign key, as DeZign does.
@@ -161,6 +163,16 @@ try {
   await win.getByText('Script saved').last().waitFor({ timeout: 10000 })
   const drop = readFileSync(sql, 'utf8')
   console.log('drop script:', drop.indexOf('DROP TABLE "shop"."invoice"') > -1 && drop.indexOf('DROP TABLE "shop"."invoice"') < drop.indexOf('DROP TABLE "shop"."customer"'), !/CREATE/.test(drop))
+  await win.getByText('shop.dez', { exact: true }).first().click()
+  await win.getByRole('button', { name: 'Objects', exact: true }).last().click()
+  // A DeZign project opens on its objects, as DeZign's object browser: found by name, opened by a double-click.
+  await win.getByTestId('object-browser').waitFor({ timeout: 10000 })
+  await win.getByTestId('browser-search').fill('INVOI')
+  const listed = await win.locator('[data-testid^="browser-table-"]').count()
+  await win.getByTestId('browser-table-invoice').dblclick()
+  await win.getByTestId('table-dialog-grid').waitFor({ timeout: 10000 })
+  console.log('object browser:', listed === 1, await win.getByTestId('grid-name-total').count() === 1)
+  await win.getByRole('button', { name: 'Cancel', exact: true }).click()
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow96.png') })
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])

@@ -9,11 +9,11 @@ import { checkModel, createScript, dezignDriver, dezignMigrationOptions, dezignV
 import { Button } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { DRIVERS } from '../connections/drivers'
-import { Select } from '@/components/ui/Input'
+import { Segmented, Select } from '@/components/ui/Input'
 import { Splitter } from '@/components/ui/Splitter'
 import { api, keys } from '@/lib/api'
 import { tp, useT } from '@/lib/i18n'
-import { debounce, errorMessage } from '@/lib/utils'
+import { cn, debounce, errorMessage } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { askAi, toast } from '@/store/ui'
@@ -22,6 +22,8 @@ import { DiagramView } from '../diagram/DiagramView'
 import { describeDezignChanges, modelTabFromFile, sqlObjectsScript } from './open-model'
 import { DomainsModal, domainsOfText, withDomains, type ModelDomainDef } from './domains'
 import { editableViews, ViewsModal } from './views'
+import { ObjectBrowser, type BrowserRequest } from './ObjectBrowser'
+import type { DiagramRequest } from '../diagram/DiagramView'
 import { IssuesChip, IssuesPanel } from './ModelIssues'
 import { rememberModelDatabase } from '@/lib/files'
 import { connectAndSelect } from '../sidebar/Sidebar'
@@ -471,12 +473,21 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   }, [model])
   // Subject areas: a model's TableGroups and the named diagrams of its source can each be shown on their own.
   const [area, setArea] = useState('')
+  // The left side: the model's objects (as DeZign's object browser) or its text. A DeZign project starts with the objects.
+  const [left, setLeft] = useState<'objects' | 'text'>(tab.source ? 'objects' : 'text')
+  const [request, setRequest] = useState<DiagramRequest>()
   const areaNames = Object.keys(model.groups)
   const diagram = area.startsWith('d:') ? tab.diagrams?.find((d) => d.id === area.slice(2)) : undefined
   const group = area.startsWith('g:') ? model.groups[area.slice(2)] : undefined
   const keyOf = (x: { schema?: string; name: string }) => `${x.schema ?? ''}.${x.name}`
   const inArea = (x: { schema?: string; name: string }) => (diagram ? diagram.tables.includes(keyOf(x)) : group ? group.includes(x.name) : true)
   const shown = useMemo<SchemaSnapshot>(() => (diagram || group ? { ...snapshot, tables: snapshot.tables.filter(inArea) } : snapshot), [area, snapshot, model.groups, tab.diagrams])
+  /** From the object browser: a table not on the diagram shown now is looked for on the whole model's. */
+  const browse = (r: BrowserRequest) => {
+    const table = snapshot.tables.find((x) => keyOf(x) === r.key)
+    if (table && !inArea(table)) setArea('')
+    setRequest({ ...r, n: Date.now() } as DiagramRequest)
+  }
   const diagramTab = { ...tab, kind: 'diagram', colors: { ...groupColors, ...(diagram ? diagram.colors : tab.colors) }, notes: diagram ? diagram.notes : tab.notes, boxes: diagram ? diagram.boxes : tab.boxes, positions: diagram ? diagram.positions : tab.positions, tables: diagram ? diagram.tables : undefined, display: diagram ? diagram.display : tab.display } as unknown as DiagramTab
   /** A new diagram of the project the model came from: empty at first, tables are added from the search above the canvas. */
   const newDiagram = async () => {
@@ -647,7 +658,23 @@ export function ModelView({ tab }: { tab: ModelTab }) {
       </div>
       <div className="flex min-h-0 flex-1">
         <div style={{ width }} className="flex min-w-[260px] shrink-0 flex-col">
-          <div className="min-h-0 flex-1">
+          <div className="flex h-8 shrink-0 items-center gap-1 border-b border-line px-2">
+            <Segmented<'objects' | 'text'>
+              size="xs"
+              value={left}
+              onChange={setLeft}
+              options={[
+                { value: 'objects', label: t('Objects'), title: t('The model’s tables, relationships, domains and views') },
+                { value: 'text', label: t('Text (DBML)'), title: t('The model as text, for those who like to type it') },
+              ]}
+            />
+          </div>
+          {left === 'objects' && (
+            <div className="min-h-0 flex-1">
+              <ObjectBrowser tables={snapshot.tables} domains={domains} views={tab.sqlObjects ?? []} onRequest={browse} onViews={views.length ? () => setViewsOpen(true) : undefined} onDomains={tab.source ? () => setDomainsOpen(true) : undefined} />
+            </div>
+          )}
+          <div className={cn('min-h-0 flex-1', left === 'objects' && 'hidden')}>
             <DbmlEditor
               value={text}
               dark={dark}
@@ -681,6 +708,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
               modelDriver={dezignDriver(tab.sqlDatabase)}
               domains={domains}
               dashNonIdentifying={tab.source?.kind === 'dezign'}
+              request={request}
               onLayout={(patch) => (diagram ? patchDiagram(diagram.id, () => ({ ...patch, ...('positions' in patch ? { positions: patch.positions ?? {} } : {}) })) : updateTab(tab.id, { ...patch, dirty: tab.source ? true : tab.dirty }))}
               onApplyModel={(tables) => {
                 // Editing one area keeps the model's other tables; tables added there join the area.

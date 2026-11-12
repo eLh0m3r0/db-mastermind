@@ -300,6 +300,9 @@ const EXPORT_STYLE_PROPERTIES = [
 ]
 const isNote = (id: string) => id.startsWith('note:')
 
+/** Asked from outside the canvas (the model's object browser); `n` makes the same request again a new one. */
+export type DiagramRequest = ({ kind: 'locate'; key: string } | { kind: 'table'; key: string } | { kind: 'relationship'; key: string; fk: string }) & { n: number }
+
 /** Names for the series palette colors, in palette order. */
 const COLOR_NAMES = ['Blue', 'Orange', 'Teal', 'Yellow', 'Pink', 'Green', 'Purple', 'Red']
 
@@ -384,7 +387,7 @@ function nodeHeight(t: TableInfo, shown: Shown, fk: Set<string>, ref: Set<string
   return HEADER + visible * ROW + (showsMore(shown) && visible < t.columns.length ? ROW : 0) + 2
 }
 
-function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; modelDriver?: DriverId; domains?: { name: string; dataType: string }[]; dashNonIdentifying?: boolean; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
+function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, request, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; modelDriver?: DriverId; domains?: { name: string; dataType: string }[]; dashNonIdentifying?: boolean; request?: DiagramRequest; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
   const tr = useT()
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const loadSchema = useConnections((s) => s.loadSchema)
@@ -990,6 +993,26 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, on
     setDesign(true)
     setSelected(id)
   }
+  // A request from the object browser: show the table (selected, in the middle), or open a dialog.
+  useEffect(() => {
+    if (!request) return
+    const target = nodes.find((n) => n.id === request.key)
+    if (request.kind === 'locate') {
+      if (!target) return
+      setNodes((list) => list.map((n) => (n.selected !== (n.id === request.key) ? { ...n, selected: n.id === request.key } : n)))
+      flow.setCenter(target.position.x + WIDTH / 2, target.position.y + 80, { zoom: Math.max(flow.getZoom(), 0.8), duration: 300 })
+      return
+    }
+    if (!model || !onApplyModel) return
+    const draft = draftFor(request.key)
+    if (!draft) return
+    setDesign(true)
+    if (request.kind === 'table') return setDialog({ kind: 'table', key: request.key, table: draft })
+    const at = designToTableInfo(draft).foreignKeys.findIndex((f) => f.name === request.fk)
+    const fk = at >= 0 ? draft.foreignKeys[at] : undefined
+    if (fk) setDialog({ kind: 'relationship', key: request.key, fk: fk.id, table: draft })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request?.n])
   /** Lines the selected tables up on their left or top edge, or spreads them evenly. */
   const arrange = (how: 'left' | 'top' | 'spread-x' | 'spread-y') => {
     const picked = nodes.filter((n) => n.selected && !isNote(n.id))
@@ -1829,10 +1852,10 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, on
   )
 }
 
-export function DiagramView({ tab, model, modelDriver, domains, dashNonIdentifying, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; /** The project's domains, offered for columns. */ domains?: { name: string; dataType: string }[]; /** Lines of relationships whose key is not part of the child's primary key are dashed, as DeZign draws them. */ dashNonIdentifying?: boolean; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
+export function DiagramView({ tab, model, modelDriver, domains, dashNonIdentifying, request, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; /** The project's domains, offered for columns. */ domains?: { name: string; dataType: string }[]; /** Lines of relationships whose key is not part of the child's primary key are dashed, as DeZign draws them. */ dashNonIdentifying?: boolean; /** From the model's object browser: show a table, or open a table's or a relationship's dialog. */ request?: DiagramRequest; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
   return (
     <ReactFlowProvider>
-      <DiagramInner tab={tab} model={model} modelDriver={modelDriver} domains={domains} dashNonIdentifying={dashNonIdentifying} onApplyModel={onApplyModel} onLayout={onLayout} />
+      <DiagramInner tab={tab} model={model} modelDriver={modelDriver} domains={domains} dashNonIdentifying={dashNonIdentifying} request={request} onApplyModel={onApplyModel} onLayout={onLayout} />
     </ReactFlowProvider>
   )
 }

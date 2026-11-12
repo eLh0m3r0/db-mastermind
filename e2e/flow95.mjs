@@ -80,6 +80,8 @@ try {
   await win.keyboard.type('Open model')
   await win.keyboard.press('Enter')
   await win.locator('.react-flow__node:visible').first().waitFor({ timeout: 30000 })
+  // (A DeZign project opens on its objects: this flow works with the model's text.)
+  await win.getByRole('button', { name: 'Text (DBML)' }).last().click()
   await win.getByTestId('model-database').selectOption({ label: 'Team DB' })
 
   // 1. The first script: the model's schema, both tables (in the model's order), the key between them, the check.
