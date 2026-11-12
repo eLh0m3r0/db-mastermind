@@ -25,7 +25,9 @@ async function ask(text, { untilCard = false } = {}) {
 /** The assistant panel's text (it follows the "AI assistant" header). */
 const lastAnswer = async () => {
   const text = await win.locator('body').innerText()
-  return text.slice(text.lastIndexOf('AI assistant')).split('\n').filter(Boolean).slice(-10).join(' | ')
+  // The whole panel (every question has a chat of its own): an answer followed by its SQL block and the
+  // block's buttons is longer than a few lines.
+  return text.slice(text.lastIndexOf('AI assistant')).split('\n').filter(Boolean).join(' | ')
 }
 const newChat = async () => win.getByRole('button', { name: 'New chat' }).click()
 try {

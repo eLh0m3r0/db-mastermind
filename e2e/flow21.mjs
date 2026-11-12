@@ -26,6 +26,7 @@ try {
   await win.locator('.cm-content').last().click()
   await win.keyboard.insertText('Table customers {\n  id integer [pk, increment]\n  name varchar [not null]\n}\n')
   await win.getByRole('button', { name: 'Design with AI' }).click()
+  await win.getByText('Design or extend the model…').click()
   await win.waitForTimeout(500)
   const input = win.getByPlaceholder(/Ask about/)
   await input.fill((await input.inputValue()).replace('Help me design', 'Extend this model with orders and order items for a small coffee shop. Do not ask questions. Help me design'))
@@ -33,7 +34,7 @@ try {
   await win.getByRole('button', { name: 'Apply to model' }).first().waitFor({ timeout: 240000 })
   await win.getByRole('button', { name: 'Apply to model' }).first().click()
   await win.waitForTimeout(2500)
-  const text = await win.locator('.cm-content').first().innerText()
+  const text = await win.locator('.cm-content:visible').first().innerText()
   console.log('model has orders:', /Table\s+"?order/i.test(text), '| lines:', text.split('\n').length)
   await win.screenshot({ path: `${out}/f2-model-ai.png` })
 } catch (err) {
