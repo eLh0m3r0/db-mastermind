@@ -926,6 +926,8 @@ export const cs: Record<string, string> = {
   'Model saved': 'Model uložen',
   'Could not save the model': 'Model se nepodařilo uložit',
   'Could not open the model': 'Model se nepodařilo otevřít',
+  'Open this version': 'Otevřít tuto verzi',
+  'Opens the archived version as a model of its own; the project stays as it is': 'Otevře archivovanou verzi jako samostatný model; projekt zůstane, jak je',
   'Replace the model with the tables of {name}?': 'Nahradit model tabulkami z {name}?',
   'Help me design a database model in DBML (dbdiagram.io syntax). Ask what it should store if it is not clear, then reply with the complete model in one ```dbml block. Current model:\n\n{model}': 'Pomoz mi navrhnout databázový model v DBML (syntaxe dbdiagram.io). Pokud není jasné, co má ukládat, zeptej se, a pak odpověz celým modelem v jednom bloku ```dbml. Odpovídej česky. Současný model:\n\n{model}',
   'Model (DBML)': 'Model (DBML)',

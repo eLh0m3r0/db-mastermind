@@ -121,6 +121,12 @@ try {
   await win.getByRole('button', { name: 'Save script…' }).waitFor({ timeout: 20000 })
   const versionScript = await win.evaluate(() => [...document.querySelectorAll('pre')].filter((e) => e.offsetParent !== null).pop()?.innerText ?? '')
   console.log('compare with a version without a database:', /ALTER TABLE "shop"\."customer"/.test(versionScript), /"credit"/.test(versionScript))
+  // The version itself, as it was: its own model tab with its diagram, not tied to the project.
+  await win.getByTestId('compare-open-version').click()
+  await win.locator('.react-flow__node:visible').first().waitFor({ timeout: 15000 })
+  await win.waitForTimeout(500)
+  const versionView = await win.evaluate(() => ({ nodes: [...document.querySelectorAll('.react-flow__node')].filter((e) => e.offsetParent !== null).length, text: [...document.querySelectorAll('.cm-content')].filter((e) => e.offsetParent !== null).map((e) => e.innerText).join('\n') }))
+  console.log('open the archived version:', versionView.nodes >= 2, /Table shop\.customer/.test(versionView.text), !/money_t/.test(versionView.text), readFileSync(dez, 'latin1') === domainFile)
   await win.getByText('shop.dez', { exact: true }).first().click()
 
   // The project's begin and end scripts go around the DDL made for its own database.

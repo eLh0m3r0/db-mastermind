@@ -288,7 +288,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
         label: name(v),
         onClick: () =>
           void api.openModelVersion(source.path, v.id).then(
-            (file) => openTab({ kind: 'compare', connectionId: tab.connectionId, sourceModel: text, targetModel: file.text, targetLabel: name(v), targetDriver: dezignDriver(tab.sqlDatabase) ?? connection?.driver ?? 'postgres', sourceScripting: tab.scripting, title: t('Changes since {name}', { name: name(v) }) }, { reuse: false }),
+            (file) => openTab({ kind: 'compare', connectionId: tab.connectionId, sourceModel: text, targetModel: file.text, targetLabel: name(v), targetVersion: { path: source.path, id: v.id }, targetDriver: dezignDriver(tab.sqlDatabase) ?? connection?.driver ?? 'postgres', sourceScripting: tab.scripting, title: t('Changes since {name}', { name: name(v) }) }, { reuse: false }),
             (err) => toast({ kind: 'error', message: t('Could not open the model'), detail: errorMessage(err) }),
           ),
       })),

@@ -48,7 +48,11 @@ const viaDbml = (tables: TableInfo[]) => parseDbml(toDbml(tables)).tables
 
 /** A DeZign for Databases model (`.dez`, or the `.dezproj` of a folder project) as a DBML model. */
 export async function openDezignModel(path: string): Promise<OpenedModelFile> {
-  const { model } = read(await load(path), isProject(path))
+  return opened(path, read(await load(path), isProject(path)).model)
+}
+
+/** A model read from a DeZign project (or one of its archived versions) as a model tab takes it. */
+function opened(path: string, model: ReturnType<typeof readDezign>): OpenedModelFile {
   const plain = toDbml(model.tables)
   // The project's domains are listed in the model as a note: a column follows one through its `domain` setting.
   const domains = model.domains.length ? [dezignDomainsNote(model.domains)] : []
@@ -248,13 +252,11 @@ export async function archiveModelVersion(path: string, request: { label?: strin
 }
 
 /** An archived version of a DeZign project as a DBML model. */
-export async function openModelVersion(path: string, id: string): Promise<{ text: string }> {
-  if (!isProject(path)) {
-    return { text: toDbml(readDezign(await readFile(path, 'latin1'), { archived: Number(id), fallbackEncoding: fallbackEncoding() }).tables) }
-  }
+export async function openModelVersion(path: string, id: string): Promise<OpenedModelFile> {
+  if (!isProject(path)) return opened(path, readDezign(await readFile(path, 'latin1'), { archived: Number(id), fallbackEncoding: fallbackEncoding() }))
   const dir = await archiveDir(path)
   // The id is a file name out of the list: nothing else in the folder, and nothing outside it, can be asked for.
   if (!dir || basename(id) !== id || !(await readdir(dir)).includes(id)) throw new Error('The archived version is not in the project')
   const version = (await readFile(join(dir, id), 'latin1')).replace(/^\uFEFF?\s*<\?xml[^>]*\?>\s*/, '')
-  return { text: toDbml(readDezign(`<dezign>\n${version}\n</dezign>`, { archived: 0, fallbackEncoding: fallbackEncoding() }).tables) }
+  return opened(path, readDezign(`<dezign>\n${version}\n</dezign>`, { archived: 0, fallbackEncoding: fallbackEncoding() }))
 }

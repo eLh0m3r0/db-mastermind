@@ -11,6 +11,7 @@ import { useConnections } from '@/store/connections'
 import { toast } from '@/store/ui'
 import { useWorkspace, type CompareTab } from '@/store/workspace'
 import { DriverIcon } from '../connections/drivers'
+import { modelTabFromFile } from '../model/open-model'
 import { describeChange as describe } from '@/lib/schemaChanges'
 
 function changeTable(c: SchemaChange): string {
@@ -25,6 +26,7 @@ export function CompareView({ tab }: { tab: CompareTab }) {
   const connect = useConnections((s) => s.connect)
   const updateTab = useWorkspace((s) => s.update)
   const newQuery = useWorkspace((s) => s.newQuery)
+  const openTab = useWorkspace((s) => s.open)
   const [snapshots, setSnapshots] = useState<{ source: SchemaSnapshot; target: SchemaSnapshot; checkChanged?: (table: { schema?: string; name: string }, name: string) => boolean } | null>(null)
   const [busy, setBusy] = useState(false)
   const [keepExtra, setKeepExtra] = useState(true)
@@ -42,6 +44,18 @@ export function CompareView({ tab }: { tab: CompareTab }) {
   const crossEngine = !!source && !!target && source.driver !== target.driver
   // Two models need no database: the script is for the project's own (or the one connected).
   const driver = target?.driver ?? tab.targetDriver
+
+  // An archived version, to look at as it was (DeZign: switch to an archived version). Its own tab, not tied to the
+  // project: saving it never writes into the project.
+  const openVersion = async (version: { path: string; id: string }) => {
+    try {
+      const file = await api.openModelVersion(version.path, version.id)
+      const defaultSchema = useConnections.getState().runtime[tab.connectionId]?.schema?.defaultSchema
+      openTab({ kind: 'model', connectionId: tab.connectionId, ...modelTabFromFile(file, defaultSchema, { quiet: true }), source: undefined, path: undefined, title: tab.targetLabel ?? t('Model') }, { reuse: false })
+    } catch (err) {
+      toast({ kind: 'error', message: t('Could not open the model'), detail: errorMessage(err) })
+    }
+  }
 
   const run = async () => {
     if (!tab.sourceId && tab.sourceModel === undefined) return
@@ -150,7 +164,14 @@ export function CompareView({ tab }: { tab: CompareTab }) {
         )}
         <ArrowRight size={14} className="text-fg-faint" />
         {tab.targetModel !== undefined ? (
-          <span className="rounded-md bg-subtle px-2 py-1 text-[12px] font-medium">{tab.targetLabel ?? 'DBML'}</span>
+          <>
+            <span className="rounded-md bg-subtle px-2 py-1 text-[12px] font-medium">{tab.targetLabel ?? 'DBML'}</span>
+            {tab.targetVersion && (
+              <Button size="sm" variant="ghost" onClick={() => void openVersion(tab.targetVersion!)} title={t('Opens the archived version as a model of its own; the project stays as it is')} data-testid="compare-open-version">
+                {t('Open this version')}
+              </Button>
+            )}
+          </>
         ) : (
         <Select inputSize="sm" className="w-52" value={tab.connectionId} onChange={(e) => pickConnection(e.target.value, 'target')}>
           {connections.map((c) => (

@@ -657,7 +657,8 @@ export interface MastermindApi {
   /** The versions archived in a DeZign project, newest first. */
   listModelVersions(path: string): Promise<ModelVersion[]>
   /** An archived version as a DBML model. */
-  openModelVersion(path: string, id: string): Promise<{ text: string }>
+  /** An archived version of a DeZign project, read like the project itself (its `path` is the project's). */
+  openModelVersion(path: string, id: string): Promise<OpenedModelFile>
   /**
    * Archives the DeZign project as it is saved now (DeZign's File → Versions → Archive current version). `hash`
    * is the model the tab opened or last saved: a project that changed on disk since is not archived.

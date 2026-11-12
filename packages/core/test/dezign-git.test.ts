@@ -64,7 +64,7 @@ describe.skipIf(!hasGit)('a folder project in Git', () => {
     const start = parseDbml(
       "Table shop.customer {\n  id bigint [pk, increment]\n  email varchar(120) [not null]\n}\nTable shop.invoice {\n  id bigint [pk, increment]\n  customer_id bigint [not null, ref: > shop.customer.id]\n  total numeric(12,2)\n}\nTable shop.product {\n  id bigint [pk, increment]\n  title varchar(200)\n}\n",
     ).tables
-    const project = newDezignProject(start, { database: 'postgresql16', positions: { 'shop.customer': { x: 40, y: 40 }, 'shop.invoice': { x: 400, y: 40 }, 'shop.product': { x: 40, y: 400 } } })
+    const project = newDezignProject(start, { database: 'postgres', positions: { 'shop.customer': { x: 40, y: 40 }, 'shop.invoice': { x: 400, y: 40 }, 'shop.product': { x: 40, y: 400 } } })
     for (const file of dezignAsFolder(project, 'Shop')) {
       mkdirSync(dirname(join(dir, file.path)), { recursive: true })
       writeFileSync(join(dir, file.path), file.text, 'latin1')

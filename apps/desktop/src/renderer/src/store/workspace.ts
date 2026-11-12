@@ -75,6 +75,8 @@ export interface CompareTab extends BaseTab {
   targetModel?: string
   /** File name of `targetModel`, for the header. */
   targetLabel?: string
+  /** `targetModel` is an archived version of this DeZign project: the comparison offers to open it. */
+  targetVersion?: { path: string; id: string }
   /** Two models without a database: the database the script is written for (the project's own). */
   targetDriver?: DriverId
 }
