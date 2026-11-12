@@ -2,7 +2,7 @@ import { appendFileSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { diagramsAsLoaded, mutate, mutateDiagrams, random } from './dezign-fuzz.js'
-import { applyDezignSave, assembleDezignProject, checkModel, dezignIntegrity, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
+import { applyDezignSave, assembleDezignProject, checkModel, codec, dezignIntegrity, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 /**
  * Real models stay out of the repository. Point DBM_DEZ_SAMPLES at a folder with `.dez` files and/or folder
@@ -121,6 +121,27 @@ describe.skipIf(!root)('DeZign models on this machine', () => {
       expect(dezignIntegrity(assembleDezignProject(merged)).length).toBe(0)
       expect(tables.filter((t) => t.name.startsWith('dbm_new_')).length).toBe(2)
       expect(tables.reduce((s, t) => s + t.columns.filter((c) => c.name === 'dbm_a' || c.name === 'dbm_b').length, 0)).toBe(2)
+    })
+  })
+
+  it("edits a view's code: only the view changes, and it reads back as written", { timeout: 120_000 }, () => {
+    const viaDbml = (tables: TableInfo[]) => parseDbml(toDbml(tables)).tables
+    find(root!).forEach((file, n) => {
+      const folder = /\.dezproj$/i.test(file)
+      const project: DezignFile[] = folder ? projectFiles(join(file, '..')) : [{ path: 'model.dez', text: readFileSync(file, 'latin1') }]
+      const read = (files: DezignFile[]) => readDezign(folder ? assembleDezignProject(files) : files[0]!.text)
+      const views = read(project).sqlObjects.filter((o) => o.kind === 'view' && o.id && o.code)
+      if (!views.length) return
+      const code = `${views[0]!.code!.replace(/[;\s]+$/, '')}\n-- upraveno v DB Mastermind (žluťoučký kůň)`
+      const base = viaDbml(read(project).tables)
+      const saved = saveToDezign(project, base, base, { normalize: viaDbml, views: [{ id: views[0]!.id!, code }] })
+      const after = read(applyDezignSave(project, saved))
+      report(`#${n + 1} ${folder ? 'folder' : 'file'} view edit: written=${saved.files.length} changes=${saved.changes.length}`)
+      expect(saved.changes.map((c) => c.kind)).toEqual(['alter_view'])
+      if (folder) expect(saved.files.length).toBe(1)
+      // (Letters the file's code page lacks are written without their accent, as DeZign itself would hold them.)
+      expect(after.sqlObjects.find((o) => o.id === views[0]!.id)!.code === codec(after.encoding, '\n').fit(code)).toBe(true)
+      expect(after.tables.length).toBe(read(project).tables.length)
     })
   })
 

@@ -537,11 +537,13 @@ describe('saving back into a DeZign project', () => {
   })
 
   it("writes a view's code into its own file of a folder project, with the project's line ends", () => {
-    const view = '<VIEW>\n<NAME>v_open</NAME>\n<ID>40</ID>\n<SCHEMA>shop</SCHEMA>\n<DESC></DESC>\n<CODE>CREATE VIEW %viewname% AS SELECT 1</CODE>\n</VIEW>'
+    const view = '<VIEW>\n<NAME>v_open</NAME>\n<ID>40</ID>\n<SCHEMA>shop</SCHEMA>\n<DESC></DESC>\n<CODE>CREATE VIEW %viewname% AS\nSELECT 1</CODE>\n</VIEW>'
     const files = [...folder, { path: 'data dictionary/views/shop.v_open.xml', text: xml(view) }]
+    // The file's CRLF line ends are not part of the code the model holds.
+    expect(readDezign(assembleDezignProject(files)).sqlObjects.find((o) => o.kind === 'view')!.code).toBe('CREATE VIEW %viewname% AS\nSELECT 1')
     const r = saveToDezign(files, model(files), model(files), { normalize: viaDbml, views: [{ id: '40', code: 'CREATE VIEW %viewname% AS\nSELECT 2' }] })
     expect(r.files.map((f) => f.path)).toEqual(['data dictionary/views/shop.v_open.xml'])
-    expect(r.files[0]!.text).toBe(xml(view.replace('AS SELECT 1', 'AS\nSELECT 2')))
+    expect(r.files[0]!.text).toBe(xml(view.replace('SELECT 1', 'SELECT 2')))
   })
 
   it('writes nothing when the model was not edited', () => {
