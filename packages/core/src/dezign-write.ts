@@ -746,6 +746,8 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       attr = clone(template, [[text(template, 'ID'), id]])
       // What belonged to the column it was copied from.
       for (const tag of ['PKGNAME', 'PKGITEM', 'COLLATE', 'CHARSET', 'AUTONUMBERDEFAULT']) remove(attr, kid(attr, tag))
+      // (Not UNSIGNED or ZEROFILL because the column it was copied from is.)
+      for (const holder of [attr, kid(attr, 'DT')]) for (const tag of ['UNS', 'ZF']) if (holder && kid(holder, tag)) set(holder, tag, '0')
       forget(attr)
       for (const tag of ['DESC', 'NOTE', 'DESCRIPTION']) if (kid(attr, tag)) set(attr, tag, '')
       if (kid(attr, 'DOMAINID')) set(attr, 'DOMAINID', noDomain)
@@ -1435,6 +1437,8 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
           container('PAIRS', []),
         ])
     for (const tag of ['DESC', 'NOTE', 'PARENTPHRASE', 'CHILDPHRASE']) if (kid(el, tag)) set(el, tag, '')
+    // Zero or more, DeZign's own default: not the cardinality of the relationship it was copied from.
+    if (kid(el, 'CARDINALITY')) set(el, 'CARDINALITY', '0')
     forget(el)
     const parentName = text(parent.el, 'NAME')
     // A name typed for the relationship (`Ref name: …`) is its name; otherwise the project's template makes one.

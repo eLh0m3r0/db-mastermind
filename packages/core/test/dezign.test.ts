@@ -775,6 +775,23 @@ describe('saving back into a DeZign project', () => {
     expect(out).toMatch(/<NAME>credit<\/NAME>\n<ID>[^<]*<\/ID>\n<PKGNAME>Audit<\/PKGNAME>\n<PKGITEM>credit<\/PKGITEM>/)
   })
 
+  it('does not copy UNSIGNED, ZEROFILL or a relationship\'s cardinality from the neighbour a new one is made like', () => {
+    const marked = dez.replace(/(<DTLISTNAME>BIGINT<\/DTLISTNAME>\n)/g, '$1<UNS>1</UNS>\n<ZF>1</ZF>\n').replace(/<UPDATERULE>/g, '<CARDINALITY>3</CARDINALITY>\n<UPDATERULE>')
+    expect(marked.match(/<UNS>1</g)!.length).toBeGreaterThan(0)
+    expect(marked).toContain('<CARDINALITY>3<')
+    const files: DezignFile[] = [{ path: 'shop.dez', text: marked }]
+    const r = save(files, (t) => {
+      t[1]!.columns.push(column('amount', 'bigint'))
+      return [...t, { schema: 'shop', name: 'payment', type: 'table', comment: null, columns: [column('id', 'bigint', { nullable: false, isPrimaryKey: true }), column('invoice_id', 'bigint')], primaryKey: ['id'], foreignKeys: [{ name: 'fk_payment_invoice_id', columns: ['invoice_id'], refSchema: 'shop', refTable: 'invoice', refColumns: ['id'] }], indexes: [] }]
+    })
+    const out = r.files[0]!.text
+    const attr = (name: string) => new RegExp(`<NAME>${name}</NAME>[\\s\\S]*?</DT>`).exec(out)![0]
+    expect(attr('amount')).not.toContain('<UNS>1<')
+    expect(attr('invoice_id')).not.toContain('<ZF>1<')
+    const rel = /<REL>\s*<NAME>invoice_payment<\/NAME>[\s\S]*?<\/REL>/.exec(out)?.[0] ?? /<REL>[\s\S]*?<CHILDOBJECTID>NEW-\d+<\/CHILDOBJECTID>[\s\S]*?<\/REL>/.exec(out)![0]
+    expect(rel).toContain('<CARDINALITY>0</CARDINALITY>')
+  })
+
   it('writes changed check constraints: a column check that changed becomes a table check', () => {
     const r = save(single, (t) => {
       t[0]!.checks = [{ expression: 'credit >= 0 and credit < 1000000', name: 'credit_range' }]
