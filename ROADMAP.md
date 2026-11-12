@@ -540,13 +540,18 @@ Not a clone: their features, rethought and connected to live databases, the know
   the package's: a change to the package's definition reaches them as it reaches the others
 - ✅ Saving a model also saves what the canvas has not written into the model yet (no separate "Write to DBML"
   before Save); so do SQL DDL, the comparisons, Rename… and Domains… (e2e/flow97)
-- ⬜ Custom properties on tables and columns
+- ✅ Custom properties of tables and columns (DeZign's user defined properties: text, number, yes/no, a value
+  from a list, as the project defines them): a table's on a Properties tab of its dialog, a column's under the
+  grid; kept in the model (`Properties:` / `properties:`) and saved into the project where DeZign keeps them
+  (`USERDEFPROPS`, in the order of their definitions). DeZign 14.9.3 opens a project with values changed, added
+  and removed as saved. The properties themselves are defined in DeZign
 - ✅ Views of a DeZign project edited in the model ("Views…"): their SQL as DeZign keeps it (`%viewname%` for the
   view's name), written back on Save and used in the DDL script. DeZign 14.9.3 opens the saved view as written
 - ✅ A DeZign project's triggers, procedures and sequences edited in the model ("Views and code…", next to its
   views; the object browser lists them): code as DeZign keeps it (`%triggername%`, `%table%`), sequences by their
   settings (increment, start, minimum, maximum, cache, cycle in the database's own word), new triggers of a table
-  and new sequences, triggers, procedures and sequences removed. Saved into the project (a folder project's
+  and new sequences, triggers, procedures and sequences removed, and new procedures (a GUID and the next place, as DeZign
+  makes them). Saved into the project (a folder project's
   sequence as a file of its own) and used in the DDL. DeZign 14.9.3 opens a project with a changed, a new and a
   removed trigger and a new sequence, and an older PostgreSQL project with a changed and a new sequence, as saved
   (e2e/flow91). Fixed on the way: a sequence's CYCLE was read only as `1`, but DeZign keeps `cycle`/`CYCLE`

@@ -27,6 +27,8 @@ export interface DesignColumn {
   remarks?: string
   /** See ColumnInfo.package. */
   package?: string
+  /** See ColumnInfo.properties. */
+  properties?: Record<string, string>
 }
 
 export interface DesignForeignKey {
@@ -69,6 +71,8 @@ export interface DesignTable {
   checks?: CheckInfo[]
   /** See TableInfo.remarks. */
   remarks?: string
+  /** See TableInfo.properties. */
+  properties?: Record<string, string>
   /** Diagram position, kept with the draft. */
   position?: { x: number; y: number }
 }
@@ -137,6 +141,7 @@ export function toDesignTable(t: TableInfo): DesignTable {
       ...(c.collation ? { collation: c.collation } : {}),
       ...(c.remarks ? { remarks: c.remarks } : {}),
       ...(c.package ? { package: c.package } : {}),
+      ...(c.properties ? { properties: c.properties } : {}),
     })),
     primaryKey: [...t.primaryKey],
     foreignKeys: t.foreignKeys
@@ -147,6 +152,7 @@ export function toDesignTable(t: TableInfo): DesignTable {
       .map((i) => ({ id: designId('i'), name: i.name, originalName: i.name, columns: [...i.columns], unique: i.unique, ...(i.constraint ? { constraint: true } : {}) })),
     ...(t.checks?.length ? { checks: t.checks.map((c) => ({ ...c })) } : {}),
     ...(t.remarks ? { remarks: t.remarks } : {}),
+    ...(t.properties ? { properties: t.properties } : {}),
   }
 }
 
@@ -1096,6 +1102,7 @@ export function designToTableInfo(t: DesignTable): TableInfo {
       ...(c.collation ? { collation: c.collation } : {}),
       ...(c.remarks ? { remarks: c.remarks } : {}),
       ...(c.package ? { package: c.package } : {}),
+      ...(c.properties ? { properties: c.properties } : {}),
     })),
     primaryKey: [...t.primaryKey],
     // (A key or an index nobody named gets the name a model gives an unnamed one, not the editor's own id.)
@@ -1113,6 +1120,7 @@ export function designToTableInfo(t: DesignTable): TableInfo {
     // A check written on a column follows the column through a rename.
     ...(t.checks?.some((c) => c.expression.trim()) ? { checks: t.checks.filter((c) => c.expression.trim()).map((c) => ({ ...c, ...(c.column ? { column: t.columns.find((x) => x.originalName === c.column)?.name ?? c.column } : {}) })) } : {}),
     ...(t.remarks ? { remarks: t.remarks } : {}),
+    ...(t.properties ? { properties: t.properties } : {}),
   }
 }
 

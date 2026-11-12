@@ -97,7 +97,7 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
 - **Pohledy, triggery, procedury a sekvence:** *Pohledy a kód…* u modelu z DeZignu ukáže SQL objekty projektu tak,
   jak je drží DeZign (`%viewname%`, `%triggername%` a `%table%` zastupují názvy). Kód pohledů, triggerů a procedur
   se upravuje přímo, sekvence přes své nastavení (přírůstek, začátek, minimum, maximum, cyklení); nový trigger
-  tabulky a novou sekvenci přidá **+**, triggery, procedury a sekvence lze odebrat. Prohlížeč objektů je ukáže
+  tabulky, novou proceduru a novou sekvenci přidá **+**, triggery, procedury a sekvence lze odebrat. Prohlížeč objektů je ukáže
   ve vlastních skupinách (dvojklik otevře dialog). Při uložení se zapíší do projektu a jdou do DDL skriptu.
 - **Týmová práce v Gitu:** u složkového projektu (`.dezproj`) uložení změní jen soubory upravených objektů, takže
   dva kolegové, kteří upravují různé tabulky ve svých větvích, je sloučí bez konfliktu.
@@ -108,6 +108,9 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   ukáže prohlížeč objektů ve skupině *Balíčky atributů*. V dialogu tabulky je vloží *Přidat balíček…*; sloupce
   zůstanou s balíčkem propojené jako v DeZignu. Sloupec z balíčku, kterému změníte název nebo definici, se stane
   vlastním sloupcem tabulky.
+- **Vlastní vlastnosti:** pokud projekt DeZignu definuje vlastní vlastnosti (User defined properties, např.
+  „Odpovědná osoba“), vyplníte je v dialogu tabulky na záložce *Vlastnosti* a u vybraného sloupce pod mřížkou.
+  Uloží se do projektu; samotné vlastnosti se definují v DeZignu.
 - **Uložení:** *Uložit* (⌘S) vezme i změny z plátna a dialogů, které ještě nejsou v textu modelu; stejně tak SQL DDL,
   porovnání, *Přejmenovat…* a *Domény…*.
 - **Hromadné přejmenování:** *Přejmenovat…* u modelu nahradí text nebo regulární výraz v názvech tabulek, sloupců

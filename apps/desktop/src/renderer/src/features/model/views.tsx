@@ -77,7 +77,7 @@ export function ViewsModal({
         : o.name
   const original = (o: DezignSqlObject) => objects.find((x) => x.id && x.id === o.id)
   const changed = (o: DezignSqlObject) => !original(o) || JSON.stringify(original(o)) !== JSON.stringify(o)
-  const add = (kind: 'trigger' | 'sequence') => {
+  const add = (kind: 'trigger' | 'sequence' | 'procedure') => {
     const table = tables[0]
     const count = list.filter((o) => o.kind === kind).length + 1
     const o: DezignSqlObject =
@@ -90,13 +90,20 @@ export function ViewsModal({
             code: 'CREATE TRIGGER %triggername%\n  BEFORE INSERT OR UPDATE ON %table%\n  FOR EACH ROW\n  EXECUTE FUNCTION ',
             sql: '',
           })
-        : withDezignSql({
-            kind,
-            name: `seq_${count}`,
-            schema: tables[0]?.schema,
-            sequence: { increment: '1', start: '1' },
-            sql: '',
-          })
+        : kind === 'procedure'
+          ? withDezignSql({
+              kind,
+              name: `usp_${count}`,
+              code: 'CREATE PROCEDURE %procname%\nAS\nBEGIN\n  \nEND',
+              sql: '',
+            })
+          : withDezignSql({
+              kind,
+              name: `seq_${count}`,
+              schema: tables[0]?.schema,
+              sequence: { increment: '1', start: '1' },
+              sql: '',
+            })
     setList((l) => [...l, o])
     setSelected(`new:${list.length}`)
   }
@@ -152,17 +159,23 @@ export function ViewsModal({
         <div className="flex w-56 shrink-0 flex-col gap-0.5 overflow-auto">
           {KINDS.map(([kind, title]) => {
             const items = editable.filter(({ o }) => o.kind === kind)
-            if (!items.length && kind !== 'trigger' && kind !== 'sequence') return null
+            if (!items.length && kind === 'view') return null
             return (
               <div key={kind} className="mb-1.5">
                 <div className="flex items-center px-1 text-[11px] font-semibold tracking-wide text-fg-muted uppercase">
                   <span className="flex-1">{t(title)}</span>
-                  {(kind === 'trigger' ? tables.length > 0 : kind === 'sequence') && (
+                  {(kind === 'trigger' ? tables.length > 0 : kind !== 'view') && (
                     <button
                       type="button"
                       className="rounded p-0.5 hover:bg-subtle"
-                      title={kind === 'trigger' ? t('New trigger') : t('New sequence')}
-                      onClick={() => add(kind as 'trigger' | 'sequence')}
+                      title={
+                        kind === 'trigger'
+                          ? t('New trigger')
+                          : kind === 'procedure'
+                            ? t('New procedure')
+                            : t('New sequence')
+                      }
+                      onClick={() => add(kind as 'trigger' | 'sequence' | 'procedure')}
                       data-testid={`objects-add-${kind}`}
                     >
                       <Plus size={12} />

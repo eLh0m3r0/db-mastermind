@@ -133,6 +133,8 @@ export interface ColumnInfo {
    * the audit columns. The package decides the column's definition; one changed here leaves its package.
    */
   package?: string
+  /** Custom properties a model gives the column (DeZign's user defined properties), by name; never in a script. */
+  properties?: Record<string, string>
 }
 
 export interface ForeignKeyInfo {
@@ -187,6 +189,8 @@ export interface TableInfo {
   checks?: CheckInfo[]
   /** Notes kept apart from the description (DeZign's Notes field): for people, never in a script. */
   remarks?: string
+  /** Custom properties a model gives the table (DeZign's user defined properties), by name; never in a script. */
+  properties?: Record<string, string>
 }
 
 export interface RoutineInfo {

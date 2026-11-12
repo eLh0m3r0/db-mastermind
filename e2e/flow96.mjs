@@ -13,7 +13,7 @@ const entc = (id, l, t) => el('ENTC', `<ID>${id}</ID>\n<DIAGRAMID>1</DIAGRAMID>\
 const settings = el('PROJECTSETTINGS', el('COMMONSETTINGS', '<PROJECTNAME></PROJECTNAME>\n<BEGINDATABASESCRIPT>SET search_path = shop;</BEGINDATABASESCRIPT>\n<ENDDATABASESCRIPT>ANALYZE;</ENDDATABASESCRIPT>\n<FILEFORMATVERSION>140</FILEFORMATVERSION>'))
 const entities = [ent('10', 'customer', 'A1', [attr('A1', 'id', 'BIGINT'), attr('A2', 'name', 'TEXT'), attr('A3', 'email', 'TEXT')]), ent('20', 'invoice', 'B1', [attr('B1', 'id', 'BIGINT'), attr('B2', 'total', 'NUMERIC'), attr('B9', 'created_at', 'TIMESTAMP', '<PKGNAME>Stamp</PKGNAME>\n<PKGITEM>0</PKGITEM>')])]
 const dez = join(dir, 'shop.dez')
-writeFileSync(dez, `<?xml version="1.0" encoding="iso-8859-1"?><dezign>\n<VERSION>\n${settings}\n<DATADICT>\n<DBID>postgresql16</DBID>\n<DOMAINS>\n</DOMAINS>\n<ENTITIES>\n${entities.join('\n')}\n</ENTITIES>\n<RELATIONSHIPS>\n</RELATIONSHIPS>\n</DATADICT>\n<DIAGRAMS>\n${el('DIAGRAM', '<ID>1</ID>\n<NAME>Main</NAME>\n<ISMAINDIAGRAM>1</ISMAINDIAGRAM>')}\n<CONTROLS>\n<ENTITYCONTROLS>\n${[entc('10', 0, 0), entc('20', 600, 0)].join('\n')}\n</ENTITYCONTROLS>\n</CONTROLS>\n</DIAGRAMS>\n</VERSION>\n</dezign>\n`, 'latin1')
+writeFileSync(dez, `<?xml version="1.0" encoding="iso-8859-1"?><dezign>\n<VERSION>\n${settings}\n<DATADICT>\n<DBID>postgresql16</DBID>\n<DOMAINS>\n</DOMAINS>\n<ENTITIES>\n${entities.join('\n')}\n</ENTITIES>\n<RELATIONSHIPS>\n</RELATIONSHIPS>\n<USERDEFINEDPROPERTIES>\n<USERDEFPROP>\n<NAME>Owner</NAME>\n<ID>163</ID>\n<POSNR>0</POSNR>\n<PROPTYPE>Value from list</PROPTYPE>\n<OBJECTTYPES>Entity,Attribute</OBJECTTYPES>\n<LISTVALUES>Team A\nTeam B</LISTVALUES>\n<GROUP>Team</GROUP>\n</USERDEFPROP>\n<USERDEFPROP>\n<NAME>Personal data</NAME>\n<ID>166</ID>\n<POSNR>1</POSNR>\n<PROPTYPE>Yes/No</PROPTYPE>\n<OBJECTTYPES>Attribute</OBJECTTYPES>\n<LISTVALUES></LISTVALUES>\n<GROUP>General</GROUP>\n</USERDEFPROP>\n</USERDEFINEDPROPERTIES>\n</DATADICT>\n<DIAGRAMS>\n${el('DIAGRAM', '<ID>1</ID>\n<NAME>Main</NAME>\n<ISMAINDIAGRAM>1</ISMAINDIAGRAM>')}\n<CONTROLS>\n<ENTITYCONTROLS>\n${[entc('10', 0, 0), entc('20', 600, 0)].join('\n')}\n</ENTITYCONTROLS>\n</CONTROLS>\n</DIAGRAMS>\n</VERSION>\n</dezign>\n`, 'latin1')
 
 const sql = join(dir, 'model.sql')
 const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, HOME: join(dir, 'home'), DBM_USER_DATA: join(dir, 'data'), DBM_NO_UPDATE_CHECK: '1', DBM_LANGUAGE: 'en', DBM_E2E_BACKGROUND: '1' } })
@@ -241,6 +241,19 @@ try {
   const packaged = readFileSync(dez, 'latin1').split('</VERSION>')[0]
   const customerEnt = /<ENT>\s*<NAME>customer<\/NAME>[\s\S]*?<\/ENT>/.exec(packaged)?.[0] ?? ''
   console.log('attribute package:', packageListed === 1, badge === 1, /<NAME>created_at<\/NAME>[\s\S]*?<\/DT>\s*<PKGNAME>Stamp<\/PKGNAME>\s*<PKGITEM>0<\/PKGITEM>/.test(customerEnt))
+
+  // Custom properties (DeZign's user defined properties): the table's on their own tab, a column's under the grid.
+  await win.getByTestId('browser-table-customer').dblclick()
+  await win.getByTestId('table-dialog-grid').waitFor({ timeout: 10000 })
+  await win.getByTestId('grid-name-email').click()
+  await win.getByTestId('properties-attribute').getByTestId('property-Personal data').selectOption('Yes')
+  await win.getByRole('button', { name: 'Properties', exact: true }).click()
+  await win.getByTestId('properties-entity').getByTestId('property-Owner').selectOption('Team B')
+  await win.getByTestId('table-dialog-ok').click()
+  const listedProps = await saveProject()
+  const withProps = readFileSync(dez, 'latin1').split('</VERSION>')[0]
+  const customerProps = /<ENT>\s*<NAME>customer<\/NAME>[\s\S]*?<\/ENT>/.exec(withProps)?.[0] ?? ''
+  console.log('custom properties:', /changed column: customer\.email|customer/.test(listedProps), /<ID>10<\/ID>\s*<USERDEFPROPS>\s*<UDP_163>Team B<\/UDP_163>/.test(customerProps), /<NAME>email<\/NAME>[\s\S]*?<USERDEFPROPS>\s*<UDP_166>Yes<\/UDP_166>/.test(customerProps))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow96.png') })
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])

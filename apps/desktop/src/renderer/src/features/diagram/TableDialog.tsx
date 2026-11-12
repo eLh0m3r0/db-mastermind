@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react'
 import { ArrowDown, ArrowUp, KeyRound, Package, Plus, Trash2 } from 'lucide-react'
-import { attributePackages, COMMON_TYPES, createScript, designId, designToTableInfo, getDialect, leavesPackage, packageColumnsFor, type DesignTable, type DriverId, type TableInfo } from '@dbmastermind/core/browser'
+import { attributePackages, COMMON_TYPES, createScript, designId, designToTableInfo, getDialect, leavesPackage, packageColumnsFor, type DesignTable, type DezignUserProperty, type DriverId, type TableInfo } from '@dbmastermind/core/browser'
 import { Button, IconButton } from '@/components/ui/Button'
 import { Checkbox, Input, Segmented, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
+import { PropertiesEditor } from './PropertiesEditor'
 import { TableEditor } from './TableEditor'
 
-type Tab = 'columns' | 'keys' | 'relationships' | 'description' | 'sql'
+type Tab = 'columns' | 'keys' | 'relationships' | 'description' | 'properties' | 'sql'
 
 /**
  * A table of a model edited as in DeZign's entity dialog: its columns in a grid (one row each, the selected one's
@@ -19,6 +20,7 @@ export function TableDialog({
   driver,
   allTables,
   domains,
+  userProperties = [],
   onApply,
   onClose,
 }: {
@@ -26,6 +28,8 @@ export function TableDialog({
   driver: DriverId
   allTables: TableInfo[]
   domains?: { name: string; dataType: string }[]
+  /** The custom properties the project defines (DeZign's user defined properties). */
+  userProperties?: DezignUserProperty[]
   onApply: (table: DesignTable) => void
   onClose: () => void
 }) {
@@ -137,6 +141,7 @@ export function TableDialog({
             { value: 'keys', label: `${tr('Indexes')} · ${tr('Checks')}` },
             { value: 'relationships', label: `${tr('Foreign keys')} (${table.foreignKeys.length})` },
             { value: 'description', label: tr('Description') },
+            ...(userProperties.some((d) => d.objectTypes.some((x) => /^entity$/i.test(x))) ? [{ value: 'properties' as const, label: tr('Properties') }] : []),
             { value: 'sql', label: 'SQL' },
           ]}
         />
@@ -272,6 +277,11 @@ export function TableDialog({
                     </span>
                     <Textarea rows={2} className="resize-y text-[12px]" value={selected.remarks ?? ''} onChange={(e) => setColumn(selected.id, { remarks: e.target.value || undefined })} />
                   </label>
+                  {userProperties.some((d) => d.objectTypes.some((x) => /^attribute$/i.test(x))) && (
+                    <div className="w-72 shrink-0">
+                      <PropertiesEditor definitions={userProperties} objectType="Attribute" values={selected.properties} onChange={(properties) => setColumn(selected.id, { properties })} compact />
+                    </div>
+                  )}
                   <label className="flex w-44 flex-col gap-0.5">
                     <span className="text-[11px] text-fg-muted">{tr('collation')}</span>
                     <Input inputSize="sm" className="font-mono text-[12px]" value={selected.collation ?? ''} onChange={(e) => setColumn(selected.id, { collation: e.target.value.trim() || undefined })} />
@@ -295,6 +305,11 @@ export function TableDialog({
               </span>
               <Textarea rows={6} className="text-[12.5px]" value={table.remarks ?? ''} onChange={(e) => set({ remarks: e.target.value || undefined })} />
             </label>
+          </div>
+        )}
+        {tab === 'properties' && (
+          <div className="max-w-xl pt-1">
+            <PropertiesEditor definitions={userProperties} objectType="Entity" values={table.properties} onChange={(properties) => set({ properties })} />
           </div>
         )}
         {tab === 'sql' && <pre className="h-full overflow-auto rounded-md border border-line bg-subtle p-3 font-mono text-[12px] whitespace-pre" data-testid="table-dialog-sql">{sql}</pre>}

@@ -44,6 +44,7 @@ import {
   toMermaid,
   toPlantUml,
   type DesignTable,
+  type DezignUserProperty,
   type DriverId,
   type SchemaSnapshot,
   type TableInfo,
@@ -402,7 +403,7 @@ function nodeHeight(t: TableInfo, shown: Shown, fk: Set<string>, ref: Set<string
   return HEADER + visible * ROW + (showsMore(shown) && visible < t.columns.length ? ROW : 0) + 2
 }
 
-function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout, flushRef }: { tab: DiagramTab; flushRef?: React.MutableRefObject<(() => boolean) | null>; model?: SchemaSnapshot; modelDriver?: DriverId; domains?: { name: string; dataType: string }[]; dashNonIdentifying?: boolean; request?: DiagramRequest; onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
+function DiagramInner({ tab, model, modelDriver, domains, userProperties, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout, flushRef }: { tab: DiagramTab; flushRef?: React.MutableRefObject<(() => boolean) | null>; userProperties?: DezignUserProperty[]; model?: SchemaSnapshot; modelDriver?: DriverId; domains?: { name: string; dataType: string }[]; dashNonIdentifying?: boolean; request?: DiagramRequest; onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
   const tr = useT()
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const loadSchema = useConnections((s) => s.loadSchema)
@@ -1946,6 +1947,7 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, re
           driver={editorDriver}
           allTables={tables}
           domains={domains}
+          userProperties={userProperties}
           onApply={(t) => {
             updateDraft(dialog.key, t)
             setDialog(null)
@@ -1984,10 +1986,10 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, re
   )
 }
 
-export function DiagramView({ tab, model, modelDriver, domains, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout, flushRef }: { tab: DiagramTab; /** Set to a function that writes the canvas's pending changes into the model (true when there were any). */ flushRef?: React.MutableRefObject<(() => boolean) | null>; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; /** The project's domains, offered for columns. */ domains?: { name: string; dataType: string }[]; /** Lines of relationships whose key is not part of the child's primary key are dashed, as DeZign draws them. */ dashNonIdentifying?: boolean; /** From the model's object browser: show a table, or open a table's or a relationship's dialog. */ request?: DiagramRequest; /** A model's diagram of the selected tables (DeZign: subdiagram from selection). */ onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
+export function DiagramView({ tab, model, modelDriver, domains, userProperties, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout, flushRef }: { tab: DiagramTab; /** The custom properties the model's project defines: its tables' and columns' values are edited in the dialog. */ userProperties?: DezignUserProperty[]; /** Set to a function that writes the canvas's pending changes into the model (true when there were any). */ flushRef?: React.MutableRefObject<(() => boolean) | null>; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; /** The project's domains, offered for columns. */ domains?: { name: string; dataType: string }[]; /** Lines of relationships whose key is not part of the child's primary key are dashed, as DeZign draws them. */ dashNonIdentifying?: boolean; /** From the model's object browser: show a table, or open a table's or a relationship's dialog. */ request?: DiagramRequest; /** A model's diagram of the selected tables (DeZign: subdiagram from selection). */ onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
   return (
     <ReactFlowProvider>
-      <DiagramInner tab={tab} model={model} modelDriver={modelDriver} domains={domains} dashNonIdentifying={dashNonIdentifying} request={request} onNewDiagram={onNewDiagram} onApplyModel={onApplyModel} onLayout={onLayout} flushRef={flushRef} />
+      <DiagramInner tab={tab} model={model} modelDriver={modelDriver} domains={domains} dashNonIdentifying={dashNonIdentifying} request={request} onNewDiagram={onNewDiagram} onApplyModel={onApplyModel} onLayout={onLayout} flushRef={flushRef} userProperties={userProperties} />
     </ReactFlowProvider>
   )
 }

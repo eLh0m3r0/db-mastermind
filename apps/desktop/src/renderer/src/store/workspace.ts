@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { DesignTable, DriverId, FilterNode, SortSpec, TableRef, DezignScripting, DezignSqlObject } from '@dbmastermind/core/browser'
+import type { DesignTable, DriverId, FilterNode, SortSpec, TableRef, DezignScripting, DezignSqlObject, DezignUserProperty } from '@dbmastermind/core/browser'
 import type { DiagramNote, ModelDiagram, DiagramBox, DiagramDisplay } from '@shared/api'
 import { api } from '@/lib/api'
 import { debounce, uid } from '@/lib/utils'
@@ -101,6 +101,8 @@ export interface ModelTab extends BaseTab {
   source?: { kind: 'dezign'; path: string; hash: string; layout?: boolean }
   /** Views, sequences, procedures and triggers of the source, as SQL for `sqlDatabase`: added to generated DDL. */
   sqlObjects?: DezignSqlObject[]
+  /** The custom properties the source defines (DeZign's user defined properties): tables and columns get values. */
+  userProperties?: DezignUserProperty[]
   sqlDatabase?: string
   /** What the source decides about its scripts (key names, domains as database types): scripts follow the project. */
   scripting?: DezignScripting

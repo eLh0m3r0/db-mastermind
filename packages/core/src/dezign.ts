@@ -22,6 +22,19 @@ export interface DezignElement {
 
 export type DezignEncoding = 'utf-8' | 'windows-1250' | 'windows-1252'
 
+/** A custom property a project defines for its objects (DeZign: user defined property). */
+export interface DezignUserProperty {
+  id: string
+  name: string
+  /** DeZign's own words: `Text`, `Number`, `Yes/No`, `Value from list`. */
+  type: string
+  /** What it is for, in DeZign's words: `Entity`, `Attribute`, `Relationship`, `Domain`, `View`, `Trigger`… */
+  objectTypes: string[]
+  /** The choices of a `Value from list` property. */
+  values: string[]
+  group?: string
+}
+
 /** What the DeZign model has and the table model does not carry yet. */
 export interface DezignLeftOut {
   /** Domains: their columns keep the domain's base type. */
@@ -153,6 +166,8 @@ export interface DezignModel {
   layout: { diagramId: string; originX: number; originY: number; scaleX: number; scaleY: number }
   /** Every diagram of the project (the main one included) with the tables it shows and where. */
   diagrams: DezignDiagram[]
+  /** The custom properties the project defines (values: `TableInfo.properties`, `ColumnInfo.properties`). */
+  userProperties: DezignUserProperty[]
   /** The project's domains (named reusable types): a column follows one through `ColumnInfo.domain`. */
   domains: { name: string; dataType: string }[]
   /** Views, sequences, procedures and triggers as the SQL the project holds for them (in its target database's dialect). */
@@ -370,6 +385,26 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const leftOut: DezignLeftOut = { domains: 0, views: 0, procedures: 0, sequences: 0, triggers: 0, checks: 0, relationshipsWithoutColumns: 0, subdiagrams: 0, objectNotes: 0 }
 
   const domains = new Map(kids(kid(dict, 'DOMAINS'), 'DOMAIN').map((d) => [text(d, 'ID'), d]))
+  const userProperties: DezignUserProperty[] = kids(kid(dict, 'USERDEFINEDPROPERTIES'), 'USERDEFPROP').map((p) => ({
+    id: text(p, 'ID'),
+    name: text(p, 'NAME'),
+    type: text(p, 'PROPTYPE') || 'Text',
+    objectTypes: text(p, 'OBJECTTYPES').split(',').map((x) => x.trim()).filter(Boolean),
+    values: text(p, 'LISTVALUES').split(/\r?\n/).map((x) => x.trim()).filter(Boolean),
+    ...(text(p, 'GROUP') ? { group: text(p, 'GROUP') } : {}),
+  }))
+  const propertyNames = new Map(userProperties.map((p) => [p.id, p.name]))
+  /** An object's custom property values by name (`USERDEFPROPS/UDP_<id>`), empty ones left out. */
+  const dezignPropertyValues = (el: DezignElement | undefined, byId: Map<string, string>): Record<string, string> | undefined => {
+    const props = kid(el, 'USERDEFPROPS')
+    const out: Record<string, string> = {}
+    for (const p of kids(props)) {
+      const name = byId.get(p.tag.replace(/^UDP_/, ''))
+      const value = text(props, p.tag)
+      if (name && value) out[name] = value
+    }
+    return Object.keys(out).length ? out : undefined
+  }
   leftOut.domains = domains.size
   leftOut.views = kids(kid(dict, 'VIEWS'), 'VIEW').length
   leftOut.procedures = kids(kid(dict, 'PROCEDURES')).length
@@ -444,6 +479,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
         isIdentity: text(dt, 'AN') === '1',
         comment: text(attr, 'DESC') || null,
         ...(text(attr, 'NOTE') ? { remarks: text(attr, 'NOTE') } : {}),
+        ...(dezignPropertyValues(attr, propertyNames) ? { properties: dezignPropertyValues(attr, propertyNames) } : {}),
         ...(domain && text(domain, 'NAME') ? { domain: text(domain, 'NAME') } : {}),
         ...(collates && text(attr, 'COLLATE') ? { collation: text(attr, 'COLLATE') } : {}),
         ...(text(attr, 'PKGNAME') ? { package: text(attr, 'PKGNAME') } : {}),
@@ -476,6 +512,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
       type: 'table',
       comment: text(ent, 'DESC') || null,
       ...(text(ent, 'NOTE') ? { remarks: text(ent, 'NOTE') } : {}),
+      ...(dezignPropertyValues(ent, propertyNames) ? { properties: dezignPropertyValues(ent, propertyNames) } : {}),
       columns,
       primaryKey,
       foreignKeys: [],
@@ -615,7 +652,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const positions = main?.positions ?? {}
   const layout = { diagramId: mainId, ...(main?.layout ?? { originX: 0, originY: 0, scaleX: 1, scaleY: 1 }) }
 
-  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, diagrams: described, sqlObjects, domains: domainList.map(({ name, dataType }) => ({ name, dataType })), scripting: { primaryKeys, domains: convertDomains ? [] : domainList, uniqueConstraints, uniqueIndexes, ...([...around.create, ...around.alter].some(Boolean) ? { around } : {}) }, nameTemplates, leftOut }
+  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, diagrams: described, sqlObjects, userProperties, domains: domainList.map(({ name, dataType }) => ({ name, dataType })), scripting: { primaryKeys, domains: convertDomains ? [] : domainList, uniqueConstraints, uniqueIndexes, ...([...around.create, ...around.alter].some(Boolean) ? { around } : {}) }, nameTemplates, leftOut }
 }
 
 const PROJECT_SECTIONS: [folder: string, element: string][] = [

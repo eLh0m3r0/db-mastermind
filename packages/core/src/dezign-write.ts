@@ -81,6 +81,7 @@ export type DezignChangeKind =
   | 'add_trigger'
   | 'drop_trigger'
   | 'alter_procedure'
+  | 'add_procedure'
   | 'drop_procedure'
   | 'add_sequence'
   | 'alter_sequence'
@@ -181,6 +182,8 @@ export interface DezignObjectEdits {
   sequences?: ({ id?: string; name: string; schema?: string } & DezignSequenceSettings)[]
   /** New triggers of a table (`table`: `schema.table` of the edited model). */
   triggers?: { table: string; name: string; code: string }[]
+  /** New procedures, made last in the order of creation. */
+  procedures?: { name: string; code: string }[]
   /** Ids of triggers, procedures and sequences to remove. */
   remove?: string[]
 }
@@ -192,7 +195,7 @@ export interface DezignObjectEdits {
 export function dezignObjectEdits(before: DezignSqlObject[], after: DezignSqlObject[]): DezignObjectEdits {
   const managed = (o: DezignSqlObject) => o.kind === 'trigger' || o.kind === 'procedure' || o.kind === 'sequence'
   const byId = new Map(before.filter((o) => managed(o) && o.id).map((o) => [o.id!, o]))
-  const edits: Required<DezignObjectEdits> = { code: [], sequences: [], triggers: [], remove: [] }
+  const edits: Required<DezignObjectEdits> = { code: [], sequences: [], triggers: [], procedures: [], remove: [] }
   const settings = (q: DezignSequenceSettings | undefined) => JSON.stringify(['increment', 'start', 'min', 'max', 'cache'].map((k) => (q?.[k as keyof DezignSequenceSettings] as string | undefined)?.trim() ?? '').concat(String(!!q?.cycle)))
   for (const o of after.filter(managed)) {
     const was = o.id ? byId.get(o.id) : undefined
@@ -202,6 +205,7 @@ export function dezignObjectEdits(before: DezignSqlObject[], after: DezignSqlObj
     } else if (was) {
       if (o.code !== undefined && o.code !== was.code) edits.code.push({ id: o.id!, code: o.code })
     } else if (!o.id && o.kind === 'trigger' && o.table && o.code?.trim()) edits.triggers.push({ table: `${o.schema ?? ''}.${o.table}`, name: o.name, code: o.code })
+    else if (!o.id && o.kind === 'procedure' && o.code?.trim()) edits.procedures.push({ name: o.name, code: o.code })
   }
   const kept = new Set(after.map((o) => o.id).filter(Boolean))
   for (const id of byId.keys()) if (!kept.has(id)) edits.remove.push(id)
@@ -265,6 +269,10 @@ const lower = (s: string) => s.toLowerCase()
 const tableKey = (t: { schema?: string; name: string }) => lower(`${t.schema ?? ''}.${t.name}`)
 const normType = (s: string) => lower(s).replace(/\s+/g, ' ').replace(/\s*,\s*/g, ',').replace(/\s*\(\s*/g, '(').replace(/\s*\)/g, ')').trim()
 const normText = (s: string | null | undefined) => (s ?? '').replace(/\r\n?/g, '\n').trim()
+/** Custom property values compared by name (case aside), empty ones left out. */
+const propertiesKey = (p: Record<string, string> | undefined) =>
+  JSON.stringify(Object.entries(p ?? {}).filter(([, v]) => v !== '').map(([k, v]) => [lower(k), v.trim()]).sort(([a], [b]) => (a! < b! ? -1 : 1)))
+    .replace(/^\[\]$/, '')
 const indexKey = (ix: { unique: boolean; columns: string[] }) => `${ix.unique ? 'u' : 'i'}:${ix.columns.map(lower).join(',')}`
 
 export function codec(encoding: DezignEncoding, nl: string) {
@@ -842,6 +850,36 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     for (const tag of ['PKGNAME', 'PKGITEM']) remove(attr, kid(attr, tag))
     return { detached: name }
   }
+  // Custom properties (DeZign's user defined properties): defined in the project, values on each object
+  // (`USERDEFPROPS/UDP_<id>`, right after POSNR), by name in the model.
+  const propertyIds = new Map(source.userProperties.map((p) => [lower(p.name), p.id]))
+  const setProperties = (el: El, label: string, props: Record<string, string> | undefined) => {
+    const wanted = new Map<string, string>()
+    for (const [name, value] of Object.entries(props ?? {})) {
+      const id = propertyIds.get(lower(name))
+      if (!id) throw new Error(`${label}: the project defines no custom property "${name}" (it defines: ${source.userProperties.map((p) => p.name).join(', ') || 'none'}). Custom properties are defined in DeZign (Dictionary → User defined properties).`)
+      if (value !== '') wanted.set(`UDP_${id}`, value)
+    }
+    let holder = kid(el, 'USERDEFPROPS')
+    if (!holder) {
+      if (!wanted.size) return
+      holder = container('USERDEFPROPS', [])
+      const elements = el.children.filter((k): k is El => typeof k !== 'string')
+      const after = elements.findIndex((k) => k.tag === 'POSNR')
+      const next = elements[(after === -1 ? elements.findIndex((k) => k.tag === 'ID') : after) + 1]
+      insert(el, holder, next ? [next.tag] : [])
+    }
+    const known = new Set([...propertyIds.values()].map((id) => `UDP_${id}`))
+    const children = kids(holder).filter((k) => !known.has(k.tag) || wanted.has(k.tag))
+    for (const k of children) if (wanted.has(k.tag)) k.children = [encode(wanted.get(k.tag)!)]
+    for (const [tag, value] of wanted) if (!children.some((k) => k.tag === tag)) children.push(leaf(tag, value))
+    // In the order the project defines them, as DeZign writes them (values it does not define stay first).
+    const place = (tag: string) => source.userProperties.findIndex((p) => `UDP_${p.id}` === tag)
+    children.sort((a, b) => place(a.tag) - place(b.tag))
+    if (children.length) fill(holder, children)
+    else holder.children = []
+  }
+  const sameProperties = (a: Record<string, string> | undefined, b: Record<string, string> | undefined) => propertiesKey(a) === propertiesKey(b)
   /** Puts a column into its attribute package, as the column of that name the package has elsewhere in the project. */
   const attachPackage = (attr: El, table: string, column: ColumnInfo) => {
     const known = packageItems.get(`${lower(column.package!)}\u0000${lower(column.name)}`)
@@ -906,6 +944,7 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     setDefault(attr, column.defaultValue)
     if (column.comment) set(attr, 'DESC', column.comment, ['NOTE', 'DOMAINID', 'DT'])
     if (column.remarks) set(attr, 'NOTE', column.remarks, ['DOMAINID', 'DT'])
+    if (column.properties) setProperties(attr, `${table}.${column.name}`, column.properties)
     if (column.domain) setDomain(attr, table, column)
     if (column.collation) setCollation(attr, column.collation)
     if (column.package) attachPackage(attr, table, column)
@@ -1041,6 +1080,10 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       }
       if (normText(b.comment) !== normText(c.comment)) {
         set(existing, 'DESC', c.comment ?? '', ['NOTE', 'DOMAINID', 'DT'])
+        altered = true
+      }
+      if (!sameProperties(b.properties, c.properties)) {
+        setProperties(existing, `${label}.${c.name}`, c.properties)
         altered = true
       }
       if (normText(b.remarks) !== normText(c.remarks)) {
@@ -1395,6 +1438,10 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       set(entity.el, 'NOTE', next.remarks ?? '', ['PKCON', 'ATTRIBUTES'])
       changes.push({ kind: 'alter_table', table: next.name })
     }
+    if (!sameProperties(base.properties, next.properties)) {
+      setProperties(entity.el, next.name, next.properties)
+      changes.push({ kind: 'alter_table', table: next.name, name: 'properties' })
+    }
     if (normText(base.comment) !== normText(next.comment)) {
       set(entity.el, 'DESC', next.comment ?? '', ['NOTE', 'PKCON', 'ATTRIBUTES'])
       changes.push({ kind: 'alter_table', table: next.name })
@@ -1434,6 +1481,7 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     set(el, kid(el, 'SCHEMANAME') ? 'SCHEMANAME' : 'SCHEMA', table.schema ?? '', ['DESC', 'NOTE', 'PKCON'])
     if (table.comment) set(el, 'DESC', table.comment, ['NOTE', 'PKCON', 'ATTRIBUTES'])
     if (table.remarks) set(el, 'NOTE', table.remarks, ['PKCON', 'ATTRIBUTES'])
+    if (table.properties) setProperties(el, table.name, table.properties)
     const entity: Entity = { slot: { el }, el, id, attrs: new Map() }
     syncColumns(entity, undefined, table)
     entity.slot = project.add('ENT', el, entityFileName(el))
@@ -1991,6 +2039,22 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       insert(list, el)
       changes.push({ kind: 'add_trigger', table: text(entity.el, 'NAME'), name: wanted.name.trim() })
     }
+    // As DeZign 14.9.3 makes one: NAME, a GUID, its place among the procedures (POSNR, the creation order), CODE.
+    for (const wanted of edits.procedures ?? []) {
+      if (!wanted.name.trim() || !wanted.code.trim()) continue
+      const all = project.list('PROC')
+      const sample = all[0]
+      const id = randomId()
+      const el = sample ? clone(sample.el, [[text(sample.el, 'ID'), id]]) : container('PROCEDURE', [leaf('NAME'), leaf('ID', id), leaf('POSNR', '0'), leaf('CODE')])
+      for (const tag of ['DESC', 'NOTE', 'SCHEMA', 'SCHEMANAME']) if (kid(el, tag)) set(el, tag, '')
+      forget(el)
+      set(el, 'NAME', wanted.name.trim())
+      set(el, 'ID', id)
+      set(el, 'POSNR', String(Math.max(-1, ...all.map((p) => Number(text(p.el, 'POSNR'))).filter((n) => Number.isFinite(n))) + 1))
+      set(el, 'CODE', keepCode(wanted.code))
+      project.add('PROC', el, sample && project.fileStem(sample) === text(sample.el, 'ID') ? id : wanted.name.trim())
+      changes.push({ kind: 'add_procedure', table: wanted.name.trim() })
+    }
     const cycleWords = /^mssqlserver20(1[2-9]|2)/i.test(source.targetDatabase) ? ['NO CYCLE', 'CYCLE'] : /^(oracle|informix)/i.test(source.targetDatabase) ? ['nocycle', 'cycle'] : /^db2/i.test(source.targetDatabase) ? ['NO CYCLE', 'CYCLE'] : ['', 'cycle']
     const setSequence = (el: El, wanted: NonNullable<DezignObjectEdits['sequences']>[number]) => {
       const number = (v: string | undefined, fallback: string) => (v !== undefined && v.trim() !== '' ? v.trim() : fallback)
@@ -2089,11 +2153,11 @@ function verify(files: DezignFile[], result: { files: DezignFile[]; deleted: str
     tables
       .filter((t) => t.type === 'table')
       .map((t) => {
-        const cols = t.columns.map((c) => `${lower(c.name)} ${normType(c.dataType)}${normText(c.remarks) ? ` !${normText(c.remarks)}` : ''}${c.domain ? ` @${lower(c.domain)}` : ''}${c.collation ? ` ~${c.collation}` : ''}${c.nullable ? '' : ' nn'}${c.isIdentity ? ' id' : ''}${normText(c.defaultValue) ? ` =${normText(c.defaultValue)}` : ''}${normText(c.comment) ? ` #${normText(c.comment)}` : ''}`)
+        const cols = t.columns.map((c) => `${lower(c.name)} ${normType(c.dataType)}${normText(c.remarks) ? ` !${normText(c.remarks)}` : ''}${c.domain ? ` @${lower(c.domain)}` : ''}${c.collation ? ` ~${c.collation}` : ''}${c.nullable ? '' : ' nn'}${c.isIdentity ? ' id' : ''}${normText(c.defaultValue) ? ` =${normText(c.defaultValue)}` : ''}${normText(c.comment) ? ` #${normText(c.comment)}` : ''}${propertiesKey(c.properties) ? ` ${propertiesKey(c.properties)}` : ''}`)
         const fks = t.foreignKeys.filter((f) => !f.virtual).map((f) => `${f.columns.map(lower).join(',')}>${lower(f.refTable)}(${f.refColumns.map(lower).join(',')})${f.cardinality ? ` ${f.cardinality}` : ''}`)
         const indexes = t.indexes.filter((ix) => !ix.primary).map(indexKey)
         const checks = (t.checks ?? []).map((c) => `check ${c.expression.replace(/\s+/g, ' ').trim().toLowerCase()}`)
-        return [tableKey(t), `pk(${t.primaryKey.map(lower).join(',')})`, normText(t.comment), normText(t.remarks), ...cols, ...fks.sort(), ...indexes.sort(), ...checks.sort()].join('\n  ')
+        return [tableKey(t), `pk(${t.primaryKey.map(lower).join(',')})`, normText(t.comment), normText(t.remarks), propertiesKey(t.properties), ...cols, ...fks.sort(), ...indexes.sort(), ...checks.sort()].join('\n  ')
       })
       .sort()
   // (What the document's code page cannot hold was written the way it can: see `codec`.)

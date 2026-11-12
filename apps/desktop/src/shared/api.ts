@@ -9,6 +9,7 @@ import type {
   DezignLeftOut,
   DezignScripting,
   DezignSqlObject,
+  DezignUserProperty,
   DriverId,
   Grant,
   Principal,
@@ -468,6 +469,8 @@ export interface OpenedModelFile {
     display?: DiagramDisplay
     /** Views, sequences, procedures and triggers of the source as SQL, and the database they are written for. */
     sqlObjects: DezignSqlObject[]
+    /** The custom properties the project defines (DeZign's user defined properties). */
+    userProperties?: DezignUserProperty[]
     targetDatabase: string
     /** What the project decides about its scripts: the names of its primary keys, its domains as database types. */
     scripting: DezignScripting

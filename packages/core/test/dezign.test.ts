@@ -666,6 +666,18 @@ describe('saving back into a DeZign project', () => {
     expect(readDezign(assembleDezignProject(after)).sqlObjects.filter((o) => o.kind === 'sequence').map((o) => o.sql)).toEqual(['CREATE SEQUENCE shop.ticket_no INCREMENT BY 1 START WITH 7'])
   })
 
+  it('makes new procedures as DeZign 14.9.3 does: a GUID, the next place, the code', () => {
+    const files: DezignFile[] = [{ path: 'shop.dez', text: dez }]
+    const base = model(files)
+    const r = saveToDezign(files, base, base, { normalize: viaDbml, newId: (() => { let n = 0; return () => `00000000-0000-0000-0000-00000000000${++n}` })(), objects: { procedures: [{ name: 'usp_close', code: 'CREATE PROCEDURE %procname%\nAS\nBEGIN\n  UPDATE shop.invoice SET total = 0 WHERE total < 0;\nEND' }, { name: 'usp_two', code: 'CREATE PROCEDURE %procname%' }] } })
+    expect(r.changes.map((c) => `${c.kind} ${c.table}`)).toEqual(['add_procedure usp_close', 'add_procedure usp_two'])
+    const out = r.files[0]!.text
+    expect(out).toContain('<PROCEDURE>\n<NAME>usp_two</NAME>\n<ID>00000000-0000-0000-0000-000000000002</ID>\n<POSNR>1</POSNR>\n<CODE>CREATE PROCEDURE %procname%</CODE>\n</PROCEDURE>')
+    const procs = readDezign(out).sqlObjects.filter((o) => o.kind === 'procedure')
+    expect(procs.map((p) => p.sql)).toEqual(['CREATE PROCEDURE usp_close\nAS\nBEGIN\n  UPDATE shop.invoice SET total = 0 WHERE total &lt; 0;\nEND'.replace('&lt;', '<'), 'CREATE PROCEDURE usp_two'])
+    expect(dezignObjectEdits([], [{ kind: 'procedure', name: 'p', code: 'x', sql: '' }]).procedures).toEqual([{ name: 'p', code: 'x' }])
+  })
+
   it('tells what changed among triggers, procedures and sequences from the list as edited', () => {
     const before = [
       { kind: 'trigger' as const, id: 'T1', name: 'trg_a', table: 'customer', schema: 'shop', code: 'CREATE TRIGGER %triggername%', sql: '' },
@@ -673,7 +685,7 @@ describe('saving back into a DeZign project', () => {
       { kind: 'sequence' as const, id: 'S1', name: 'invoice_no', schema: 'shop', sequence: { increment: '1', start: '1000' }, sql: '' },
       { kind: 'view' as const, id: 'V1', name: 'v', code: 'x', sql: '' },
     ]
-    expect(dezignObjectEdits(before, before)).toEqual({ code: [], sequences: [], triggers: [], remove: [] })
+    expect(dezignObjectEdits(before, before)).toEqual({ code: [], sequences: [], triggers: [], procedures: [], remove: [] })
     const after = [
       { ...before[0]!, code: 'CREATE TRIGGER %triggername% -- changed' },
       { ...before[2]!, sequence: { increment: '5', start: '1000', cycle: true } },
@@ -685,11 +697,48 @@ describe('saving back into a DeZign project', () => {
       code: [{ id: 'T1', code: 'CREATE TRIGGER %triggername% -- changed' }],
       sequences: [{ id: 'S1', name: 'invoice_no', schema: 'shop', increment: '5', start: '1000', cycle: true }, { name: 'ticket_no', schema: undefined, start: '1' }],
       triggers: [{ table: 'shop.invoice', name: 'trg_new', code: 'CREATE TRIGGER %triggername%' }],
+      procedures: [],
       remove: ['P1'],
     })
     // The SQL follows an edit of the code or the settings.
     expect(withDezignSql({ ...after[2]!, code: 'CREATE TRIGGER %triggername% ON %table%' }).sql).toBe('CREATE TRIGGER trg_new ON shop.invoice')
     expect(withDezignSql(after[1]!).sql).toBe('CREATE SEQUENCE shop.invoice_no INCREMENT BY 5 START WITH 1000 CYCLE')
+  })
+
+  // As DeZign 14.9.3 keeps them (its own sample model): definitions in the data dictionary, values on each object.
+  const withProperties = () => {
+    const defs = '<USERDEFINEDPROPERTIES>\n<USERDEFPROP>\n<NAME>Assigned to</NAME>\n<ID>163</ID>\n<POSNR>0</POSNR>\n<PROPTYPE>Value from list</PROPTYPE>\n<OBJECTTYPES>Entity,Attribute</OBJECTTYPES>\n<LISTVALUES>Joe L\nPete B</LISTVALUES>\n<GROUP>Team</GROUP>\n</USERDEFPROP>\n<USERDEFPROP>\n<NAME>Personal data</NAME>\n<ID>166</ID>\n<POSNR>1</POSNR>\n<PROPTYPE>Yes/No</PROPTYPE>\n<OBJECTTYPES>Attribute</OBJECTTYPES>\n<LISTVALUES></LISTVALUES>\n<GROUP>General</GROUP>\n</USERDEFPROP>\n</USERDEFINEDPROPERTIES>\n'
+    const [current, ...rest] = dez.split('</VERSION>')
+    const text = current!.replace('</DATADICT>', `${defs}</DATADICT>`).replace('<NAME>customer</NAME>\n<ID>10</ID>\n', '<NAME>customer</NAME>\n<ID>10</ID>\n<POSNR>0</POSNR>\n<USERDEFPROPS>\n<UDP_163>Pete B</UDP_163>\n</USERDEFPROPS>\n')
+    return [{ path: 'shop.dez', text: [text, ...rest].join('</VERSION>') }] as DezignFile[]
+  }
+
+  it('reads and writes the custom properties of tables and columns (DeZign: user defined properties)', () => {
+    const files = withProperties()
+    const read = readDezign(files[0]!.text)
+    expect(read.userProperties.map((p) => `${p.name}:${p.type}:${p.objectTypes.join('+')}:${p.values.join('|')}`)).toEqual(['Assigned to:Value from list:Entity+Attribute:Joe L|Pete B', 'Personal data:Yes/No:Attribute:'])
+    expect(read.tables[0]!.properties).toEqual({ 'Assigned to': 'Pete B' })
+    const base = model(files)
+    expect(toDbml(base)).toContain(`Properties: '{"Assigned to":"Pete B"}'`)
+    expect(base[0]!.properties).toEqual({ 'Assigned to': 'Pete B' })
+    const r = save(files, (t) => {
+      t[0]!.properties = { 'Assigned to': 'Joe L' }
+      t[0]!.columns.find((c) => c.name === 'email')!.properties = { 'Personal data': 'Yes', 'Assigned to': "Joe's team" }
+      t[1]!.properties = { 'Assigned to': 'Pete B' }
+    })
+    expect(r.changes.map((c) => `${c.kind} ${c.table}${c.name ? ` ${c.name}` : ''}`)).toEqual(['alter_table customer properties', 'alter_column customer email', 'alter_table invoice properties'])
+    const out = r.files[0]!.text
+    const after = readDezign(out).tables
+    expect(after[0]!.properties).toEqual({ 'Assigned to': 'Joe L' })
+    expect(after[0]!.columns.find((c) => c.name === 'email')!.properties).toEqual({ 'Assigned to': "Joe's team", 'Personal data': 'Yes' })
+    expect(after[1]!.properties).toEqual({ 'Assigned to': 'Pete B' })
+    // Where DeZign keeps them: right after POSNR, or after the id where there is none.
+    expect(out).toMatch(/<NAME>invoice<\/NAME>\n<ID>[^<]*<\/ID>\n<USERDEFPROPS>\n<UDP_163>Pete B<\/UDP_163>\n<\/USERDEFPROPS>/)
+    expect(dezignIntegrity(out)).toEqual(dezignIntegrity(files[0]!.text))
+    // Taken away again, and one the project does not define is refused.
+    const cleared = save([{ path: 'shop.dez', text: out }], (t) => void delete t[0]!.properties)
+    expect(readDezign(cleared.files[0]!.text).tables[0]!.properties).toBeUndefined()
+    expect(() => save(files, (t) => void (t[0]!.properties = { Owner: 'x' }))).toThrow(/no custom property "Owner"/)
   })
 
   it('writes nothing when the model was not edited', () => {

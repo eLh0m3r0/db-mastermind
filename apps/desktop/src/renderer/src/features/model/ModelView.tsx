@@ -832,6 +832,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
               model={diagram ? snapshot : shown}
               modelDriver={dezignDriver(tab.sqlDatabase)}
               domains={domains}
+              userProperties={tab.userProperties}
               dashNonIdentifying={tab.source?.kind === 'dezign'}
               request={request}
               flushRef={flushCanvas}
