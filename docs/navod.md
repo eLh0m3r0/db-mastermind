@@ -121,7 +121,8 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   posouvá a s klávesou ⌘ přibližuje; ⌘A vybere všechny tabulky, ukazatel vlevo dole vrátí přiblížení na 100 %.
 - **Objekty modelu:** vlevo od diagramu je přepínač *Objekty / Text*. Objekty (u projektu z DeZignu výchozí)
   ukazují tabulky, vazby, domény a pohledy s hledáním; kliknutím tabulku najdete v diagramu, dvojklikem otevřete
-  její dialog. Text modelu (DBML) je o jedno kliknutí dál pro ty, kdo ho rádi píší.
+  její dialog. Text modelu (DBML) je o jedno kliknutí dál pro ty, kdo ho rádi píší. U modelů vytvořených
+  v aplikaci jsou v Objektech i výčty (enum) a skupiny tabulek, upravují se v dialozích.
 - **Dialogy jako v DeZignu:** dvojklikem na tabulku modelu otevřete její dialog: sloupce v mřížce (název, typ,
   PK, NOT NULL, autoinkrement, výchozí hodnota, doména, komentář; pod mřížkou poznámky a řazení vybraného
   sloupce), indexy a kontroly, cizí klíče, popis a náhled SQL. Dvojklikem na čáru vazby otevřete dialog vazby:

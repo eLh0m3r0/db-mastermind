@@ -503,6 +503,8 @@ Not a clone: their features, rethought and connected to live databases, the know
   changes before OK), double-click a relationship's line for its dialog (name, parent table, the columns, the
   cardinality as pictures, identifying, mandatory parent, on delete/update, a preview of the line). A table's menu
   has Properties…. A database's diagram still opens a table's data on double-click
+- ✅ Enums and table groups of a model of its own edited in dialogs from the object browser (a renamed enum renames
+  the type of the columns that use it; one in use can't be removed): nothing of a model needs typing DBML any more
 - ✅ A DeZign project's scripts before and after its CREATE and ALTER scripts edited in the model ("Project
   scripts…", DeZign's project settings): saved into the project (a folder project's project file) and used by the
   next script; DeZign 14.9.3 opens the saved project with the scripts as written

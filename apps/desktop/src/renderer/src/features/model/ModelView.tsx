@@ -24,6 +24,7 @@ import { DomainsModal, domainsOfText, withDomains, type ModelDomainDef } from '.
 import { editableViews, ViewsModal } from './views'
 import { ObjectBrowser, type BrowserRequest } from './ObjectBrowser'
 import { ProjectScriptsModal } from './ProjectScripts'
+import { EnumsModal, GroupsModal } from './enums-groups'
 import type { DiagramRequest } from '../diagram/DiagramView'
 import { IssuesChip, IssuesPanel } from './ModelIssues'
 import { rememberModelDatabase } from '@/lib/files'
@@ -345,6 +346,8 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const views = useMemo(() => editableViews(tab.sqlObjects), [tab.sqlObjects])
   const [viewsOpen, setViewsOpen] = useState(false)
   const [scriptsOpen, setScriptsOpen] = useState(false)
+  const [enumsOpen, setEnumsOpen] = useState(false)
+  const [groupsOpen, setGroupsOpen] = useState(false)
   const applyViews = (codes: Record<string, string>) => {
     setViewsOpen(false)
     if (!views.some((v) => codes[v.id] !== undefined && codes[v.id] !== v.code)) return
@@ -657,6 +660,29 @@ export function ModelView({ tab }: { tab: ModelTab }) {
             {t('Project scripts…')}
           </Button>
         )}
+        {enumsOpen && (
+          <EnumsModal
+            enums={model.enums}
+            tables={model.tables}
+            onClose={() => setEnumsOpen(false)}
+            onApply={(enums, renamed) => {
+              setEnumsOpen(false)
+              const tables = model.tables.map((tb) => ({ ...tb, columns: tb.columns.map((c) => (renamed[c.dataType] ? { ...c, dataType: renamed[c.dataType]! } : c)) }))
+              replaceText(toDbml(tables, { defaultSchema: snapshot.defaultSchema, enums, groups: model.groups, extras: model.extras }), { dirty: true })
+            }}
+          />
+        )}
+        {groupsOpen && (
+          <GroupsModal
+            groups={model.groups}
+            tables={model.tables}
+            onClose={() => setGroupsOpen(false)}
+            onApply={(groups) => {
+              setGroupsOpen(false)
+              replaceText(toDbml(model.tables, { defaultSchema: snapshot.defaultSchema, enums: model.enums, groups, extras: model.extras }), { dirty: true })
+            }}
+          />
+        )}
         {scriptsOpen && (
           <ProjectScriptsModal
             around={tab.scripting?.around}
@@ -688,7 +714,19 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           </div>
           {left === 'objects' && (
             <div className="min-h-0 flex-1">
-              <ObjectBrowser tables={snapshot.tables} domains={domains} views={tab.sqlObjects ?? []} onRequest={browse} onViews={views.length ? () => setViewsOpen(true) : undefined} onDomains={tab.source ? () => setDomainsOpen(true) : undefined} />
+              <ObjectBrowser
+                tables={snapshot.tables}
+                domains={domains}
+                views={tab.sqlObjects ?? []}
+                onRequest={browse}
+                onViews={views.length ? () => setViewsOpen(true) : undefined}
+                onDomains={tab.source ? () => setDomainsOpen(true) : undefined}
+                // (A DeZign project has neither: its domains and diagrams are its own.)
+                enums={model.enums}
+                groups={model.groups}
+                onEnums={tab.source || model.errors.length ? undefined : () => setEnumsOpen(true)}
+                onGroups={tab.source || model.errors.length ? undefined : () => setGroupsOpen(true)}
+              />
             </div>
           )}
           <div className={cn('min-h-0 flex-1', left === 'objects' && 'hidden')}>

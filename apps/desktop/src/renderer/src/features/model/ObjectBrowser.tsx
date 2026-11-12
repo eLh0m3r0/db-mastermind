@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Eye, Link2, Search, Shapes, Table2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Eye, FolderTree, Link2, ListOrdered, Plus, Search, Shapes, Table2 } from 'lucide-react'
 import type { DezignSqlObject, TableInfo } from '@dbmastermind/core/browser'
 import { Input } from '@/components/ui/Input'
 import { useT } from '@/lib/i18n'
@@ -24,6 +24,10 @@ export function ObjectBrowser({
   onRequest,
   onViews,
   onDomains,
+  enums,
+  groups,
+  onEnums,
+  onGroups,
 }: {
   tables: TableInfo[]
   domains: { name: string; dataType: string }[]
@@ -31,6 +35,11 @@ export function ObjectBrowser({
   onRequest: (request: BrowserRequest) => void
   onViews?: () => void
   onDomains?: () => void
+  /** A model of its own (not DeZign's): its enums and table groups, edited in their dialogs. */
+  enums?: Record<string, string[]>
+  groups?: Record<string, string[]>
+  onEnums?: () => void
+  onGroups?: () => void
 }) {
   const t = useT()
   const [query, setQuery] = useState('')
@@ -150,6 +159,32 @@ export function ObjectBrowser({
             shownViews.length,
             <Eye size={12} />,
             shownViews.map((v) => item(`v:${v.schema ?? ''}.${v.name}`, <span className="truncate">{v.schema ? `${v.schema}.${v.name}` : v.name}</span>, undefined, () => {}, onViews)),
+          )}
+        {onEnums &&
+          group(
+            'enums',
+            t('Enums'),
+            Object.keys(enums ?? {}).filter((n) => matches(n)).length,
+            <ListOrdered size={12} />,
+            <>
+              {Object.entries(enums ?? {})
+                .filter(([n]) => matches(n))
+                .map(([n, values]) => item(`e:${n}`, <span className="truncate">{n}</span>, values.join(', '), onEnums, onEnums, `browser-enum-${n}`))}
+              {item('e:+', <span className="flex items-center gap-1 text-fg-muted"><Plus size={11} />{t('Edit enums…')}</span>, undefined, onEnums, undefined, 'browser-enums-edit')}
+            </>,
+          )}
+        {onGroups &&
+          group(
+            'groups',
+            t('Table groups'),
+            Object.keys(groups ?? {}).filter((n) => matches(n)).length,
+            <FolderTree size={12} />,
+            <>
+              {Object.entries(groups ?? {})
+                .filter(([n]) => matches(n))
+                .map(([n, members]) => item(`g:${n}`, <><span className="truncate">{n}</span><span className="ml-auto shrink-0 text-[11px] text-fg-faint">{members.length}</span></>, members.join(', '), onGroups, onGroups, `browser-group-item-${n}`))}
+              {item('g:+', <span className="flex items-center gap-1 text-fg-muted"><Plus size={11} />{t('Edit table groups…')}</span>, undefined, onGroups, undefined, 'browser-groups-edit')}
+            </>,
           )}
       </div>
     </div>

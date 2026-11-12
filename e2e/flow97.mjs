@@ -148,6 +148,22 @@ try {
   await win.getByTestId('zoom-level').click()
   await win.waitForTimeout(400)
   console.log('select all and zoom:', all === (await win.locator('.react-flow__node:visible').count()), /%/.test(zoomBefore), (await win.getByTestId('zoom-level').innerText()).trim() === '100 %')
+
+  // Enums and table groups from the object browser, without typing DBML.
+  await win.getByRole('button', { name: 'Objects', exact: true }).last().click()
+  await win.getByTestId('browser-enums-edit').click()
+  await win.getByTestId('enum-add').click()
+  await win.getByTestId('enum-name-0').fill('invoice_status')
+  await win.getByTestId('enum-values-0').fill('new\npaid\ncancelled')
+  await win.getByTestId('enums-ok').click()
+  await win.getByTestId('browser-groups-edit').click()
+  await win.getByTestId('group-add').click()
+  await win.getByTestId('group-name-0').fill('Billing')
+  await win.getByText('invoice', { exact: true }).last().click()
+  await win.getByTestId('groups-ok').click()
+  await win.getByRole('button', { name: 'Text (DBML)', exact: true }).last().click()
+  text = await modelText()
+  console.log('enums and groups:', /Enum invoice_status \{\s*new\s*paid\s*cancelled\s*\}/.test(text), /TableGroup Billing \{[^}]*invoice/.test(text))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow97.png') })
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])
