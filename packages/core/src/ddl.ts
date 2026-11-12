@@ -38,6 +38,8 @@ export interface DesignForeignKey {
   refColumns: string[]
   onDelete?: string
   onUpdate?: string
+  /** See ForeignKeyInfo.cardinality. */
+  cardinality?: ForeignKeyInfo['cardinality']
 }
 
 export interface DesignIndex {
@@ -136,7 +138,7 @@ export function toDesignTable(t: TableInfo): DesignTable {
     primaryKey: [...t.primaryKey],
     foreignKeys: t.foreignKeys
       .filter((f) => !f.virtual)
-      .map((f) => ({ id: designId('f'), name: f.name, originalName: f.name, columns: [...f.columns], refSchema: f.refSchema, refTable: f.refTable, refColumns: [...f.refColumns], onDelete: f.onDelete, onUpdate: f.onUpdate })),
+      .map((f) => ({ id: designId('f'), name: f.name, originalName: f.name, columns: [...f.columns], refSchema: f.refSchema, refTable: f.refTable, refColumns: [...f.refColumns], onDelete: f.onDelete, onUpdate: f.onUpdate, ...(f.cardinality ? { cardinality: f.cardinality } : {}) })),
     indexes: t.indexes
       .filter((i) => !i.primary)
       .map((i) => ({ id: designId('i'), name: i.name, originalName: i.name, columns: [...i.columns], unique: i.unique, ...(i.constraint ? { constraint: true } : {}) })),
@@ -1096,6 +1098,7 @@ export function designToTableInfo(t: DesignTable): TableInfo {
       refColumns: f.refColumns,
       onDelete: f.onDelete,
       onUpdate: f.onUpdate,
+      ...(f.cardinality ? { cardinality: f.cardinality } : {}),
     })),
     indexes: t.indexes.map((i) => ({ name: i.name || `${i.unique ? 'ux' : 'ix'}_${t.name}_${i.columns.join('_')}`, columns: i.columns, unique: i.unique, primary: false, ...(i.constraint ? { constraint: true } : {}) })),
     // A check written on a column follows the column through a rename.

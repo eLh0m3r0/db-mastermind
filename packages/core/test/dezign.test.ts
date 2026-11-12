@@ -813,6 +813,26 @@ describe('saving back into a DeZign project', () => {
     expect(save(r.files, () => {})).toEqual({ files: [], deleted: [], changes: [] })
   })
 
+  // CARDINALITY in the order of DeZign's dialog: 0 zero or more, 1 one or more, 2 zero or one, 3 exactly one.
+  it('reads a relationship\'s cardinality, keeps it in DBML, and writes a changed one', () => {
+    const one = dez.replace(/<UPDATERULE>/, '<CARDINALITY>3</CARDINALITY>\n<UPDATERULE>')
+    const files: DezignFile[] = [{ path: 'shop.dez', text: one }]
+    const invoice = readDezign(one).tables.find((t) => t.name === 'invoice')!
+    expect(invoice.foreignKeys[0]!.cardinality).toBe('exactly-one')
+    const dbml = toDbml(readDezign(one).tables)
+    expect(dbml.split('\n').filter((l) => l.startsWith('Ref')).join('\n')).toMatch(/shop\.invoice\.customer_id - shop\.customer\.id \[[^\]]*cardinality: 'exactly one'/)
+    expect(parseDbml(dbml).tables.find((t) => t.name === 'invoice')!.foreignKeys[0]!.cardinality).toBe('exactly-one')
+    expect(parseDbml("Table a {\n  id int [pk]\n}\nTable b {\n  id int [pk]\n  a_id int\n}\nRef: b.a_id - a.id").tables[1]!.foreignKeys[0]!.cardinality).toBe('zero-or-one')
+    expect(save(files, () => {})).toEqual({ files: [], deleted: [], changes: [] })
+    const r = save(files, (t) => void (t.find((x) => x.name === 'invoice')!.foreignKeys[0]!.cardinality = 'zero-or-one'))
+    expect(r.changes.map((c) => c.kind)).toEqual(['alter_relationship'])
+    expect(r.files[0]!.text).toContain('<CARDINALITY>2</CARDINALITY>')
+    const back = save(r.files, (t) => void delete t.find((x) => x.name === 'invoice')!.foreignKeys[0]!.cardinality)
+    expect(back.files[0]!.text).toContain('<CARDINALITY>0</CARDINALITY>')
+    // (Never in a script.)
+    expect(createScript(readDezign(one).tables, getDialect('postgres'))).not.toMatch(/cardinality/i)
+  })
+
   it('writes changed check constraints: a column check that changed becomes a table check', () => {
     const r = save(single, (t) => {
       t[0]!.checks = [{ expression: 'credit >= 0 and credit < 1000000', name: 'credit_range' }]

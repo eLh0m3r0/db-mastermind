@@ -9,6 +9,7 @@ import {
   readDezign,
   serializeDezignXml,
   unescapeDezignText,
+  DEZIGN_CARDINALITIES,
   DEZIGN_COLUMNS_SHOWN,
   type DezignDisplay,
   type DezignElement,
@@ -1383,6 +1384,11 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       changes.push({ kind: 'drop_relationship', table: old.table.name, name: old.fk.refTable })
       continue
     }
+    // A new cardinality (it changes no script, only what the diagram says).
+    if ((old.fk.cardinality ?? '') !== (now.fk.cardinality ?? '')) {
+      set(slot.el, 'CARDINALITY', String(Math.max(0, DEZIGN_CARDINALITIES.indexOf(now.fk.cardinality))), ['RELTYPE', 'MANDATORYPARENT', 'UPDATERULE', 'DELETERULE', 'CONSTRAINT', 'PAIRS'])
+      changes.push({ kind: 'alter_relationship', table: now.table.name, name: now.fk.refTable })
+    }
     if (!sameRule(old.fk.onDelete, now.fk.onDelete) || !sameRule(old.fk.onUpdate, now.fk.onUpdate)) {
       set(slot.el, 'UPDATERULE', ruleCode(now.fk.onUpdate), ['DELETERULE', 'CONSTRAINT', 'PAIRS'])
       set(slot.el, 'DELETERULE', ruleCode(now.fk.onDelete), ['CONSTRAINT', 'PAIRS'])
@@ -1447,8 +1453,10 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
           container('PAIRS', []),
         ])
     for (const tag of ['DESC', 'NOTE', 'PARENTPHRASE', 'CHILDPHRASE']) if (kid(el, tag)) set(el, tag, '')
-    // Zero or more, DeZign's own default: not the cardinality of the relationship it was copied from.
-    if (kid(el, 'CARDINALITY')) set(el, 'CARDINALITY', '0')
+    // The relationship's own cardinality (zero or more by default), not the one of the relationship it was copied from.
+    const card = String(Math.max(0, DEZIGN_CARDINALITIES.indexOf(fk.cardinality)))
+    if (kid(el, 'CARDINALITY')) set(el, 'CARDINALITY', card)
+    else if (card !== '0') set(el, 'CARDINALITY', card, ['RELTYPE', 'MANDATORYPARENT', 'UPDATERULE', 'DELETERULE', 'CONSTRAINT', 'PAIRS'])
     forget(el)
     const parentName = text(parent.el, 'NAME')
     // A name typed for the relationship (`Ref name: …`) is its name; otherwise the project's template makes one.
@@ -1765,7 +1773,7 @@ function verify(files: DezignFile[], result: { files: DezignFile[]; deleted: str
       .filter((t) => t.type === 'table')
       .map((t) => {
         const cols = t.columns.map((c) => `${lower(c.name)} ${normType(c.dataType)}${normText(c.remarks) ? ` !${normText(c.remarks)}` : ''}${c.domain ? ` @${lower(c.domain)}` : ''}${c.collation ? ` ~${c.collation}` : ''}${c.nullable ? '' : ' nn'}${c.isIdentity ? ' id' : ''}${normText(c.defaultValue) ? ` =${normText(c.defaultValue)}` : ''}${normText(c.comment) ? ` #${normText(c.comment)}` : ''}`)
-        const fks = t.foreignKeys.filter((f) => !f.virtual).map((f) => `${f.columns.map(lower).join(',')}>${lower(f.refTable)}(${f.refColumns.map(lower).join(',')})`)
+        const fks = t.foreignKeys.filter((f) => !f.virtual).map((f) => `${f.columns.map(lower).join(',')}>${lower(f.refTable)}(${f.refColumns.map(lower).join(',')})${f.cardinality ? ` ${f.cardinality}` : ''}`)
         const indexes = t.indexes.filter((ix) => !ix.primary).map(indexKey)
         const checks = (t.checks ?? []).map((c) => `check ${c.expression.replace(/\s+/g, ' ').trim().toLowerCase()}`)
         return [tableKey(t), `pk(${t.primaryKey.map(lower).join(',')})`, normText(t.comment), normText(t.remarks), ...cols, ...fks.sort(), ...indexes.sort(), ...checks.sort()].join('\n  ')

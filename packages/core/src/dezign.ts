@@ -256,6 +256,9 @@ const unescapeXml = unescapeDezignText
 
 // 0 is "none"; 1 and 2 are confirmed by SQL that DeZign generated from a public model, 3 and 4 follow its dialog order.
 export const DEZIGN_RULES = [undefined, 'RESTRICT', 'CASCADE', 'SET NULL', 'SET DEFAULT']
+// A relationship's CARDINALITY, in the order of DeZign's dialog and manual: zero or more (the default), one or
+// more, zero or one, exactly one.
+export const DEZIGN_CARDINALITIES = [undefined, 'one-or-more', 'zero-or-one', 'exactly-one'] as const
 const RULES = DEZIGN_RULES
 
 export interface ReadDezignOptions {
@@ -456,6 +459,8 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
     const onDelete = RULES[Number(text(rel, 'DELETERULE'))]
     if (onUpdate) fk.onUpdate = onUpdate
     if (onDelete) fk.onDelete = onDelete
+    const cardinality = DEZIGN_CARDINALITIES[Number(text(rel, 'CARDINALITY'))]
+    if (cardinality) fk.cardinality = cardinality
     if (text(rel, 'VIRTUALREL') === '1') fk.virtual = true
     child.table.foreignKeys.push(fk)
   }

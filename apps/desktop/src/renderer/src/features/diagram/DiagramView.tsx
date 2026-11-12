@@ -607,7 +607,8 @@ function DiagramInner({ tab, model, modelDriver, domains, onApplyModel, onLayout
           type: 'routed',
           data: { route: routes[`${source}:${fk.name}`] },
           animated: active,
-          markerStart: 'crow-many',
+          // The child's end says how many rows one parent has (a model's cardinality); the parent's, whether one is needed.
+          markerStart: fk.cardinality === 'exactly-one' ? 'crow-one' : fk.cardinality === 'zero-or-one' ? 'crow-zero-one' : 'crow-many',
           markerEnd: optional ? 'crow-zero-one' : 'crow-one',
           style: {
             stroke: active ? 'var(--accent)' : fk.virtual ? 'var(--warning)' : 'var(--text-faint)',

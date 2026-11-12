@@ -466,6 +466,9 @@ Not a clone: their features, rethought and connected to live databases, the know
   panel and saved back into its file)
 - ✅ The Notes DeZign keeps next to a description, of tables and columns: `Remarks:` in a table, `remarks:` on a
   column (never in a script), read from the project and written back; DeZign 14.9.3 opens them as saved
+- ✅ A relationship's cardinality (DeZign: zero or more, one or more, zero or one, exactly one): `-` for one-to-one
+  in the model and `cardinality: '…'` where it says more, drawn at the child's end of the line, written back.
+  Codes checked by how DeZign 14.9.3 draws them; never in a script
 - ⬜ Custom properties on tables and columns; DeZign attribute packages as `TablePartial`
 - ⬜ Views, sequences, triggers and procedures edited in the model (a DeZign project's are carried into the DDL
   as they are; a model made here has none yet)

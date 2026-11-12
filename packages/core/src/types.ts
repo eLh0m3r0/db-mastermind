@@ -140,6 +140,11 @@ export interface ForeignKeyInfo {
   onDelete?: string
   /** Defined in the knowledge base rather than in the database. */
   virtual?: boolean
+  /**
+   * How many rows of this table one row of the referenced table has, where a model says (DeZign's relationship
+   * cardinality); none: zero or more. Drawn on the diagram, never in a script.
+   */
+  cardinality?: 'one-or-more' | 'zero-or-one' | 'exactly-one'
 }
 
 export interface IndexInfo {

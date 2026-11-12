@@ -401,6 +401,10 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
       if (m[1]!.toLowerCase() === 'delete') fk.onDelete = m[2]!.toUpperCase()
       else fk.onUpdate = m[2]!.toUpperCase()
     }
+    // `-` is one-to-one: at most one row here per row there; `cardinality:` says exactly.
+    const card = /cardinality\s*:\s*'([^']*)'/i.exec(r.settings)?.[1]?.trim().toLowerCase().replace(/\s+/g, '-')
+    if (card === 'one-or-more' || card === 'zero-or-one' || card === 'exactly-one') fk.cardinality = card
+    else if (r.op === '-') fk.cardinality = 'zero-or-one'
     owner.foreignKeys.push(fk)
   }
   // Aliases in groups mean their tables.
@@ -491,7 +495,9 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
       // A relationship keeps the name it was given (`Ref name: …`); the name made up for an unnamed one is left out.
       // (So is the name PostgreSQL makes up, `orders_customer_id_fkey`: nobody chose it.)
       const named = fk.name && fk.name !== defaultFkName(t.name, fk.columns) && fk.name !== `${t.name}_${fk.columns.join('_')}_fkey` ? ` ${/^[\w$]+$/.test(fk.name) ? fk.name : `"${fk.name.replaceAll('"', '')}"`}` : ''
-      out.push(`Ref${named}: ${tableName(t)}.${cols(fk.columns)} > ${tableName({ schema: fk.refSchema ?? t.schema, name: fk.refTable })}.${cols(fk.refColumns)}${actions.length ? ` [${actions.join(', ')}]` : ''}`)
+      const oneToOne = fk.cardinality === 'zero-or-one' || fk.cardinality === 'exactly-one'
+      if (fk.cardinality === 'exactly-one' || fk.cardinality === 'one-or-more') actions.push(`cardinality: '${fk.cardinality.replaceAll('-', ' ')}'`)
+      out.push(`Ref${named}: ${tableName(t)}.${cols(fk.columns)} ${oneToOne ? '-' : '>'} ${tableName({ schema: fk.refSchema ?? t.schema, name: fk.refTable })}.${cols(fk.refColumns)}${actions.length ? ` [${actions.join(', ')}]` : ''}`)
     }
   }
   const names = new Set(tables.map((t) => t.name))
