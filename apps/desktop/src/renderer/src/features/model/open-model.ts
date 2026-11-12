@@ -72,6 +72,7 @@ const CHANGE_LABELS: Record<DezignChange['kind'], string> = {
   rename_domain: 'renamed domain',
   drop_domain: 'removed domain',
   alter_view: 'changed view',
+  switch_database: 'database of the project',
   alter_trigger: 'changed trigger',
   add_trigger: 'new trigger',
   drop_trigger: 'removed trigger',

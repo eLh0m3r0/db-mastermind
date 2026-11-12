@@ -104,6 +104,8 @@ export interface ModelTab extends BaseTab {
   /** Views, sequences, procedures and triggers of the source, as SQL for `sqlDatabase`: added to generated DDL. */
   sqlObjects?: DezignSqlObject[]
   /** The custom properties the source defines (DeZign's user defined properties): tables and columns get values. */
+  /** The database the project moves to on the next save (DeZign: Switch target DBMS), its DeZign id. */
+  targetDatabase?: string
   /** The generation directives that apply to scripts made from the model (DeZign's conditional generation). */
   directives?: string[]
   userProperties?: DezignUserProperty[]

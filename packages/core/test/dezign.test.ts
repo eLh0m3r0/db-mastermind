@@ -3,7 +3,7 @@ import { diagramsAsLoaded, mutate, mutateDiagrams, random } from './dezign-fuzz.
 
 // More chains for a long local run: DBM_FUZZ_CHAINS=500 npx vitest run --root packages/core test/dezign.test.ts
 const CHAINS = Number(process.env.DBM_FUZZ_CHAINS) || 0
-import { applyDezignSave, archiveDezignVersion, attributePackages, dezignObjectEdits, withDezignSql, batchRename, packageColumnsFor, assembleDezignProject, dezignAsFolder, dezignDomainsOfModel, withDezignDomains, compareSchemas, createScript, detectDezignEncoding, dezignDriver, dezignFolderAsVersion, dezignIntegrity, dezignMigrationOptions, dezignWrapScript, generateMigration, getDialect, unquotedNames, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
+import { applyDezignSave, archiveDezignVersion, attributePackages, dezignObjectEdits, translateTables, withDezignSql, batchRename, packageColumnsFor, assembleDezignProject, dezignAsFolder, dezignDomainsOfModel, withDezignDomains, compareSchemas, createScript, detectDezignEncoding, dezignDriver, dezignFolderAsVersion, dezignIntegrity, dezignMigrationOptions, dezignWrapScript, generateMigration, getDialect, unquotedNames, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 // Hand-written models in DeZign's layout (no file from a real project is kept in the repository).
 const attr = (id: string, name: string, type: string, extra = '', more = '') =>
@@ -831,6 +831,27 @@ describe('saving back into a DeZign project', () => {
     expect(after[0]!.todo).toBeUndefined()
     expect(after[1]!.columns.map((c) => c.todo ?? '')).toEqual(['', 'Rename?', '', '', 'Fill in'].slice(0, after[1]!.columns.length).map((x, i, all) => (i === all.length - 1 ? 'Fill in' : i === 1 ? 'Rename?' : '')))
     expect(dezignIntegrity(out)).toEqual(dezignIntegrity(files[0]!.text))
+  })
+
+  it('moves a project to another database (DeZign: Switch target DBMS), also a folder project', () => {
+    const base = model(single)
+    const target = viaDbml(translateTables(base.map((t) => ({ ...t, columns: t.columns.map((c) => ({ ...c, domain: undefined })) })), 'mssql', 'postgres'))
+    const r = saveToDezign(single, base, target, { normalize: viaDbml, targetDatabase: 'mssqlserver2022' })
+    expect(r.changes.some((c) => c.kind === 'switch_database' && c.table === 'mssqlserver2022')).toBe(true)
+    const out = readDezign(r.files[0]!.text)
+    expect(out.targetDatabase).toBe('mssqlserver2022')
+    expect(out.tables[0]!.columns.map((c) => c.dataType)).toEqual(target[0]!.columns.map((c) => c.dataType))
+    expect(dezignIntegrity(r.files[0]!.text)).toEqual(dezignIntegrity(dez))
+    // And back to PostgreSQL, with DeZign's own names for the types (CHARACTER VARYING, not VARCHAR).
+    const pg = viaDbml(translateTables(out.tables, 'postgres', 'mssql'))
+    const back = saveToDezign([{ path: 'shop.dez', text: r.files[0]!.text }], viaDbml(out.tables), pg, { normalize: viaDbml, targetDatabase: 'postgresql16' })
+    expect(back.files[0]!.text.split('</VERSION>')[0]).not.toMatch(/<DTLISTNAME>VARCHAR</)
+    expect(readDezign(back.files[0]!.text).targetDatabase).toBe('postgresql16')
+    // A folder project names its database in its data dictionary's own file.
+    const folder = dezignAsFolder(dez, 'Shop')
+    const f = saveToDezign(folder, model(folder), viaDbml(translateTables(model(folder).map((t) => ({ ...t, columns: t.columns.map((c) => ({ ...c, domain: undefined })) })), 'mssql', 'postgres')), { normalize: viaDbml, targetDatabase: 'mssqlserver2022' })
+    expect(f.files.some((x) => /\.dds$/i.test(x.path) && x.text.includes('<DBID>mssqlserver2022</DBID>'))).toBe(true)
+    expect(readDezign(assembleDezignProject(applyDezignSave(folder, f))).targetDatabase).toBe('mssqlserver2022')
   })
 
   it('writes nothing when the model was not edited', () => {

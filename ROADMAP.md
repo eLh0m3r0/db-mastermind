@@ -402,6 +402,14 @@ Not a clone: their features, rethought and connected to live databases, the know
   the index DeZign keeps on the key (older projects) in step, so DeZign 14.9.3 draws a file we saved, a new
   identifying relationship and one made identifying, exactly as the app does (checked side by side); changing a
   primary key used to fail the save check in projects with that index
+- ✅ Reports as DeZign makes them (Export → Data dictionary (HTML)…): a title page (title, author, company, version,
+  description), which parts each table's chapter holds (referenced by, indexes, checks, notes, custom properties,
+  labels, to-do items, view definitions), an image of the diagram, the report's color and order; remembered for the
+  next report (e2e/flow36)
+- ✅ A DeZign project switched to another database (DeZign's "Switch target DBMS"; SQL DDL → Switch the project to…):
+  column and domain types translated, the new database id written (a folder project's in its `.dds`), the types
+  under the names DeZign's list has for them (PostgreSQL: CHARACTER VARYING, NUMERIC…). DeZign 14.9.3 opens a SQL
+  Server project switched to PostgreSQL 16 with all 98 column types as written
 - ✅ Conditional generation (DeZign Expert): `{$IFDEF name}` / `{$IFNOTDEF name}` … `{$ENDIF name}`, nested, in view,
   trigger and procedure code, check constraints and the project's scripts; "Directives" (shown when the model has
   any) picks the ones that apply, and SQL DDL and the comparison with a database make the script with them
@@ -603,8 +611,6 @@ Not a clone: their features, rethought and connected to live databases, the know
   as it needs (each marked with its row and column)
 
 ### Later, when the pilot asks for it 💡
-- The rest of DeZign for Databases, with no date (the team's projects don't use it): switching a project's target database in the file (scripts for another database exist), configurable
-  documentation and report templates (today: the HTML data dictionary and the diagram as PDF)
 - Naming rules and a glossary of abbreviations kept in the knowledge base (logical name ↔ physical name)
 - Logical model: one model, several target databases
 - Test data generated in foreign-key order

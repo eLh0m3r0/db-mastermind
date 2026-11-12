@@ -33,9 +33,14 @@ try {
   console.log('plantuml:', puml.split('\n').slice(0, 6).join(' | '), '… rels:', puml.split('\n').filter((l) => l.includes('--o{')).length)
   await win.getByRole('button', { name: 'Export' }).last().click()
   await win.getByText('Data dictionary (HTML)…').click()
-  await win.waitForTimeout(2000)
+  // A report as DeZign makes one: title page facts, chosen parts, the diagram's image.
+  await win.getByTestId('report-author').fill('Data team')
+  await win.getByTestId('report-version').fill('1.2')
+  await win.getByText('Indexes', { exact: true }).last().click()
+  await win.getByTestId('report-export').click()
+  await win.waitForTimeout(3000)
   const html = existsSync(target) ? readFileSync(target, 'utf8') : ''
-  console.log('dictionary bytes:', html.length, 'has orders:', html.includes('orders'))
+  console.log('dictionary bytes:', html.length, 'has orders:', html.includes('orders'), 'report:', html.includes('Data team') && html.includes('1.2'), !html.includes('<h3>Indexes</h3>'), html.includes('<figure class="diagram"><img src="data:image/svg+xml'))
   await win.screenshot({ path: `${out}/r5-model-export.png` })
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])

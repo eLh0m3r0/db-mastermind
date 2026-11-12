@@ -77,6 +77,7 @@ export type DezignChangeKind =
   | 'rename_domain'
   | 'drop_domain'
   | 'alter_view'
+  | 'switch_database'
   | 'alter_trigger'
   | 'add_trigger'
   | 'drop_trigger'
@@ -166,6 +167,11 @@ export interface SaveDezignOptions {
   scripts?: { create?: [string, string]; alter?: [string, string] }
   /** Triggers, procedures and sequences of the project (`DezignSqlObject`): changed, new and removed ones. */
   objects?: DezignObjectEdits
+  /**
+   * Another database for the project (DeZign's "Switch target DBMS", its id such as `postgresql16`). The edited
+   * model's types are already the new database's: they are written as that database's DeZign names.
+   */
+  targetDatabase?: string
   /**
    * Brings a model read from DeZign into the representation of `baseline` and `target` (for DBML documents: a
    * round trip through DBML). The written project is read back through it and compared with `target`.
@@ -266,6 +272,22 @@ const FOLDER: Record<Kind, string> = {
 const DIAGRAM_OBJECT_DIRS = ['diagrams/diagramobjects/stampcontrols', 'diagrams/diagramobjects/viewcontrols']
 
 const lower = (s: string) => s.toLowerCase()
+/** PostgreSQL's serial types are auto-numbered integers. */
+const serialType = (type: string, _identity: boolean) => ({ serial: 'int', bigserial: 'bigint', smallserial: 'smallint' })[type] ?? type
+/** A type with the SQL standard's synonyms named one way (a project moved to PostgreSQL writes DeZign's names). */
+const sameTypeName = (type: string) =>
+  type
+    .replace(/^character varying\b/, 'varchar')
+    .replace(/^character\b/, 'char')
+    .replace(/^numeric\b/, 'decimal')
+    .replace(/^(integer|int4)\b/, 'int')
+    .replace(/^int8\b/, 'bigint')
+    .replace(/^int2\b/, 'smallint')
+    .replace(/^bool\b/, 'boolean')
+    .replace(/^(float8|double precision)\b/, 'double')
+    .replace(/^float4\b/, 'real')
+/** PostgreSQL synonyms and the names DeZign's type list has for them. */
+const PG_LIST_NAMES: Record<string, string> = { VARCHAR: 'CHARACTER VARYING', CHAR: 'CHARACTER', DECIMAL: 'NUMERIC', INT: 'INTEGER', INT4: 'INTEGER', INT8: 'BIGINT', INT2: 'SMALLINT', BOOL: 'BOOLEAN', FLOAT8: 'DOUBLE PRECISION', FLOAT4: 'REAL', TIMESTAMPTZ: 'TIMESTAMP WITH TIME ZONE', TIMETZ: 'TIME WITH TIME ZONE' }
 const tableKey = (t: { schema?: string; name: string }) => lower(`${t.schema ?? ''}.${t.name}`)
 const normType = (s: string) => lower(s).replace(/\s+/g, ' ').replace(/\s*,\s*/g, ',').replace(/\s*\(\s*/g, '(').replace(/\s*\)/g, ')').trim()
 const normText = (s: string | null | undefined) => (s ?? '').replace(/\r\n?/g, '\n').trim()
@@ -330,6 +352,7 @@ class Project {
   private singlePath = ''
   private singleOriginal = ''
   private settingsPath = ''
+  private dictionaryPath = ''
 
   constructor(files: DezignFile[]) {
     const project = files.find((f) => /\.dezproj$/i.test(f.path) && !/[\\/]/.test(f.path))
@@ -349,6 +372,12 @@ class Project {
     // The project file itself holds the project's settings (PROJECTSETTINGS).
     this.docs.set(project!.path.replaceAll('\\', '/'), { root: parseDezignXml(project!.text), original: project!.text })
     this.settingsPath = project!.path.replaceAll('\\', '/')
+    // The data dictionary's own file (its header: the database the project is for).
+    const dictionary = files.find((f) => /\.dds$/i.test(f.path) && !/[\\/]/.test(f.path))
+    if (dictionary) {
+      this.dictionaryPath = dictionary.path.replaceAll('\\', '/')
+      this.docs.set(this.dictionaryPath, { root: parseDezignXml(dictionary.text), original: dictionary.text })
+    }
     for (const f of files) {
       const path = f.path.replaceAll('\\', '/')
       const dir = lower(path.slice(0, Math.max(0, path.lastIndexOf('/'))))
@@ -483,6 +512,13 @@ class Project {
     if (!this.folder) return kid(this.version, 'PROJECTSETTINGS')
     const doc = this.docs.get(this.settingsPath)
     return doc ? kids(doc.root).find((e) => e.tag === 'PROJECTSETTINGS') : undefined
+  }
+
+  /** The data dictionary's header, which names the database the project is for (DBID). */
+  dictionary(): El | undefined {
+    if (!this.folder) return kid(this.version, 'DATADICT')
+    const doc = this.docs.get(this.dictionaryPath)
+    return doc ? (kids(doc.root).find((e) => e.tag === 'DATADICT') ?? doc.root) : undefined
   }
 
   /** An element of a single-file project by its path under the model (`['DATADICT']`); none in a folder project. */
@@ -711,13 +747,18 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
   for (const t of source.tables) for (const c of t.columns) domainTypes.set(`${tableKey(t)}/${lower(c.name)}`, normType(c.dataType))
 
   // --- columns ----------------------------------------------------------------------------------------------
+  // DeZign's own name of a type where the database's list knows it by another (PostgreSQL: VARCHAR is a synonym of
+  // CHARACTER VARYING in DeZign's postgresql16.typ).
+  // (Only when the project moves to PostgreSQL: names typed in a project are kept as typed.)
+  const switching = !!options.targetDatabase && lower(options.targetDatabase) !== lower(source.targetDatabase)
+  const listName = (name: string) => (switching && /^postgres/i.test(options.targetDatabase!) ? (PG_LIST_NAMES[name] ?? name) : name)
   const setType = (attr: El, dataType: string, identity: boolean) => {
     let dt = kid(attr, 'DT')
     if (!dt) insert(attr, (dt = container('DT', [])), ['NNCON', 'CCON', 'DEFCON'])
     const m = /^(.+?)\s*\(\s*(\d+)\s*(?:,\s*(\d+)\s*)?\)$/.exec(dataType.trim())
     // ENUM('a','b') and SET(…) keep their values in ITMS.
     const listed = m ? null : /^(\w+)\s*\((.*')\s*\)$/s.exec(dataType.trim())
-    set(dt, 'DTLISTNAME', (m?.[1] ?? listed?.[1] ?? dataType).trim().toUpperCase(), ['LE', 'PR', 'SD', 'INC', 'AN'])
+    set(dt, 'DTLISTNAME', listName((m?.[1] ?? listed?.[1] ?? dataType).trim().toUpperCase()), ['LE', 'PR', 'SD', 'INC', 'AN'])
     setOptional(dt, 'LE', m?.[2] ?? '', ['PR', 'SD', 'INC', 'AN'])
     setOptional(dt, 'PR', m?.[3] ?? '', ['SD', 'INC', 'AN'])
     setOptional(dt, 'ITMS', listed?.[2] ?? '', [])
@@ -926,6 +967,8 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
   const setDomain = (attr: El, table: string, column: ColumnInfo) => {
     if (!column.domain) {
       if (kid(attr, 'DOMAINID') && text(attr, 'DOMAINID') !== noDomain && text(attr, 'DOMAINID') !== '-1') set(attr, 'DOMAINID', noDomain)
+      // A column that had only its domain's type gets a type of its own (it would have none).
+      if (!text(kid(attr, 'DT'), 'DTLISTNAME')) setType(attr, column.dataType, column.isIdentity)
       return
     }
     const domain = domainsByName.get(lower(column.domain))
@@ -2100,6 +2143,26 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     if (changed) changes.push({ kind: 'diagram_display', table: text(diagram, 'NAME') || diagramId })
   }
 
+  // --- the database the project is for (DeZign: Switch target DBMS) -------------------------------------------
+  if (options.targetDatabase && lower(options.targetDatabase) !== lower(source.targetDatabase)) {
+    const dictionary = project.dictionary()
+    if (!dictionary) throw new Error('The project has no data dictionary header to name its database in')
+    set(dictionary, 'DBID', options.targetDatabase)
+    // Every type under the name the new database's list has for it (DeZign renames synonyms the same way).
+    for (const holder of [...[...entities.values()].flatMap((e) => [...e.attrs.values()]), ...project.list('DOMAIN').map((d) => d.el)]) {
+      const dt = kid(holder, 'DT')
+      const name = text(dt, 'DTLISTNAME')
+      if (dt && name && listName(name.toUpperCase()) !== name) set(dt, 'DTLISTNAME', listName(name.toUpperCase()))
+      // PostgreSQL's auto-numbered integers are SERIAL types there, as DeZign 14.9.3 converts them (no AN flag).
+      const serial = { INTEGER: 'SERIAL', BIGINT: 'BIGSERIAL', SMALLINT: 'SMALLSERIAL' }[text(dt, 'DTLISTNAME')]
+      if (dt && serial && text(dt, 'AN') === '1' && /^postgres/i.test(options.targetDatabase)) {
+        set(dt, 'DTLISTNAME', serial)
+        remove(dt, kid(dt, 'AN'))
+      }
+    }
+    changes.push({ kind: 'switch_database', table: options.targetDatabase, name: source.targetDatabase })
+  }
+
   // --- triggers, procedures and sequences (SQL the model text does not hold) ------------------------------
   if (options.objects) {
     const edits = options.objects
@@ -2278,7 +2341,7 @@ function verify(files: DezignFile[], result: { files: DezignFile[]; deleted: str
     tables
       .filter((t) => t.type === 'table')
       .map((t) => {
-        const cols = t.columns.map((c) => `${lower(c.name)} ${normType(c.dataType)}${normText(c.remarks) ? ` !${normText(c.remarks)}` : ''}${c.domain ? ` @${lower(c.domain)}` : ''}${c.collation ? ` ~${c.collation}` : ''}${c.nullable ? '' : ' nn'}${c.isIdentity ? ' id' : ''}${normText(c.defaultValue) ? ` =${normText(c.defaultValue)}` : ''}${normText(c.comment) ? ` #${normText(c.comment)}` : ''}${propertiesKey(c.properties) ? ` ${propertiesKey(c.properties)}` : ''}${labelsKey(c.labels) ? ` ${labelsKey(c.labels)}` : ''}${normText(c.todo) ? ` todo:${normText(c.todo)}` : ''}`)
+        const cols = t.columns.map((c) => `${lower(c.name)} ${serialType(sameTypeName(normType(c.dataType)), c.isIdentity)}${normText(c.remarks) ? ` !${normText(c.remarks)}` : ''}${c.domain ? ` @${lower(c.domain)}` : ''}${c.collation ? ` ~${c.collation}` : ''}${c.nullable ? '' : ' nn'}${c.isIdentity || /^(small|big)?serial$/.test(normType(c.dataType)) ? ' id' : ''}${normText(c.defaultValue) ? ` =${normText(c.defaultValue)}` : ''}${normText(c.comment) ? ` #${normText(c.comment)}` : ''}${propertiesKey(c.properties) ? ` ${propertiesKey(c.properties)}` : ''}${labelsKey(c.labels) ? ` ${labelsKey(c.labels)}` : ''}${normText(c.todo) ? ` todo:${normText(c.todo)}` : ''}`)
         const fks = t.foreignKeys.filter((f) => !f.virtual).map((f) => `${f.columns.map(lower).join(',')}>${lower(f.refTable)}(${f.refColumns.map(lower).join(',')})${f.cardinality ? ` ${f.cardinality}` : ''}`)
         const indexes = t.indexes.filter((ix) => !ix.primary).map(indexKey)
         const checks = (t.checks ?? []).map((c) => `check ${c.expression.replace(/\s+/g, ' ').trim().toLowerCase()}`)

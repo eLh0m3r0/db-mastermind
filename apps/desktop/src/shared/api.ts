@@ -562,6 +562,8 @@ export interface DezignSaveRequest {
   renamedTables?: Record<string, string>
   /** The code of the project's views by id: a changed one is written. */
   views?: { id: string; code: string }[]
+  /** Another database for the project (DeZign's id, e.g. `postgresql16`): written into it with the model's types. */
+  targetDatabase?: string
   /** The project's triggers, procedures and sequences as edited (new ones without an id): the differences are written. */
   sqlObjects?: DezignSqlObject[]
   /** The project's scripts before and after a CREATE and an ALTER script: written where they differ. */

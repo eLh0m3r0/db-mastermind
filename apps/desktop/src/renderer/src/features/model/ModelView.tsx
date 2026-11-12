@@ -5,7 +5,7 @@ import { Compartment, EditorState } from '@codemirror/state'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
 import { Filter, AlertTriangle, Archive, Database, Eye, Pencil, Shapes, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare, Plus } from 'lucide-react'
-import { applyGenerationDirectives, generationDirectivesIn, scriptingWithDirectives, tablesWithDirectives, withDezignSql, checkModel, withModelLayout, createScript, dezignDriver, dezignMigrationOptions, dezignWrapScript, dropScript, fixModelIssue, unquotedNames, getDialect, parseDbml, toDbml, updateModelFromDatabase, type DezignSqlObject, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
+import { translateTables, translateType, applyGenerationDirectives, generationDirectivesIn, scriptingWithDirectives, tablesWithDirectives, withDezignSql, checkModel, withModelLayout, createScript, dezignDriver, dezignMigrationOptions, dezignWrapScript, dropScript, fixModelIssue, unquotedNames, getDialect, parseDbml, toDbml, updateModelFromDatabase, type DezignSqlObject, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { DRIVERS } from '../connections/drivers'
@@ -136,6 +136,9 @@ function DbmlEditor({ value, dark, onChange, onSave, jumpTo }: { value: string; 
  * A database model as DBML text with a live diagram. Save it next to the knowledge base to version it,
  * fill it from the live database, and compare it with the database to get the migration.
  */
+
+/** DeZign's ids of the databases a project can be switched to (as a new project is made for them). */
+const SWITCH_TO = { postgres: 'postgresql16', mssql: 'mssqlserver2022', mysql: 'mysql8' } as const
 export function ModelView({ tab }: { tab: ModelTab }) {
   const t = useT()
   const dark = useSettings((s) => s.dark)
@@ -169,7 +172,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
 
   /** A model opened from a DeZign project goes back into it: the changes are listed first, the old files are kept. */
   const saveToSource = async (source: NonNullable<ModelTab['source']>) => {
-    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, notes: tab.notes, colors: tab.colors, diagrams: tab.diagrams, display: tab.display, boxes: tab.boxes, removedDiagrams: tab.removedDiagrams, domains: domainsOfText(text).map((d) => ({ ...d, ...(Object.entries(tab.domainRenames ?? {}).find(([, to]) => to === d.name)?.[0] ? { was: Object.entries(tab.domainRenames ?? {}).find(([, to]) => to === d.name)![0] } : {}) })), removeDomains: tab.domainRemovals, renamedTables: tab.tableRenames, views: editableViews(tab.sqlObjects).map(({ id, code }) => ({ id, code })), sqlObjects: tab.sqlObjects, scripts: tab.scripting?.around, layout: !!source.layout, defaultSchema: liveSchema?.defaultSchema }
+    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, notes: tab.notes, colors: tab.colors, diagrams: tab.diagrams, display: tab.display, boxes: tab.boxes, removedDiagrams: tab.removedDiagrams, domains: domainsOfText(text).map((d) => ({ ...d, ...(Object.entries(tab.domainRenames ?? {}).find(([, to]) => to === d.name)?.[0] ? { was: Object.entries(tab.domainRenames ?? {}).find(([, to]) => to === d.name)![0] } : {}) })), removeDomains: tab.domainRemovals, targetDatabase: tab.targetDatabase, renamedTables: tab.tableRenames, views: editableViews(tab.sqlObjects).map(({ id, code }) => ({ id, code })), sqlObjects: tab.sqlObjects, scripts: tab.scripting?.around, layout: !!source.layout, defaultSchema: liveSchema?.defaultSchema }
     const name = source.path.split(/[\\/]/).pop() ?? ''
     try {
       const preview = await api.saveDezignModel({ ...request, dryRun: true })
@@ -189,7 +192,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
       // and keeps the text as it was typed.
       const selected = diagram?.name
       const { text: _saved, title: _title, dirty: _dirty, ...fresh } = modelTabFromFile(await api.openModelFile(source.path).then((f) => f!), liveSchema?.defaultSchema, { quiet: true })
-      updateTab(tab.id, { ...fresh, dirty: false, text, source: { ...source, hash: done.hash, layout: true }, domainRenames: undefined, domainRemovals: undefined, tableRenames: undefined })
+      updateTab(tab.id, { ...fresh, dirty: false, text, source: { ...source, hash: done.hash, layout: true }, domainRenames: undefined, domainRemovals: undefined, tableRenames: undefined, targetDatabase: undefined })
       if (diagram) setArea(fresh.diagrams?.find((d) => d.name === selected) ? `d:${fresh.diagrams.find((d) => d.name === selected)!.id}` : '')
       toast({ kind: 'success', message: t('Saved to {file}', { file: name }), detail: done.backup ? t('Backup of the previous files: {dir}', { dir: done.backup }) : undefined })
     } catch (err) {
@@ -352,6 +355,24 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const domains = useMemo(() => domainsOfText(text), [text])
   const [domainsOpen, setDomainsOpen] = useState(false)
   /** New domain types go to the columns that follow them; the note lists the domains as they are now. */
+  /**
+   * The project moved to another database (DeZign: Switch target DBMS): column and domain types are translated,
+   * scripts follow the new database, and Save writes the project's new database id.
+   */
+  const switchDatabase = async (to: keyof typeof SWITCH_TO) => {
+    if (model.errors.length) return toast({ kind: 'error', message: t('Fix the errors in the model first') })
+    const id = SWITCH_TO[to]
+    const from = dezignDriver(tab.sqlDatabase)
+    const label = DRIVERS.find((d) => d.id === to)?.label ?? to
+    if (!id || from === to) return
+    const ok = await confirmAction({ title: t('Switch the project to {db}?', { db: label }), message: t('Every column and domain gets a type of {db} (as DeZign converts them). Save writes the project for {db}; scripts are made for it from now on.', { db: label }), confirmLabel: t('Switch') })
+    if (!ok) return
+    const tables = translateTables(model.tables, to, from)
+    const domains = domainsOfText(text).map((d) => ({ ...d, dataType: translateType(d.dataType, to, from) }))
+    const body = toDbml(tables, { defaultSchema: snapshot.defaultSchema, enums: model.enums, groups: model.groups, extras: model.extras })
+    replaceText(withDomains(body, domains), { dirty: true, sqlDatabase: id, targetDatabase: id })
+    toast({ kind: 'success', message: t('The project is for {db} now: Save writes it.', { db: label }) })
+  }
   const applyDomains = (next: ModelDomainDef[], removed: string[] = []) => {
     setDomainsOpen(false)
     if (model.errors.length) return toast({ kind: 'error', message: t('Fix the errors in the model first') })
@@ -460,7 +481,11 @@ export function ModelView({ tab }: { tab: ModelTab }) {
         },
       })),
       'separator',
-      { label: t('DROP script…'), onClick: dropFor }],
+      { label: t('DROP script…'), onClick: dropFor },
+      // DeZign's "Switch target DBMS": the project itself moves to another database.
+      ...(tab.source?.kind === 'dezign'
+        ? (['separator', ...(['postgres', 'mssql', 'mysql'] as const).filter((d) => d !== dezignDriver(tab.targetDatabase ?? tab.sqlDatabase)).map((d) => ({ label: t('Switch the project to {db}…', { db: DRIVERS.find((x) => x.id === d)?.label ?? d }), onClick: () => void switchDatabase(d) }))] as const)
+        : [])],
     )
 
   // Checks that run by themselves on a model that parses.

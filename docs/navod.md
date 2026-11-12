@@ -108,6 +108,11 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   ukáže prohlížeč objektů ve skupině *Balíčky atributů*. V dialogu tabulky je vloží *Přidat balíček…*; sloupce
   zůstanou s balíčkem propojené jako v DeZignu. Sloupec z balíčku, kterému změníte název nebo definici, se stane
   vlastním sloupcem tabulky.
+- **Report:** *Export → Datový slovník (HTML)…* vytvoří report jako DeZign: titulní stranu (název, autor, firma, verze,
+  popis), zvolené části u každé tabulky (odkazy, indexy, kontroly, poznámky, vlastnosti, štítky, úkoly, definice
+  pohledů), obrázek diagramu, barvu a pořadí. Volby si aplikace pamatuje pro příští report.
+- **Přepnutí cílové databáze:** *SQL DDL → Přepnout projekt na …* převede typy sloupců a domén na typy jiné databáze
+  (PostgreSQL, SQL Server, MySQL), jako to dělá DeZign („Switch target DBMS“); uložením se projekt zapíše pro ni.
 - **Podmíněné generování:** v kódu pohledů, triggerů a procedur, v kontrolách CHECK a ve skriptech projektu mohou
   být části `{$IFDEF název} … {$ENDIF název}` (nebo `{$IFNOTDEF …}`). Tlačítko *Direktivy* (je vidět, jen když je
   model obsahuje) určí, které platí; SQL DDL i porovnání s databází pak udělají skript podle nich.

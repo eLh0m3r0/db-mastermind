@@ -16,6 +16,24 @@ export interface DictionaryOptions {
   /** Knowledge base notes keyed by `schema.table` or bare table name (lower case). */
   notes?: Map<string, DictionaryNote[]>
   generatedAt?: Date
+  /** A report as DeZign makes one (HTML): title page facts, what it holds, the diagram, its color. */
+  report?: DictionaryReport
+}
+
+export interface DictionaryReport {
+  author?: string
+  company?: string
+  version?: string
+  /** Text under the title. */
+  description?: string
+  /** What each table's part holds; everything when left out. */
+  include?: Partial<Record<'referencedBy' | 'indexes' | 'checks' | 'remarks' | 'properties' | 'labels' | 'todo' | 'definition', boolean>>
+  /** An image of the diagram (a data URL), shown before the tables. */
+  diagram?: string
+  /** The report's color (CSS). */
+  accent?: string
+  /** Tables in the model's order rather than by name. */
+  modelOrder?: boolean
 }
 
 const TYPE_LABELS: Record<TableInfo['type'], string> = {
@@ -39,7 +57,7 @@ function prepare(snapshot: SchemaSnapshot, options: DictionaryOptions): Prepared
   const wanted = options.schemas?.length ? new Set(options.schemas) : null
   const tables = snapshot.tables
     .filter((t) => !wanted || wanted.has(t.schema ?? ''))
-    .sort((a, b) => (a.schema ?? '').localeCompare(b.schema ?? '') || a.name.localeCompare(b.name))
+    .sort((a, b) => (options.report?.modelOrder ? 0 : (a.schema ?? '').localeCompare(b.schema ?? '') || a.name.localeCompare(b.name)))
   const findRef = (schema: string | undefined, name: string) =>
     snapshot.tables.find((t) => t.name === name && (schema === undefined || (t.schema ?? '') === schema)) ??
     snapshot.tables.find((t) => t.name.toLowerCase() === name.toLowerCase())
@@ -161,7 +179,7 @@ export function renderMarkdown(md: string): string {
 const STYLE = `
 :root{--bg:#fff;--fg:#1d2026;--muted:#626a78;--faint:#8a919c;--line:#e4e6ea;--subtle:#f6f7f9;--accent:#5b4fe0;--accent-soft:#eeecfd;--code:#f2f3f5}
 @media (prefers-color-scheme:dark){:root{--bg:#16181d;--fg:#e6e8ec;--muted:#a3a9b4;--faint:#7d8490;--line:#2c3038;--subtle:#1d2026;--accent:#9d94ff;--accent-soft:#2a2750;--code:#23262d}}
-*{box-sizing:border-box}html{scroll-padding-top:16px}
+*{box-sizing:border-box}.diagram{margin:16px 0}.diagram img{max-width:100%;border:1px solid var(--line);border-radius:6px}.facts{width:auto;margin:8px 0}.facts td:first-child{color:var(--muted);padding-right:16px}html{scroll-padding-top:16px}
 body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 .layout{display:flex;min-height:100vh}
 nav{position:sticky;top:0;height:100vh;width:280px;flex-shrink:0;overflow:auto;border-right:1px solid var(--line);background:var(--subtle);padding:16px 12px}
@@ -220,8 +238,13 @@ function toHtml(snapshot: SchemaSnapshot, options: DictionaryOptions, p: Prepare
         return `<tr><td><code>${esc(c.name)}</code></td><td class="mono">${esc(c.dataType)}</td><td>${c.nullable ? 'yes' : '<span class="no">no</span>'}</td><td>${c.defaultValue ? `<code>${esc(c.defaultValue)}</code>` : ''}</td><td>${key}</td><td>${esc(c.comment ?? '')}</td></tr>`
       })
       .join('\n')
-    const refs = p.referencedBy.get(t) ?? []
-    const indexes = t.indexes.filter((i) => !i.primary)
+    const has = (part: keyof NonNullable<DictionaryReport['include']>) => options.report?.include?.[part] !== false
+    const refs = has('referencedBy') ? (p.referencedBy.get(t) ?? []) : []
+    const indexes = has('indexes') ? t.indexes.filter((i) => !i.primary) : []
+    const checks = has('checks') ? (t.checks ?? []) : []
+    const labels = has('labels') ? [...(t.labels ?? []), ...t.columns.flatMap((c) => (c.labels ?? []).map((l) => `${c.name}: ${l}`))] : []
+    const properties = has('properties') ? [...Object.entries(t.properties ?? {}), ...t.columns.flatMap((c) => Object.entries(c.properties ?? {}).map(([k, v]) => [`${c.name} · ${k}`, v] as [string, string]))] : []
+    const todos = has('todo') ? [...(t.todo ? [t.todo] : []), ...t.columns.filter((c) => c.todo).map((c) => `${c.name}: ${c.todo}`)] : []
     const notes = p.notesFor(t)
     const searchKey = [qualified(t), t.comment ?? '', ...t.columns.map((c) => `${c.name} ${c.comment ?? ''}`)].join(' ').toLowerCase()
     return `<section id="${anchor(t)}" data-k="${esc(searchKey)}">
@@ -232,7 +255,12 @@ ${rows}
 </tbody></table>
 ${refs.length ? `<h3>Referenced by</h3><p>${refs.map((r) => `${link(r.table)} <span class="no">(${esc(r.columns.join(', '))})</span>`).join(', ')}</p>` : ''}
 ${indexes.length ? `<h3>Indexes</h3><p>${indexes.map((i) => `<code>${esc(i.name)}</code> (${esc(i.columns.join(', '))})${i.unique ? ' unique' : ''}`).join('<br>')}</p>` : ''}
-${t.definition ? `<h3>Definition</h3><pre><code>${esc(t.definition.trim())}</code></pre>` : ''}
+${checks.length ? `<h3>Checks</h3><p>${checks.map((c) => `${c.name ? `<code>${esc(c.name)}</code> ` : ''}<code>${esc(c.expression)}</code>`).join('<br>')}</p>` : ''}
+${has('remarks') && t.remarks ? `<h3>Notes</h3><p class="comment">${esc(t.remarks)}</p>` : ''}
+${properties.length ? `<h3>Properties</h3><table><tbody>${properties.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>` : ''}
+${labels.length ? `<h3>Labels</h3><p>${labels.map((l) => `<span class="pk">${esc(l)}</span>`).join(' ')}</p>` : ''}
+${todos.length ? `<h3>To do</h3><p>${todos.map((x) => esc(x)).join('<br>')}</p>` : ''}
+${has('definition') && t.definition ? `<h3>Definition</h3><pre><code>${esc(t.definition.trim())}</code></pre>` : ''}
 ${notes.map((n) => `<div class="note"><h3>${esc(n.title)}</h3>${renderMarkdown(n.body)}</div>`).join('\n')}
 </section>`
   })
@@ -240,14 +268,26 @@ ${notes.map((n) => `<div class="note"><h3>${esc(n.title)}</h3>${renderMarkdown(n
   const virtual = p.tables.some((t) => t.foreignKeys.some((f) => f.virtual))
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(title)}</title><style>${STYLE}</style></head>
+<title>${esc(title)}</title><style>${STYLE}${options.report?.accent && /^[#\w(),.\s%-]+$/.test(options.report.accent) ? `:root{--accent:${options.report.accent}}` : ''}</style></head>
 <body><div class="layout">
 <nav><input id="q" type="search" placeholder="Search tables and columns…">${nav.join('\n')}</nav>
 <main><h1>${esc(title)}</h1>
 <p class="sub">${options.subtitle ? `${esc(options.subtitle)} · ` : ''}${p.tables.length} objects · generated ${generated}${virtual ? ' · FK* = relationship documented in the knowledge base' : ''}</p>
+${titlePage(options.report)}
 ${sections.join('\n')}
 </main></div><script>${SCRIPT}</script></body></html>
 `
+}
+
+/** The facts of a report's title page, its description and the diagram's image. */
+function titlePage(report: DictionaryReport | undefined): string {
+  if (!report) return ''
+  const facts = ([['Author', report.author], ['Company', report.company], ['Version', report.version]] as const).filter(([, v]) => v?.trim())
+  return [
+    facts.length ? `<table class="facts"><tbody>${facts.map(([k, v]) => `<tr><td>${k}</td><td>${esc(v!)}</td></tr>`).join('')}</tbody></table>` : '',
+    report.description?.trim() ? `<p class="comment">${esc(report.description)}</p>` : '',
+    report.diagram && /^data:image\/(svg\+xml|png|jpeg);/.test(report.diagram) ? `<figure class="diagram"><img src="${esc(report.diagram)}" alt="Diagram"></figure>` : '',
+  ].filter(Boolean).join('\n')
 }
 
 /** Documentation of a schema: every table and view with columns, keys, relationships, indexes and notes. */

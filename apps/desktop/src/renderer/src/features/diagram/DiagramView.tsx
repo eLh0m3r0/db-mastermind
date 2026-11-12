@@ -45,6 +45,7 @@ import {
   toPlantUml,
   type DesignTable,
   type DezignLabel,
+  type DictionaryReport,
   type DezignUserProperty,
   type DriverId,
   type SchemaSnapshot,
@@ -65,6 +66,7 @@ import { driverLabel } from '../connections/drivers'
 import { useWorkspace, type DiagramTab } from '@/store/workspace'
 import type { SavedDiagram, DiagramNote, DiagramDisplay } from '@shared/api'
 import { MigrationModal } from './MigrationModal'
+import { ReportDialog } from './ReportDialog'
 import { TableEditor } from './TableEditor'
 import { TableDialog } from './TableDialog'
 import { RelationshipDialog } from './RelationshipDialog'
@@ -914,12 +916,25 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
   }
 
   /** Model documents get the same HTML data dictionary as live databases (DBML notes become column comments). */
-  const exportDictionary = () => {
+  const [reportOpen, setReportOpen] = useState(false)
+  /** A report of the model as DeZign makes one: title page, chosen parts, the diagram's image (see ReportDialog). */
+  const exportDictionary = async (title = tab.title, report?: DictionaryReport, image = false) => {
     if (!schema) return
-    const html = buildDataDictionary({ ...schema, tables }, { format: 'html', title: tab.title })
+    let diagram: string | undefined
+    const root = wrapper.current?.querySelector<HTMLElement>('.react-flow')
+    if (image && root) {
+      flow.fitView({ padding: 0.05 })
+      await new Promise((r) => setTimeout(r, 350))
+      diagram = await toSvg(root, {
+        backgroundColor: '#ffffff',
+        filter: (node: HTMLElement) => !node.classList?.contains('react-flow__minimap') && !node.classList?.contains('react-flow__controls') && !node.classList?.contains('react-flow__panel') && !node.classList?.contains('react-flow__background'),
+        includeStyleProperties: EXPORT_STYLE_PROPERTIES,
+      }).catch(() => undefined)
+    }
+    const html = buildDataDictionary({ ...schema, tables }, { format: 'html', title, ...(report ? { report: { ...report, diagram } } : {}) })
     const a = document.createElement('a')
     a.href = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`
-    a.download = `${tab.title.replace(/[^\w.-]+/g, '_')} - data dictionary.html`
+    a.download = `${title.replace(/[^\w.-]+/g, '_')} - ${report ? 'report' : 'data dictionary'}.html`
     a.click()
   }
 
@@ -1549,7 +1564,7 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
               { label: tr('Copy as PlantUML'), onClick: exportPlantUml },
               { label: tr('Copy as DBML (dbdiagram.io)'), onClick: exportDbml },
               ...(model
-                ? ['separator' as const, { label: tr('Data dictionary (HTML)…'), onClick: exportDictionary }]
+                ? ['separator' as const, { label: tr('Data dictionary (HTML)…'), onClick: () => setReportOpen(true) }]
                 : [
                     'separator' as const,
                     {
@@ -1959,6 +1974,16 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
         />
       )}
       </div>
+      {reportOpen && (
+        <ReportDialog
+          title={tab.title}
+          onClose={() => setReportOpen(false)}
+          onExport={(title, report, image) => {
+            setReportOpen(false)
+            void exportDictionary(title, report, image)
+          }}
+        />
+      )}
       <DiagramNameModal open={naming} onClose={() => setNaming(false)} onSave={(name) => void saveAs(name)} />
       {dialog?.kind === 'table' && editorDriver && (
         <TableDialog

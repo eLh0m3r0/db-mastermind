@@ -300,6 +300,14 @@ try {
   await saveProject()
   const withNotation = readFileSync(dez, 'latin1').split('</VERSION>')[0]
   console.log('IDEF1X:', squareTables > 0, /<ISMAINDIAGRAM>1<\/ISMAINDIAGRAM>[\s\S]*?<NOTATION>1<\/NOTATION>|<NOTATION>1<\/NOTATION>/.test(withNotation))
+
+  // The project moved to another database (DeZign: Switch target DBMS): types translated, the new id written.
+  await win.getByRole('button', { name: 'SQL DDL', exact: true }).click()
+  await win.getByRole('menuitem', { name: 'Switch the project to SQL Server…' }).click()
+  await win.getByRole('button', { name: 'Switch', exact: true }).click()
+  const listedSwitch = await saveProject()
+  const switched = readFileSync(dez, 'latin1').split('</VERSION>')[0]
+  console.log('switched database:', /database of the project/.test(listedSwitch), /<DBID>mssqlserver2022<\/DBID>/.test(switched), !/<DTLISTNAME>BIGSERIAL|<DTLISTNAME>TEXT</.test(switched))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow96.png') })
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])

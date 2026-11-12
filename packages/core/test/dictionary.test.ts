@@ -52,6 +52,25 @@ describe('data dictionary', () => {
     expect(html).not.toMatch(/<script src=|<link /)
   })
 
+  it('makes a report as DeZign does: title page facts, chosen parts, the diagram, its color and order', () => {
+    const model: SchemaSnapshot = { ...snapshot, tables: [{ ...snapshot.tables[0]!, todo: 'Split by year', labels: ['PII'], properties: { Owner: 'Sales' }, checks: [{ name: 'ck_id', expression: 'id > 0' }], remarks: 'Kept for 10 years' }, snapshot.tables[1]!] }
+    const html = buildDataDictionary(model, { format: 'html', title: 'Shop', report: { author: 'Data team <x>', version: '1.2', description: 'For auditors', include: { indexes: false }, diagram: 'data:image/svg+xml;charset=utf-8,%3Csvg%3E', accent: '#cc0000', modelOrder: true } })
+    expect(html).toContain('<td>Author</td><td>Data team &lt;x&gt;</td>')
+    expect(html).toContain('<td>Version</td><td>1.2</td>')
+    expect(html).toContain('For auditors')
+    expect(html).toContain('<figure class="diagram"><img src="data:image/svg+xml;charset=utf-8,%3Csvg%3E"')
+    expect(html).toContain(':root{--accent:#cc0000}')
+    expect(html).not.toContain('<h3>Indexes</h3>')
+    for (const part of ['<h3>Checks</h3>', '<h3>Notes</h3>', '<h3>Properties</h3>', '<h3>Labels</h3>', '<h3>To do</h3>']) expect(html).toContain(part)
+    // The model's order: orders before customers.
+    expect(html.indexOf('id="t-shop-orders"')).toBeLessThan(html.indexOf('id="t-shop-customers"'))
+    // Not an image or a color that could carry anything else.
+    const unsafe = buildDataDictionary(model, { format: 'html', report: { diagram: 'javascript:alert(1)', accent: 'red;}</style><script>' } })
+    expect(unsafe).not.toContain('javascript:')
+    expect(unsafe).not.toContain('<script>alert')
+    expect(unsafe).not.toContain('--accent:red;')
+  })
+
   it('renders note markdown safely', () => {
     const html = renderMarkdown('# Title\n\n- **bold** and `code`\n- <img src=x onerror=alert(1)>\n\n```\nselect 1 < 2\n```\n[x](javascript:alert(1)) [ok](https://example.com)')
     expect(html).toContain('<h4>Title</h4>')
