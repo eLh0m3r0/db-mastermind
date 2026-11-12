@@ -92,7 +92,7 @@ try {
   await win.keyboard.press('Enter')
   await win.waitForTimeout(4000)
   console.log(tag, 'demo:', JSON.stringify(await crossings()), 'routed', await win.locator('path.dbm-routed').count(), 'stepped', await win.locator('path.dbm-stepped').count())
-  await win.screenshot({ path: `${out}/r22-demo-${tag}.png` })
+  if (out) await win.screenshot({ path: `${out}/r22-demo-${tag}.png` })
   await win.getByTestId('diagram-columns').selectOption('keys')
   await win.waitForTimeout(3000)
   console.log(tag, 'demo keys only:', JSON.stringify(await crossings()))
