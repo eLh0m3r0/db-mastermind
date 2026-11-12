@@ -289,7 +289,7 @@ Not a clone: their features, rethought and connected to live databases, the know
 5. **Agents get the model like everything else**: the same tools and permissions as the connection it is linked
    to; nothing extra to configure.
 
-### 8.1 Open a DeZign model and use it 🚧
+### 8.1 Open a DeZign model and use it ✅
 - ✅ Open `.dez` files (DeZign 4 to 14, file formats 41–140) as a model: Open model in the Model tab or the command
   palette. Tables, columns, types, keys, relationships with their rules, unique constraints, indexes, defaults,
   comments, schemas. Checked on public models of formats 41, 51, 60, 120, 140
@@ -350,7 +350,7 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ Group boxes are drawn as captioned frames behind their tables (not edited here; stamps are kept in the file
   and not shown)
 
-### 8.2 Save it back 🚧 (works end to end; checked in DeZign 14.9.3 itself)
+### 8.2 Save it back ✅ (checked in DeZign 14.9.3 itself; subtype clusters are kept, not edited)
 - ✅ Save writes the edited model into the same `.dez` or folder project: only the touched elements change,
   everything else stays byte for byte, the file keeps its format version, code page and line ends
 - ✅ Rename, comments, types, nullability, defaults, identity, add/remove/reorder columns, primary key, unique

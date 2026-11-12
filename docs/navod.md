@@ -77,18 +77,32 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
 - **Diagram do PDF:** *Export → PDF* uloží diagram na jednu stránku, nebo v čitelné velikosti na více listů A4
   (každý list má v rohu číslo řádku a sloupce).
 - **Diagramy projektu DeZignu:** v liště modelu přepínáte mezi celým modelem a jeho diagramy. *Nový diagram…*
-  založí další; tabulku do diagramu přidáte hledáním nad plátnem a odeberete z její nabídky (v modelu zůstane).
+  založí další, ve stejném výběru diagram přejmenujete nebo odeberete; tabulku do diagramu přidáte hledáním nad
+  plátnem a odeberete z její nabídky (v modelu zůstane). Diagram zobrazuje tabulky jako v DeZignu: všechny
+  sloupce, jen klíče, jen primární klíče, prvních 10/20, nebo jen názvy, s typy i bez (lišta diagramu);
+  jednotlivé sloupce skryjete v nabídce tabulky (*Zobrazené sloupce*). Rámečky (group boxes) přidáte tlačítkem,
+  přesunete za titulek, velikost změníte v rohu, přejmenujete a odeberete z jejich nabídky.
 - **Aktualizace modelu z databáze:** *Z databáze → Aktualizovat model* doplní do modelu, co v databázi přibylo
   nebo se změnilo; komentáře, domény a rozložení modelu zůstanou.
 - **Porovnání s archivovanou verzí:** u modelu z DeZignu nabídne *Porovnat s verzí…* verze uložené v projektu;
-  uvidíte změny od té doby a ALTER skript pro databázi modelu.
+  uvidíte změny od té doby a ALTER skript pro databázi modelu. *Archivovat verzi…* uloží aktuální stav projektu
+  jako novou verzi, stejně jako v DeZignu (File → Versions); DeZign ji pak vidí mezi svými.
+- **Domény:** *Domény…* u modelu z DeZignu ukáže pojmenované typy projektu. Změna typu domény se propíše do všech
+  sloupců, které se jí řídí; nová doména se nabídne v panelu tabulky.
+- **Porovnání s databází:** přejmenovaný sloupec nebo tabulku pozná a nabídne jako přejmenování (data zůstanou);
+  jednotlivé změny lze ze skriptu vynechat. ALTER i CREATE skript dostanou úvodní a závěrečný skript projektu.
+- **Skript DROP:** *SQL DDL → Skript DROP…* odstraní vše, co model vytváří (pohledy, tabulky v pořadí, které
+  cizí klíče dovolí, a domény).
 - **Export do DeZignu:** model vytvořený tady uložíte přes *Uložit jako…* i jako nový projekt DeZign for Databases
-  (`.dez`) pro kolegy, kteří pracují v DeZignu. Ověřeno v DeZignu 14.9.3: projekt otevře a uloží beze ztráty.
+  pro kolegy, kteří pracují v DeZignu: jeden soubor `.dez`, nebo složkový projekt `.dezproj` (pro Git, soubor
+  na každý objekt). Ověřeno v DeZignu 14.9.3: projekt otevře a uloží beze ztráty.
 - **Panel tabulky:** v režimu *Návrh* kliknutím na tabulku otevřete panel, kde upravíte sloupce (název, typ,
   NOT NULL, výchozí hodnotu, komentář, pořadí, doménu), cizí klíče (i název a ON UPDATE), indexy a kontroly
-  CHECK. Funguje i u modelu bez připojené databáze; *Zapsat do DBML* přenese změny do textu modelu.
+  CHECK. Funguje i u modelu bez připojené databáze; *Zapsat do DBML* přenese změny do textu modelu. Vazbu
+  nakreslíte tažením zelené tečky v záhlaví tabulky na jinou tabulku: sloupec klíče se vytvoří sám.
 - **Kontroly modelu:** počítadlo v liště modelu ukazuje, co stojí za pozornost (tabulky bez klíče, nesoulad typů
-  cizího klíče, duplicitní indexy, cizí klíče bez indexu, názvy mimo styl, vazby, které nikdo nedeklaroval).
+  cizího klíče, duplicitní indexy, cizí klíče bez indexu, názvy mimo styl, vazby, které nikdo nedeklaroval,
+  názvy delší, než databáze dovolí – PostgreSQL je nad 63 bajtů potichu ořízne).
   Kliknutím přejdete na tabulku; bezpečné opravy jsou na jedno kliknutí.
 - **Modely z DeZign for Databases:** *Otevřít model* přijme i soubory `.dez` a složkové projekty `.dezproj`
   (DeZign 4 až 14) včetně rozložení hlavního diagramu. Z modelu pak vygenerujete DDL nebo ALTER skript proti
