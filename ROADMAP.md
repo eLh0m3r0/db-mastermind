@@ -423,6 +423,9 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ A new DeZign project can be a folder project (Save as… → `.dezproj`, for Git): a folder of its name with a
   file per object, made as DeZign's "Save project as → Folder based" makes it (byte for byte against DeZign
   14.9.3's own, project path apart); DeZign opens new ones for PostgreSQL and SQL Server and saves them as made
+- ✅ A folder project in Git: two people who edit other tables on their branches, each adding a table, save
+  files the other did not touch, so Git merges them without a conflict (checked with real git; a save touches
+  only the files of the objects it changed and DeZign 14 ids never repeat)
 - ✅ A model made here goes the other way too: Save as… offers a new DeZign project (`.dez`, format 140, for the
   database of the model's connection: PostgreSQL, SQL Server or MySQL) with tables, keys, relationships, indexes,
   checks, comments and the diagram; the tab then follows that file. DeZign 14.9.3 opens all three kinds and

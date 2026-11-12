@@ -92,6 +92,38 @@ describe.skipIf(!root)('DeZign models on this machine', () => {
     })
   })
 
+  // Two people on two Git branches: each edits other tables and adds one. Their saves must touch different files,
+  // and both applied together (what a merge gives) must hold both edits with every reference valid.
+  it('two independent edits of a folder project touch different files and merge', { timeout: 120_000 }, () => {
+    const viaDbml = (tables: TableInfo[]) => parseDbml(toDbml(tables)).tables
+    find(root!).forEach((file, n) => {
+      if (!/\.dezproj$/i.test(file)) return
+      const project: DezignFile[] = projectFiles(join(file, '..'))
+      const read = (files: DezignFile[]) => viaDbml(readDezign(assembleDezignProject(files)).tables)
+      const keyed = read(project).filter((t) => t.primaryKey.length === 1)
+      if (keyed.length < 2) return
+      const branch = (index: number, suffix: string) => {
+        const edited = read(project)
+        const table = edited.find((t) => t.name === keyed[index]!.name && t.schema === keyed[index]!.schema)!
+        table.columns.push({ name: `dbm_${suffix}`, ordinal: table.columns.length + 1, dataType: 'varchar(40)', nullable: true, isPrimaryKey: false, isIdentity: false })
+        const pk = table.columns.find((c) => c.isPrimaryKey)!
+        edited.push({ schema: table.schema, name: `dbm_new_${suffix}`, type: 'table', comment: null, columns: [{ name: 'id', ordinal: 1, dataType: 'bigint', nullable: false, isPrimaryKey: true, isIdentity: false }, { name: 'parent_id', ordinal: 2, dataType: pk.dataType, nullable: true, isPrimaryKey: false, isIdentity: false }], primaryKey: ['id'], foreignKeys: [{ name: `fk_${suffix}`, columns: ['parent_id'], refSchema: table.schema, refTable: table.name, refColumns: [pk.name] }], indexes: [] })
+        return saveToDezign(project, read(project), viaDbml(edited), { normalize: viaDbml })
+      }
+      const a = branch(0, 'a')
+      const b = branch(keyed.length - 1, 'b')
+      const touched = (s: typeof a) => new Set([...s.files.map((f) => f.path), ...s.deleted])
+      const shared = [...touched(a)].filter((p) => touched(b).has(p)).length
+      const merged = applyDezignSave(applyDezignSave(project, a), b)
+      const tables = read(merged)
+      report(`#${n + 1} folder branches: a=${touched(a).size} b=${touched(b).size} shared=${shared}`)
+      expect(shared).toBe(0)
+      expect(dezignIntegrity(assembleDezignProject(merged)).length).toBe(0)
+      expect(tables.filter((t) => t.name.startsWith('dbm_new_')).length).toBe(2)
+      expect(tables.reduce((s, t) => s + t.columns.filter((c) => c.name === 'dbm_a' || c.name === 'dbm_b').length, 0)).toBe(2)
+    })
+  })
+
   it('survives chains of random edits without breaking a reference', { timeout: 600_000 }, () => {
     const viaDbml = (tables: TableInfo[]) => parseDbml(toDbml(tables)).tables
     find(root!).forEach((file, n) => {
