@@ -3,7 +3,7 @@ import { diagramsAsLoaded, mutate, mutateDiagrams, random } from './dezign-fuzz.
 
 // More chains for a long local run: DBM_FUZZ_CHAINS=500 npx vitest run --root packages/core test/dezign.test.ts
 const CHAINS = Number(process.env.DBM_FUZZ_CHAINS) || 0
-import { applyDezignSave, archiveDezignVersion, assembleDezignProject, compareSchemas, createScript, detectDezignEncoding, dezignDriver, dezignFolderAsVersion, dezignIntegrity, dezignMigrationOptions, dezignWrapScript, generateMigration, getDialect, unquotedNames, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
+import { applyDezignSave, archiveDezignVersion, assembleDezignProject, dezignAsFolder, compareSchemas, createScript, detectDezignEncoding, dezignDriver, dezignFolderAsVersion, dezignIntegrity, dezignMigrationOptions, dezignWrapScript, generateMigration, getDialect, unquotedNames, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 // Hand-written models in DeZign's layout (no file from a real project is kept in the repository).
 const attr = (id: string, name: string, type: string, extra = '', more = '') =>
@@ -503,6 +503,20 @@ describe('saving back into a DeZign project', () => {
     expect(dezignIntegrity(r.files[0]!.text)).toEqual(dezignIntegrity(dez))
     // The same domains again: nothing to write.
     expect(saveToDezign(r.files, model(r.files), model(r.files), { normalize: viaDbml, domains: [{ name: 'country_code', dataType: 'character(3)' }] }).files).toEqual([])
+  })
+
+  // As DeZign's "Save project as → Folder based" (checked byte for byte against DeZign 14.9.3's own, project path apart).
+  it('turns a single-file project into a folder project that holds the same model', () => {
+    const files = dezignAsFolder(dez, 'Shop')
+    expect(files.map((f) => f.path)).toEqual(expect.arrayContaining(['Shop.dezproj', 'Shop.dds', 'data dictionary/entities/10.xml', 'data dictionary/domains/D1.xml', 'diagrams/1.xml', 'diagrams/diagramobjects/entitycontrols/1-10.xml']))
+    expect(files.every((f) => /^<\?xml version="1.0" encoding="iso-8859-1"\?>\n</.test(f.text) || f.path.startsWith('archived versions/'))).toBe(true)
+    expect(files.find((f) => f.path === 'Shop.dds')!.text).toBe('<?xml version="1.0" encoding="iso-8859-1"?>\n<DATADICT>\n<DBID>postgresql16</DBID>\n</DATADICT>\n')
+    const folder = readDezign(assembleDezignProject(files.filter((f) => !f.path.startsWith('archived versions/'))))
+    expect(folder.tables).toEqual(readDezign(dez).tables)
+    expect(folder.diagrams.map((d) => [d.name, d.tables, d.positions])).toEqual(readDezign(dez).diagrams.map((d) => [d.name, d.tables, d.positions]))
+    // The archived version goes along, as a file of its own.
+    expect(files.filter((f) => f.path.startsWith('archived versions/')).length).toBe(listDezignVersions(dez).length)
+    expect(() => dezignAsFolder(dez.replace('</DATADICT>', '<SOMETHINGNEW>\n<X>\n</X>\n</SOMETHINGNEW>\n</DATADICT>'), 'Shop')).toThrow(/SOMETHINGNEW/)
   })
 
   it('writes nothing when the model was not edited', () => {

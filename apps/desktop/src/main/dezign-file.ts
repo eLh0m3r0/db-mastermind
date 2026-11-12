@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { copyFile, mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative } from 'node:path'
 import { app } from 'electron'
-import { archiveDezignVersion, assembleDezignProject, dezignDatabaseFor, listDezignVersions, newDezignProject, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '@dbmastermind/core'
+import { archiveDezignVersion, assembleDezignProject, dezignAsFolder, dezignDatabaseFor, listDezignVersions, newDezignProject, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '@dbmastermind/core'
 import type { DezignSaveOutcome, DezignSaveRequest, ModelExportLayout, ModelVersion, OpenedModelFile } from '@shared/api'
 import { dataPath } from './storage'
 import { paletteFill, paletteIndex } from './palette'
@@ -155,16 +155,32 @@ export async function saveDezignModel(request: DezignSaveRequest): Promise<Dezig
   return { ...outcome, backup, hash: fingerprint(toDbml(after.tables)) }
 }
 
-/** Writes a model made here as a new DeZign project (`.dez`), for the database of its connection (PostgreSQL without one). */
-export async function exportDezignModel(path: string, dbml: string, layout: ModelExportLayout = {}): Promise<void> {
+/**
+ * Writes a model made here as a new DeZign project, for the database of its connection (PostgreSQL without one):
+ * a single file (`.dez`), or a folder project (`.dezproj`, for Git) in a folder of its name next to the path, as
+ * DeZign's "Save project as → Folder based" makes one. Returns the project file.
+ */
+export async function exportDezignModel(path: string, dbml: string, layout: ModelExportLayout = {}): Promise<string> {
   const model = parseDbml(dbml)
   if (model.errors.length) throw new Error(`The model has errors (line ${model.errors[0]!.line}): fix them before saving.`)
   // Tables without a schema sit under the connection's default schema in the window's diagram.
   const positions = Object.fromEntries(Object.entries(layout.positions ?? {}).map(([key, p]) => [layout.defaultSchema && key.startsWith(`${layout.defaultSchema}.`) ? key.slice(layout.defaultSchema.length) : key, p]))
   const text = newDezignProject(model.tables, { database: dezignDatabaseFor(layout.driver), positions })
+  if (extname(path).toLowerCase() === '.dezproj') {
+    const name = basename(path, extname(path))
+    const dir = join(dirname(path), name)
+    // A folder project is a folder of its own: never written into one that holds something already.
+    if ((await readdir(dir).catch(() => [])).length) throw new Error(`The folder ${dir} is not empty: pick another name for the project.`)
+    for (const file of dezignAsFolder(text, name)) {
+      await mkdir(dirname(join(dir, file.path)), { recursive: true })
+      await writeFile(join(dir, file.path), file.text, 'latin1')
+    }
+    return join(dir, `${name}.dezproj`)
+  }
   const temp = `${path}.dbm-saving`
   await writeFile(temp, text, 'latin1')
   await rename(temp, path)
+  return path
 }
 
 const fallbackEncoding = () => (/^(cs|sk|pl|hu|sl|hr|ro|sq)\b/i.test(app.getLocale()) ? ('windows-1250' as const) : ('windows-1252' as const))

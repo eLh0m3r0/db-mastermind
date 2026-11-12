@@ -197,7 +197,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
       const path = await api.saveModelFile(text, as ? undefined : tab.path, connection?.knowledgeBasePath, { positions: tab.positions, defaultSchema: liveSchema?.defaultSchema, driver: connection?.driver, name: fileName })
       if (!path) return
       // Saved as a DeZign project: the tab now follows that file, as if it had been opened from it.
-      if (/\.dez$/i.test(path)) {
+      if (/\.dez(proj)?$/i.test(path)) {
         const file = await api.openModelFile(path)
         if (!file) return
         const { text: opened, ...patch } = modelTabFromFile(file, liveSchema?.defaultSchema, { quiet: true })

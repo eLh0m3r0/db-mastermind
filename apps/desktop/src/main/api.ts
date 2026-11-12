@@ -530,16 +530,14 @@ export const api: MastermindApi = {
         filters: [
           { name: 'DBML', extensions: ['dbml'] },
           { name: 'DeZign for Databases project', extensions: ['dez'] },
+          { name: 'DeZign for Databases project, folder based (for Git)', extensions: ['dezproj'] },
         ],
       }
       const r = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
       if (r.canceled || !r.filePath) return null
       path = r.filePath
       // Only a file the user just chose in the dialog can become a DeZign project.
-      if (extname(path).toLowerCase() === '.dez') {
-        await exportDezignModel(path, text, layout)
-        return path
-      }
+      if (['.dez', '.dezproj'].includes(extname(path).toLowerCase())) return exportDezignModel(path, text, layout)
     }
     // Only model files: the renderer must not be able to write anything else.
     if (extname(path).toLowerCase() !== '.dbml') throw new Error('Models are saved as .dbml files')

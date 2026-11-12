@@ -1,7 +1,7 @@
 // A model from scratch without knowing DBML: New model on the start page, the first table by a button, more
 // tables in the designer, then SQL for a database and a DeZign project for colleagues.
 import { _electron as electron } from '@playwright/test'
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -28,6 +28,14 @@ try {
   await win.getByText('Saved as a DeZign for Databases project').waitFor({ timeout: 15000 })
   const saved = existsSync(dez) ? readFileSync(dez, 'latin1') : ''
   console.log('saved as a DeZign project:', (saved.match(/<ENT>/g) ?? []).length, 'tables,', (saved.match(/<ENTC>/g) ?? []).length, 'on the diagram')
+  // The same as a folder project (for Git): a folder of its name, with one file per object, as DeZign makes it.
+  const proj = join(dir, 'team-model.dezproj')
+  await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }) }, proj)
+  await win.getByRole('button', { name: 'Save as…' }).click()
+  await win.getByText('Saved as a DeZign for Databases project').last().waitFor({ timeout: 15000 })
+  const folder = join(dir, 'team-model')
+  const entities = existsSync(join(folder, 'data dictionary', 'entities')) ? readdirSync(join(folder, 'data dictionary', 'entities')).length : 0
+  console.log('saved as a folder project:', existsSync(join(folder, 'team-model.dezproj')), entities, 'table files,', existsSync(join(folder, 'team-model.dds')))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow94.png') })
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])

@@ -1,4 +1,4 @@
-import { detectDezignEncoding, type DezignEncoding } from './dezign.js'
+import { detectDezignEncoding, dezignChild as kid, dezignChildren as kids, parseDezignXml, serializeDezignXml, type DezignElement, type DezignEncoding } from './dezign.js'
 import { codec, type DezignFile } from './dezign-write.js'
 
 /**
@@ -134,4 +134,61 @@ export function archiveDezignVersion(files: DezignFile[], request: DezignArchive
   const copy = `<VERSION>${nl}${info}${nl}${inner}</VERSION>${nl}`
   const at = end + '</VERSION>'.length
   return { files: [{ path: single!.path, text: text.slice(0, at) + copy + text.slice(at) }], number, id }
+}
+
+/**
+ * A single-file project (`.dez`) as a folder project, as DeZign's "Save project as → Folder based" writes it:
+ * `<name>.dezproj` (the settings), `.dds` (the dictionary's header), `.ddp` (display preferences), one file per
+ * object named by its id (diagram objects `<diagram id>-<id>`), and the archived versions in `archived versions`.
+ * Every file is the declaration, a line break, the element as the single file holds it, and a line break.
+ * Checked against the folder DeZign 14.9.3 saved of the same model. Throws on a part it does not know where to put.
+ */
+export function dezignAsFolder(text: string, name: string): DezignFile[] {
+  const root = kids(parseDezignXml(text), 'dezign')[0]
+  if (!root) throw new Error('This is not a DeZign for Databases model')
+  const versions = kids(root, 'VERSION')
+  const current = versions.find((v) => !kid(v, 'VERSIONINFO'))
+  if (!current) throw new Error('This is not a DeZign for Databases model')
+  const nl = text.includes('\r\n') ? '\r\n' : '\n'
+  const head = `<?xml version="1.0" encoding="iso-8859-1"?>${nl}`
+  const file = (path: string, el: DezignElement) => ({ path, text: `${head}${serializeDezignXml(el)}${nl}` })
+  const leaf = (el: DezignElement) => el.children.every((c) => typeof c === 'string')
+  const idOf = (el: DezignElement) => (kid(el, 'ID')?.children.join('') ?? '').trim()
+  const out: DezignFile[] = []
+  const unknown: string[] = []
+  for (const part of kids(current)) {
+    if (part.tag === 'PROJECTSETTINGS') out.push(file(`${name}.dezproj`, part))
+    else if (part.tag === 'DATADICT') {
+      // The dictionary's own values (the database it is for) make its header file; its lists make folders.
+      // (A list is one even when empty.)
+      const isList = (c: DezignElement) => !leaf(c) || DICTIONARY.some(([, tag]) => tag === c.tag)
+      const header: DezignElement = { ...part, children: [nl, ...kids(part).filter((c) => !isList(c)).flatMap((c) => [c, nl])] }
+      out.push(file(`${name}.dds`, header))
+      for (const list of kids(part).filter(isList)) {
+        const folder = DICTIONARY.find(([, tag]) => tag === list.tag)?.[0]
+        if (!folder) unknown.push(list.tag)
+        else for (const el of kids(list)) out.push(file(`data dictionary/${folder}/${idOf(el)}.xml`, el))
+      }
+    } else if (part.tag === 'DIAGRAMS') {
+      for (const el of kids(part)) {
+        if (el.tag === 'DisplayPreferences') out.push(file(`${name}.ddp`, el))
+        else if (el.tag === 'DIAGRAM') out.push(file(`diagrams/${idOf(el)}.xml`, el))
+        else if (el.tag === 'CONTROLS') {
+          for (const list of kids(el)) {
+            const folder = CONTROLS.find(([, tag]) => tag === list.tag)?.[0]
+            if (!folder) unknown.push(list.tag)
+            else for (const c of kids(list)) out.push(file(`diagrams/diagramobjects/${folder}/${(kid(c, 'DIAGRAMID')?.children.join('') ?? '').trim()}-${idOf(c)}.xml`, c))
+          }
+        } else unknown.push(el.tag)
+      }
+    } else if (part.tag === 'LABELS') for (const el of kids(part)) out.push(file(`labels/${idOf(el)}.xml`, el))
+    else unknown.push(part.tag)
+  }
+  if (unknown.length) throw new Error(`This DeZign project has parts that are not known here (${[...new Set(unknown)].join(', ')}): it was not converted`)
+  // Archived versions: one file each, the element as it is (DeZign's own start on the declaration's line).
+  for (const v of versions.filter((x) => x !== current)) {
+    const id = (kid(kid(v, 'VERSIONINFO'), 'VERSIONID')?.children.join('') ?? '').trim() || globalThis.crypto.randomUUID().toUpperCase()
+    out.push({ path: `archived versions/${id}.xml`, text: `<?xml version="1.0" encoding="iso-8859-1"?>${serializeDezignXml(v)}${nl}` })
+  }
+  return out
 }
