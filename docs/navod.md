@@ -86,7 +86,13 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   nebo se změnilo; komentáře, domény a rozložení modelu zůstanou.
 - **Porovnání s archivovanou verzí:** u modelu z DeZignu nabídne *Porovnat s verzí…* verze uložené v projektu;
   uvidíte změny od té doby a ALTER skript pro databázi modelu. *Archivovat verzi…* uloží aktuální stav projektu
-  jako novou verzi, stejně jako v DeZignu (File → Versions); DeZign ji pak vidí mezi svými.
+  jako novou verzi, stejně jako v DeZignu (File → Versions); DeZign ji pak vidí mezi svými. Databázi k tomu
+  připojovat nemusíte: skript je pro databázi projektu a uložíte ho do souboru (*Uložit skript…*). Tlačítkem
+  *Otevřít tuto verzi* si verzi prohlédnete i s diagramy na vlastní záložce; do projektu se z ní nic nezapíše.
+- **Pohledy:** *Pohledy…* u modelu z DeZignu ukáže SQL pohledů projektu tak, jak ho drží DeZign (`%viewname%`
+  zastupuje název pohledu). Úprava se při uložení zapíše do projektu a jde do DDL skriptu.
+- **Týmová práce v Gitu:** u složkového projektu (`.dezproj`) uložení změní jen soubory upravených objektů, takže
+  dva kolegové, kteří upravují různé tabulky ve svých větvích, je sloučí bez konfliktu.
 - **Domény:** *Domény…* u modelu z DeZignu ukáže pojmenované typy projektu. Změna typu domény se propíše do všech
   sloupců, které se jí řídí; nová doména se nabídne v panelu tabulky.
 - **Porovnání s databází:** přejmenovaný sloupec nebo tabulku pozná a nabídne jako přejmenování (data zůstanou);
