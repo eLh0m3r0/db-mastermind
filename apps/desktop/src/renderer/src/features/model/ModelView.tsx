@@ -269,7 +269,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
       const file = await api.openModelFile(undefined, connection?.knowledgeBasePath)
       if (!file) return
       const name = file.path.split(/[\\/]/).pop() ?? 'DBML'
-      openTab({ kind: 'compare', connectionId: tab.connectionId, sourceModel: text, targetModel: file.text, targetLabel: name, title: t('Changes since {name}', { name }) }, { reuse: false })
+      openTab({ kind: 'compare', connectionId: tab.connectionId, sourceModel: text, targetModel: file.text, targetLabel: name, targetDriver: dezignDriver(tab.sqlDatabase) ?? connection?.driver ?? 'postgres', title: t('Changes since {name}', { name }) }, { reuse: false })
     } catch (err) {
       toast({ kind: 'error', message: t('Could not open the model'), detail: errorMessage(err) })
     }
@@ -288,7 +288,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
         label: name(v),
         onClick: () =>
           void api.openModelVersion(source.path, v.id).then(
-            (file) => openTab({ kind: 'compare', connectionId: tab.connectionId, sourceModel: text, targetModel: file.text, targetLabel: name(v), title: t('Changes since {name}', { name: name(v) }) }, { reuse: false }),
+            (file) => openTab({ kind: 'compare', connectionId: tab.connectionId, sourceModel: text, targetModel: file.text, targetLabel: name(v), targetDriver: dezignDriver(tab.sqlDatabase) ?? connection?.driver ?? 'postgres', sourceScripting: tab.scripting, title: t('Changes since {name}', { name: name(v) }) }, { reuse: false }),
             (err) => toast({ kind: 'error', message: t('Could not open the model'), detail: errorMessage(err) }),
           ),
       })),
@@ -608,7 +608,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           size="sm"
           variant="ghost"
           icon={<GitCompare size={13} />}
-          disabled={!connection || model.errors.length > 0}
+          disabled={model.errors.length > 0}
           title={tab.source ? t('What changed since a version archived in the project, or compared with another file: the changes and the ALTER script') : t('What changed compared with another DBML file, e.g. an older version of this model')}
           onClick={(e) => void compareMenu(e.currentTarget)}
           data-testid="model-compare-versions"

@@ -114,6 +114,15 @@ try {
   const domainFile = readFileSync(dez, 'latin1')
   console.log('domains:', /credit numeric\(14,2\) \[domain: 'money_t'\]/.test(withDomain), /money_t: numeric\(14,2\)/.test(withDomain), /<DOMAIN>\n<NAME>money_t<\/NAME>[\s\S]*?<DTLISTNAME>NUMERIC<\/DTLISTNAME>\n<LE>14<\/LE>\n<PR>2<\/PR>/.test(domainFile))
 
+  // What changed since the archived version, with no database connected: the ALTER script for the project's own.
+  await win.getByTestId('model-compare-versions').click()
+  await win.getByText(/^v1 · /).first().click()
+  await win.getByRole('button', { name: 'Compare', exact: true }).click()
+  await win.getByRole('button', { name: 'Save script…' }).waitFor({ timeout: 20000 })
+  const versionScript = await win.evaluate(() => [...document.querySelectorAll('pre')].filter((e) => e.offsetParent !== null).pop()?.innerText ?? '')
+  console.log('compare with a version without a database:', /ALTER TABLE "shop"\."customer"/.test(versionScript), /"credit"/.test(versionScript))
+  await win.getByText('shop.dez', { exact: true }).first().click()
+
   // The project's begin and end scripts go around the DDL made for its own database.
   await win.getByRole('button', { name: /^SQL DDL/ }).click()
   await win.getByText('PostgreSQL', { exact: true }).last().click()

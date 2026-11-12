@@ -40,6 +40,8 @@ export function CompareView({ tab }: { tab: CompareTab }) {
   const target = connections.find((c) => c.id === tab.connectionId)
   const source = connections.find((c) => c.id === tab.sourceId)
   const crossEngine = !!source && !!target && source.driver !== target.driver
+  // Two models need no database: the script is for the project's own (or the one connected).
+  const driver = target?.driver ?? tab.targetDriver
 
   const run = async () => {
     if (!tab.sourceId && tab.sourceModel === undefined) return
@@ -112,12 +114,12 @@ export function CompareView({ tab }: { tab: CompareTab }) {
 
   const selected = changes.filter((c) => !excluded.has(changeTable(c)) && !skipped.has(changeKey(c)))
   const script = useMemo(() => {
-    if (!target || !snapshots || !selected.length) return ''
-    const dialect = getDialect(target.driver)
+    if (!driver || !snapshots || !selected.length) return ''
+    const dialect = getDialect(driver)
     // A DeZign project names its keys its own way (`PK_%table%`) and keeps its domains as types: the script follows.
     // Its own begin and end scripts for ALTER scripts go around it (Project options in DeZign).
-    return dezignWrapScript(migrationScript(generateMigration(selected, dialect, snapshots.target.tables, dezignMigrationOptions(tab.sourceScripting, target.driver)), dialect), tab.sourceScripting, 'alter')
-  }, [selected, target, snapshots])
+    return dezignWrapScript(migrationScript(generateMigration(selected, dialect, snapshots.target.tables, dezignMigrationOptions(tab.sourceScripting, driver)), dialect), tab.sourceScripting, 'alter')
+  }, [selected, driver, snapshots])
 
   const pickConnection = (id: string, side: 'source' | 'target') =>
     updateTab(tab.id, side === 'source' ? { sourceId: id, sourceSchema: undefined } : { connectionId: id, targetSchema: undefined })
@@ -256,12 +258,24 @@ export function CompareView({ tab }: { tab: CompareTab }) {
           </div>
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="flex h-9 shrink-0 items-center gap-2 border-b border-line px-3 text-[12px]">
-              {target && <DriverIcon driver={target.driver} size={14} />}
-              <span className="font-medium">{t('Migration for {name}', { name: target?.name ?? '' })}</span>
+              {driver && <DriverIcon driver={driver} size={14} />}
+              <span className="font-medium">{t('Migration for {name}', { name: target?.name ?? tab.targetLabel ?? '' })}</span>
               <div className="flex-1" />
-              <Button size="xs" variant="primary" disabled={!script} onClick={() => newQuery(tab.connectionId, script, t('Migration'))}>
-                {t('Open in SQL editor')}
-              </Button>
+              {target ? (
+                <Button size="xs" variant="primary" disabled={!script} onClick={() => newQuery(tab.connectionId, script, t('Migration'))}>
+                  {t('Open in SQL editor')}
+                </Button>
+              ) : (
+                // (No database to open it for: the script goes to a file.)
+                <Button
+                  size="xs"
+                  variant="primary"
+                  disabled={!script}
+                  onClick={() => void api.saveSqlFile(script, 'migration.sql').then((path) => path && toast({ kind: 'success', message: t('Script saved'), detail: path }), (err) => toast({ kind: 'error', message: t('Could not save the script'), detail: errorMessage(err) }))}
+                >
+                  {t('Save script…')}
+                </Button>
+              )}
             </div>
             <pre className="min-h-0 flex-1 overflow-auto p-3 font-mono text-[12px] leading-relaxed whitespace-pre-wrap select-text">{script}</pre>
           </div>

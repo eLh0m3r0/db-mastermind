@@ -418,6 +418,8 @@ Not a clone: their features, rethought and connected to live databases, the know
   DeZign archive a version with every ALTER script keep doing so from here
 - ✅ Compare with a version archived in the project ("Compare with version…" lists them, newest first): the
   changes since then and the ALTER script for the model's database. DeZign sells this in its top edition only
+- ✅ Comparing with an archived version needs no database: the script is for the database the project is made
+  for and goes to a file (Save script…), as DeZign's "Compare archived models" does
 - ✅ A new DeZign project can be a folder project (Save as… → `.dezproj`, for Git): a folder of its name with a
   file per object, made as DeZign's "Save project as → Folder based" makes it (byte for byte against DeZign
   14.9.3's own, project path apart); DeZign opens new ones for PostgreSQL and SQL Server and saves them as made

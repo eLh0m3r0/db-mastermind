@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { DesignTable, FilterNode, SortSpec, TableRef, DezignScripting, DezignSqlObject } from '@dbmastermind/core/browser'
+import type { DesignTable, DriverId, FilterNode, SortSpec, TableRef, DezignScripting, DezignSqlObject } from '@dbmastermind/core/browser'
 import type { DiagramNote, ModelDiagram, DiagramBox, DiagramDisplay } from '@shared/api'
 import { api } from '@/lib/api'
 import { debounce, uid } from '@/lib/utils'
@@ -75,6 +75,8 @@ export interface CompareTab extends BaseTab {
   targetModel?: string
   /** File name of `targetModel`, for the header. */
   targetLabel?: string
+  /** Two models without a database: the database the script is written for (the project's own). */
+  targetDriver?: DriverId
 }
 
 /** Table data compare: `connectionId` is the target that receives the sync script. */
