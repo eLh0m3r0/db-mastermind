@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { copyFile, mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative } from 'node:path'
 import { app } from 'electron'
-import { archiveDezignVersion, assembleDezignProject, dezignAsFolder, dezignDomainsNote, dezignDomainsOfModel, dezignDatabaseFor, listDezignVersions, newDezignProject, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '@dbmastermind/core'
+import { archiveDezignVersion, assembleDezignProject, dezignAsFolder, dezignDomainsNote, dezignDomainsOfModel, dezignDatabaseFor, dezignObjectEdits, listDezignVersions, newDezignProject, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '@dbmastermind/core'
 import type { DezignSaveOutcome, DezignSaveRequest, ModelExportLayout, ModelVersion, OpenedModelFile } from '@shared/api'
 import { dataPath } from './storage'
 import { paletteFill, paletteIndex } from './palette'
@@ -133,7 +133,7 @@ export async function saveDezignModel(request: DezignSaveRequest): Promise<Dezig
   const main = model.layout.diagramId
   if (main) diagrams[main] = request.layout ? { notes: request.notes ?? [], colors: colorChanges(main, request.colors), display: displayOf(request.display), ...(request.boxes ? { boxes: request.boxes } : {}) } : { notes: keepingAll(main, request.notes) }
   for (const id of request.removedDiagrams ?? []) if (id !== main) diagrams[id] = { remove: true }
-  const result = saveToDezign(files, viaDbml(model.tables), edited.tables, { node: NODE, fallbackEncoding, positions, diagrams, normalize: viaDbml, domains: request.domains, removeDomains: request.removeDomains, renamedTables: request.renamedTables && withBareKeys(request.renamedTables), views: request.views, scripts: request.scripts })
+  const result = saveToDezign(files, viaDbml(model.tables), edited.tables, { node: NODE, fallbackEncoding, positions, diagrams, normalize: viaDbml, domains: request.domains, removeDomains: request.removeDomains, renamedTables: request.renamedTables && withBareKeys(request.renamedTables), views: request.views, scripts: request.scripts, objects: request.sqlObjects && dezignObjectEdits(model.sqlObjects, request.sqlObjects) })
   const outcome: DezignSaveOutcome = { changes: result.changes, written: result.files.length, deleted: result.deleted.length, hash: request.hash }
   if (request.dryRun || (!result.files.length && !result.deleted.length)) return outcome
 

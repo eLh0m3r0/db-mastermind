@@ -543,8 +543,14 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ⬜ Custom properties on tables and columns
 - ✅ Views of a DeZign project edited in the model ("Views…"): their SQL as DeZign keeps it (`%viewname%` for the
   view's name), written back on Save and used in the DDL script. DeZign 14.9.3 opens the saved view as written
-- ⬜ Sequences, triggers and procedures edited in the model, and views in a model made here (a DeZign project's
-  are carried into the DDL as they are)
+- ✅ A DeZign project's triggers, procedures and sequences edited in the model ("Views and code…", next to its
+  views; the object browser lists them): code as DeZign keeps it (`%triggername%`, `%table%`), sequences by their
+  settings (increment, start, minimum, maximum, cache, cycle in the database's own word), new triggers of a table
+  and new sequences, triggers, procedures and sequences removed. Saved into the project (a folder project's
+  sequence as a file of its own) and used in the DDL. DeZign 14.9.3 opens a project with a changed, a new and a
+  removed trigger and a new sequence, and an older PostgreSQL project with a changed and a new sequence, as saved
+  (e2e/flow91). Fixed on the way: a sequence's CYCLE was read only as `1`, but DeZign keeps `cycle`/`CYCLE`
+- ⬜ Views in a model made here (a .dbml model; a DeZign project's are edited as above)
 - ✅ Domains of a DeZign project managed from the model ("Domains…"): a new type for a domain goes to every column
   that follows it, as DeZign propagates it; new domains are made and offered in the table panel. Saved into the
   project (a new domain with a column that follows it opened in DeZign 14.9.3 as saved; projects of the full

@@ -51,9 +51,48 @@ export interface DezignSqlObject {
   table?: string
   /** One statement, without its terminator. */
   sql: string
-  /** A view's own id and its code as the project keeps it (DeZign's placeholders such as `%viewname%` in it). */
+  /**
+   * The object's own id, and for a view, a trigger or a procedure its code as the project keeps it (DeZign's
+   * placeholders such as `%viewname%` or `%triggername%` in it).
+   */
   id?: string
   code?: string
+  /** A sequence's settings as the project keeps them. */
+  sequence?: DezignSequenceSettings
+}
+
+/** What DeZign keeps of a sequence (empty: the database's default). */
+export interface DezignSequenceSettings {
+  increment?: string
+  start?: string
+  min?: string
+  max?: string
+  cache?: string
+  cycle?: boolean
+}
+
+/** The statement a sequence's settings stand for. */
+export function dezignSequenceSql(o: { name: string; schema?: string }, q: DezignSequenceSettings): string {
+  const num = (v: string | undefined) => (v !== undefined && /^-?\d+$/.test(v.trim()) ? v.trim() : '')
+  const part = (v: string | undefined, sql: string) => (num(v) ? ` ${sql} ${num(v)}` : '')
+  // A sequence that starts below 1 with no minimum of its own: databases default the minimum to 1 and refuse it.
+  const floor = !num(q.min) && num(q.start) && Number(num(q.start)) < 1 && !(q.increment ?? '').trim().startsWith('-') ? ` MINVALUE ${num(q.start)}` : ''
+  return `CREATE SEQUENCE ${o.schema ? `${o.schema}.` : ''}${o.name}${part(q.increment, 'INCREMENT BY')}${part(q.start, 'START WITH')}${part(q.min, 'MINVALUE')}${floor}${part(q.max, 'MAXVALUE')}${part(q.cache, 'CACHE')}${q.cycle ? ' CYCLE' : ''}`
+}
+
+/** The statement a trigger's or a procedure's code (with DeZign's placeholders) stands for. */
+export function dezignCodeSql(o: { kind: 'trigger' | 'procedure'; name: string; schema?: string; table?: string }, code: string): string {
+  const full = (o.schema ? `${o.schema}.` : '') + o.name
+  const table = o.table ? (o.schema ? `${o.schema}.` : '') + o.table : ''
+  const names: Record<string, string> = o.kind === 'trigger' ? { triggername: o.name, name: o.name, tablename: table, table } : { procname: full, procedurename: full, name: full }
+  return code.replace(/%(\w+)%/g, (whole, key: string) => names[key.toLowerCase()] ?? whole).replace(/[;/\s]+$/, '')
+}
+
+/** A trigger, procedure, sequence or view with its SQL made again from its code or settings (after an edit). */
+export function withDezignSql(o: DezignSqlObject): DezignSqlObject {
+  if (o.kind === 'sequence') return o.sequence ? { ...o, sql: dezignSequenceSql(o, o.sequence) } : o
+  if (o.code === undefined) return o
+  return { ...o, sql: o.kind === 'view' ? dezignViewSql(o, o.code) : dezignCodeSql(o as DezignSqlObject & { kind: 'trigger' | 'procedure' }, o.code) }
 }
 
 /** The statement a view's code (with DeZign's placeholders for its name) stands for. */
@@ -494,11 +533,10 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   }
   for (const seq of kids(kid(dict, 'SEQUENCES'))) {
     const q = qualified(seq)
-    const part = (tag: string, sql: string) => (/^-?\d+$/.test(text(seq, tag)) ? ` ${sql} ${text(seq, tag)}` : '')
-    // A sequence that starts below 1 with no minimum of its own: databases default the minimum to 1 and refuse it.
-    const seed = Number(text(seq, 'SEED'))
-    const floor = !part('MIN', 'MINVALUE') && /^-?\d+$/.test(text(seq, 'SEED')) && seed < 1 && !text(seq, 'INCREMENT').startsWith('-') ? ` MINVALUE ${seed}` : ''
-    if (q.name) sqlObjects.push({ kind: 'sequence', name: q.name, schema: q.schema, sql: `CREATE SEQUENCE ${q.full}${part('INCREMENT', 'INCREMENT BY')}${part('SEED', 'START WITH')}${part('MIN', 'MINVALUE')}${floor}${part('MAX', 'MAXVALUE')}${text(seq, 'CYCLE') === '1' ? ' CYCLE' : ''}` })
+    // CYCLE holds the database's own word (DeZign's definitions: `;cycle`, `nocycle;cycle`, `NO CYCLE;CYCLE`).
+    const cycle = /^(1|cycle)$/i.test(text(seq, 'CYCLE').trim())
+    const settings: DezignSequenceSettings = { increment: text(seq, 'INCREMENT'), start: text(seq, 'SEED'), min: text(seq, 'MIN'), max: text(seq, 'MAX'), cache: text(seq, 'CACHE'), cycle }
+    if (q.name) sqlObjects.push({ kind: 'sequence', name: q.name, schema: q.schema, sql: dezignSequenceSql(q, settings), ...(text(seq, 'ID') ? { id: text(seq, 'ID') } : {}), sequence: settings })
   }
   for (const view of kids(kid(dict, 'VIEWS'), 'VIEW')) {
     const q = qualified(view)
@@ -508,13 +546,13 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   for (const proc of kids(kid(dict, 'PROCEDURES'))) {
     const q = qualified(proc)
     const sql = code(proc, { procname: q.full, procedurename: q.full, name: q.full })
-    if (sql) sqlObjects.push({ kind: 'procedure', name: q.name, schema: q.schema, sql })
+    if (sql) sqlObjects.push({ kind: 'procedure', name: q.name, schema: q.schema, sql, ...(text(proc, 'ID') ? { id: text(proc, 'ID'), code: text(proc, 'CODE').replace(/\r\n?/g, '\n') } : {}) })
   }
   for (const ent of kids(kid(dict, 'ENTITIES'), 'ENT')) {
     const table = qualified(ent)
     for (const trigger of kids(kid(ent, 'TRIGGERS'))) {
       const sql = code(trigger, { triggername: text(trigger, 'NAME'), name: text(trigger, 'NAME'), tablename: table.full, table: table.full })
-      if (sql) sqlObjects.push({ kind: 'trigger', name: text(trigger, 'NAME'), schema: table.schema, table: table.name, sql })
+      if (sql) sqlObjects.push({ kind: 'trigger', name: text(trigger, 'NAME'), schema: table.schema, table: table.name, sql, ...(text(trigger, 'ID') ? { id: text(trigger, 'ID'), code: text(trigger, 'CODE').replace(/\r\n?/g, '\n') } : {}) })
     }
   }
 

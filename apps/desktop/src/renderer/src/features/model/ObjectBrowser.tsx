@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Eye, FolderTree, Link2, ListOrdered, Package, Plus, Search, Shapes, Table2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Code2, Eye, FolderTree, Hash, Link2, ListOrdered, Package, Plus, Search, Shapes, Table2, Zap } from 'lucide-react'
 import { attributePackages, type DezignSqlObject, type TableInfo } from '@dbmastermind/core/browser'
 import { Input } from '@/components/ui/Input'
 import { useT } from '@/lib/i18n'
@@ -33,7 +33,8 @@ export function ObjectBrowser({
   domains: { name: string; dataType: string }[]
   views: DezignSqlObject[]
   onRequest: (request: BrowserRequest) => void
-  onViews?: () => void
+  /** Opens the dialog of the project's SQL objects (on the one given). */
+  onViews?: (start?: string) => void
   onDomains?: () => void
   /** A model of its own (not DeZign's): its enums and table groups, edited in their dialogs. */
   enums?: Record<string, string[]>
@@ -53,6 +54,7 @@ export function ObjectBrowser({
   const shownRelationships = relationships.filter(({ table, fk }) => matches(fk.name, table.name, fk.refTable))
   const shownDomains = domains.filter((d) => matches(d.name, d.dataType))
   const shownViews = views.filter((v) => v.kind === 'view' && matches(v.name))
+  const shownCode = (kind: DezignSqlObject['kind']) => views.filter((v) => v.kind === kind && v.id && matches(v.name, v.table))
   const packages = useMemo(() => attributePackages(tables), [tables])
   const shownPackages = packages.filter((p) => matches(p.name, ...p.columns.map((c) => c.name)))
   const schemas = new Set(sorted.map((x) => x.schema ?? '')).size > 1
@@ -182,8 +184,25 @@ export function ObjectBrowser({
             t('Views'),
             shownViews.length,
             <Eye size={12} />,
-            shownViews.map((v) => item(`v:${v.schema ?? ''}.${v.name}`, <span className="truncate">{v.schema ? `${v.schema}.${v.name}` : v.name}</span>, undefined, () => {}, onViews)),
+            shownViews.map((v) => item(`v:${v.schema ?? ''}.${v.name}`, <span className="truncate">{v.schema ? `${v.schema}.${v.name}` : v.name}</span>, undefined, () => {}, () => onViews?.(v.id))),
           )}
+        {(
+          [
+            ['trigger', 'Triggers', <Zap key="i" size={12} />],
+            ['procedure', 'Procedures', <Code2 key="i" size={12} />],
+            ['sequence', 'Sequences', <Hash key="i" size={12} />],
+          ] as const
+        ).map(
+          ([kind, title, icon]) =>
+            views.some((v) => v.kind === kind && v.id) &&
+            group(
+              kind,
+              t(title),
+              shownCode(kind).length,
+              icon,
+              shownCode(kind).map((v) => item(`${kind}:${v.id}`, <span className="truncate">{kind === 'trigger' && v.table ? `${v.table}.${v.name}` : v.schema ? `${v.schema}.${v.name}` : v.name}</span>, undefined, () => {}, () => onViews?.(v.id), `browser-${kind}-${v.name}`)),
+            ),
+        )}
         {onEnums &&
           group(
             'enums',

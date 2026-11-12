@@ -226,6 +226,25 @@ try {
   await win.getByText(/Saved to shop\.dez/).last().waitFor({ timeout: 10000 })
   console.log('view edited:', /changed view: v_unpaid/.test(listedView), readFileSync(dez, 'latin1').includes('<CODE>CREATE VIEW %viewname% AS\nSELECT id, total FROM shop.invoice WHERE total &gt; 0;</CODE>'))
 
+  // A new trigger of a table and a new sequence (DeZign: the entity's Triggers tab, the Sequences dialog).
+  await win.getByTestId('model-views').click()
+  await win.getByTestId('objects-add-trigger').click()
+  await win.getByTestId('objects-name').fill('trg_paid')
+  await win.getByTestId('objects-code').fill('CREATE TRIGGER %triggername% AFTER UPDATE ON %table%\nFOR EACH ROW EXECUTE FUNCTION shop.paid();')
+  await win.getByTestId('objects-add-sequence').click()
+  await win.getByTestId('objects-name').fill('ticket_no')
+  await win.getByTestId('objects-start').fill('100')
+  await win.getByText('Cycle', { exact: true }).click()
+  const sequenceSql = await win.getByTestId('objects-sql').innerText()
+  await win.getByTestId('views-apply').click()
+  await win.getByRole('button', { name: 'Save', exact: true }).click()
+  await win.getByText(/Write these changes into shop\.dez\?/).waitFor({ timeout: 10000 })
+  const listedObjects = await win.locator('[role="dialog"], .fixed').filter({ hasText: 'Write these changes' }).last().innerText()
+  await win.getByRole('button', { name: 'Write to the DeZign file' }).click()
+  await win.getByText(/Saved to shop\.dez/).last().waitFor({ timeout: 10000 })
+  const withObjects = readFileSync(dez, 'latin1').split('</VERSION>')[0]
+  console.log('trigger and sequence added:', /CREATE SEQUENCE \S*ticket_no INCREMENT BY 1 START WITH 100 CYCLE/.test(sequenceSql), /new trigger/.test(listedObjects) && /new sequence/.test(listedObjects), /<TRIGGER>\s*<NAME>trg_paid<\/NAME>/.test(withObjects), /<NAME>ticket_no<\/NAME>[\s\S]*?<SEED>100<\/SEED>[\s\S]*?<CYCLE>cycle<\/CYCLE>/.test(withObjects))
+
   // The view the project holds as SQL is part of the generated script (PostgreSQL is the project's own database).
   await win.getByRole('button', { name: 'SQL DDL' }).click()
   await win.getByText('PostgreSQL', { exact: true }).first().click()

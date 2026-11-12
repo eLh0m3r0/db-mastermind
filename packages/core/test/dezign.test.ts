@@ -3,7 +3,7 @@ import { diagramsAsLoaded, mutate, mutateDiagrams, random } from './dezign-fuzz.
 
 // More chains for a long local run: DBM_FUZZ_CHAINS=500 npx vitest run --root packages/core test/dezign.test.ts
 const CHAINS = Number(process.env.DBM_FUZZ_CHAINS) || 0
-import { applyDezignSave, archiveDezignVersion, attributePackages, batchRename, packageColumnsFor, assembleDezignProject, dezignAsFolder, dezignDomainsOfModel, withDezignDomains, compareSchemas, createScript, detectDezignEncoding, dezignDriver, dezignFolderAsVersion, dezignIntegrity, dezignMigrationOptions, dezignWrapScript, generateMigration, getDialect, unquotedNames, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
+import { applyDezignSave, archiveDezignVersion, attributePackages, dezignObjectEdits, withDezignSql, batchRename, packageColumnsFor, assembleDezignProject, dezignAsFolder, dezignDomainsOfModel, withDezignDomains, compareSchemas, createScript, detectDezignEncoding, dezignDriver, dezignFolderAsVersion, dezignIntegrity, dezignMigrationOptions, dezignWrapScript, generateMigration, getDialect, unquotedNames, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 // Hand-written models in DeZign's layout (no file from a real project is kept in the repository).
 const attr = (id: string, name: string, type: string, extra = '', more = '') =>
@@ -300,12 +300,17 @@ describe('DeZign for Databases models', () => {
   })
 
   it('keeps views and sequences as the SQL the project has for them', () => {
-    expect(readDezign(dez).sqlObjects).toEqual([
+    expect(readDezign(dez).sqlObjects.map(({ kind, name, schema, sql }) => ({ kind, name, schema, sql }))).toEqual([
       { kind: 'sequence', name: 'invoice_no', schema: 'shop', sql: 'CREATE SEQUENCE shop.invoice_no INCREMENT BY 1 START WITH 1000' },
       { kind: 'view', name: 'v_open', schema: 'shop', sql: 'CREATE VIEW shop.v_open AS\nSELECT id FROM shop.invoice WHERE issued IS NULL' },
     ])
     // A sequence that starts at 0 needs a minimum to match: databases default it to 1.
     expect(readDezign(dez.replace('<SEED>1000</SEED>', '<SEED>0</SEED>')).sqlObjects[0]!.sql).toBe('CREATE SEQUENCE shop.invoice_no INCREMENT BY 1 START WITH 0 MINVALUE 0')
+    // CYCLE keeps the database's own word (DeZign's definitions: PostgreSQL `cycle`, SQL Server `CYCLE`/`NO CYCLE`).
+    const cycling = readDezign(dez.replace('<SEED>1000</SEED>', '<SEED>1000</SEED>\n<CACHE>20</CACHE>\n<CYCLE>cycle</CYCLE>')).sqlObjects[0]!
+    expect(cycling.sql).toBe('CREATE SEQUENCE shop.invoice_no INCREMENT BY 1 START WITH 1000 CACHE 20 CYCLE')
+    expect(cycling.sequence).toMatchObject({ increment: '1', start: '1000', cache: '20', cycle: true })
+    expect(readDezign(dez.replace('<SEED>1000</SEED>', '<SEED>1000</SEED>\n<CYCLE>NO CYCLE</CYCLE>')).sqlObjects[0]!.sequence!.cycle).toBe(false)
   })
 
   it('becomes DBML that reads back the same', () => {
@@ -621,6 +626,70 @@ describe('saving back into a DeZign project', () => {
     expect(new Set(r.changes.map((c) => c.kind))).toEqual(new Set(['rename_column']))
     expect(r.files[0]!.text).toContain('<CCON>\n<VALUE>x_credit &gt;= 0</VALUE>\n</CCON>')
     expect(readDezign(r.files[0]!.text).tables[0]!.checks).toEqual([{ expression: 'x_credit >= 0' }])
+  })
+
+  it('edits, adds and removes triggers and sequences of the project, which the model text does not hold', () => {
+    const files: DezignFile[] = [{ path: 'shop.dez', text: dez.replace('<NAME>invoice_no</NAME>', '<NAME>invoice_no</NAME>\n<ID>S1</ID>') }]
+    const base = model(files)
+    const objects = (text: string) => readDezign(text).sqlObjects
+    // A new trigger of a table and a new sequence; the sequence that was there counts by 5 and cycles now.
+    const code = 'CREATE TRIGGER %triggername% BEFORE UPDATE ON %table%\nFOR EACH ROW WHEN (NEW.credit < 0) EXECUTE FUNCTION shop.no_debt()'
+    const r = saveToDezign(files, base, base, { normalize: viaDbml, objects: { triggers: [{ table: 'shop.customer', name: 'trg_credit', code }], sequences: [{ id: 'S1', name: 'invoice_no', schema: 'shop', increment: '5', start: '1000', cycle: true }, { name: 'ticket_no', schema: 'shop', start: '1' }] } })
+    expect(r.changes.map((c) => `${c.kind} ${c.table}${c.name ? ` ${c.name}` : ''}`)).toEqual(['add_trigger customer trg_credit', 'alter_sequence invoice_no', 'add_sequence ticket_no'])
+    const out = r.files[0]!.text
+    const after = objects(out)
+    const trigger = after.find((o) => o.kind === 'trigger')!
+    expect(trigger).toMatchObject({ name: 'trg_credit', table: 'customer', code, sql: 'CREATE TRIGGER trg_credit BEFORE UPDATE ON shop.customer\nFOR EACH ROW WHEN (NEW.credit < 0) EXECUTE FUNCTION shop.no_debt()' })
+    expect(out).toContain('NEW.credit &lt; 0')
+    expect(after.filter((o) => o.kind === 'sequence').map((o) => o.sql)).toEqual(['CREATE SEQUENCE shop.invoice_no INCREMENT BY 5 START WITH 1000 CYCLE', 'CREATE SEQUENCE shop.ticket_no INCREMENT BY 1 START WITH 1'])
+    expect(dezignIntegrity(out)).toEqual(dezignIntegrity(files[0]!.text))
+    // The trigger's code changed, then the trigger and the old sequence removed.
+    const again: DezignFile[] = [{ path: 'shop.dez', text: out }]
+    const edited = saveToDezign(again, base, base, { normalize: viaDbml, objects: { code: [{ id: trigger.id!, code: code.replace('BEFORE', 'AFTER') }] } })
+    expect(edited.changes).toEqual([{ kind: 'alter_trigger', table: 'customer', name: 'trg_credit' }])
+    expect(objects(edited.files[0]!.text).find((o) => o.kind === 'trigger')!.code).toContain('AFTER UPDATE')
+    const removed = saveToDezign(again, base, base, { normalize: viaDbml, objects: { remove: [trigger.id!, 'S1'] } })
+    expect(removed.changes.map((c) => c.kind)).toEqual(['drop_trigger', 'drop_sequence'])
+    expect(objects(removed.files[0]!.text).filter((o) => o.kind !== 'view').map((o) => o.name)).toEqual(['ticket_no'])
+  })
+
+  it('puts a new sequence of a folder project into a file of its own, and removes one with its file', () => {
+    const files = dezignAsFolder(dez.replace('<NAME>invoice_no</NAME>', '<NAME>invoice_no</NAME>\n<ID>S1</ID>'), 'Shop')
+    const seqFiles = (list: DezignFile[]) => list.filter((f) => /sequences\//i.test(f.path)).map((f) => f.path)
+    expect(seqFiles(files)).toHaveLength(1)
+    const base = model(files)
+    const r = saveToDezign(files, base, base, { normalize: viaDbml, objects: { sequences: [{ name: 'ticket_no', schema: 'shop', start: '7' }], remove: ['S1'] } })
+    expect(r.changes.map((c) => c.kind)).toEqual(['drop_sequence', 'add_sequence'])
+    const after = applyDezignSave(files, r)
+    expect(seqFiles(after)).toHaveLength(1)
+    expect(r.deleted.some((p) => /sequences\//i.test(p))).toBe(true)
+    expect(readDezign(assembleDezignProject(after)).sqlObjects.filter((o) => o.kind === 'sequence').map((o) => o.sql)).toEqual(['CREATE SEQUENCE shop.ticket_no INCREMENT BY 1 START WITH 7'])
+  })
+
+  it('tells what changed among triggers, procedures and sequences from the list as edited', () => {
+    const before = [
+      { kind: 'trigger' as const, id: 'T1', name: 'trg_a', table: 'customer', schema: 'shop', code: 'CREATE TRIGGER %triggername%', sql: '' },
+      { kind: 'procedure' as const, id: 'P1', name: 'p', code: 'CREATE PROCEDURE p', sql: '' },
+      { kind: 'sequence' as const, id: 'S1', name: 'invoice_no', schema: 'shop', sequence: { increment: '1', start: '1000' }, sql: '' },
+      { kind: 'view' as const, id: 'V1', name: 'v', code: 'x', sql: '' },
+    ]
+    expect(dezignObjectEdits(before, before)).toEqual({ code: [], sequences: [], triggers: [], remove: [] })
+    const after = [
+      { ...before[0]!, code: 'CREATE TRIGGER %triggername% -- changed' },
+      { ...before[2]!, sequence: { increment: '5', start: '1000', cycle: true } },
+      { kind: 'trigger' as const, name: 'trg_new', table: 'invoice', schema: 'shop', code: 'CREATE TRIGGER %triggername%', sql: '' },
+      { kind: 'sequence' as const, name: 'ticket_no', sequence: { start: '1' }, sql: '' },
+      before[3]!,
+    ]
+    expect(dezignObjectEdits(before, after)).toEqual({
+      code: [{ id: 'T1', code: 'CREATE TRIGGER %triggername% -- changed' }],
+      sequences: [{ id: 'S1', name: 'invoice_no', schema: 'shop', increment: '5', start: '1000', cycle: true }, { name: 'ticket_no', schema: undefined, start: '1' }],
+      triggers: [{ table: 'shop.invoice', name: 'trg_new', code: 'CREATE TRIGGER %triggername%' }],
+      remove: ['P1'],
+    })
+    // The SQL follows an edit of the code or the settings.
+    expect(withDezignSql({ ...after[2]!, code: 'CREATE TRIGGER %triggername% ON %table%' }).sql).toBe('CREATE TRIGGER trg_new ON shop.invoice')
+    expect(withDezignSql(after[1]!).sql).toBe('CREATE SEQUENCE shop.invoice_no INCREMENT BY 5 START WITH 1000 CYCLE')
   })
 
   it('writes nothing when the model was not edited', () => {

@@ -5,7 +5,7 @@ import { Compartment, EditorState } from '@codemirror/state'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
 import { AlertTriangle, Archive, Database, Eye, Pencil, Shapes, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare, Plus } from 'lucide-react'
-import { checkModel, createScript, dezignDriver, dezignMigrationOptions, dezignViewSql, dezignWrapScript, dropScript, fixModelIssue, unquotedNames, getDialect, parseDbml, toDbml, updateModelFromDatabase, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
+import { checkModel, createScript, dezignDriver, dezignMigrationOptions, dezignWrapScript, dropScript, fixModelIssue, unquotedNames, getDialect, parseDbml, toDbml, updateModelFromDatabase, type DezignSqlObject, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { DRIVERS } from '../connections/drivers'
@@ -169,7 +169,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
 
   /** A model opened from a DeZign project goes back into it: the changes are listed first, the old files are kept. */
   const saveToSource = async (source: NonNullable<ModelTab['source']>) => {
-    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, notes: tab.notes, colors: tab.colors, diagrams: tab.diagrams, display: tab.display, boxes: tab.boxes, removedDiagrams: tab.removedDiagrams, domains: domainsOfText(text).map((d) => ({ ...d, ...(Object.entries(tab.domainRenames ?? {}).find(([, to]) => to === d.name)?.[0] ? { was: Object.entries(tab.domainRenames ?? {}).find(([, to]) => to === d.name)![0] } : {}) })), removeDomains: tab.domainRemovals, renamedTables: tab.tableRenames, views: editableViews(tab.sqlObjects).map(({ id, code }) => ({ id, code })), scripts: tab.scripting?.around, layout: !!source.layout, defaultSchema: liveSchema?.defaultSchema }
+    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, notes: tab.notes, colors: tab.colors, diagrams: tab.diagrams, display: tab.display, boxes: tab.boxes, removedDiagrams: tab.removedDiagrams, domains: domainsOfText(text).map((d) => ({ ...d, ...(Object.entries(tab.domainRenames ?? {}).find(([, to]) => to === d.name)?.[0] ? { was: Object.entries(tab.domainRenames ?? {}).find(([, to]) => to === d.name)![0] } : {}) })), removeDomains: tab.domainRemovals, renamedTables: tab.tableRenames, views: editableViews(tab.sqlObjects).map(({ id, code }) => ({ id, code })), sqlObjects: tab.sqlObjects, scripts: tab.scripting?.around, layout: !!source.layout, defaultSchema: liveSchema?.defaultSchema }
     const name = source.path.split(/[\\/]/).pop() ?? ''
     try {
       const preview = await api.saveDezignModel({ ...request, dryRun: true })
@@ -378,16 +378,15 @@ export function ModelView({ tab }: { tab: ModelTab }) {
 
   // The project's views: their SQL as the project keeps it, written back on Save (see ./views).
   const views = useMemo(() => editableViews(tab.sqlObjects), [tab.sqlObjects])
-  const [viewsOpen, setViewsOpen] = useState(false)
+  const [viewsOpen, setViewsOpen] = useState<false | { start?: string }>(false)
   const [scriptsOpen, setScriptsOpen] = useState(false)
   const [enumsOpen, setEnumsOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
   const [groupsOpen, setGroupsOpen] = useState(false)
-  const applyViews = (codes: Record<string, string>) => {
+  const applyViews = (objects: DezignSqlObject[]) => {
     setViewsOpen(false)
-    if (!views.some((v) => codes[v.id] !== undefined && codes[v.id] !== v.code)) return
-    const sqlObjects = tab.sqlObjects?.map((o) => (o.kind === 'view' && o.id && codes[o.id] !== undefined && codes[o.id] !== o.code ? { ...o, code: codes[o.id]!, sql: dezignViewSql(o, codes[o.id]!) } : o))
-    updateTab(tab.id, { sqlObjects, dirty: true })
+    if (JSON.stringify(objects) === JSON.stringify(tab.sqlObjects ?? [])) return
+    updateTab(tab.id, { sqlObjects: objects, dirty: true })
   }
 
   /** An empty model starts with one table open in the designer: nobody has to know DBML to begin. */
@@ -720,12 +719,12 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           </Button>
         )}
         <DomainsModal open={domainsOpen} domains={domains} used={new Set(model.tables.flatMap((x) => x.columns.filter((c) => c.domain).map((c) => c.domain!.toLowerCase())))} onClose={() => setDomainsOpen(false)} onApply={applyDomains} />
-        {views.length > 0 && (
-          <Button size="sm" variant="ghost" icon={<Eye size={13} />} onClick={() => setViewsOpen(true)} title={t('The SQL of the project’s views')} data-testid="model-views">
-            {t('Views…')}
+        {(views.length > 0 || tab.source?.kind === 'dezign') && (
+          <Button size="sm" variant="ghost" icon={<Eye size={13} />} onClick={() => setViewsOpen({})} title={t('The project’s views, triggers, procedures and sequences')} data-testid="model-views">
+            {t('Views and code…')}
           </Button>
         )}
-        <ViewsModal open={viewsOpen} views={views} onClose={() => setViewsOpen(false)} onApply={applyViews} />
+        <ViewsModal open={!!viewsOpen} objects={tab.sqlObjects ?? []} tables={model.tables.filter((x) => x.type !== 'view').map((x) => ({ schema: x.schema, name: x.name }))} start={viewsOpen ? viewsOpen.start : undefined} onClose={() => setViewsOpen(false)} onApply={applyViews} />
         {tab.source && (
           <Button size="sm" variant="ghost" icon={<FileCode2 size={13} />} onClick={() => setScriptsOpen(true)} title={t('SQL the project puts before and after the scripts generated from it')} data-testid="model-project-scripts">
             {t('Project scripts…')}
@@ -790,7 +789,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
                 domains={domains}
                 views={tab.sqlObjects ?? []}
                 onRequest={browse}
-                onViews={views.length ? () => setViewsOpen(true) : undefined}
+                onViews={tab.source?.kind === 'dezign' || views.length ? (start) => setViewsOpen({ start }) : undefined}
                 onDomains={tab.source ? () => setDomainsOpen(true) : undefined}
                 // (A DeZign project has neither: its domains and diagrams are its own.)
                 enums={model.enums}

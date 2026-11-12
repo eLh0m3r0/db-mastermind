@@ -15,6 +15,8 @@ import {
   type DezignElement,
   type DezignEncoding,
   type DezignModel,
+  type DezignSequenceSettings,
+  type DezignSqlObject,
 } from './dezign.js'
 import { renameInCondition } from './batch-rename.js'
 import { checkOneLine, defaultFkName } from './dbml.js'
@@ -75,6 +77,14 @@ export type DezignChangeKind =
   | 'rename_domain'
   | 'drop_domain'
   | 'alter_view'
+  | 'alter_trigger'
+  | 'add_trigger'
+  | 'drop_trigger'
+  | 'alter_procedure'
+  | 'drop_procedure'
+  | 'add_sequence'
+  | 'alter_sequence'
+  | 'drop_sequence'
   | 'project_scripts'
   | 'add_box'
   | 'drop_box'
@@ -153,6 +163,8 @@ export interface SaveDezignOptions {
   views?: { id: string; code: string }[]
   /** The project's scripts before and after a CREATE script and an ALTER script (DeZign's project settings). */
   scripts?: { create?: [string, string]; alter?: [string, string] }
+  /** Triggers, procedures and sequences of the project (`DezignSqlObject`): changed, new and removed ones. */
+  objects?: DezignObjectEdits
   /**
    * Brings a model read from DeZign into the representation of `baseline` and `target` (for DBML documents: a
    * round trip through DBML). The written project is read back through it and compared with `target`.
@@ -161,7 +173,42 @@ export interface SaveDezignOptions {
 }
 
 type El = DezignElement
-type Kind = 'DOMAIN' | 'ENT' | 'REL' | 'ENTC' | 'RELC' | 'DIAGRAM' | 'SUBCAT' | 'SUBCONN' | 'SUBCATC' | 'SUBCONNC' | 'TEXTAR' | 'TEXTC' | 'VIEWCONN' | 'VIEWCONNC' | 'GROUPBOX' | 'GROUPBOXC' | 'VIEW'
+/** Edits of the project's triggers, procedures and sequences, which the model text does not hold. */
+export interface DezignObjectEdits {
+  /** New code of triggers and procedures, by id (DeZign's placeholders such as `%triggername%` kept). */
+  code?: { id: string; code: string }[]
+  /** Sequences: one with an id is changed to this, one without is made. */
+  sequences?: ({ id?: string; name: string; schema?: string } & DezignSequenceSettings)[]
+  /** New triggers of a table (`table`: `schema.table` of the edited model). */
+  triggers?: { table: string; name: string; code: string }[]
+  /** Ids of triggers, procedures and sequences to remove. */
+  remove?: string[]
+}
+
+/**
+ * What changed among a project's triggers, procedures and sequences: `after` is the list as edited (an object
+ * keeps its `id`; a new one has none), `before` as the project has it.
+ */
+export function dezignObjectEdits(before: DezignSqlObject[], after: DezignSqlObject[]): DezignObjectEdits {
+  const managed = (o: DezignSqlObject) => o.kind === 'trigger' || o.kind === 'procedure' || o.kind === 'sequence'
+  const byId = new Map(before.filter((o) => managed(o) && o.id).map((o) => [o.id!, o]))
+  const edits: Required<DezignObjectEdits> = { code: [], sequences: [], triggers: [], remove: [] }
+  const settings = (q: DezignSequenceSettings | undefined) => JSON.stringify(['increment', 'start', 'min', 'max', 'cache'].map((k) => (q?.[k as keyof DezignSequenceSettings] as string | undefined)?.trim() ?? '').concat(String(!!q?.cycle)))
+  for (const o of after.filter(managed)) {
+    const was = o.id ? byId.get(o.id) : undefined
+    if (o.kind === 'sequence') {
+      if (o.id && !was) continue
+      if (!was || was.name !== o.name || (was.schema ?? '') !== (o.schema ?? '') || settings(was.sequence) !== settings(o.sequence)) edits.sequences.push({ ...(o.id ? { id: o.id } : {}), name: o.name, schema: o.schema, ...o.sequence })
+    } else if (was) {
+      if (o.code !== undefined && o.code !== was.code) edits.code.push({ id: o.id!, code: o.code })
+    } else if (!o.id && o.kind === 'trigger' && o.table && o.code?.trim()) edits.triggers.push({ table: `${o.schema ?? ''}.${o.table}`, name: o.name, code: o.code })
+  }
+  const kept = new Set(after.map((o) => o.id).filter(Boolean))
+  for (const id of byId.keys()) if (!kept.has(id)) edits.remove.push(id)
+  return edits
+}
+
+type Kind = 'SEQUENCE' | 'PROC' | 'DOMAIN' | 'ENT' | 'REL' | 'ENTC' | 'RELC' | 'DIAGRAM' | 'SUBCAT' | 'SUBCONN' | 'SUBCATC' | 'SUBCONNC' | 'TEXTAR' | 'TEXTC' | 'VIEWCONN' | 'VIEWCONNC' | 'GROUPBOX' | 'GROUPBOXC' | 'VIEW'
 
 interface Slot {
   el: El
@@ -187,6 +234,8 @@ const SINGLE: Record<Kind, string[]> = {
   GROUPBOX: ['DATADICT', 'GROUPBOXES'],
   GROUPBOXC: ['DIAGRAMS', 'CONTROLS', 'GROUPBOXESCONTROLS'],
   VIEW: ['DATADICT', 'VIEWS'],
+  SEQUENCE: ['DATADICT', 'SEQUENCES'],
+  PROC: ['DATADICT', 'PROCEDURES'],
 }
 const FOLDER: Record<Kind, string> = {
   DOMAIN: 'data dictionary/domains',
@@ -206,6 +255,8 @@ const FOLDER: Record<Kind, string> = {
   GROUPBOX: 'data dictionary/groupboxes',
   GROUPBOXC: 'diagrams/diagramobjects/groupboxcontrols',
   VIEW: 'data dictionary/views',
+  SEQUENCE: 'data dictionary/sequences',
+  PROC: 'data dictionary/procedures',
 }
 
 const DIAGRAM_OBJECT_DIRS = ['diagrams/diagramobjects/stampcontrols', 'diagrams/diagramobjects/viewcontrols']
@@ -1874,6 +1925,120 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       changed = true
     }
     if (changed) changes.push({ kind: 'diagram_display', table: text(diagram, 'NAME') || diagramId })
+  }
+
+  // --- triggers, procedures and sequences (SQL the model text does not hold) ------------------------------
+  if (options.objects) {
+    const edits = options.objects
+    const triggersOf = (e: Entity) => kids(kid(e.el, 'TRIGGERS'), 'TRIGGER')
+    const findTrigger = (id: string) => {
+      for (const e of entities.values()) {
+        const el = triggersOf(e).find((t) => text(t, 'ID') === id)
+        if (el) return { entity: e, el }
+      }
+      return undefined
+    }
+    const keepCode = (code: string) => code.replace(/\s+$/, '')
+    for (const wanted of edits.code ?? []) {
+      if (!wanted.code.trim()) continue
+      const trigger = findTrigger(wanted.id)
+      const proc = trigger ? undefined : project.list('PROC').find((p) => text(p.el, 'ID') === wanted.id)
+      const el = trigger?.el ?? proc?.el
+      if (!el || normText(text(el, 'CODE')) === normText(wanted.code)) continue
+      set(el, 'CODE', keepCode(wanted.code))
+      changes.push({ kind: trigger ? 'alter_trigger' : 'alter_procedure', table: trigger ? text(trigger.entity.el, 'NAME') : text(el, 'NAME'), ...(trigger ? { name: text(el, 'NAME') } : {}) })
+    }
+    for (const id of edits.remove ?? []) {
+      const trigger = findTrigger(id)
+      if (trigger) {
+        remove(kid(trigger.entity.el, 'TRIGGERS'), trigger.el)
+        changes.push({ kind: 'drop_trigger', table: text(trigger.entity.el, 'NAME'), name: text(trigger.el, 'NAME') })
+        continue
+      }
+      for (const kind of ['SEQUENCE', 'PROC'] as const) {
+        const slot = project.list(kind).find((x) => text(x.el, 'ID') === id)
+        if (!slot) continue
+        project.remove(kind, slot)
+        changes.push({ kind: kind === 'SEQUENCE' ? 'drop_sequence' : 'drop_procedure', table: text(slot.el, 'NAME') })
+      }
+    }
+    for (const wanted of edits.triggers ?? []) {
+      const entity = entities.get(tableKey({ schema: wanted.table.includes('.') ? wanted.table.slice(0, wanted.table.indexOf('.')) || undefined : undefined, name: wanted.table.slice(wanted.table.indexOf('.') + 1) }))
+      if (!entity || !wanted.name.trim() || !wanted.code.trim()) continue
+      let list = kid(entity.el, 'TRIGGERS')
+      if (!list) insert(entity.el, (list = container('TRIGGERS', [])))
+      const siblings = [...entities.values()].flatMap(triggersOf)
+      const mine = triggersOf(entity).map((t) => text(t, 'ID'))
+      // Ids as DeZign gives them: `TRG-<table>-<n>-<token>` in DeZign 14, else the table's next number (TRGLASTID).
+      const styledTrg = /^TRG-.+-(\d+)-[^-]+$/
+      let id: string
+      if (mine.some((x) => styledTrg.test(x)) || (!mine.length && (siblings.some((t) => styledTrg.test(text(t, 'ID'))) || styledAttrs))) {
+        idToken ||= randomId().replace(/[^0-9A-Za-z]/g, '').slice(0, 16)
+        id = `TRG-${entity.id}-${Math.max(1, ...mine.filter((x) => styledTrg.test(x)).map((x) => Number(styledTrg.exec(x)![1]))) + 1}-${idToken}`
+      } else if (numbered || mine.every((x) => /^\d+$/.test(x))) {
+        const next = Math.max(0, ...mine.filter((x) => /^\d+$/.test(x)).map(Number), /^\d+$/.test(text(entity.el, 'TRGLASTID')) ? Number(text(entity.el, 'TRGLASTID')) : 0) + 1
+        id = String(next)
+        if (kid(entity.el, 'TRGLASTID')) set(entity.el, 'TRGLASTID', id)
+      } else id = randomId()
+      const sample = siblings[0]
+      const el = sample ? clone(sample, [[text(sample, 'ID'), id]]) : container('TRIGGER', [leaf('NAME'), leaf('ID', id), leaf('POSNR', '0'), leaf('SCHEMA'), leaf('DESC'), leaf('NOTE'), leaf('CODE')])
+      for (const tag of ['DESC', 'NOTE']) if (kid(el, tag)) set(el, tag, '')
+      if (kid(el, 'SCHEMA')) set(el, 'SCHEMA', '')
+      forget(el)
+      set(el, 'NAME', wanted.name.trim())
+      set(el, 'ID', id)
+      set(el, 'CODE', keepCode(wanted.code))
+      insert(list, el)
+      changes.push({ kind: 'add_trigger', table: text(entity.el, 'NAME'), name: wanted.name.trim() })
+    }
+    const cycleWords = /^mssqlserver20(1[2-9]|2)/i.test(source.targetDatabase) ? ['NO CYCLE', 'CYCLE'] : /^(oracle|informix)/i.test(source.targetDatabase) ? ['nocycle', 'cycle'] : /^db2/i.test(source.targetDatabase) ? ['NO CYCLE', 'CYCLE'] : ['', 'cycle']
+    const setSequence = (el: El, wanted: NonNullable<DezignObjectEdits['sequences']>[number]) => {
+      const number = (v: string | undefined, fallback: string) => (v !== undefined && v.trim() !== '' ? v.trim() : fallback)
+      const schemaTag = kid(el, 'SCHEMANAME') ? 'SCHEMANAME' : 'SCHEMA'
+      const values: [string, string][] = [
+        ['NAME', wanted.name.trim()],
+        [schemaTag, wanted.schema ?? ''],
+        // (An empty number stops DeZign from opening the project: increment and start always have one.)
+        ['INCREMENT', number(wanted.increment, '1')],
+        ['SEED', number(wanted.start, '1')],
+        ['MAX', wanted.max?.trim() ?? ''],
+        ['MIN', wanted.min?.trim() ?? ''],
+        ['CACHE', wanted.cache?.trim() ?? ''],
+      ]
+      let changed = false
+      for (const [tag, value] of values) {
+        if (text(el, tag) === value || (!kid(el, tag) && !value)) continue
+        set(el, tag, value)
+        changed = true
+      }
+      const cycling = /^(1|cycle)$/i.test(text(el, 'CYCLE').trim())
+      if (wanted.cycle !== undefined && wanted.cycle !== cycling) {
+        set(el, 'CYCLE', wanted.cycle ? cycleWords[1]! : cycleWords[0]!)
+        changed = true
+      }
+      return changed
+    }
+    for (const wanted of edits.sequences ?? []) {
+      if (!wanted.name.trim()) continue
+      const existing = wanted.id ? project.list('SEQUENCE').find((x) => text(x.el, 'ID') === wanted.id) : undefined
+      if (existing) {
+        if (setSequence(existing.el, wanted)) changes.push({ kind: 'alter_sequence', table: wanted.name.trim() })
+        continue
+      }
+      if (wanted.id) continue
+      const sample = project.list('SEQUENCE')[0]
+      const id = newObjectId()
+      const el = sample
+        ? clone(sample.el, [[text(sample.el, 'ID'), id]])
+        : container('SEQUENCE', [leaf('NAME'), leaf('ID', id), leaf('POSNR', '0'), leaf('SCHEMA'), leaf('DESC'), leaf('NOTE'), leaf('INCREMENT', '1'), leaf('SEED', '1'), leaf('MAX'), leaf('MIN'), leaf('CACHE'), leaf('CACHECODE'), leaf('CYCLE', cycleWords[0]), leaf('ORDER')])
+      for (const tag of ['DESC', 'NOTE']) if (kid(el, tag)) set(el, tag, '')
+      forget(el)
+      set(el, 'ID', id)
+      if (sample && kid(el, 'CYCLE')) set(el, 'CYCLE', cycleWords[0]!)
+      setSequence(el, { ...wanted, cycle: wanted.cycle ?? false })
+      project.add('SEQUENCE', el, sample && project.fileStem(sample) === text(sample.el, 'ID') ? id : wanted.name.trim())
+      changes.push({ kind: 'add_sequence', table: wanted.name.trim() })
+    }
   }
 
   // Formats before DeZign 14 keep counters of the ids handed out, for the project, its diagrams and each table's

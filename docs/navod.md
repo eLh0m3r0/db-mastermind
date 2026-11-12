@@ -94,8 +94,11 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   který databázi ze skriptu dorovná na model.
 - **Skripty projektu:** *Skripty projektu…* u modelu z DeZignu upraví SQL, které projekt přidává před a za skript
   CREATE a ALTER (v DeZignu nastavení projektu). Uloží se do projektu a použije se v dalších skriptech.
-- **Pohledy:** *Pohledy…* u modelu z DeZignu ukáže SQL pohledů projektu tak, jak ho drží DeZign (`%viewname%`
-  zastupuje název pohledu). Úprava se při uložení zapíše do projektu a jde do DDL skriptu.
+- **Pohledy, triggery, procedury a sekvence:** *Pohledy a kód…* u modelu z DeZignu ukáže SQL objekty projektu tak,
+  jak je drží DeZign (`%viewname%`, `%triggername%` a `%table%` zastupují názvy). Kód pohledů, triggerů a procedur
+  se upravuje přímo, sekvence přes své nastavení (přírůstek, začátek, minimum, maximum, cyklení); nový trigger
+  tabulky a novou sekvenci přidá **+**, triggery, procedury a sekvence lze odebrat. Prohlížeč objektů je ukáže
+  ve vlastních skupinách (dvojklik otevře dialog). Při uložení se zapíší do projektu a jdou do DDL skriptu.
 - **Týmová práce v Gitu:** u složkového projektu (`.dezproj`) uložení změní jen soubory upravených objektů, takže
   dva kolegové, kteří upravují různé tabulky ve svých větvích, je sloučí bez konfliktu.
 - **Domény:** *Domény…* u modelu z DeZignu ukáže pojmenované typy projektu. Změna typu domény se propíše do všech
