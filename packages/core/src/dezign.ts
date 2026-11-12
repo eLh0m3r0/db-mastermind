@@ -363,9 +363,11 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const collates = ['mssql', 'mysql', 'mariadb'].includes(dezignDriver(text(dict, 'DBID')) ?? '')
   const convertDomains = text(kid(dict, 'DDSETTINGS'), 'CONVERTDOMAINS') === '1' || text(kid(projectSettings, 'GenDB_Options'), 'CONVERTDOMAINS') === '1'
   const common = kid(projectSettings, 'COMMONSETTINGS')
+  // (Line ends as the model has them: a folder project's files end lines with CRLF.)
+  const script = (tag: string) => text(common, tag).replace(/\r\n?/g, '\n')
   const around = {
-    create: [text(common, 'BEGINDATABASESCRIPT'), text(common, 'ENDDATABASESCRIPT')] as [string, string],
-    alter: [text(common, 'BEGINALTERDATABASESCRIPT'), text(common, 'ENDALTERDATABASESCRIPT')] as [string, string],
+    create: [script('BEGINDATABASESCRIPT'), script('ENDDATABASESCRIPT')] as [string, string],
+    alter: [script('BEGINALTERDATABASESCRIPT'), script('ENDALTERDATABASESCRIPT')] as [string, string],
   }
   const anyKey = kids(kid(dict, 'ENTITIES'), 'ENT').map((e) => text(kid(e, 'PKCON'), 'NAMETEMPLATE')).find(Boolean)
   const uniqueConstraints: string[] = []

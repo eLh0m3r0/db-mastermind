@@ -503,6 +503,9 @@ Not a clone: their features, rethought and connected to live databases, the know
   changes before OK), double-click a relationship's line for its dialog (name, parent table, the columns, the
   cardinality as pictures, identifying, mandatory parent, on delete/update, a preview of the line). A table's menu
   has Properties…. A database's diagram still opens a table's data on double-click
+- ✅ A DeZign project's scripts before and after its CREATE and ALTER scripts edited in the model ("Project
+  scripts…", DeZign's project settings): saved into the project (a folder project's project file) and used by the
+  next script; DeZign 14.9.3 opens the saved project with the scripts as written
 - ✅ A model's canvas handles as DeZign's: dragging on the empty canvas selects tables, the wheel (two fingers)
   scrolls and ⌘ with it zooms, ⌘A selects every table, the zoom shows as a percentage (a click: 100 %). A
   database's diagram keeps drag-to-pan

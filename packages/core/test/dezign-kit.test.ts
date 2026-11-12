@@ -170,6 +170,9 @@ describe.skipIf(!from || !to || isFolder)('a kit of saved files to open in DeZig
         for (const c of table.columns) if (fk.columns.includes(c.name)) Object.assign(c, { isPrimaryKey: true, nullable: false })
       }
     }, { positions: { ...source.positions, [`${parent.schema ?? ''}.dbm_line`]: { x: 40, y: 40 } } })
+    file('skripty-projektu', 'v nastavení projektu (Project settings → Scripts) jsou nové skripty před a za CREATE i ALTER skriptem, s českými znaky.', () => {}, {
+      scripts: { create: ['-- začátek vytvoření\nSET NOCOUNT ON;', '-- konec vytvoření'], alter: ['-- začátek změn', '-- konec změn'] },
+    })
     const view = source.sqlObjects.find((o) => o.kind === 'view' && o.id && o.code)
     if (view) file('zmeneny-pohled', `pohled ${view.name}: kód má na konci nový řádek s komentářem „upraveno v DB Mastermind“.`, () => {}, { views: [{ id: view.id!, code: `${view.code!.replace(/[;\s]+$/, '')}\n-- upraveno v DB Mastermind` }] })
     file(

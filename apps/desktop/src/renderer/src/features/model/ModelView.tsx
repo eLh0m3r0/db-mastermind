@@ -23,6 +23,7 @@ import { describeDezignChanges, modelTabFromFile, sqlObjectsScript } from './ope
 import { DomainsModal, domainsOfText, withDomains, type ModelDomainDef } from './domains'
 import { editableViews, ViewsModal } from './views'
 import { ObjectBrowser, type BrowserRequest } from './ObjectBrowser'
+import { ProjectScriptsModal } from './ProjectScripts'
 import type { DiagramRequest } from '../diagram/DiagramView'
 import { IssuesChip, IssuesPanel } from './ModelIssues'
 import { rememberModelDatabase } from '@/lib/files'
@@ -166,7 +167,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
 
   /** A model opened from a DeZign project goes back into it: the changes are listed first, the old files are kept. */
   const saveToSource = async (source: NonNullable<ModelTab['source']>) => {
-    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, notes: tab.notes, colors: tab.colors, diagrams: tab.diagrams, display: tab.display, boxes: tab.boxes, removedDiagrams: tab.removedDiagrams, domains: domainsOfText(text), views: editableViews(tab.sqlObjects).map(({ id, code }) => ({ id, code })), layout: !!source.layout, defaultSchema: liveSchema?.defaultSchema }
+    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, notes: tab.notes, colors: tab.colors, diagrams: tab.diagrams, display: tab.display, boxes: tab.boxes, removedDiagrams: tab.removedDiagrams, domains: domainsOfText(text), views: editableViews(tab.sqlObjects).map(({ id, code }) => ({ id, code })), scripts: tab.scripting?.around, layout: !!source.layout, defaultSchema: liveSchema?.defaultSchema }
     const name = source.path.split(/[\\/]/).pop() ?? ''
     try {
       const preview = await api.saveDezignModel({ ...request, dryRun: true })
@@ -343,6 +344,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   // The project's views: their SQL as the project keeps it, written back on Save (see ./views).
   const views = useMemo(() => editableViews(tab.sqlObjects), [tab.sqlObjects])
   const [viewsOpen, setViewsOpen] = useState(false)
+  const [scriptsOpen, setScriptsOpen] = useState(false)
   const applyViews = (codes: Record<string, string>) => {
     setViewsOpen(false)
     if (!views.some((v) => codes[v.id] !== undefined && codes[v.id] !== v.code)) return
@@ -650,6 +652,21 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           </Button>
         )}
         <ViewsModal open={viewsOpen} views={views} onClose={() => setViewsOpen(false)} onApply={applyViews} />
+        {tab.source && (
+          <Button size="sm" variant="ghost" icon={<FileCode2 size={13} />} onClick={() => setScriptsOpen(true)} title={t('SQL the project puts before and after the scripts generated from it')} data-testid="model-project-scripts">
+            {t('Project scripts…')}
+          </Button>
+        )}
+        {scriptsOpen && (
+          <ProjectScriptsModal
+            around={tab.scripting?.around}
+            onClose={() => setScriptsOpen(false)}
+            onApply={(around) => {
+              setScriptsOpen(false)
+              updateTab(tab.id, { scripting: { ...(tab.scripting ?? { primaryKeys: { names: {} }, domains: [] }), around } as ModelTab['scripting'], dirty: true })
+            }}
+          />
+        )}
         {tab.source && (
           <Button size="sm" variant="ghost" icon={<Archive size={13} />} onClick={() => void archiveVersion()} title={t('Keep the project as it is saved now as a version, as DeZign does')} data-testid="model-archive-version">
             {t('Archive version…')}

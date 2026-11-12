@@ -550,6 +550,8 @@ export interface DezignSaveRequest {
   domains?: { name: string; dataType: string }[]
   /** The code of the project's views by id: a changed one is written. */
   views?: { id: string; code: string }[]
+  /** The project's scripts before and after a CREATE and an ALTER script: written where they differ. */
+  scripts?: { create?: [string, string]; alter?: [string, string] }
   /** Schema the window puts schema-less tables under (keys of `positions`). */
   defaultSchema?: string
   /** Only report what would change. */

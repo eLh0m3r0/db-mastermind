@@ -72,6 +72,7 @@ export type DezignChangeKind =
   | 'add_domain'
   | 'alter_domain'
   | 'alter_view'
+  | 'project_scripts'
   | 'add_box'
   | 'drop_box'
   | 'alter_box'
@@ -140,6 +141,8 @@ export interface SaveDezignOptions {
   domains?: { name: string; dataType: string; comment?: string | null }[]
   /** The code of the project's views, by id (`DezignSqlObject.id`): a view whose code differs gets it. */
   views?: { id: string; code: string }[]
+  /** The project's scripts before and after a CREATE script and an ALTER script (DeZign's project settings). */
+  scripts?: { create?: [string, string]; alter?: [string, string] }
   /**
    * Brings a model read from DeZign into the representation of `baseline` and `target` (for DBML documents: a
    * round trip through DBML). The written project is read back through it and compared with `target`.
@@ -255,6 +258,7 @@ class Project {
   readonly deleted = new Set<string>()
   private singlePath = ''
   private singleOriginal = ''
+  private settingsPath = ''
 
   constructor(files: DezignFile[]) {
     const project = files.find((f) => /\.dezproj$/i.test(f.path) && !/[\\/]/.test(f.path))
@@ -271,6 +275,9 @@ class Project {
       if (!this.version) throw new Error('This is not a DeZign for Databases model')
       return
     }
+    // The project file itself holds the project's settings (PROJECTSETTINGS).
+    this.docs.set(project!.path.replaceAll('\\', '/'), { root: parseDezignXml(project!.text), original: project!.text })
+    this.settingsPath = project!.path.replaceAll('\\', '/')
     for (const f of files) {
       const path = f.path.replaceAll('\\', '/')
       const dir = lower(path.slice(0, Math.max(0, path.lastIndexOf('/'))))
@@ -400,6 +407,13 @@ class Project {
    * counter between all kinds of them (tables, relationships, text areas, group boxes…), so the next id has to
    * be above everything, not just above the kinds this writer knows.
    */
+  /** The project's settings (PROJECTSETTINGS): in the model of a single file, the project file of a folder. */
+  settings(): El | undefined {
+    if (!this.folder) return kid(this.version, 'PROJECTSETTINGS')
+    const doc = this.docs.get(this.settingsPath)
+    return doc ? kids(doc.root).find((e) => e.tag === 'PROJECTSETTINGS') : undefined
+  }
+
   /** An element of a single-file project by its path under the model (`['DATADICT']`); none in a folder project. */
   section(path: string[]): El | undefined {
     let el = this.version
@@ -712,6 +726,21 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     project.add('DOMAIN', el, sample && project.fileStem(sample) === text(sample.el, 'ID') ? id : wanted.name)
     domainsByName.set(lower(wanted.name), el)
     changes.push({ kind: 'add_domain', table: wanted.name, name: wanted.dataType })
+  }
+  // The project's scripts around generated SQL, as its settings keep them.
+  if (options.scripts) {
+    const common = kid(project.settings(), 'COMMONSETTINGS')
+    const tags = { create: ['BEGINDATABASESCRIPT', 'ENDDATABASESCRIPT'], alter: ['BEGINALTERDATABASESCRIPT', 'ENDALTERDATABASESCRIPT'] } as const
+    for (const kind of ['create', 'alter'] as const) {
+      const wanted = options.scripts[kind]
+      if (!common || !wanted) continue
+      wanted.forEach((value, i) => {
+        const tag = tags[kind][i]!
+        if (normText(text(common, tag)) === normText(value)) return
+        set(common, tag, value.replace(/\s+$/, ''))
+        changes.push({ kind: 'project_scripts', table: tag })
+      })
+    }
   }
   // A view is SQL the model does not read: its code is written as given, under DeZign's own placeholders.
   for (const wanted of options.views ?? []) {

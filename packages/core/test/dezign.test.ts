@@ -566,6 +566,21 @@ describe('saving back into a DeZign project', () => {
     expect(back.files[0]!.text).toMatch(/<REL>\s*<NAME>customer_invoice<\/NAME>[\s\S]*?<RELTYPE>1<\/RELTYPE>/)
   })
 
+  it("writes the project's scripts around CREATE and ALTER into its settings, in a file and in a folder", () => {
+    const scripts = { create: ['SET search_path = shop;', '-- done\nANALYZE;'] as [string, string], alter: ['BEGIN;', 'COMMIT;'] as [string, string] }
+    for (const files of [single, folder]) {
+      const r = saveToDezign(files, model(files), model(files), { normalize: viaDbml, scripts })
+      expect(r.changes.filter((c) => c.kind === 'project_scripts').length).toBe(4)
+      // In a folder project only the project file changes.
+      if (files === folder) expect(r.files.map((f) => f.path)).toEqual(['Shop.dezproj'])
+      const after = applyDezignSave(files, r)
+      const read = readDezign(files === folder ? assembleDezignProject(after) : after[0]!.text)
+      expect(read.scripting.around).toEqual({ create: ['SET search_path = shop;', '-- done\nANALYZE;'], alter: ['BEGIN;', 'COMMIT;'] })
+      // The same scripts again: nothing to write.
+      expect(saveToDezign(after, model(after), model(after), { normalize: viaDbml, scripts }).files).toEqual([])
+    }
+  })
+
   it('writes nothing when the model was not edited', () => {
     expect(save(single, () => {})).toEqual({ files: [], deleted: [], changes: [] })
     expect(save(folder, () => {})).toEqual({ files: [], deleted: [], changes: [] })
