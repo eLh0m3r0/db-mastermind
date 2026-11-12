@@ -4,7 +4,7 @@ import { bracketMatching, StreamLanguage } from '@codemirror/language'
 import { Compartment, EditorState } from '@codemirror/state'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
-import { AlertTriangle, Archive, Database, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare, Plus } from 'lucide-react'
+import { AlertTriangle, Archive, Database, Shapes, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare, Plus } from 'lucide-react'
 import { checkModel, createScript, dezignDriver, dezignMigrationOptions, dezignWrapScript, dropScript, fixModelIssue, unquotedNames, getDialect, parseDbml, toDbml, updateModelFromDatabase, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
@@ -20,6 +20,7 @@ import { askAi, toast } from '@/store/ui'
 import { useWorkspace, type DiagramTab, type ModelTab } from '@/store/workspace'
 import { DiagramView } from '../diagram/DiagramView'
 import { describeDezignChanges, modelTabFromFile, sqlObjectsScript } from './open-model'
+import { DomainsModal, domainsOfText, withDomains, type ModelDomainDef } from './domains'
 import { IssuesChip, IssuesPanel } from './ModelIssues'
 import { rememberModelDatabase } from '@/lib/files'
 import { connectAndSelect } from '../sidebar/Sidebar'
@@ -162,7 +163,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
 
   /** A model opened from a DeZign project goes back into it: the changes are listed first, the old files are kept. */
   const saveToSource = async (source: NonNullable<ModelTab['source']>) => {
-    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, notes: tab.notes, colors: tab.colors, diagrams: tab.diagrams, display: tab.display, boxes: tab.boxes, removedDiagrams: tab.removedDiagrams, layout: !!source.layout, defaultSchema: liveSchema?.defaultSchema }
+    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, notes: tab.notes, colors: tab.colors, diagrams: tab.diagrams, display: tab.display, boxes: tab.boxes, removedDiagrams: tab.removedDiagrams, domains: domainsOfText(text), layout: !!source.layout, defaultSchema: liveSchema?.defaultSchema }
     const name = source.path.split(/[\\/]/).pop() ?? ''
     try {
       const preview = await api.saveDezignModel({ ...request, dryRun: true })
@@ -317,6 +318,21 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     } catch (err) {
       toast({ kind: 'error', message: t('Could not archive the version'), detail: errorMessage(err) })
     }
+  }
+
+  // The project's domains: the model's domains note says which there are (see ./domains).
+  const domains = useMemo(() => domainsOfText(text), [text])
+  const [domainsOpen, setDomainsOpen] = useState(false)
+  /** New domain types go to the columns that follow them; the note lists the domains as they are now. */
+  const applyDomains = (next: ModelDomainDef[]) => {
+    setDomainsOpen(false)
+    if (model.errors.length) return toast({ kind: 'error', message: t('Fix the errors in the model first') })
+    const typeOf = new Map(next.map((d) => [d.name.toLowerCase(), d.dataType]))
+    const tables = model.tables.map((tb) => ({ ...tb, columns: tb.columns.map((c) => (c.domain && typeOf.has(c.domain.toLowerCase()) && typeOf.get(c.domain.toLowerCase()) !== c.dataType ? { ...c, dataType: typeOf.get(c.domain.toLowerCase())! } : c)) }))
+    const rewritten = tables.some((tb, i) => tb.columns.some((c, k) => c !== model.tables[i]!.columns[k]))
+    const body = rewritten ? toDbml(tables, { defaultSchema: snapshot.defaultSchema, enums: model.enums, groups: model.groups, extras: model.extras }) : text
+    const changed = withDomains(body, next)
+    if (changed !== text) replaceText(changed, { dirty: true })
   }
 
   /** An empty model starts with one table open in the designer: nobody has to know DBML to begin. */
@@ -599,6 +615,12 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           {tab.source ? t('Compare with version…') : t('Compare with file…')}
         </Button>
         {tab.source && (
+          <Button size="sm" variant="ghost" icon={<Shapes size={13} />} onClick={() => setDomainsOpen(true)} title={t('The named types the project\'s columns follow')} data-testid="model-domains">
+            {t('Domains…')}
+          </Button>
+        )}
+        <DomainsModal open={domainsOpen} domains={domains} onClose={() => setDomainsOpen(false)} onApply={applyDomains} />
+        {tab.source && (
           <Button size="sm" variant="ghost" icon={<Archive size={13} />} onClick={() => void archiveVersion()} title={t('Keep the project as it is saved now as a version, as DeZign does')} data-testid="model-archive-version">
             {t('Archive version…')}
           </Button>
@@ -638,6 +660,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
               key={area}
               model={diagram ? snapshot : shown}
               modelDriver={dezignDriver(tab.sqlDatabase)}
+              domains={domains}
               onLayout={(patch) => (diagram ? patchDiagram(diagram.id, () => ({ ...patch, ...('positions' in patch ? { positions: patch.positions ?? {} } : {}) })) : updateTab(tab.id, { ...patch, dirty: tab.source ? true : tab.dirty }))}
               onApplyModel={(tables) => {
                 // Editing one area keeps the model's other tables; tables added there join the area.

@@ -544,6 +544,8 @@ export interface DezignSaveRequest {
   boxes?: DiagramBox[]
   /** Diagrams of the project to take out of it (ids). */
   removedDiagrams?: string[]
+  /** The project's domains as the model lists them: changed types and new ones are written. */
+  domains?: { name: string; dataType: string }[]
   /** Schema the window puts schema-less tables under (keys of `positions`). */
   defaultSchema?: string
   /** Only report what would change. */

@@ -397,7 +397,7 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ A copied column, table or relationship does not take its neighbour's labels, custom properties, character
   set or relationship phrases; a dropped table takes the lines from views to it along (DeZign 14.5 draws views);
   files of DeZign 4 to 11 get their id counters (`LASTID`, `ATTRLASTID`, …) moved on with new objects
-- ⬜ Subtype clusters and the domains themselves edited from the model (today they are kept as they are)
+- ⬜ Subtype clusters edited from the model (today they are kept as they are)
 
 - ✅ The DROP script DeZign writes next to the CREATE one (SQL DDL → DROP script…): views, then the tables in an
   order their foreign keys allow, then the domains the model made
@@ -464,7 +464,10 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ⬜ Custom properties on tables and columns; DeZign attribute packages as `TablePartial`
 - ⬜ Views, sequences, triggers and procedures edited in the model (a DeZign project's are carried into the DDL
   as they are; a model made here has none yet)
-- ⬜ Domains defined in a model made here (a DeZign project's are used by its columns already)
+- ✅ Domains of a DeZign project managed from the model ("Domains…"): a new type for a domain goes to every column
+  that follows it, as DeZign propagates it; new domains are made and offered in the table panel. Saved into the
+  project (a new domain with a column that follows it opened in DeZign 14.9.3 as saved; projects of the full
+  version, which the trial refuses, were not checked there). The model's domains note is the list
 - ⬜ Several diagrams per model with their own layout, notes and group boxes
 - ⬜ A model as a folder (one file per table, SQL files for the rest): small Git diffs, merges without conflicts
 

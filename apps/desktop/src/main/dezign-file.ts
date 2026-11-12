@@ -129,7 +129,7 @@ export async function saveDezignModel(request: DezignSaveRequest): Promise<Dezig
   const main = model.layout.diagramId
   if (main) diagrams[main] = request.layout ? { notes: request.notes ?? [], colors: colorChanges(main, request.colors), display: displayOf(request.display), ...(request.boxes ? { boxes: request.boxes } : {}) } : { notes: keepingAll(main, request.notes) }
   for (const id of request.removedDiagrams ?? []) if (id !== main) diagrams[id] = { remove: true }
-  const result = saveToDezign(files, viaDbml(model.tables), edited.tables, { node: NODE, fallbackEncoding, positions, diagrams, normalize: viaDbml })
+  const result = saveToDezign(files, viaDbml(model.tables), edited.tables, { node: NODE, fallbackEncoding, positions, diagrams, normalize: viaDbml, domains: request.domains })
   const outcome: DezignSaveOutcome = { changes: result.changes, written: result.files.length, deleted: result.deleted.length, hash: request.hash }
   if (request.dryRun || (!result.files.length && !result.deleted.length)) return outcome
 

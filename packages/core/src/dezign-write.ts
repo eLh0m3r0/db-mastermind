@@ -68,6 +68,8 @@ export type DezignChangeKind =
   | 'drop_note'
   | 'color_table'
   | 'diagram_display'
+  | 'add_domain'
+  | 'alter_domain'
   | 'add_box'
   | 'drop_box'
   | 'alter_box'
@@ -129,6 +131,11 @@ export interface SaveDezignOptions {
   >
   /** Ids for new objects (default: random GUIDs, or the next number in files that number their objects). */
   newId?: () => string
+  /**
+   * Domains (named types) to change or make, by name. A changed type is written into the domain and, through the
+   * model, into every column that follows it; a name the project does not have makes a new domain.
+   */
+  domains?: { name: string; dataType: string; comment?: string | null }[]
   /**
    * Brings a model read from DeZign into the representation of `baseline` and `target` (for DBML documents: a
    * round trip through DBML). The written project is read back through it and compared with `target`.
@@ -663,6 +670,43 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
   }
   // Domains of the project by name: a column that follows one has its id and a copy of its type.
   const domainsByName = new Map(project.list('DOMAIN').map((d) => [lower(text(d.el, 'NAME')), d.el]))
+  // Domains first: the columns that follow one take its type from it.
+  for (const wanted of options.domains ?? []) {
+    if (!wanted.name.trim() || !wanted.dataType.trim()) continue
+    const existing = domainsByName.get(lower(wanted.name))
+    const typeOf = (el: El) => {
+      const dt = kid(el, 'DT')
+      return (text(dt, 'DTLISTNAME').toLowerCase() + (text(dt, 'LE') ? `(${text(dt, 'LE')}${text(dt, 'PR') ? `,${text(dt, 'PR')}` : ''})` : '')).trim()
+    }
+    if (existing) {
+      let changed = false
+      if (normType(typeOf(existing)) !== normType(wanted.dataType)) {
+        // (An auto-numbered domain stays one.)
+        setType(existing, wanted.dataType, text(kid(existing, 'DT'), 'AN') === '1')
+        changed = true
+      }
+      if (wanted.comment !== undefined && normText(text(existing, 'DESC')) !== normText(wanted.comment)) {
+        set(existing, 'DESC', wanted.comment ?? '', ['NOTE', 'DT'])
+        changed = true
+      }
+      if (changed) changes.push({ kind: 'alter_domain', table: text(existing, 'NAME'), name: wanted.dataType })
+      continue
+    }
+    const sample = project.list('DOMAIN')[0]
+    const id = newObjectId()
+    const el = sample ? clone(sample.el, [[text(sample.el, 'ID'), id]]) : container('DOMAIN', [leaf('NAME'), leaf('ID', id), leaf('SCHEMA'), leaf('DESC'), leaf('NOTE'), container('DT', [leaf('DTLISTNAME'), leaf('SD', '0'), leaf('INC', '1')])])
+    // What belonged to the domain it was copied from.
+    for (const tag of ['NNCON', 'CCON', 'DEFCON']) remove(el, kid(el, tag))
+    for (const tag of ['DESC', 'NOTE']) if (kid(el, tag)) set(el, tag, '')
+    forget(el)
+    set(el, 'NAME', wanted.name)
+    set(el, 'ID', id)
+    if (wanted.comment) set(el, 'DESC', wanted.comment, ['NOTE', 'DT'])
+    setType(el, wanted.dataType, false)
+    project.add('DOMAIN', el, sample && project.fileStem(sample) === text(sample.el, 'ID') ? id : wanted.name)
+    domainsByName.set(lower(wanted.name), el)
+    changes.push({ kind: 'add_domain', table: wanted.name, name: wanted.dataType })
+  }
   /** Takes a column out of the attribute package it was inherited from (see `DezignChange.detached`). */
   const detach = (attr: El): { detached?: string } => {
     const name = text(attr, 'PKGNAME')

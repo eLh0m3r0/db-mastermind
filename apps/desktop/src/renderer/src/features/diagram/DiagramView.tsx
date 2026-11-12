@@ -381,7 +381,7 @@ function nodeHeight(t: TableInfo, shown: Shown, fk: Set<string>, ref: Set<string
   return HEADER + visible * ROW + (showsMore(shown) && visible < t.columns.length ? ROW : 0) + 2
 }
 
-function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; modelDriver?: DriverId; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
+function DiagramInner({ tab, model, modelDriver, domains, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; modelDriver?: DriverId; domains?: { name: string; dataType: string }[]; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
   const tr = useT()
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const loadSchema = useConnections((s) => s.loadSchema)
@@ -1543,6 +1543,7 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
           driver={editorDriver}
           allTables={tables}
           model={!!model}
+          domains={domains}
           onChange={(t) => updateDraft(selected, t)}
           onRevert={
             drafts[selected]?.originalName
@@ -1576,10 +1577,10 @@ function DiagramInner({ tab, model, modelDriver, onApplyModel, onLayout }: { tab
   )
 }
 
-export function DiagramView({ tab, model, modelDriver, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
+export function DiagramView({ tab, model, modelDriver, domains, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; /** The project's domains, offered for columns. */ domains?: { name: string; dataType: string }[]; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
   return (
     <ReactFlowProvider>
-      <DiagramInner tab={tab} model={model} modelDriver={modelDriver} onApplyModel={onApplyModel} onLayout={onLayout} />
+      <DiagramInner tab={tab} model={model} modelDriver={modelDriver} domains={domains} onApplyModel={onApplyModel} onLayout={onLayout} />
     </ReactFlowProvider>
   )
 }

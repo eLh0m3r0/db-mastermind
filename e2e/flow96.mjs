@@ -88,6 +88,32 @@ try {
   await win.getByText(/Saved to shop\.dez/).last().waitFor({ timeout: 10000 })
   console.log('hidden column:', boxRows === 3, /<HIDDENATTR>A2<\/HIDDENATTR>/.test(readFileSync(dez, 'latin1')))
 
+  // Domains: a new one, followed by a column, then a new type for it that goes to that column too.
+  const domainsDialog = async (fill) => {
+    await win.getByTestId('model-domains').click()
+    await fill()
+    await win.getByTestId('domain-apply').click()
+    await win.waitForTimeout(800)
+  }
+  await domainsDialog(async () => {
+    await win.getByTestId('domain-add').click()
+    await win.getByTestId('domain-name-0').fill('money_t')
+    await win.getByTestId('domain-type-0').fill('numeric(12,2)')
+  })
+  await win.getByRole('button', { name: /Design/ }).first().click()
+  await win.locator('.react-flow__node[data-id="shop.customer"]').click()
+  await win.getByTitle('The named type (domain) the column follows').last().selectOption('money_t')
+  await win.getByRole('button', { name: /Write to DBML/ }).click()
+  await win.waitForTimeout(800)
+  await domainsDialog(async () => win.getByTestId('domain-type-0').fill('numeric(14,2)'))
+  const withDomain = await win.locator('.cm-content:visible').first().innerText()
+  await win.getByRole('button', { name: 'Save', exact: true }).click()
+  await win.getByText(/Write these changes into shop\.dez\?/).waitFor({ timeout: 10000 })
+  await win.getByRole('button', { name: 'Write to the DeZign file' }).click()
+  await win.getByText(/Saved to shop\.dez/).last().waitFor({ timeout: 10000 })
+  const domainFile = readFileSync(dez, 'latin1')
+  console.log('domains:', /credit numeric\(14,2\) \[domain: 'money_t'\]/.test(withDomain), /money_t: numeric\(14,2\)/.test(withDomain), /<DOMAIN>\n<NAME>money_t<\/NAME>[\s\S]*?<DTLISTNAME>NUMERIC<\/DTLISTNAME>\n<LE>14<\/LE>\n<PR>2<\/PR>/.test(domainFile))
+
   // The project's begin and end scripts go around the DDL made for its own database.
   await win.getByRole('button', { name: /^SQL DDL/ }).click()
   await win.getByText('PostgreSQL', { exact: true }).last().click()

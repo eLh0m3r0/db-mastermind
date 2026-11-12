@@ -14,6 +14,7 @@ export function TableEditor({
   driver,
   allTables: everything,
   model,
+  domains: projectDomains,
   onChange,
   onRevert,
   onClose,
@@ -23,6 +24,8 @@ export function TableEditor({
   allTables: TableInfo[]
   /** A model, not a live database: nothing is in the way of what an ALTER could not do (auto-increment on a column that exists). */
   model?: boolean
+  /** The project's domains (also the ones no column follows yet). */
+  domains?: { name: string; dataType: string }[]
   onChange: (table: DesignTable) => void
   onRevert?: () => void
   onClose: () => void
@@ -62,7 +65,7 @@ export function TableEditor({
     set({ columns })
   }
   // The named types (domains) the model's columns follow, with the type each stands for.
-  const domains = [...new Map(everything.flatMap((t) => t.columns.filter((c) => c.domain).map((c) => [c.domain!, c.dataType] as const))).entries()].sort(([a], [b]) => a.localeCompare(b))
+  const domains = [...new Map([...everything.flatMap((t) => t.columns.filter((c) => c.domain).map((c) => [c.domain!, c.dataType] as const)), ...(projectDomains ?? []).map((d) => [d.name, d.dataType] as const)]).entries()].sort(([a], [b]) => a.localeCompare(b))
   const types = COMMON_TYPES[driver]
   const textType = types.find((t) => /char|text/i.test(t)) ?? types[0] ?? 'text'
   // Tables are told apart by schema too: "All schemas" can show shop.customers next to xt.customers.

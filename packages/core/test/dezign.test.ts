@@ -487,6 +487,24 @@ describe('saving back into a DeZign project', () => {
     expect(saveToDezign(r.files, model(r.files), model(r.files), { normalize: viaDbml, diagrams: { [main.id]: { boxes: after.boxes } } }).files).toEqual([])
   })
 
+  it('changes a domain\'s type with the columns that follow it, and makes a new domain', () => {
+    const before = model(single)
+    const target = viaDbml(model(single))
+    for (const table of target) for (const c of table.columns) if (c.domain === 'country_code') c.dataType = 'character(3)'
+    target[0]!.columns.push(column('balance', 'numeric(12,2)', { domain: 'money_t' }))
+    const r = saveToDezign(single, before, viaDbml(target), { normalize: viaDbml, newId: () => 'D-NEW', domains: [{ name: 'country_code', dataType: 'character(3)' }, { name: 'money_t', dataType: 'numeric(12,2)', comment: 'Částka' }] })
+    expect(r.changes.slice(0, 2)).toEqual([
+      { kind: 'alter_domain', table: 'country_code', name: 'character(3)' },
+      { kind: 'add_domain', table: 'money_t', name: 'numeric(12,2)' },
+    ])
+    const after = readDezign(r.files[0]!.text)
+    expect(after.domains).toEqual([{ name: 'country_code', dataType: 'character(3)' }, { name: 'money_t', dataType: 'numeric(12,2)' }])
+    expect(after.tables.flatMap((t) => t.columns).filter((c) => c.domain).map((c) => `${c.name} ${c.dataType} ${c.domain}`)).toEqual(['country character(3) country_code', 'balance numeric(12,2) money_t'])
+    expect(dezignIntegrity(r.files[0]!.text)).toEqual(dezignIntegrity(dez))
+    // The same domains again: nothing to write.
+    expect(saveToDezign(r.files, model(r.files), model(r.files), { normalize: viaDbml, domains: [{ name: 'country_code', dataType: 'character(3)' }] }).files).toEqual([])
+  })
+
   it('writes nothing when the model was not edited', () => {
     expect(save(single, () => {})).toEqual({ files: [], deleted: [], changes: [] })
     expect(save(folder, () => {})).toEqual({ files: [], deleted: [], changes: [] })
