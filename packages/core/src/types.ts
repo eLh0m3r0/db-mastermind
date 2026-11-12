@@ -137,6 +137,8 @@ export interface ColumnInfo {
   properties?: Record<string, string>
   /** Labels a model puts on the column (DeZign's labels, e.g. "PII"), by name; never in a script. */
   labels?: string[]
+  /** What is still to be done about the column (DeZign's to-do item); never in a script. */
+  todo?: string
 }
 
 export interface ForeignKeyInfo {
@@ -200,6 +202,8 @@ export interface TableInfo {
   properties?: Record<string, string>
   /** Labels a model puts on the table (DeZign's labels, e.g. "PII"), by name; never in a script. */
   labels?: string[]
+  /** What is still to be done about the table (DeZign's to-do item); never in a script. */
+  todo?: string
 }
 
 export interface RoutineInfo {

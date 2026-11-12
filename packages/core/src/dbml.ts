@@ -203,6 +203,12 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
         if (parsed) t.properties = parsed
         continue
       }
+      // `Todo:` what is still to be done about the table (DeZign's to-do item).
+      const todoRow = /^Todo\s*:\s*(.+)$/i.exec(row)
+      if (todoRow) {
+        t.todo = unquoteString(todoRow[1]!.trim())
+        continue
+      }
       // `Labels:` the labels on the table (DeZign's labels) as a JSON list.
       const labelRow = /^Labels\s*:\s*(.+)$/i.exec(row)
       if (labelRow) {
@@ -277,6 +283,7 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
         ...(value('remarks') ? { remarks: unquoteString(value('remarks')!) } : {}),
         ...(value('properties') && propertiesOf(unquoteString(value('properties')!)) ? { properties: propertiesOf(unquoteString(value('properties')!)) } : {}),
         ...(value('labels') && labelsOf(unquoteString(value('labels')!)) ? { labels: labelsOf(unquoteString(value('labels')!)) } : {}),
+        ...(value('todo') ? { todo: unquoteString(value('todo')!) } : {}),
         // A custom setting: the attribute package (DeZign) the column comes from.
         ...(value('package') ? { package: unquoteString(value('package')!) } : {}),
       }
@@ -513,6 +520,7 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
       if (c.package) attrs.push(`package: '${c.package.replaceAll("'", '')}'`)
       if (c.properties && Object.keys(c.properties).length) attrs.push(`properties: ${noteText(JSON.stringify(c.properties))}`)
       if (c.labels?.length) attrs.push(`labels: ${noteText(JSON.stringify(c.labels))}`)
+      if (c.todo) attrs.push(`todo: ${noteText(c.todo)}`)
       const type = /^[\w$.]+(\(.*\))?(\[\])?$/.test(c.dataType) ? c.dataType : `"${c.dataType}"`
       out.push(`  ${quoteName(c.name)} ${type}${attrs.length ? ` [${attrs.join(', ')}]` : ''}`)
     }
@@ -534,6 +542,7 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
     if (t.remarks) out.push(...(t.comment ? [] : ['']), `  Remarks: ${noteText(t.remarks)}`)
     if (t.properties && Object.keys(t.properties).length) out.push(...(t.comment || t.remarks ? [] : ['']), `  Properties: ${noteText(JSON.stringify(t.properties))}`)
     if (t.labels?.length) out.push(...(t.comment || t.remarks || (t.properties && Object.keys(t.properties).length) ? [] : ['']), `  Labels: ${noteText(JSON.stringify(t.labels))}`)
+    if (t.todo) out.push(...(t.comment || t.remarks || (t.properties && Object.keys(t.properties).length) || t.labels?.length ? [] : ['']), `  Todo: ${noteText(t.todo)}`)
     out.push('}', '')
   }
   for (const t of tables) {

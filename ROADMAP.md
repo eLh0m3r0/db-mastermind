@@ -402,6 +402,12 @@ Not a clone: their features, rethought and connected to live databases, the know
   the index DeZign keeps on the key (older projects) in step, so DeZign 14.9.3 draws a file we saved, a new
   identifying relationship and one made identifying, exactly as the app does (checked side by side); changing a
   primary key used to fail the save check in projects with that index
+- ✅ IDEF1X notation per diagram (DeZign's NOTATION), next to crow's feet: dependent tables rounded, independent
+  ones square, a dot at the child's end with P / Z / 1 for the cardinality, a diamond at an optional parent's end,
+  non-identifying relationships dashed; chosen above the canvas and saved into the project's diagram
+- ✅ DeZign's to-do list: a to-do item of a table (its dialog's Description tab) and of a column (under the grid),
+  listed under "To-do list" in the object browser, kept in the model (`Todo:` / `todo:`) and saved where DeZign 14.9.3
+  keeps it (`TODO` right after the id)
 - ✅ Labels on tables and columns (DeZign's labels, such as "PII"): picked in a table's dialog (the table's on its
   Description tab, a column's under the grid), listed under "Labeled objects" in the object browser, kept in the
   model and saved where DeZign keeps them (`OBJLABELS`; a folder project's labels are read from its `labels`
@@ -594,9 +600,9 @@ Not a clone: their features, rethought and connected to live databases, the know
   as it needs (each marked with its row and column)
 
 ### Later, when the pilot asks for it 💡
-- The rest of DeZign for Databases, with no date (the team's projects don't use it): IDEF1X notation, switching a project's target database in the file (scripts for another database exist), configurable
-  documentation and report templates (today: the HTML data dictionary and the diagram as PDF), the to-do list,
-  conditional generation directives
+- The rest of DeZign for Databases, with no date (the team's projects don't use it): switching a project's target database in the file (scripts for another database exist), configurable
+  documentation and report templates (today: the HTML data dictionary and the diagram as PDF), conditional
+  generation directives
 - Naming rules and a glossary of abbreviations kept in the knowledge base (logical name ↔ physical name)
 - Logical model: one model, several target databases
 - Test data generated in foreign-key order

@@ -279,6 +279,27 @@ try {
   const labeledShown = await win.locator('[data-testid^="browser-labeled-"]').count()
   // (DeZign's order: POSNR, the custom properties, then the labels.)
   console.log('labels:', /<ID>10<\/ID>\s*(<POSNR>[^<]*<\/POSNR>\s*)?(<USERDEFPROPS>[\s\S]*?<\/USERDEFPROPS>\s*)?<OBJLABELS>PII\s*<\/OBJLABELS>/.test(customerLabels), /<NAME>email<\/NAME>\s*<ID>[^<]*<\/ID>\s*(<POSNR>[^<]*<\/POSNR>\s*)?(<USERDEFPROPS>[\s\S]*?<\/USERDEFPROPS>\s*)?<OBJLABELS>PII/.test(customerLabels), labeledShown === 2)
+
+  // To-do items (DeZign: To do) of a table and a column, listed in the object browser.
+  await win.getByTestId('browser-table-customer').dblclick()
+  await win.getByTestId('table-dialog-grid').waitFor({ timeout: 10000 })
+  await win.getByTestId('grid-name-email').click()
+  await win.getByTestId('column-todo').fill('Check the format')
+  await win.getByRole('button', { name: 'Description', exact: true }).click()
+  await win.getByTestId('table-todo').fill('Split names')
+  await win.getByTestId('table-dialog-ok').click()
+  await saveProject()
+  const withTodo = readFileSync(dez, 'latin1').split('</VERSION>')[0]
+  const listedTodos = await win.locator('[data-testid^="browser-todo-"]').count()
+  console.log('to do:', /<NAME>customer<\/NAME>\s*<ID>10<\/ID>\s*<TODO>Split names<\/TODO>/.test(withTodo), /<NAME>email<\/NAME>\s*<ID>[^<]*<\/ID>\s*<TODO>Check the format<\/TODO>/.test(withTodo), listedTodos === 2)
+
+  // The diagram drawn in IDEF1X (DeZign's notation per diagram): saved into the project.
+  await win.locator('[data-testid="diagram-notation"]:visible').selectOption('idef1x')
+  await win.waitForTimeout(600)
+  const squareTables = await win.locator('.react-flow__node .rounded-none, .react-flow__node .rounded-2xl').count()
+  await saveProject()
+  const withNotation = readFileSync(dez, 'latin1').split('</VERSION>')[0]
+  console.log('IDEF1X:', squareTables > 0, /<ISMAINDIAGRAM>1<\/ISMAINDIAGRAM>[\s\S]*?<NOTATION>1<\/NOTATION>|<NOTATION>1<\/NOTATION>/.test(withNotation))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow96.png') })
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])

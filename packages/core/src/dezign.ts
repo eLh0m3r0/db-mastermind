@@ -153,10 +153,13 @@ export interface DezignDisplay {
   columns: DezignColumnsShown
   types: 'none' | 'type' | 'domain'
   hidden?: Record<string, string[]>
+  /** How relationships are drawn (DeZign's NOTATION: 0 crow's feet, 1 IDEF1X); none read: crow's feet. */
+  notation?: 'crow' | 'idef1x'
 }
 export type DezignColumnsShown = 'all' | 'keys' | 'primary' | 'none' | 'first10' | 'first20'
 export const DEZIGN_COLUMNS_SHOWN: DezignColumnsShown[] = ['all', 'keys', 'primary', 'none', 'first10', 'first20']
-export const dezignDisplayOf = (displayLevel: string, visibleAttr: string): DezignDisplay => ({
+export const dezignDisplayOf = (displayLevel: string, visibleAttr: string, notation = ''): DezignDisplay => ({
+  ...(notation === '1' ? { notation: 'idef1x' as const } : {}),
   columns: DEZIGN_COLUMNS_SHOWN[Number(displayLevel)] ?? 'all',
   // (No setting at all: types shown, as a diagram here shows them.)
   types: visibleAttr === '1' || visibleAttr === '3' || visibleAttr === '' ? 'type' : visibleAttr === '2' || visibleAttr === '4' ? 'domain' : 'none',
@@ -498,6 +501,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
         ...(text(attr, 'NOTE') ? { remarks: text(attr, 'NOTE') } : {}),
         ...(dezignPropertyValues(attr, propertyNames) ? { properties: dezignPropertyValues(attr, propertyNames) } : {}),
         ...(labelsOf(attr) ? { labels: labelsOf(attr) } : {}),
+        ...(text(attr, 'TODO') ? { todo: text(attr, 'TODO').replace(/\r\n?/g, '\n') } : {}),
         ...(domain && text(domain, 'NAME') ? { domain: text(domain, 'NAME') } : {}),
         ...(collates && text(attr, 'COLLATE') ? { collation: text(attr, 'COLLATE') } : {}),
         ...(text(attr, 'PKGNAME') ? { package: text(attr, 'PKGNAME') } : {}),
@@ -532,6 +536,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
       ...(text(ent, 'NOTE') ? { remarks: text(ent, 'NOTE') } : {}),
       ...(dezignPropertyValues(ent, propertyNames) ? { properties: dezignPropertyValues(ent, propertyNames) } : {}),
       ...(labelsOf(ent) ? { labels: labelsOf(ent) } : {}),
+      ...(text(ent, 'TODO') ? { todo: text(ent, 'TODO').replace(/\r\n?/g, '\n') } : {}),
       columns,
       primaryKey,
       foreignKeys: [],
@@ -636,7 +641,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const diagramOf = (id: string, name: string, main: boolean): DezignDiagram => {
     const controls = allControls.filter((c) => c.diagram === id)
     const element = diagrams.find((d) => text(d, 'ID') === id)
-    const out: DezignDiagram = { id, name, main, tables: [], positions: {}, colors: {}, notes: [], boxes: [], layout: { originX: 0, originY: 0, scaleX: 1, scaleY: 1 }, display: element ? dezignDisplayOf(text(element, 'DISPLAYLEVEL'), text(element, 'VISIBLEATTR')) : { columns: 'all', types: 'type' } }
+    const out: DezignDiagram = { id, name, main, tables: [], positions: {}, colors: {}, notes: [], boxes: [], layout: { originX: 0, originY: 0, scaleX: 1, scaleY: 1 }, display: element ? dezignDisplayOf(text(element, 'DISPLAYLEVEL'), text(element, 'VISIBLEATTR'), text(element, 'NOTATION')) : { columns: 'all', types: 'type' } }
     // DeZign's tables are smaller than the target's: spread the layout by the typical size ratio. A diagram
     // without tables (only notes or frames so far) keeps DeZign's own coordinates.
     const sx = node && controls.length ? Math.min(3, Math.max(1, median(controls.filter((c) => c.w > 0).map((c) => node.width / c.w)))) : 1

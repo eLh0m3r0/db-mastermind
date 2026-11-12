@@ -576,6 +576,7 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
    */
   const forget = (el: El) => {
     remove(el, kid(el, 'OBJLABELS'))
+    if (kid(el, 'TODO') && el.tag !== 'DIAGRAM') remove(el, kid(el, 'TODO'))
     if (kid(el, 'USERDEFPROPS')) set(el, 'USERDEFPROPS', '')
   }
   /** Sets or removes an optional value element (DeZign leaves it out when there is no value). */
@@ -901,6 +902,15 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     insert(el, leaf('OBJLABELS', value), next ? [next.tag] : [])
   }
   const sameLabels = (a: string[] | undefined, b: string[] | undefined) => labelsKey(a) === labelsKey(b)
+  /** A to-do item (DeZign 14.9.3: `TODO` right after the id, before POSNR; none when there is nothing to do). */
+  const setTodo = (el: El, todo: string | undefined) => {
+    const value = (todo ?? '').replace(/\s+$/, '')
+    if (!value) return void (kid(el, 'TODO') && remove(el, kid(el, 'TODO')))
+    if (kid(el, 'TODO')) return set(el, 'TODO', value)
+    const elements = el.children.filter((k): k is El => typeof k !== 'string')
+    const next = elements[elements.findIndex((k) => k.tag === 'ID') + 1]
+    insert(el, leaf('TODO', value), next ? [next.tag] : [])
+  }
   /** Puts a column into its attribute package, as the column of that name the package has elsewhere in the project. */
   const attachPackage = (attr: El, table: string, column: ColumnInfo) => {
     const known = packageItems.get(`${lower(column.package!)}\u0000${lower(column.name)}`)
@@ -967,6 +977,7 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     if (column.remarks) set(attr, 'NOTE', column.remarks, ['DOMAINID', 'DT'])
     if (column.properties) setProperties(attr, `${table}.${column.name}`, column.properties)
     if (column.labels?.length) setLabels(attr, `${table}.${column.name}`, column.labels)
+    if (column.todo) setTodo(attr, column.todo)
     if (column.domain) setDomain(attr, table, column)
     if (column.collation) setCollation(attr, column.collation)
     if (column.package) attachPackage(attr, table, column)
@@ -1110,6 +1121,10 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       }
       if (!sameLabels(b.labels, c.labels)) {
         setLabels(existing, `${label}.${c.name}`, c.labels)
+        altered = true
+      }
+      if (normText(b.todo) !== normText(c.todo)) {
+        setTodo(existing, c.todo)
         altered = true
       }
       if (normText(b.remarks) !== normText(c.remarks)) {
@@ -1472,6 +1487,10 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       setLabels(entity.el, next.name, next.labels)
       changes.push({ kind: 'alter_table', table: next.name, name: 'labels' })
     }
+    if (normText(base.todo) !== normText(next.todo)) {
+      setTodo(entity.el, next.todo)
+      changes.push({ kind: 'alter_table', table: next.name, name: 'to do' })
+    }
     if (normText(base.comment) !== normText(next.comment)) {
       set(entity.el, 'DESC', next.comment ?? '', ['NOTE', 'PKCON', 'ATTRIBUTES'])
       changes.push({ kind: 'alter_table', table: next.name })
@@ -1513,6 +1532,7 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     if (table.remarks) set(el, 'NOTE', table.remarks, ['PKCON', 'ATTRIBUTES'])
     if (table.properties) setProperties(el, table.name, table.properties)
     if (table.labels?.length) setLabels(el, table.name, table.labels)
+    if (table.todo) setTodo(el, table.todo)
     const entity: Entity = { slot: { el }, el, id, attrs: new Map() }
     syncColumns(entity, undefined, table)
     entity.slot = project.add('ENT', el, entityFileName(el))
@@ -2060,6 +2080,14 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
         changed = true
       }
     }
+    // The notation (DeZign: 0 crow's feet, 1 IDEF1X), only when the request says which.
+    if (diagram && display.notation) {
+      const code = display.notation === 'idef1x' ? '1' : '0'
+      if (text(diagram, 'NOTATION') !== code && (kid(diagram, 'NOTATION') || code === '1')) {
+        set(diagram, 'NOTATION', code)
+        changed = true
+      }
+    }
     for (const [key, names] of Object.entries(display.hidden ?? {})) {
       const entity = entities.get(lower(key))
       const control = entity && controlsOf(diagramId).find((c) => text(c.el, 'ID') === entity.id)
@@ -2250,11 +2278,11 @@ function verify(files: DezignFile[], result: { files: DezignFile[]; deleted: str
     tables
       .filter((t) => t.type === 'table')
       .map((t) => {
-        const cols = t.columns.map((c) => `${lower(c.name)} ${normType(c.dataType)}${normText(c.remarks) ? ` !${normText(c.remarks)}` : ''}${c.domain ? ` @${lower(c.domain)}` : ''}${c.collation ? ` ~${c.collation}` : ''}${c.nullable ? '' : ' nn'}${c.isIdentity ? ' id' : ''}${normText(c.defaultValue) ? ` =${normText(c.defaultValue)}` : ''}${normText(c.comment) ? ` #${normText(c.comment)}` : ''}${propertiesKey(c.properties) ? ` ${propertiesKey(c.properties)}` : ''}${labelsKey(c.labels) ? ` ${labelsKey(c.labels)}` : ''}`)
+        const cols = t.columns.map((c) => `${lower(c.name)} ${normType(c.dataType)}${normText(c.remarks) ? ` !${normText(c.remarks)}` : ''}${c.domain ? ` @${lower(c.domain)}` : ''}${c.collation ? ` ~${c.collation}` : ''}${c.nullable ? '' : ' nn'}${c.isIdentity ? ' id' : ''}${normText(c.defaultValue) ? ` =${normText(c.defaultValue)}` : ''}${normText(c.comment) ? ` #${normText(c.comment)}` : ''}${propertiesKey(c.properties) ? ` ${propertiesKey(c.properties)}` : ''}${labelsKey(c.labels) ? ` ${labelsKey(c.labels)}` : ''}${normText(c.todo) ? ` todo:${normText(c.todo)}` : ''}`)
         const fks = t.foreignKeys.filter((f) => !f.virtual).map((f) => `${f.columns.map(lower).join(',')}>${lower(f.refTable)}(${f.refColumns.map(lower).join(',')})${f.cardinality ? ` ${f.cardinality}` : ''}`)
         const indexes = t.indexes.filter((ix) => !ix.primary).map(indexKey)
         const checks = (t.checks ?? []).map((c) => `check ${c.expression.replace(/\s+/g, ' ').trim().toLowerCase()}`)
-        return [tableKey(t), `pk(${t.primaryKey.map(lower).join(',')})`, normText(t.comment), normText(t.remarks), propertiesKey(t.properties), labelsKey(t.labels), ...cols, ...fks.sort(), ...indexes.sort(), ...checks.sort()].join('\n  ')
+        return [tableKey(t), `pk(${t.primaryKey.map(lower).join(',')})`, normText(t.comment), normText(t.remarks), propertiesKey(t.properties), labelsKey(t.labels), normText(t.todo), ...cols, ...fks.sort(), ...indexes.sort(), ...checks.sort()].join('\n  ')
       })
       .sort()
   // (What the document's code page cannot hold was written the way it can: see `codec`.)

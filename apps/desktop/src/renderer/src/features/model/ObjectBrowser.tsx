@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Code2, Eye, FolderTree, Hash, Link2, ListOrdered, Package, Plus, Search, Shapes, Table2, Tag, Zap } from 'lucide-react'
+import { ChevronDown, ChevronRight, Code2, Eye, FolderTree, Hash, Link2, ListOrdered, Package, Plus, ListTodo, Search, Shapes, Table2, Tag, Zap } from 'lucide-react'
 import { attributePackages, type DezignLabel, type DezignSqlObject, type TableInfo } from '@dbmastermind/core/browser'
 import { Input } from '@/components/ui/Input'
 import { useT } from '@/lib/i18n'
@@ -62,6 +62,9 @@ export function ObjectBrowser({
   const shownPackages = packages.filter((p) => matches(p.name, ...p.columns.map((c) => c.name)))
   const schemas = new Set(sorted.map((x) => x.schema ?? '')).size > 1
   const label = (x: { schema?: string; name: string }) => (schemas && x.schema ? `${x.schema}.${x.name}` : x.name)
+  // DeZign's to-do list: every table and column with something still to do.
+  const todos = sorted.flatMap((x) => [...(x.todo ? [{ table: x, text: label(x), todo: x.todo }] : []), ...x.columns.filter((c) => c.todo).map((c) => ({ table: x, text: `${label(x)}.${c.name}`, todo: c.todo! }))])
+  const shownTodos = todos.filter((x) => matches(x.text, x.todo))
   // What carries each label: tables, and columns as `table.column`.
   const labeled = (labels ?? []).map((l) => {
     const is = (list: string[] | undefined) => !!list?.some((x) => x.toLowerCase() === l.name.toLowerCase())
@@ -184,6 +187,26 @@ export function ObjectBrowser({
                 () => {},
                 undefined,
                 `browser-package-${p.name}`,
+              ),
+            ),
+          )}
+        {todos.length > 0 &&
+          group(
+            'todo',
+            t('To-do list'),
+            shownTodos.length,
+            <ListTodo size={12} />,
+            shownTodos.map((x) =>
+              item(
+                `todo:${x.text}`,
+                <>
+                  <span className="shrink-0 truncate">{x.text}</span>
+                  <span className="ml-auto min-w-0 truncate pl-2 text-[11px] text-fg-muted">{x.todo.split('\n')[0]}</span>
+                </>,
+                x.todo,
+                () => onRequest({ kind: 'locate', key: tableKey(x.table) }),
+                () => onRequest({ kind: 'table', key: tableKey(x.table) }),
+                `browser-todo-${x.text}`,
               ),
             ),
           )}

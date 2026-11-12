@@ -281,6 +281,10 @@ export function TableDialog({
                     </span>
                     <Textarea rows={2} className="resize-y text-[12px]" value={selected.remarks ?? ''} onChange={(e) => setColumn(selected.id, { remarks: e.target.value || undefined })} />
                   </label>
+                  <label className="flex w-44 flex-col gap-0.5">
+                    <span className="text-[11px] text-fg-muted">{tr('To do')}</span>
+                    <Textarea rows={2} className="resize-y text-[12px]" value={selected.todo ?? ''} onChange={(e) => setColumn(selected.id, { todo: e.target.value || undefined })} data-testid="column-todo" />
+                  </label>
                   {labels.length > 0 && (
                     <label className="flex w-56 shrink-0 flex-col gap-0.5">
                       <span className="text-[11px] text-fg-muted">{tr('Labels')}</span>
@@ -320,6 +324,12 @@ export function TableDialog({
                 {tr('Notes')}
               </span>
               <Textarea rows={6} className="text-[12.5px]" value={table.remarks ?? ''} onChange={(e) => set({ remarks: e.target.value || undefined })} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[11.5px] font-medium text-fg-muted" title={tr('What is still to be done (DeZign: To do); listed in the object browser')}>
+                {tr('To do')}
+              </span>
+              <Textarea rows={3} className="text-[12.5px]" value={table.todo ?? ''} onChange={(e) => set({ todo: e.target.value || undefined })} data-testid="table-todo" />
             </label>
           </div>
         )}

@@ -31,6 +31,8 @@ export interface DesignColumn {
   properties?: Record<string, string>
   /** See ColumnInfo.labels. */
   labels?: string[]
+  /** See ColumnInfo.todo. */
+  todo?: string
 }
 
 export interface DesignForeignKey {
@@ -79,6 +81,8 @@ export interface DesignTable {
   properties?: Record<string, string>
   /** See TableInfo.labels. */
   labels?: string[]
+  /** See TableInfo.todo. */
+  todo?: string
   /** Diagram position, kept with the draft. */
   position?: { x: number; y: number }
 }
@@ -149,6 +153,7 @@ export function toDesignTable(t: TableInfo): DesignTable {
       ...(c.package ? { package: c.package } : {}),
       ...(c.properties ? { properties: c.properties } : {}),
       ...(c.labels ? { labels: c.labels } : {}),
+      ...(c.todo ? { todo: c.todo } : {}),
     })),
     primaryKey: [...t.primaryKey],
     foreignKeys: t.foreignKeys
@@ -161,6 +166,7 @@ export function toDesignTable(t: TableInfo): DesignTable {
     ...(t.remarks ? { remarks: t.remarks } : {}),
     ...(t.properties ? { properties: t.properties } : {}),
     ...(t.labels ? { labels: t.labels } : {}),
+    ...(t.todo ? { todo: t.todo } : {}),
   }
 }
 
@@ -1112,6 +1118,7 @@ export function designToTableInfo(t: DesignTable): TableInfo {
       ...(c.package ? { package: c.package } : {}),
       ...(c.properties ? { properties: c.properties } : {}),
       ...(c.labels ? { labels: c.labels } : {}),
+      ...(c.todo ? { todo: c.todo } : {}),
     })),
     primaryKey: [...t.primaryKey],
     // (A key or an index nobody named gets the name a model gives an unnamed one, not the editor's own id.)
@@ -1132,6 +1139,7 @@ export function designToTableInfo(t: DesignTable): TableInfo {
     ...(t.remarks ? { remarks: t.remarks } : {}),
     ...(t.properties ? { properties: t.properties } : {}),
     ...(t.labels ? { labels: t.labels } : {}),
+    ...(t.todo ? { todo: t.todo } : {}),
   }
 }
 

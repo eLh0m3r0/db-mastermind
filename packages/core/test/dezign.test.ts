@@ -455,6 +455,21 @@ describe('saving back into a DeZign project', () => {
     expect(saveToDezign(r.files, model(r.files), model(r.files), { normalize: viaDbml, diagrams: { [d2.id]: { display: { columns: 'keys', types: 'none' } } } }).files).toEqual([])
   })
 
+  // NOTATION as DeZign 14.9.3 keeps it per diagram (its own sample model has a diagram in IDEF1X).
+  it('reads and writes a diagram\'s notation: crow\'s feet or IDEF1X', () => {
+    const d2 = readDezign(dez).diagrams.find((d) => d.name === 'd2')!
+    const files: DezignFile[] = [{ path: 'shop.dez', text: dez }]
+    const r = saveToDezign(files, model(files), model(files), { normalize: viaDbml, diagrams: { [d2.id]: { display: { notation: 'idef1x' } } } })
+    expect(r.changes.map((c) => c.kind)).toEqual(['diagram_display'])
+    expect(r.files[0]!.text).toContain('<NOTATION>1</NOTATION>')
+    expect(readDezign(r.files[0]!.text).diagrams.find((d) => d.name === 'd2')!.display.notation).toBe('idef1x')
+    const back = saveToDezign(r.files, model(r.files), model(r.files), { normalize: viaDbml, diagrams: { [d2.id]: { display: { notation: 'crow' } } } })
+    expect(back.files[0]!.text).toContain('<NOTATION>0</NOTATION>')
+    expect(readDezign(back.files[0]!.text).diagrams.find((d) => d.name === 'd2')!.display.notation).toBeUndefined()
+    // Crow's feet asked of a diagram that never said: nothing to write.
+    expect(saveToDezign(files, model(files), model(files), { normalize: viaDbml, diagrams: { [d2.id]: { display: { notation: 'crow' } } } }).files).toEqual([])
+  })
+
   it('renames a diagram and takes one out with everything drawn on it, never the main one', () => {
     const d2 = readDezign(dez).diagrams.find((d) => !d.main)!
     const main = readDezign(dez).diagrams.find((d) => d.main)!
@@ -798,6 +813,24 @@ describe('saving back into a DeZign project', () => {
     expect(readDezign(assembleDezignProject(folder)).labels).toHaveLength(2)
     const f = saveToDezign(folder, model(folder), viaDbml(model(folder).map((t, i) => (i === 1 ? { ...t, labels: ['Personally Identifiable Information (PII)'] } : t))), { normalize: viaDbml })
     expect(readDezign(assembleDezignProject(applyDezignSave(folder, f))).tables[1]!.labels).toEqual(['Personally Identifiable Information (PII)'])
+  })
+
+  it('reads and writes to-do items of tables and columns (DeZign 14.9.3: TODO right after the id)', () => {
+    const files: DezignFile[] = [{ path: 'shop.dez', text: dez.replace('<NAME>customer</NAME>\n<ID>10</ID>\n', '<NAME>customer</NAME>\n<ID>10</ID>\n<TODO>Check the customer\nsecond line</TODO>\n') }]
+    expect(readDezign(files[0]!.text).tables[0]!.todo).toBe('Check the customer\nsecond line')
+    expect(toDbml(model(files))).toContain("Todo: '''Check the customer\nsecond line'''")
+    const r = save(files, (t) => {
+      delete t[0]!.todo
+      t[1]!.todo = 'Split the total'
+      t[1]!.columns[1]!.todo = 'Rename?'
+      t[1]!.columns.push({ ...column('note', 'text'), todo: 'Fill in' })
+    })
+    const out = r.files[0]!.text
+    expect(out).toMatch(/<NAME>invoice<\/NAME>\n<ID>20<\/ID>\n<TODO>Split the total<\/TODO>/)
+    const after = readDezign(out).tables
+    expect(after[0]!.todo).toBeUndefined()
+    expect(after[1]!.columns.map((c) => c.todo ?? '')).toEqual(['', 'Rename?', '', '', 'Fill in'].slice(0, after[1]!.columns.length).map((x, i, all) => (i === all.length - 1 ? 'Fill in' : i === 1 ? 'Rename?' : '')))
+    expect(dezignIntegrity(out)).toEqual(dezignIntegrity(files[0]!.text))
   })
 
   it('writes nothing when the model was not edited', () => {

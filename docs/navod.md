@@ -108,6 +108,11 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   ukáže prohlížeč objektů ve skupině *Balíčky atributů*. V dialogu tabulky je vloží *Přidat balíček…*; sloupce
   zůstanou s balíčkem propojené jako v DeZignu. Sloupec z balíčku, kterému změníte název nebo definici, se stane
   vlastním sloupcem tabulky.
+- **Notace IDEF1X:** nad plátnem zvolte *Vraní stopa* nebo *IDEF1X*. V IDEF1X mají závislé tabulky zaoblené rohy,
+  nezávislé hranaté, na straně potomka je bod s P / Z / 1 a u volitelného rodiče kosočtverec. U projektu DeZignu se
+  notace uloží k diagramu.
+- **Úkoly:** co ještě zbývá udělat u tabulky (záložka *Popis*) nebo sloupce (pod mřížkou) zapište do pole *Úkol*;
+  prohlížeč objektů je vypíše ve skupině *Úkoly* (jako „To do list“ v DeZignu) a uloží se do projektu.
 - **Štítky:** štítky projektu DeZignu (např. „PII“) přidáte tabulce na záložce *Popis* jejího dialogu a sloupci pod
   mřížkou; prohlížeč objektů je ukáže ve skupině *Objekty se štítky*. Samotné štítky se zakládají v DeZignu.
 - **Podtypy:** v dialogu vztahu zaškrtněte *Podtyp*: tabulka je pak druhem nadřazené tabulky (v DeZignu podtyp ve

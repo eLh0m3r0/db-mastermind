@@ -263,6 +263,8 @@ export interface DiagramDisplay {
   types: 'none' | 'type' | 'domain'
   /** Columns hidden in a table's box, by table key. */
   hidden?: Record<string, string[]>
+  /** How relationships are drawn: crow's feet (default) or IDEF1X (DeZign's diagram notation). */
+  notation?: 'crow' | 'idef1x'
 }
 
 /** A captioned frame behind the tables of a diagram (read from the model's source; not edited here). */

@@ -99,6 +99,7 @@ export interface Shown {
   columns: DezignColumnsShown
   types: 'none' | 'type' | 'domain'
   hidden?: string[]
+  notation?: 'crow' | 'idef1x'
 }
 const ALL: DiagramDisplay = { columns: 'all', types: 'type' }
 
@@ -126,6 +127,9 @@ const showsMore = (shown: Shown) => shown.columns === 'keys' || shown.columns ==
 const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData>>) {
   const { table, shown, fkColumns, referencedColumns } = data
   const cols = visibleColumns(table, shown, fkColumns, referencedColumns)
+  // IDEF1X: a dependent table (its key holds a parent's key) has rounded corners, an independent one square.
+  const idef1x = shown.notation === 'idef1x'
+  const dependent = table.foreignKeys.some((f) => f.columns.length > 0 && f.columns.every((c) => table.primaryKey.includes(c)))
   // Relationship lines of columns the box does not show end at its header.
   const offBox = table.columns.filter((c) => !cols.includes(c) && (fkColumns.has(c.name) || referencedColumns.has(c.name)))
   // While a key is being dragged, the whole table is where it can be dropped (a column's own dot still names that column).
@@ -133,7 +137,8 @@ const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData
   return (
     <div
       className={cn(
-        'overflow-hidden rounded-lg border bg-elevated shadow-sm transition-opacity',
+        'overflow-hidden border bg-elevated shadow-sm transition-opacity',
+        idef1x ? (dependent ? 'rounded-2xl' : 'rounded-none') : 'rounded-lg',
         data.focus ? 'border-accent ring-2 ring-accent-soft' : data.highlighted ? 'border-accent/70' : 'border-line-strong',
         data.status === 'new' && 'border-success ring-2 ring-success-soft',
         data.status === 'modified' && 'border-warning ring-2 ring-warning-soft',
@@ -424,7 +429,7 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
   const [pathTo, setPathTo] = useState<string>()
   // A DeZign diagram's own display setting; the toolbar changes it (and Save takes it to the project).
   const shownAs: DiagramDisplay = tab.display ?? ALL
-  const shownFor = (key: string): Shown => ({ columns: shownAs.columns, types: shownAs.types, hidden: shownAs.hidden?.[key] })
+  const shownFor = (key: string): Shown => ({ columns: shownAs.columns, types: shownAs.types, hidden: shownAs.hidden?.[key], notation: shownAs.notation })
   const [search, setSearch] = useState('')
   const [hovered, setHovered] = useState<string | null>(null)
   const [layouting, setLayouting] = useState(false)
@@ -662,6 +667,7 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
   // Orthogonal routes from the last auto layout, by edge id.
   const [routes, setRoutes] = useState<Record<string, Point[]>>({})
 
+  const idef1x = shownAs.notation === 'idef1x'
   const edges = useMemo<Edge[]>(() => {
     const names = new Set(tables.map((t) => t.name))
     const out: Edge[] = []
@@ -685,22 +691,24 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
           data: { route: routes[`${source}:${fk.name}`] },
           animated: active,
           // The child's end says how many rows one parent has (a model's cardinality); the parent's, whether one is needed.
-          markerStart: fk.cardinality === 'exactly-one' ? 'crow-one' : fk.cardinality === 'zero-or-one' ? 'crow-zero-one' : 'crow-many',
-          markerEnd: optional ? 'crow-zero-one' : 'crow-one',
+          // IDEF1X: a dot at the child's end (P one or more, Z zero or one, 1 exactly one), a diamond at an optional
+          // parent's; crow's feet otherwise.
+          markerStart: idef1x ? 'idef-dot' : fk.cardinality === 'exactly-one' ? 'crow-one' : fk.cardinality === 'zero-or-one' ? 'crow-zero-one' : 'crow-many',
+          markerEnd: idef1x ? (optional ? 'idef-diamond' : undefined) : optional ? 'crow-zero-one' : 'crow-one',
           style: {
             stroke: active ? 'var(--accent)' : fk.virtual ? 'var(--warning)' : 'var(--text-faint)',
             strokeWidth: active ? 2 : 1.3,
-            strokeDasharray: fk.virtual ? '5 4' : dashNonIdentifying && !identifying ? '6 4' : undefined,
+            strokeDasharray: fk.virtual ? '5 4' : (dashNonIdentifying || idef1x) && !identifying ? '6 4' : undefined,
           },
           // A subtype's link to its supertype says so (DeZign draws it through the supertype's cluster).
-          label: active ? fk.columns.join(', ') : fk.subtype ? tr('subtype') : undefined,
+          label: active ? fk.columns.join(', ') : [idef1x ? ({ 'one-or-more': 'P', 'zero-or-one': 'Z', 'exactly-one': '1' } as Record<string, string>)[fk.cardinality ?? ''] : '', fk.subtype ? tr('subtype') : ''].filter(Boolean).join(' ') || undefined,
           labelStyle: { fontSize: 10, fill: 'var(--text-muted)' },
           labelBgStyle: { fill: 'var(--bg-elevated)' },
         })
       }
     }
     return out
-  }, [tables, hovered, keyByName, routes, dashNonIdentifying])
+  }, [tables, hovered, keyByName, routes, dashNonIdentifying, idef1x])
 
   const latest = useRef({ display, columnSets, edges })
   latest.current = { display, columnSets, edges }
@@ -717,7 +725,7 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
     color: tab.colors?.[d.key],
   })
   // Re-layout only when the set of tables changes, not on every edit.
-  const structure = `${liveTables.map(keyOf).join('|')}#${shownAs.columns}#${JSON.stringify(shownAs.hidden ?? {})}`
+  const structure = `${liveTables.map(keyOf).join('|')}#${shownAs.columns}#${shownAs.notation ?? ''}#${JSON.stringify(shownAs.hidden ?? {})}`
 
   const layout = useCallback(async () => {
     const { display, columnSets, edges } = latest.current
@@ -1440,6 +1448,10 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
           <option value="none">{tr('Table names only')}</option>
         </Select>
         <Checkbox checked={shownAs.types !== 'none'} onChange={(on) => patchLayout({ display: { ...shownAs, types: on ? 'type' : 'none' } })} label={tr('Types')} />
+        <Select inputSize="sm" className="h-7 w-auto text-[12px]" value={shownAs.notation ?? 'crow'} onChange={(e) => patchLayout({ display: { ...shownAs, notation: e.target.value as 'crow' | 'idef1x' } })} title={tr('How relationships are drawn')} data-testid="diagram-notation">
+          <option value="crow">{tr('Crow’s feet')}</option>
+          <option value="idef1x">IDEF1X</option>
+        </Select>
         {!design && (
           <span className="shrink-0 text-[11.5px] text-fg-faint">
             {tp(tables.length, { one: '{n} table', many: '{n} tables' })} · {tp(edges.length, { one: '{n} relationship', many: '{n} relationships' })}
@@ -1702,6 +1714,12 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
             </marker>
             <marker id="crow-one" viewBox="0 0 16 16" refX="15" refY="8" markerWidth="16" markerHeight="16" orient="auto" markerUnits="userSpaceOnUse">
               <path d="M10 2 L10 14 M6 2 L6 14" fill="none" stroke="var(--text-muted)" strokeWidth="1.2" />
+            </marker>
+            <marker id="idef-dot" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="12" markerHeight="12" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+              <circle cx="6" cy="6" r="3.6" fill="var(--text-muted)" />
+            </marker>
+            <marker id="idef-diamond" viewBox="0 0 16 12" refX="15" refY="6" markerWidth="16" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+              <path d="M1 6 L8 1.5 L15 6 L8 10.5 Z" fill="var(--bg)" stroke="var(--text-muted)" strokeWidth="1.2" />
             </marker>
             <marker id="crow-zero-one" viewBox="0 0 20 16" refX="19" refY="8" markerWidth="20" markerHeight="16" orient="auto" markerUnits="userSpaceOnUse">
               <circle cx="5" cy="8" r="3.2" fill="var(--bg)" stroke="var(--text-muted)" strokeWidth="1.2" />
