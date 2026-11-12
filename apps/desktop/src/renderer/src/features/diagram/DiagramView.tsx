@@ -37,6 +37,7 @@ import {
   incomingReferences,
   joinPathSql,
   buildDataDictionary,
+  parseDbml,
   toDbml,
   toDesignTable,
   toMermaid,
@@ -993,6 +994,88 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, re
     setDesign(true)
     setSelected(id)
   }
+  // Copy and paste of tables, within a model or between models (DeZign does both): ⌘C puts the selected tables
+  // on the clipboard as DBML (relationships among them included), ⌘V adds the tables of DBML on the clipboard as
+  // new ones, under free names, keeping the relationships between them and to tables the model has.
+  const clip = useRef({ copy: () => '' as string, paste: (_: string) => false as boolean })
+  clip.current = {
+    copy: () => {
+      const picked = new Set(nodes.filter((n) => n.selected && !isNote(n.id)).map((n) => n.id))
+      if (!picked.size) return ''
+      const copied = display.filter((d) => picked.has(d.key) && d.status !== 'dropped').map((d) => d.info)
+      const names = new Set(copied.map((t) => t.name))
+      return toDbml(
+        copied.map((t) => ({ ...t, foreignKeys: t.foreignKeys.filter((f) => names.has(f.refTable) || display.some((d) => d.info.name === f.refTable)) })),
+        { defaultSchema: schema?.defaultSchema },
+      )
+    },
+    paste: (text: string) => {
+      if (!/^\s*Table\s/m.test(text)) return false
+      const parsed = parseDbml(text, { defaultSchema: schema?.defaultSchema }).tables.filter((t) => t.type === 'table')
+      if (!parsed.length) return false
+      const taken = new Set(display.map((d) => d.info.name.toLowerCase()))
+      const renamed = new Map<string, string>()
+      for (const t of parsed) {
+        let name = t.name
+        for (let n = 1; taken.has(name.toLowerCase()); n++) name = n === 1 ? `${t.name}_copy` : `${t.name}_copy${n}`
+        taken.add(name.toLowerCase())
+        renamed.set(t.name, name)
+      }
+      const right = nodes.reduce((m, n) => Math.max(m, n.position.x + WIDTH), 0)
+      const top = nodes.reduce((m, n) => Math.min(m, n.position.y), Number.POSITIVE_INFINITY)
+      const next = { ...drafts }
+      const keys: string[] = []
+      parsed.forEach((t, i) => {
+        const id = designId('new')
+        const draft = toDesignTable({
+          ...t,
+          name: renamed.get(t.name)!,
+          foreignKeys: t.foreignKeys
+            .filter((f) => renamed.has(f.refTable) || display.some((d) => d.info.name === f.refTable))
+            .map((f) => ({ ...f, name: '', refTable: renamed.get(f.refTable) ?? f.refTable })),
+        })
+        next[id] = {
+          ...draft,
+          id,
+          originalName: undefined,
+          columns: draft.columns.map((c) => ({ ...c, originalName: undefined })),
+          foreignKeys: draft.foreignKeys.map((f) => ({ ...f, originalName: undefined, name: undefined })),
+          indexes: draft.indexes.map((x) => ({ ...x, originalName: undefined })),
+          position: { x: right + 80 + (i % 3) * (WIDTH + 40), y: (Number.isFinite(top) ? top : 0) + Math.floor(i / 3) * 220 },
+        }
+        keys.push(id)
+      })
+      setDesign(true)
+      setDrafts(next)
+      setSelected(keys[0] ?? null)
+      return true
+    },
+  }
+  useEffect(() => {
+    if (!model || !onApplyModel) return
+    const outside = (e: Event) => {
+      const target = e.target as HTMLElement | null
+      // Text fields and editors keep their own clipboard; a hidden canvas (another tab) does nothing.
+      return !!target?.closest('input, textarea, select, .cm-editor, [contenteditable="true"]') || !wrapper.current?.isConnected || wrapper.current.offsetParent === null
+    }
+    const onCopy = (e: ClipboardEvent) => {
+      if (outside(e)) return
+      const text = clip.current.copy()
+      if (!text) return
+      e.clipboardData?.setData('text/plain', text)
+      e.preventDefault()
+    }
+    const onPaste = (e: ClipboardEvent) => {
+      if (outside(e)) return
+      if (clip.current.paste(e.clipboardData?.getData('text/plain') ?? '')) e.preventDefault()
+    }
+    window.addEventListener('copy', onCopy)
+    window.addEventListener('paste', onPaste)
+    return () => {
+      window.removeEventListener('copy', onCopy)
+      window.removeEventListener('paste', onPaste)
+    }
+  }, [model, onApplyModel])
   // A request from the object browser: show the table (selected, in the middle), or open a dialog.
   useEffect(() => {
     if (!request) return

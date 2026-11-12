@@ -117,6 +117,28 @@ try {
   text = await modelText()
   // (Every edit was written while the canvas showed another schema too: no table of the model went missing.)
   console.log('deleted with the key:', !/line_copy/.test(text), /Table shop\.line /.test(text), 'nothing else lost:', /Table sales\.customer/.test(text) && /Table shop\.invoice/.test(text))
+
+  // Copy and paste: two tables with the relationship between them, pasted back under free names.
+  await designing()
+  // (The whole diagram in view: tables may lie past the canvas's edge.)
+  await win.locator('.react-flow__controls-fitview:visible').click()
+  await win.waitForTimeout(400)
+  await node('shop.line').click({ modifiers: ['Meta'] })
+  await node('shop.invoice').click({ modifiers: ['Meta'], position: { x: 40, y: 12 } })
+  const copied = await win.evaluate(() => {
+    const data = new DataTransfer()
+    document.body.dispatchEvent(new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true }))
+    return data.getData('text/plain')
+  })
+  await win.evaluate((text) => {
+    const data = new DataTransfer()
+    data.setData('text/plain', text)
+    document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+  }, copied)
+  await win.waitForTimeout(500)
+  await write()
+  text = await modelText()
+  console.log('copy and paste:', /Table shop\.invoice /.test(copied) && /Table shop\.line /.test(copied), /Table shop\.invoice_copy/.test(text), /shop\.line_copy\.invoice_id > shop\.invoice_copy\.id/.test(text))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow97.png') })
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])
