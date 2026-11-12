@@ -38,7 +38,7 @@ Table loyalty_cards {
 `)
   await win.waitForTimeout(2500)
   await win.screenshot({ path: `${out}/f0-model.png` })
-  await win.getByRole('button', { name: /Compare with/ }).click()
+  await win.getByRole('button', { name: /^Compare with (?!file)/ }).click()
   await win.waitForTimeout(800)
   await win.getByRole('button', { name: 'Compare', exact: true }).click()
   await win.waitForTimeout(2000)

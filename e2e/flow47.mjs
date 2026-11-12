@@ -17,7 +17,7 @@ const errors = []
 win.on('pageerror', (e) => errors.push(e.message))
 try {
   await win.waitForTimeout(1000)
-  await win.getByRole('button', { name: 'Import connections' }).click()
+  await win.getByRole('button', { name: 'Import connections' }).first().click()
   await win.getByText('From DataGrip / IntelliJ').click()
   await win.waitForTimeout(800)
   const list = await win.evaluate(() => window.mastermind.api.listConnections())

@@ -69,7 +69,7 @@ try {
 
   // SQL Server
   await win.keyboard.press('Meta+k')
-  await win.keyboard.type('connect Sales MSSQL')
+  await win.keyboard.type('Sales MSSQL')
   await win.keyboard.press('Enter')
   await win.getByPlaceholder(/Filter \d+ tables/).waitFor({ timeout: 30000 })
   await win.waitForTimeout(1500)

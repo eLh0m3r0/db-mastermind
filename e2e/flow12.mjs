@@ -27,7 +27,7 @@ try {
   await win.getByText('orders', { exact: true }).first().click({ button: 'right' })
   await win.getByText('Compare data with…').click()
   await win.waitForTimeout(1000)
-  await win.locator('select').nth(3).selectOption({ label: 'orders_copy' })
+  await win.locator('select').nth(3).selectOption({ label: 'shop.orders_copy' })
   await win.getByRole('button', { name: 'Compare', exact: true }).click()
   await win.waitForTimeout(2500)
   await win.getByText('Delete extra').click()
