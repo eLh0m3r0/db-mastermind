@@ -10,6 +10,7 @@ import {
   MarkerType,
   MiniMap,
   NodeResizeControl,
+  Panel,
   Position,
   ReactFlow,
   ReactFlowProvider,
@@ -24,7 +25,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { toPng, toSvg } from 'html-to-image'
-import { Bookmark, Copy, Download, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Route, Search, Layers, Redo, Sparkles, SquareDashed, StickyNote, Table2, Undo, Undo2, Users, X } from 'lucide-react'
+import { AlignHorizontalJustifyStart, AlignVerticalJustifyStart, AlignHorizontalSpaceAround, AlignVerticalSpaceAround, Bookmark, Copy, Download, Trash2, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Route, Search, Layers, Redo, Sparkles, SquareDashed, StickyNote, Table2, Undo, Undo2, Users, X } from 'lucide-react'
 import {
   designId,
   designToTableInfo,
@@ -61,6 +62,8 @@ import { useWorkspace, type DiagramTab } from '@/store/workspace'
 import type { SavedDiagram, DiagramNote, DiagramDisplay } from '@shared/api'
 import { MigrationModal } from './MigrationModal'
 import { TableEditor } from './TableEditor'
+import { TableDialog } from './TableDialog'
+import { RelationshipDialog } from './RelationshipDialog'
 import { formatDate, t, tp, useT } from '@/lib/i18n'
 import { askText, confirmAction } from '@/components/ui/ConfirmDialog'
 
@@ -412,6 +415,11 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, on
   const newQuery = useWorkspace((s) => s.newQuery)
   const [design, setDesign] = useState(!!tab.startDesign || (!!tab.design && Object.keys(tab.design).length > 0))
   const [selected, setSelected] = useState<string | null>(tab.startDesign ?? null)
+  // A relationship clicked on the canvas: the child table's panel shows its foreign key.
+  const [focusFk, setFocusFk] = useState<string | undefined>()
+  // DeZign's dialogs for a model: a table's (double-click) and a relationship's (double-click on its line).
+  // (The draft is taken when the dialog opens: a table not edited yet gets a fresh draft, with new ids, each render.)
+  const [dialog, setDialog] = useState<{ kind: 'table'; key: string; table: DesignTable } | { kind: 'relationship'; key: string; fk: string; table: DesignTable } | null>(null)
   const [reviewOpen, setReviewOpen] = useState(false)
   const drafts = useMemo(() => tab.design ?? {}, [tab.design])
   // Changes arriving from outside (the AI assistant) switch the designer on.
@@ -420,7 +428,9 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, on
     if (draftCount > 0) setDesign(true)
   }, [draftCount])
   // Undo/redo of design changes. Quick successive edits (typing a name) count as one step.
-  const history = useRef<{ past: Record<string, DesignTable>[]; future: Record<string, DesignTable>[]; at: number; key?: string }>({ past: [], future: [], at: 0 })
+  // Each step keeps the tables' drafts and where the tables stood: moving or lining them up is undone too.
+  type Step = { drafts: Record<string, DesignTable>; positions?: Record<string, { x: number; y: number }> }
+  const history = useRef<{ past: Step[]; future: Step[]; at: number; key?: string }>({ past: [], future: [], at: 0 })
   const [, setHistoryVersion] = useState(0)
   const setDrafts = (next: Record<string, DesignTable>, record = true) => {
     if (record) {
@@ -432,7 +442,7 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, on
       // column, foreign key or index always starts a new one.
       const shape = (t: DesignTable | undefined) => (t ? `${t.columns.length}/${t.foreignKeys.length}/${t.indexes.length}/${t.dropped ? 1 : 0}` : '')
       const typing = key && key === h.key && drafts[key] && next[key] && shape(drafts[key]) === shape(next[key]) && now - h.at < 800
-      if (!typing) h.past = [...h.past.slice(-99), drafts]
+      if (!typing) h.past = [...h.past.slice(-99), { drafts, positions: tab.positions }]
       h.at = now
       h.key = key
       h.future = []
@@ -440,23 +450,40 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, on
     }
     updateTab(tab.id, { design: next })
   }
+  /** A move of tables as a step of its own (before the new positions are saved). */
+  const rememberLayout = () => {
+    const h = history.current
+    h.past = [...h.past.slice(-99), { drafts, positions: tab.positions ?? currentPositions() }]
+    h.at = 0
+    h.key = undefined
+    h.future = []
+    setHistoryVersion((v) => v + 1)
+  }
+  const restore = (step: Step) => {
+    updateTab(tab.id, { design: step.drafts })
+    if (step.positions && JSON.stringify(step.positions) !== JSON.stringify(tab.positions)) {
+      const at = step.positions
+      setNodes((list) => list.map((n) => (at[n.id] ? { ...n, position: at[n.id]! } : n)))
+      patchLayout({ positions: at })
+    }
+  }
   const undoDesign = () => {
     const h = history.current
     const prev = h.past.pop()
     if (!prev) return
-    h.future.push(drafts)
+    h.future.push({ drafts, positions: tab.positions })
     h.at = 0
     setHistoryVersion((v) => v + 1)
-    updateTab(tab.id, { design: prev })
+    restore(prev)
   }
   const redoDesign = () => {
     const h = history.current
     const next = h.future.pop()
     if (!next) return
-    h.past.push(drafts)
+    h.past.push({ drafts, positions: tab.positions })
     h.at = 0
     setHistoryVersion((v) => v + 1)
-    updateTab(tab.id, { design: next })
+    restore(next)
   }
   const undoRef = useRef({ undoDesign, redoDesign })
   undoRef.current = { undoDesign, redoDesign }
@@ -490,6 +517,8 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, on
 
   useEffect(() => {
     if (!schema || schemaFilter) return
+    // A model shows all its schemas, as DeZign draws a whole model on its diagram.
+    if (model) return setSchemaFilter('*')
     // Prefer the default schema, unless it's hidden or empty and another one has the tables.
     const count = (s: string) => schema.tables.filter((t) => (t.schema ?? '') === s).length
     const preferred =
@@ -859,7 +888,30 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, on
       setSelected(null)
       return
     }
-    setDrafts({ ...drafts, [key]: table })
+    const next = { ...drafts, [key]: table }
+    // In a model, a table renamed or moved to another schema takes the relationships that point at it along
+    // (a database renames them by itself; a model is only text).
+    const before = draftFor(key)
+    if (model && before && (before.name !== table.name || (before.schema ?? '') !== (table.schema ?? ''))) {
+      const follow = (draft: DesignTable) => {
+        let touched = false
+        const foreignKeys = draft.foreignKeys.map((f) => {
+          if (f.refTable !== before.name || (f.refSchema ?? draft.schema ?? '') !== (before.schema ?? '')) return f
+          touched = true
+          return { ...f, refTable: table.name, refSchema: table.schema }
+        })
+        return touched ? { ...draft, foreignKeys } : draft
+      }
+      next[key] = follow(table)
+      for (const d of display) {
+        if (d.key === key) continue
+        const draft = next[d.key] ?? draftFor(d.key)
+        if (!draft) continue
+        const followed = follow(draft)
+        if (followed !== draft) next[d.key] = followed
+      }
+    }
+    setDrafts(next)
   }
   const designWithAi = async () => {
     const request = await askText({
@@ -900,6 +952,83 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, on
     // It goes to the right of everything, often off-screen: bring it into view.
     requestAnimationFrame(() => flow.setCenter(center.x + WIDTH / 2, center.y + 120, { zoom: Math.max(flow.getZoom(), 0.8), duration: 300 }))
   }
+  /** Tables taken out of the model: new ones disappear, the others are marked dropped (their panel keeps them again). */
+  const dropTables = (keys: string[]) => {
+    const next = { ...drafts }
+    for (const key of keys) {
+      const draft = draftFor(key)
+      if (!draft) continue
+      if (!draft.originalName) delete next[key]
+      else next[key] = { ...draft, dropped: true }
+    }
+    setDesign(true)
+    setDrafts(next)
+    if (selected && keys.includes(selected) && !next[selected]) setSelected(null)
+  }
+  /** A copy of a table under a free name next to it: columns, keys, indexes and checks; its relationships too. */
+  const duplicateTable = (key: string) => {
+    const from = draftFor(key)
+    if (!from) return
+    const taken = new Set(display.map((d) => d.info.name.toLowerCase()))
+    let name = `${from.name}_copy`
+    for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${from.name}_copy${n}`
+    const id = designId('new')
+    const at = nodes.find((x) => x.id === key)?.position ?? { x: 0, y: 0 }
+    updateDraft(id, {
+      ...from,
+      id,
+      name,
+      originalName: undefined,
+      dropped: false,
+      columns: from.columns.map((c) => ({ ...c, id: designId('c'), originalName: undefined })),
+      // (Named keys and indexes would repeat the original's names: the copy's are left to the database.)
+      foreignKeys: from.foreignKeys.map((f) => ({ ...f, id: designId('f'), originalName: undefined, name: undefined })),
+      indexes: from.indexes.map((i) => ({ ...i, id: designId('i'), originalName: undefined, name: undefined })),
+      checks: from.checks?.map((c) => ({ ...c, name: undefined })),
+      position: { x: at.x + 54, y: at.y + 54 },
+    })
+    setDesign(true)
+    setSelected(id)
+  }
+  /** Lines the selected tables up on their left or top edge, or spreads them evenly. */
+  const arrange = (how: 'left' | 'top' | 'spread-x' | 'spread-y') => {
+    const picked = nodes.filter((n) => n.selected && !isNote(n.id))
+    if (picked.length < 2) return
+    const size = (n: (typeof picked)[number]) => ({ w: n.measured?.width ?? WIDTH, h: n.measured?.height ?? 120 })
+    const moved = new Map<string, { x: number; y: number }>()
+    if (how === 'left') {
+      const x = Math.min(...picked.map((n) => n.position.x))
+      for (const n of picked) moved.set(n.id, { x, y: n.position.y })
+    } else if (how === 'top') {
+      const y = Math.min(...picked.map((n) => n.position.y))
+      for (const n of picked) moved.set(n.id, { x: n.position.x, y })
+    } else {
+      // Equal gaps between neighbours, the outer two stay where they are.
+      const axis = how === 'spread-x' ? 'x' : 'y'
+      const sorted = [...picked].sort((a, b) => a.position[axis] - b.position[axis])
+      const extent = (n: (typeof picked)[number]) => (axis === 'x' ? size(n).w : size(n).h)
+      const first = sorted[0]!
+      const last = sorted.at(-1)!
+      const total = sorted.reduce((sum, n) => sum + extent(n), 0)
+      const gap = (last.position[axis] + extent(last) - first.position[axis] - total) / (sorted.length - 1)
+      let at = first.position[axis]
+      for (const n of sorted) {
+        moved.set(n.id, { ...n.position, [axis]: Math.round(at) })
+        at += extent(n) + gap
+      }
+    }
+    rememberLayout()
+    setNodes((list) => list.map((n) => (moved.has(n.id) ? { ...n, position: moved.get(n.id)! } : n)))
+    const positions = { ...currentPositions(), ...(tab.positions ?? {}) }
+    for (const [id, p] of moved) {
+      if (drafts[id] && !drafts[id]!.originalName) continue
+      positions[id] = p
+    }
+    patchLayout({ positions })
+    const fresh = Object.fromEntries([...moved].filter(([id]) => drafts[id] && !drafts[id]!.originalName).map(([id, p]) => [id, { ...drafts[id]!, position: p }]))
+    if (Object.keys(fresh).length) setDrafts({ ...drafts, ...fresh })
+  }
+  const selectedCount = nodes.filter((n) => n.selected && !isNote(n.id)).length
   const onConnect = (c: { source: string | null; target: string | null; sourceHandle?: string | null; targetHandle?: string | null }) => {
     if (!design || !c.source || !c.target) return
     const from = draftFor(c.source)
@@ -1368,7 +1497,17 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, on
               disabled={!pending}
               title={tr('Write the tables on the canvas to the DBML text')}
               onClick={() => {
-                onApplyModel(display.filter((d) => d.status !== 'dropped').map((d) => d.info))
+                // The whole model goes back: tables the canvas doesn't show now (another schema, a focus, past the
+                // first 400) stay as they are and where they are, never left out.
+                const shown = new Map(display.map((d) => [d.key, d]))
+                const whole: TableInfo[] = []
+                for (const t of schema?.tables ?? []) {
+                  const d = shown.get(keyOf(t))
+                  if (!d) whole.push(t)
+                  else if (d.status !== 'dropped') whole.push(d.info)
+                }
+                for (const d of display) if (d.status === 'new') whole.push(d.info)
+                onApplyModel(whole)
                 history.current = { past: [], future: [], at: 0 }
                 setSelected(null)
                 setDrafts({}, false)
@@ -1435,13 +1574,47 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, on
           edgeTypes={edgeTypes}
           onNodesChange={(changes) => {
             const forNote = (c: (typeof changes)[number]) => 'id' in c && isNote(c.id)
+            // Delete / Backspace on tables: in a model being designed they are dropped (and can be kept again in
+            // their panel); otherwise the key does nothing to a table (it used to hide it from the canvas only).
+            const removed = changes.filter((c) => c.type === 'remove' && !isNote(c.id)).map((c) => (c as { id: string }).id)
+            if (removed.length && model && design) dropTables(removed)
+            changes = changes.filter((c) => !(c.type === 'remove' && !isNote(c.id)))
             onNodesChange(changes.filter((c) => !forNote(c)) as Parameters<typeof onNodesChange>[0])
             onNoteNodesChange(changes.filter(forNote) as Parameters<typeof onNoteNodesChange>[0])
           }}
           onConnect={onConnect}
           nodesConnectable={design}
-          onNodeClick={(_, n) => design && !isNote(n.id) && setSelected(n.id)}
-          onPaneClick={() => setSelected(null)}
+          onNodeClick={(_, n) => {
+            if (!design || isNote(n.id)) return
+            setFocusFk(undefined)
+            setSelected(n.id)
+          }}
+          onEdgeClick={(_, edge) => {
+            // A relationship: the child table's panel with its foreign key (a model opens the designer for it).
+            if (!design && !model) return
+            if (!design) setDesign(true)
+            setSelected(edge.source)
+            setFocusFk(edge.id.slice(edge.source.length + 1))
+          }}
+          onEdgeDoubleClick={(_, edge) => {
+            if (!model || !onApplyModel) return
+            const draft = draftFor(edge.source)
+            const name = edge.id.slice(edge.source.length + 1)
+            const info = draft && designToTableInfo(draft)
+            // The edge is named as the table info names the key (a generated name for an unnamed one).
+            const at = info?.foreignKeys.findIndex((f) => f.name === name) ?? -1
+            const fk = draft && at >= 0 ? draft.foreignKeys[at] : undefined
+            if (!fk || !draft) return
+            setDesign(true)
+            setDialog({ kind: 'relationship', key: edge.source, fk: fk.id, table: draft })
+          }}
+          onPaneClick={() => {
+            setSelected(null)
+            setFocusFk(undefined)
+          }}
+          snapToGrid
+          snapGrid={[18, 18]}
+          deleteKeyCode={['Backspace', 'Delete']}
           onNodeMouseEnter={(_, n) => !isNote(n.id) && setHovered(n.id)}
           onNodeMouseLeave={() => setHovered(null)}
           onNodeDrag={(_, node) => node.id.startsWith('note:box:') && setBoxDrag({ id: node.id, x: node.position.x, y: node.position.y })}
@@ -1461,10 +1634,21 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, on
             }
             // Pin the whole layout, not just this table: otherwise the others come back from the "new tables go in
             // a column" rule after a restart instead of where they were.
+            if (design) rememberLayout()
             const positions = { ...currentPositions(), ...(tab.positions ?? {}), [node.id]: node.position }
             patchLayout({ positions })
           }}
-          onNodeDoubleClick={(_, n) => !isNote(n.id) && openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name })}
+          onNodeDoubleClick={(_, n) => {
+            if (isNote(n.id)) return
+            // In a model, as in DeZign: the table's properties. In a database: its data.
+            if (model && onApplyModel) {
+              const table = draftFor(n.id)
+              setDesign(true)
+              if (table) setDialog({ kind: 'table', key: n.id, table })
+              return
+            }
+            openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name })
+          }}
           onNodeContextMenu={(e, n) =>
             n.id.startsWith('note:box:')
               ? openMenu(e, [
@@ -1480,9 +1664,23 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, on
                 ])
               : !isNote(n.id) &&
             openMenu(e, [
-              { label: tr('Open data'), icon: <Table2 size={13} />, onClick: () => openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name }) },
-              { label: tr('Open structure'), onClick: () => openTab({ kind: 'structure', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: tr('{name} · structure', { name: n.data.table.name }) }) },
+              // (A model without a database has no data to open.)
+              ...(connection
+                ? [
+                    { label: tr('Open data'), icon: <Table2 size={13} />, onClick: () => openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name }) },
+                    { label: tr('Open structure'), onClick: () => openTab({ kind: 'structure', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: tr('{name} · structure', { name: n.data.table.name }) }) },
+                  ]
+                : []),
               { label: tr('Focus here'), icon: <Network size={13} />, onClick: () => setFocusName(n.data.table.name) },
+              ...(model && onApplyModel
+                ? [
+                    'separator' as const,
+                    { label: tr('Properties…'), icon: <PencilRuler size={13} />, onClick: () => { const table = draftFor(n.id); setDesign(true); if (table) setDialog({ kind: 'table', key: n.id, table }) } },
+                    { label: tr('Duplicate table'), icon: <Copy size={13} />, onClick: () => duplicateTable(n.id) },
+                    { label: tr('Delete table'), icon: <Trash2 size={13} />, onClick: () => dropTables([n.id]) },
+                    'separator' as const,
+                  ]
+                : []),
               {
                 label: tr('Color'),
                 submenu: [
@@ -1526,6 +1724,29 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, on
         >
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--border-strong)" />
           <Controls showInteractive={false} />
+          {selectedCount >= 2 && (
+            // Several tables selected (Shift-drag a box, or ⌘-click): line them up or spread them evenly.
+            <Panel position="top-center" className="flex items-center gap-0.5 rounded-lg border border-line bg-elevated px-1.5 py-1 shadow-md" data-testid="arrange-bar">
+              <span className="px-1.5 text-[11.5px] whitespace-nowrap text-fg-muted">{tr('{n} tables', { n: String(selectedCount) })}</span>
+              <IconButton label={tr('Align left edges')} onClick={() => arrange('left')} data-testid="align-left">
+                <AlignHorizontalJustifyStart size={14} />
+              </IconButton>
+              <IconButton label={tr('Align top edges')} onClick={() => arrange('top')} data-testid="align-top">
+                <AlignVerticalJustifyStart size={14} />
+              </IconButton>
+              <IconButton label={tr('Spread evenly across')} onClick={() => arrange('spread-x')} data-testid="spread-x">
+                <AlignHorizontalSpaceAround size={14} />
+              </IconButton>
+              <IconButton label={tr('Spread evenly down')} onClick={() => arrange('spread-y')} data-testid="spread-y">
+                <AlignVerticalSpaceAround size={14} />
+              </IconButton>
+              {model && design && onApplyModel && (
+                <IconButton label={tr('Delete the selected tables')} onClick={() => dropTables(nodes.filter((n) => n.selected && !isNote(n.id)).map((n) => n.id))} data-testid="delete-selected">
+                  <Trash2 size={14} />
+                </IconButton>
+              )}
+            </Panel>
+          )}
           {tables.length > 12 && (
             <MiniMap
               pannable
@@ -1548,6 +1769,7 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, on
           model={!!model}
           domains={domains}
           onChange={(t) => updateDraft(selected, t)}
+          focusForeignKey={focusFk}
           onRevert={
             drafts[selected]?.originalName
               ? () => {
@@ -1562,6 +1784,33 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, on
       )}
       </div>
       <DiagramNameModal open={naming} onClose={() => setNaming(false)} onSave={(name) => void saveAs(name)} />
+      {dialog?.kind === 'table' && editorDriver && (
+        <TableDialog
+          key={dialog.key}
+          table={dialog.table}
+          driver={editorDriver}
+          allTables={tables}
+          domains={domains}
+          onApply={(t) => {
+            updateDraft(dialog.key, t)
+            setDialog(null)
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === 'relationship' && (
+        <RelationshipDialog
+          key={`${dialog.key}:${dialog.fk}`}
+          child={dialog.table}
+          foreignKey={dialog.fk}
+          allTables={tables}
+          onApply={(t) => {
+            updateDraft(dialog.key, t)
+            setDialog(null)
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
       {connection && schema && (
         <MigrationModal
           open={reviewOpen}

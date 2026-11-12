@@ -108,7 +108,16 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
 - **Panel tabulky:** v režimu *Návrh* kliknutím na tabulku otevřete panel, kde upravíte sloupce (název, typ,
   NOT NULL, výchozí hodnotu, komentář, pořadí, doménu), cizí klíče (i název a ON UPDATE), indexy a kontroly
   CHECK. Funguje i u modelu bez připojené databáze; *Zapsat do DBML* přenese změny do textu modelu. Vazbu
-  nakreslíte tažením zelené tečky v záhlaví tabulky na jinou tabulku: sloupec klíče se vytvoří sám.
+  nakreslíte tažením zelené tečky v záhlaví tabulky na jinou tabulku: sloupec klíče se vytvoří sám. Kliknutím na
+  čáru vazby otevřete její vlastnosti (kardinalita, ON DELETE/UPDATE, sloupce složeného klíče), dvojklikem na
+  tabulku její panel. V panelu je i víceřádkový komentář, poznámky (Notes), řazení (collation) a schéma, do kterého
+  tabulka patří. Pravým tlačítkem tabulku zduplikujete nebo smažete; klávesa Delete smaže vybrané tabulky (v panelu
+  je jde vrátit). Více tabulek vyberete tažením s klávesou Shift nebo klikáním s Shiftem a v liště nahoře je
+  zarovnáte nebo rovnoměrně rozmístíte; tabulky se při přesunu přichytávají k mřížce. ⌘Z vrací i přesuny.
+- **Dialogy jako v DeZignu:** dvojklikem na tabulku modelu otevřete její dialog: sloupce v mřížce (název, typ,
+  PK, NOT NULL, autoinkrement, výchozí hodnota, doména, komentář; pod mřížkou poznámky a řazení vybraného
+  sloupce), indexy a kontroly, cizí klíče, popis a náhled SQL. Dvojklikem na čáru vazby otevřete dialog vazby:
+  kardinalita, identifikující vazba, povinný rodič, ON DELETE/UPDATE a náhled čáry. Změny platí až po OK.
 - **Kontroly modelu:** počítadlo v liště modelu ukazuje, co stojí za pozornost (tabulky bez klíče, nesoulad typů
   cizího klíče, duplicitní indexy, cizí klíče bez indexu, názvy mimo styl, vazby, které nikdo nedeklaroval,
   názvy delší, než databáze dovolí – PostgreSQL je nad 63 bajtů potichu ořízne).

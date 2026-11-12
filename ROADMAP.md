@@ -491,6 +491,20 @@ Not a clone: their features, rethought and connected to live databases, the know
   columns, the named type (domain) it follows, auto-increment; the names of foreign keys and indexes, ON UPDATE;
   check constraints. It opens for a model with no database connected (e2e/flow96: a DeZign model edited in the
   panel and saved back into its file)
+- ✅ A model is edited without typing DBML, as in DeZign: a relationship clicked on the canvas opens its properties
+  (cardinality, ON DELETE/UPDATE, name, the columns of a key of several columns); a table's comment of several lines,
+  its notes and its columns' notes and collation; a table moved to another schema (the relationships that point at
+  it follow, also when one is renamed); double-click opens a table's properties; Duplicate and Delete in a table's
+  menu, the Delete key on the selected tables (kept again in their panel). Several tables selected are lined up or
+  spread evenly; tables snap to the grid; ⌘Z/⌘⇧Z also take moves back and forth. A database's diagram keeps its
+  behaviour (the key no longer hides a table from the canvas without changing anything). e2e/flow97
+- ✅ DeZign's dialogs for a model: double-click a table for its dialog (columns in a grid with the selected one's
+  notes and collation below; indexes and checks, foreign keys, description and notes, the SQL it makes; nothing
+  changes before OK), double-click a relationship's line for its dialog (name, parent table, the columns, the
+  cardinality as pictures, identifying, mandatory parent, on delete/update, a preview of the line). A table's menu
+  has Properties…. A database's diagram still opens a table's data on double-click
+- ✅ Writing the canvas into the model keeps the whole model: tables the canvas didn't show (another schema, a focus,
+  past the first 400) stay as they were (they used to be left out); a model's canvas shows all its schemas
 - ✅ The Notes DeZign keeps next to a description, of tables and columns: `Remarks:` in a table, `remarks:` on a
   column (never in a script), read from the project and written back; DeZign 14.9.3 opens them as saved
 - ✅ A relationship's cardinality (DeZign: zero or more, one or more, zero or one, exactly one): `-` for one-to-one
