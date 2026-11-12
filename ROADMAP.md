@@ -527,6 +527,11 @@ Not a clone: their features, rethought and connected to live databases, the know
   as it needs (each marked with its row and column)
 
 ### Later, when the pilot asks for it 💡
+- The rest of DeZign for Databases, with no date (the team's projects don't use it; the open ⬜ items of 8.2 and 8.3
+  belong here too): labels on objects, IDEF1X notation, a batch rename tool (today: find and replace in the model
+  text), switching a project's target database in the file (scripts for another database exist), configurable
+  documentation and report templates (today: the HTML data dictionary and the diagram as PDF), the to-do list,
+  conditional generation directives
 - Naming rules and a glossary of abbreviations kept in the knowledge base (logical name ↔ physical name)
 - Logical model: one model, several target databases
 - Test data generated in foreign-key order
@@ -536,6 +541,7 @@ Not a clone: their features, rethought and connected to live databases, the know
 - Other modelers' files (MySQL Workbench, PowerDesigner, pgModeler, erwin XML) when someone brings one
 
 ### Not planned
+- DeZign's Datanamic Repository (commit, get latest, conflicts): Git with folder projects and the team folder do it
 - UML / BPMN, NoSQL document modeling, an own model server (Git and the team folder do that), a stored
   procedure debugger, a report designer
 - A separate modeler application: the designer is its own module in the code and opens like a stand-alone
