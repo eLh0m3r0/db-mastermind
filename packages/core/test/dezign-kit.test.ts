@@ -158,6 +158,18 @@ describe.skipIf(!from || !to || isFolder)('a kit of saved files to open in DeZig
     file('novy-diagram', `projekt má nový diagram „DB Mastermind“ se dvěma tabulkami (${withColumns.name}, ${parent.name}) a čarami vazeb mezi nimi, pokud nějaké mají.`, () => {}, {
       diagrams: { 'new:1': { name: 'DB Mastermind', exact: true, tables: [key(withColumns), key(parent)], positions: { [key(withColumns)]: { x: 0, y: 0 }, [key(parent)]: { x: 500, y: 0 } } } },
     })
+    // Identifying relationships (the parent's key is part of the child's), which DeZign draws solid: a new one, and
+    // an existing one whose foreign key joins its table's key.
+    const loose = tables.find((t) => t.primaryKey.length === 1 && t.foreignKeys.some((f) => !f.columns.some((c) => t.primaryKey.includes(c))) && !tables.some((o) => o.foreignKeys.some((f) => f.refTable === t.name)))
+    file('identifikujici-vazby', `nová tabulka dbm_line s klíčem (parent_id, line) a plnou čarou vazby na ${parent.name}; ${loose ? `vazba tabulky ${loose.name} je teď identifikující (plná čára), její cizí klíč je v primárním klíči` : 'žádná existující vazba se nemění'}.`, (t) => {
+      t.push({ ...newTable('dbm_line'), columns: [column('parent_id', parentKey.dataType, { nullable: false, isPrimaryKey: true, ordinal: 1 }), column('line', 'integer', { nullable: false, isPrimaryKey: true, ordinal: 2 })], primaryKey: ['parent_id', 'line'], foreignKeys: [{ name: 'fk_dbm_line_parent', columns: ['parent_id'], refSchema: parent.schema, refTable: parent.name, refColumns: [parentKey.name] }] })
+      if (loose) {
+        const table = find(t, loose)
+        const fk = table.foreignKeys.find((f) => !f.columns.some((c) => table.primaryKey.includes(c)))!
+        table.primaryKey = [...table.primaryKey, ...fk.columns]
+        for (const c of table.columns) if (fk.columns.includes(c.name)) Object.assign(c, { isPrimaryKey: true, nullable: false })
+      }
+    }, { positions: { ...source.positions, [`${parent.schema ?? ''}.dbm_line`]: { x: 40, y: 40 } } })
     const view = source.sqlObjects.find((o) => o.kind === 'view' && o.id && o.code)
     if (view) file('zmeneny-pohled', `pohled ${view.name}: kód má na konci nový řádek s komentářem „upraveno v DB Mastermind“.`, () => {}, { views: [{ id: view.id!, code: `${view.code!.replace(/[;\s]+$/, '')}\n-- upraveno v DB Mastermind` }] })
     file(

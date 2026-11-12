@@ -398,7 +398,10 @@ Not a clone: their features, rethought and connected to live databases, the know
   set or relationship phrases; a dropped table takes the lines from views to it along (DeZign 14.5 draws views);
   files of DeZign 4 to 11 get their id counters (`LASTID`, `ATTRLASTID`, …) moved on with new objects
 - ✅ The diagram of a DeZign project draws relationships as DeZign does: identifying ones (the parent's key is part
-  of the child's key) solid, the others dashed (compared with DeZign 14.9.3 drawing its own sample model)
+  of the child's key) solid, the others dashed. A key edited here keeps the project's own mark of it (`RELTYPE`) and
+  the index DeZign keeps on the key (older projects) in step, so DeZign 14.9.3 draws a file we saved, a new
+  identifying relationship and one made identifying, exactly as the app does (checked side by side); changing a
+  primary key used to fail the save check in projects with that index
 - ⬜ Subtype clusters edited from the model (today they are kept as they are)
 
 - ✅ The DROP script DeZign writes next to the CREATE one (SQL DDL → DROP script…): views, then the tables in an

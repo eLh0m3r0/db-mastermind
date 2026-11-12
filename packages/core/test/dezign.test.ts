@@ -546,6 +546,26 @@ describe('saving back into a DeZign project', () => {
     expect(r.files[0]!.text).toBe(xml(view.replace('SELECT 1', 'SELECT 2')))
   })
 
+  it('a relationship whose key joins the child\'s primary key becomes identifying (DeZign draws it solid), and back', () => {
+    const typed = dez.replace('<CHILDOBJECTID>20</CHILDOBJECTID>\n', '<CHILDOBJECTID>20</CHILDOBJECTID>\n<RELTYPE>1</RELTYPE>\n')
+    expect(typed).not.toBe(dez)
+    const files: DezignFile[] = [{ path: 'shop.dez', text: typed }]
+    const identifying = save(files, (t) => {
+      const invoice = t.find((x) => x.foreignKeys.length)!
+      invoice.primaryKey = [...invoice.primaryKey, ...invoice.foreignKeys[0]!.columns]
+      for (const c of invoice.columns) if (invoice.primaryKey.includes(c.name)) Object.assign(c, { isPrimaryKey: true, nullable: false })
+    })
+    expect(identifying.changes.map((c) => c.kind)).toContain('alter_relationship')
+    expect(identifying.files[0]!.text).toMatch(/<REL>\s*<NAME>customer_invoice<\/NAME>[\s\S]*?<RELTYPE>0<\/RELTYPE>/)
+    // Taken out of the key again: non-identifying.
+    const back = save(identifying.files, (t) => {
+      const invoice = t.find((x) => x.foreignKeys.length)!
+      invoice.primaryKey = invoice.primaryKey.filter((k) => !invoice.foreignKeys[0]!.columns.includes(k))
+      for (const c of invoice.columns) if (!invoice.primaryKey.includes(c.name)) c.isPrimaryKey = false
+    })
+    expect(back.files[0]!.text).toMatch(/<REL>\s*<NAME>customer_invoice<\/NAME>[\s\S]*?<RELTYPE>1<\/RELTYPE>/)
+  })
+
   it('writes nothing when the model was not edited', () => {
     expect(save(single, () => {})).toEqual({ files: [], deleted: [], changes: [] })
     expect(save(folder, () => {})).toEqual({ files: [], deleted: [], changes: [] })
@@ -1051,8 +1071,10 @@ describe('saving back into a DeZign project', () => {
         }
       }
     }
-    // Every kind of edit took part.
+    // Every kind of edit took part, a changed primary key too.
+    if (process.env.DBM_FUZZ_COUNTS) console.log(JSON.stringify(counts))
     expect(Object.keys(counts).filter((k) => k !== 'nothing').length).toBeGreaterThanOrEqual(14)
+    expect((counts.extendKey ?? 0) + (counts.shrinkKey ?? 0)).toBeGreaterThan(0)
   })
 
   it('drops a supertype together with its subtype cluster', () => {

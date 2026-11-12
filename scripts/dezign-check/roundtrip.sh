@@ -62,6 +62,8 @@ for model in "$@"; do
   case "$(title)" in *"$(basename "$file")"*) ok=OPEN ;; *) ok=NOT-OPEN ;; esac
   alive || ok="$ok+QUIT"
   crop 300x130+0+160 "$out/$label-tree.png"
+  # SCREENSHOT=1: the whole screen as DeZign draws the model (public models only: it shows the diagram).
+  [ -n "$SCREENSHOT" ] && [ "$ok" = OPEN ] && crop 1920x1200+0+0 "$out/$label-screen.png"
   if [ -n "$left" ]; then
     crop "$(dialogs | head -1)" "$out/$label-dialog.png"
     # Closed, never answered: Enter on "Save changes?" would write into the model that is being checked.

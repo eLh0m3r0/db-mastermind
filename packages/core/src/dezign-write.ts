@@ -925,7 +925,28 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     if (!base || base.primaryKey.map(lower).join(',') !== next.primaryKey.map(lower).join(',')) {
       let pk = kid(entity.el, 'PKCON')
       if (!pk) insert(entity.el, (pk = container('PKCON', [...named('PKCONNAMETEMPLATE'), leaf('ID', `${entity.id}-PK`), leaf('CONLEVEL', '2'), leaf('CONTYPE', '3'), container('ATTRIBUTEIDS', [])])), ['ATTRIBUTES'])
-      setIds(pk, next.primaryKey.map(idOf).filter(Boolean))
+      const was = idsOf(pk)
+      const ids = next.primaryKey.map(idOf).filter(Boolean)
+      setIds(pk, ids)
+      // The index DeZign keeps on the key itself (older projects: AUTOIDXTYPE 1) follows the key.
+      for (const ix of kids(kid(entity.el, 'INDEXES'), 'INDEX')) {
+        const cols = kid(ix, 'IDXCOLS')
+        if (text(ix, 'AUTOIDXTYPE') !== '1' || !cols || kids(cols, 'IDXCOL').map((c) => text(c, 'IDXCOLATTRID')).join(',') !== was.join(',')) continue
+        if (!ids.length) {
+          remove(kid(entity.el, 'INDEXES'), ix)
+          continue
+        }
+        const template = kids(cols, 'IDXCOL')[0]
+        fill(
+          cols,
+          ids.map((id) => {
+            const col = template ? clone(template) : container('IDXCOL', [leaf('IDXCOLATTRID')])
+            if (kid(col, 'NAME')) set(col, 'NAME', text(kids(kid(entity.el, 'ATTRIBUTES'), 'ATTR').find((a) => text(a, 'ID') === id), 'NAME'))
+            set(col, 'IDXCOLATTRID', id)
+            return col
+          }),
+        )
+      }
       if (base) changes.push({ kind: 'set_primary_key', table: label, name: next.primaryKey.join(', ') })
     }
 
@@ -1399,6 +1420,12 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     // A new cardinality (it changes no script, only what the diagram says).
     if ((old.fk.cardinality ?? '') !== (now.fk.cardinality ?? '')) {
       set(slot.el, 'CARDINALITY', String(Math.max(0, DEZIGN_CARDINALITIES.indexOf(now.fk.cardinality))), ['RELTYPE', 'MANDATORYPARENT', 'UPDATERULE', 'DELETERULE', 'CONSTRAINT', 'PAIRS'])
+      changes.push({ kind: 'alter_relationship', table: now.table.name, name: now.fk.refTable })
+    }
+    // Identifying or not (DeZign draws it solid or dashed): follows the child's primary key when that changed.
+    const identifying = (r: { table: TableInfo; fk: ForeignKeyInfo }) => r.fk.columns.length > 0 && r.fk.columns.every((c) => r.table.primaryKey.map(lower).includes(lower(c)))
+    if (identifying(old) !== identifying(now) && /^[01]$/.test(text(slot.el, 'RELTYPE'))) {
+      set(slot.el, 'RELTYPE', identifying(now) ? '0' : '1')
       changes.push({ kind: 'alter_relationship', table: now.table.name, name: now.fk.refTable })
     }
     if (!sameRule(old.fk.onDelete, now.fk.onDelete) || !sameRule(old.fk.onUpdate, now.fk.onUpdate)) {

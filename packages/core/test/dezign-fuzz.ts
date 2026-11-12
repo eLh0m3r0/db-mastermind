@@ -123,6 +123,24 @@ export function mutate(tables: TableInfo[], rnd: () => number, serial: number): 
       table.foreignKeys = table.foreignKeys.filter((f) => f !== fk)
       return true
     },
+    // The key of a table nothing references: a foreign key's column joins it (the relationship becomes identifying)
+    // or leaves a key of several columns again.
+    extendKey() {
+      if (table.columns.some((c) => referenced(table, c.name))) return false
+      const fk = pick(table.foreignKeys.filter((f) => !f.virtual && f.columns.every((c) => !table.primaryKey.some((k) => same(k, c)))))
+      if (!fk || !table.primaryKey.length) return false
+      table.primaryKey = [...table.primaryKey, ...fk.columns]
+      for (const c of table.columns) if (fk.columns.some((x) => same(x, c.name))) Object.assign(c, { isPrimaryKey: true, nullable: false })
+      return true
+    },
+    shrinkKey() {
+      if (table.primaryKey.length < 2 || table.columns.some((c) => referenced(table, c.name))) return false
+      const gone = table.primaryKey.at(-1)!
+      table.primaryKey = table.primaryKey.slice(0, -1)
+      const c = table.columns.find((x) => same(x.name, gone))
+      if (c) c.isPrimaryKey = false
+      return true
+    },
     addCheck() {
       const c = pick(table.columns)
       if (!c) return false

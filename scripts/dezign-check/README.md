@@ -39,3 +39,7 @@ Good to know:
   DeZign without those packages, whether to delete the columns that come from them. `ANSWER_NO=1` before
   `roundtrip.sh` answers No.
 - Emulation is slow: a model takes one to two minutes.
+- `SCREENSHOT=1` before `roundtrip.sh` keeps a picture of the whole screen with the model opened (how DeZign
+  draws what we wrote: relationship lines, frames, notes). Only for public models: it shows the diagram.
+- "Save changes to project …?" in `asked:` is about the project open before (DeZign opens one of its samples on
+  start); it is answered No and is never about the file being checked.
