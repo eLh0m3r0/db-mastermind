@@ -101,6 +101,13 @@ export interface Shown {
   hidden?: string[]
   notation?: 'crow' | 'idef1x'
 }
+/** A model's own undo and redo (of what the canvas wrote into it). */
+export interface ModelHistory {
+  canUndo: boolean
+  canRedo: boolean
+  undo: () => void
+  redo: () => void
+}
 const ALL: DiagramDisplay = { columns: 'all', types: 'type' }
 
 function visibleColumns(t: TableInfo, shown: Shown, fkColumns: Set<string>, referenced: Set<string>) {
@@ -409,7 +416,7 @@ function nodeHeight(t: TableInfo, shown: Shown, fk: Set<string>, ref: Set<string
   return HEADER + visible * ROW + (showsMore(shown) && visible < t.columns.length ? ROW : 0) + 2
 }
 
-function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout, flushRef }: { tab: DiagramTab; flushRef?: React.MutableRefObject<(() => boolean) | null>; userProperties?: DezignUserProperty[]; labels?: DezignLabel[]; model?: SchemaSnapshot; modelDriver?: DriverId; domains?: { name: string; dataType: string }[]; dashNonIdentifying?: boolean; request?: DiagramRequest; onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
+function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout, flushRef, modelHistory }: { tab: DiagramTab; flushRef?: React.MutableRefObject<(() => boolean) | null>; userProperties?: DezignUserProperty[]; labels?: DezignLabel[]; modelHistory?: ModelHistory; model?: SchemaSnapshot; modelDriver?: DriverId; domains?: { name: string; dataType: string }[]; dashNonIdentifying?: boolean; request?: DiagramRequest; onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
   const tr = useT()
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const loadSchema = useConnections((s) => s.loadSchema)
@@ -533,7 +540,8 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
   const undoDesign = () => {
     const h = history.current
     const prev = h.past.pop()
-    if (!prev) return
+    // What the canvas already wrote into a model is undone there.
+    if (!prev) return void (modelHistory?.canUndo && modelHistory.undo())
     h.future.push({ drafts, positions: tab.positions })
     h.at = 0
     setHistoryVersion((v) => v + 1)
@@ -542,7 +550,7 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
   const redoDesign = () => {
     const h = history.current
     const next = h.future.pop()
-    if (!next) return
+    if (!next) return void (modelHistory?.canRedo && modelHistory.redo())
     h.past.push({ drafts, positions: tab.positions })
     h.at = 0
     setHistoryVersion((v) => v + 1)
@@ -674,11 +682,29 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
       else if (d.status !== 'dropped') whole.push(d.info)
     }
     for (const d of display) if (d.status === 'new') whole.push(d.info)
+    // The table being edited stays selected under its new name.
+    const kept = selected ? display.find((d) => d.key === selected) : undefined
     onApplyModel(whole)
     history.current = { past: [], future: [], at: 0 }
-    setSelected(null)
+    setSelected(kept && kept.status !== 'dropped' ? keyOf(kept.info) : null)
     setDrafts({}, false)
   }
+  // A model takes the canvas's changes as they are made: written into it once no field of the panel (or of a
+  // table on the canvas) is being typed in.
+  const writeLatest = useRef(writeToModel)
+  writeLatest.current = writeToModel
+  const modelMode = !!model && !!onApplyModel
+  useEffect(() => {
+    if (!modelMode || !pending) return
+    const timer = setInterval(() => {
+      const active = document.activeElement
+      const typing = active instanceof HTMLElement && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) && !!active.closest('[data-testid="table-panel"], .react-flow__node')
+      if (typing) return
+      clearInterval(timer)
+      writeLatest.current()
+    }, 350)
+    return () => clearInterval(timer)
+  }, [modelMode, pending, drafts])
   // Saving the model takes what the canvas has not written yet along (DeZign has no separate step for it).
   if (flushRef) flushRef.current = model && onApplyModel && pending ? () => (writeToModel(), true) : null
   useEffect(
@@ -1622,7 +1648,22 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
           </Button>
         </div>
       )}
-      {design && (
+      {modelMode && (
+        // A model is always edited: a slim bar with what adds to it and the steps back and forth.
+        <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-line px-2 text-[12px]">
+          <Button size="sm" variant="ghost" icon={<Plus size={13} />} onClick={addTable}>
+            {tr('New table')}
+          </Button>
+          <IconButton label={`${tr('Undo')} (${keys('⌘Z')})`} disabled={!history.current.past.length && !modelHistory?.canUndo} onClick={undoDesign}>
+            <Undo size={14} />
+          </IconButton>
+          <IconButton label={`${tr('Redo')} (${keys('⇧⌘Z')})`} disabled={!history.current.future.length && !modelHistory?.canRedo} onClick={redoDesign}>
+            <Redo size={14} />
+          </IconButton>
+          <span className="min-w-0 flex-1 truncate text-fg-faint">{tr('Double-click a table or a line to edit it; drag from a column’s dot to another table to relate them.')}</span>
+        </div>
+      )}
+      {design && !modelMode && (
         // The design actions live in this bar (shown only while designing), so the toolbar above keeps room for the
         // view controls at any window width.
         <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line bg-accent-soft px-2 py-1 text-[12px]">
@@ -2040,10 +2081,10 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
   )
 }
 
-export function DiagramView({ tab, model, modelDriver, domains, userProperties, labels, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout, flushRef }: { tab: DiagramTab; /** The custom properties the model's project defines: its tables' and columns' values are edited in the dialog. */ userProperties?: DezignUserProperty[]; /** The labels the model's project defines. */ labels?: DezignLabel[]; /** Set to a function that writes the canvas's pending changes into the model (true when there were any). */ flushRef?: React.MutableRefObject<(() => boolean) | null>; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; /** The project's domains, offered for columns. */ domains?: { name: string; dataType: string }[]; /** Lines of relationships whose key is not part of the child's primary key are dashed, as DeZign draws them. */ dashNonIdentifying?: boolean; /** From the model's object browser: show a table, or open a table's or a relationship's dialog. */ request?: DiagramRequest; /** A model's diagram of the selected tables (DeZign: subdiagram from selection). */ onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
+export function DiagramView({ tab, model, modelDriver, domains, userProperties, labels, modelHistory, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout, flushRef }: { tab: DiagramTab; /** The custom properties the model's project defines: its tables' and columns' values are edited in the dialog. */ userProperties?: DezignUserProperty[]; /** The labels the model's project defines. */ labels?: DezignLabel[]; /** Undo and redo of what was written into the model (a model takes canvas changes as they are made). */ modelHistory?: ModelHistory; /** Set to a function that writes the canvas's pending changes into the model (true when there were any). */ flushRef?: React.MutableRefObject<(() => boolean) | null>; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; /** The project's domains, offered for columns. */ domains?: { name: string; dataType: string }[]; /** Lines of relationships whose key is not part of the child's primary key are dashed, as DeZign draws them. */ dashNonIdentifying?: boolean; /** From the model's object browser: show a table, or open a table's or a relationship's dialog. */ request?: DiagramRequest; /** A model's diagram of the selected tables (DeZign: subdiagram from selection). */ onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
   return (
     <ReactFlowProvider>
-      <DiagramInner tab={tab} model={model} modelDriver={modelDriver} domains={domains} dashNonIdentifying={dashNonIdentifying} request={request} onNewDiagram={onNewDiagram} onApplyModel={onApplyModel} onLayout={onLayout} flushRef={flushRef} userProperties={userProperties} labels={labels} />
+      <DiagramInner tab={tab} model={model} modelDriver={modelDriver} domains={domains} dashNonIdentifying={dashNonIdentifying} request={request} onNewDiagram={onNewDiagram} onApplyModel={onApplyModel} onLayout={onLayout} flushRef={flushRef} userProperties={userProperties} labels={labels} modelHistory={modelHistory} />
     </ReactFlowProvider>
   )
 }

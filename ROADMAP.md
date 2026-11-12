@@ -642,7 +642,8 @@ compatibility while the screens change).
   over the canvas in a narrow one (Esc closes it, a pin keeps it docked); the table and relationship dialogs are
   gone. Columns are one line each (key, name, type, NOT NULL); the one being worked on shows its details (default,
   comment, domain, notes, labels, properties, to do, its package). A relationship's identifying / mandatory /
-  subtype are in its row; the table's SQL is at the bottom. A model is always editable (no Design switch)
+  subtype are in its row; the table's SQL is at the bottom. A model is always editable (no Design switch) and
+  takes canvas changes as they are made (no "Write to DBML"): written once nothing is being typed, ⌘Z takes them back
 - ⬜ In place on the canvas: rename a table or a column, add a column (Enter), its type and NOT NULL
 
 ---

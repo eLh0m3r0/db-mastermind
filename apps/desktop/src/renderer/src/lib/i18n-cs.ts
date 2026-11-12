@@ -84,6 +84,7 @@ export const cs: Record<string, string> = {
   'AI assistant': 'AI asistent',
   'Hide sidebar': 'Skrýt postranní panel',
   'More': 'Další',
+  'Double-click a table or a line to edit it; drag from a column’s dot to another table to relate them.': 'Dvojklikem na tabulku nebo čáru ji upravíte; tažením od tečky sloupce k jiné tabulce vytvoříte vztah.',
   'Fewer details': 'Méně podrobností',
   'More details': 'Další podrobnosti',
   'Let it slide over the diagram': 'Vysouvat přes diagram',

@@ -169,6 +169,31 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     setText(value)
     updateTab(tab.id, { text: value, ...patch })
   }
+  // Undo and redo of what the canvas wrote into the model (it writes as it goes): the text before each write.
+  const steps = useRef<{ past: string[]; future: string[] }>({ past: [], future: [] })
+  const [, setStepsVersion] = useState(0)
+  const remember = () => {
+    steps.current = { past: [...steps.current.past.slice(-99), text], future: [] }
+    setStepsVersion((v) => v + 1)
+  }
+  const modelHistory = {
+    canUndo: steps.current.past.length > 0,
+    canRedo: steps.current.future.length > 0,
+    undo: () => {
+      const prev = steps.current.past.pop()
+      if (prev === undefined) return
+      steps.current.future.push(text)
+      setStepsVersion((v) => v + 1)
+      replaceText(prev, { dirty: true })
+    },
+    redo: () => {
+      const next = steps.current.future.pop()
+      if (next === undefined) return
+      steps.current.past.push(text)
+      setStepsVersion((v) => v + 1)
+      replaceText(next, { dirty: true })
+    },
+  }
 
   /** A model opened from a DeZign project goes back into it: the changes are listed first, the old files are kept. */
   const saveToSource = async (source: NonNullable<ModelTab['source']>) => {
@@ -867,7 +892,9 @@ export function ModelView({ tab }: { tab: ModelTab }) {
               flushRef={flushCanvas}
               onNewDiagram={(tables, positions) => void newDiagram({ tables, positions })}
               onLayout={(patch) => (diagram ? patchDiagram(diagram.id, () => ({ ...patch, ...('positions' in patch ? { positions: patch.positions ?? {} } : {}) })) : updateTab(tab.id, { ...patch, dirty: true }))}
+              modelHistory={modelHistory}
               onApplyModel={(tables) => {
+                remember()
                 // Editing one area keeps the model's other tables; tables added there join the area.
                 const others = model.tables.filter((x) => !inArea(x))
                 const groups = group ? { ...model.groups, [area.slice(2)]: [...new Set([...group, ...tables.map((x) => x.name)])] } : model.groups

@@ -28,7 +28,7 @@ try {
   if (await win.getByRole('button', { name: 'Design', exact: true }).count()) await win.getByRole('button', { name: 'Design', exact: true }).click()
   await win.getByRole('button', { name: 'New table', exact: true }).first().click()
   await win.waitForTimeout(400)
-  await win.getByRole('button', { name: /Write to DBML/ }).click()
+  await win.keyboard.press('Escape') // (the canvas writes into the model once nothing is being typed)
   await win.waitForTimeout(800)
   const text = await win.locator('.cm-content:visible').first().innerText()
   console.log('kept others:', text.includes('Table customers'), text.includes('Table orders'), 'new in Warehouse:', /TableGroup Warehouse \{[^}]*new_table_1/.test(text))

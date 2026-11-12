@@ -12,12 +12,12 @@ const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.en
 const win = await app.firstWindow()
 const modelText = () => win.locator('.cm-content:visible').first().innerText()
 const write = async () => {
-  await win.getByRole('button', { name: /Write to DBML/ }).click()
+  await win.keyboard.press('Escape') // (the canvas writes into the model once nothing is being typed)
   await win.waitForTimeout(900)
 }
 const designing = async () => {
-  if (!(await win.getByRole('button', { name: /Write to DBML/ }).count())) if (await win.getByRole('button', { name: 'Design', exact: true }).count()) await win.getByRole('button', { name: 'Design', exact: true }).click()
-  await win.getByRole('button', { name: /Write to DBML/ }).waitFor({ timeout: 10000 })
+  // (A model is always edited.)
+  await win.getByRole('button', { name: 'New table', exact: true }).first().waitFor({ timeout: 10000 })
 }
 const node = (key) => win.locator(`.react-flow__node[data-id="${key}"]`)
 try {
@@ -255,6 +255,20 @@ try {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: path })
   }, file)
   console.log('generation directives:', /CREATE VIEW (\w+\.)?v_cond AS\s+SELECT id\s+FROM shop\.invoice;/.test(plain), /CREATE VIEW (\w+\.)?v_cond AS\s+SELECT id\s+, total\s+FROM shop\.invoice;/.test(full), !/IFDEF/.test(full + plain))
+
+  // Changes are written into the model as they are made; ⌘Z takes them back there too.
+  await node('shop.line').dblclick({ position: { x: 40, y: 12 } })
+  await win.getByTestId('table-panel').waitFor({ timeout: 10000 })
+  await win.getByTestId('table-panel').getByRole('textbox').first().fill('line_item')
+  await win.keyboard.press('Escape')
+  await win.waitForTimeout(1200)
+  await win.getByRole('button', { name: 'Text (DBML)', exact: true }).last().click()
+  const renamed = await modelText()
+  await win.locator('.react-flow__pane').click({ position: { x: 20, y: 20 } })
+  await win.keyboard.press('Meta+z')
+  await win.waitForTimeout(800)
+  const undone = await modelText()
+  console.log('written as made, undone with ⌘Z:', /Table shop\.line_item /.test(renamed), /Table shop\.line /.test(undone) && !/Table shop\.line_item /.test(undone))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow97.png') })
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])
