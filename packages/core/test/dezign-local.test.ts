@@ -33,7 +33,8 @@ function projectFiles(dir: string, base = dir, out: { path: string; text: string
 }
 
 describe.skipIf(!root)('DeZign models on this machine', () => {
-  it('reads every model and turns it into valid DBML', () => {
+  // (Real projects are large: hundreds of tables take seconds per save.)
+  it('reads every model and turns it into valid DBML', { timeout: 120_000 }, () => {
     const files = find(root!)
     expect(files.length).toBeGreaterThan(0)
     files.forEach((file, n) => {
@@ -54,7 +55,7 @@ describe.skipIf(!root)('DeZign models on this machine', () => {
     })
   })
 
-  it('saves nothing when nothing changed, and saves edits that read back as edited', () => {
+  it('saves nothing when nothing changed, and saves edits that read back as edited', { timeout: 120_000 }, () => {
     const viaDbml = (tables: TableInfo[]) => parseDbml(toDbml(tables)).tables
     find(root!).forEach((file, n) => {
       const folder = /\.dezproj$/i.test(file)
