@@ -145,6 +145,9 @@ interface DeclaredTable {
 }
 
 const literal = (quoted: string) => quoted.replace(/^N?'|'$/gi, '').replaceAll("''", "'")
+/** A MySQL string (COMMENT '…' exists only there): mysqldump writes line breaks and backslashes escaped. */
+const ESCAPES: Record<string, string> = { n: '\n', r: '\r', t: '\t', '0': '\0', Z: '\x1a' }
+const mySqlLiteral = (quoted: string) => literal(quoted).replace(/\\(.)/gs, (_, ch: string) => ESCAPES[ch] ?? ch)
 
 const unquote = (name: string) => name.trim().replace(/^"([\s\S]*)"$/, '$1')
 /** Joins a table's schema and name into the one name it has inside DuckDB. */
@@ -222,7 +225,7 @@ function declaredColumn(definition: string): (DeclaredColumn & { name: string })
   }
   const quotedNumber = defaultValue && /^(tinyint|smallint|mediumint|int|integer|bigint|decimal|numeric|float|double|real)\b/.test(type) ? /^'(-?\d+(?:\.\d+)?)'$/.exec(defaultValue) : null
   if (quotedNumber) defaultValue = String(Number(quotedNumber[1]))
-  return type ? { name: unquote(m[1]!), type, identity, ...(comment ? { comment: literal(comment) } : {}), ...(defaultValue ? { defaultValue } : {}) } : undefined
+  return type ? { name: unquote(m[1]!), type, identity, ...(comment ? { comment: mySqlLiteral(comment) } : {}), ...(defaultValue ? { defaultValue } : {}) } : undefined
 }
 
 /** Where a column's default is in the text after its type. */
@@ -319,7 +322,7 @@ function declaredTables(script: string): DeclaredTable[] {
       if (column) columns.set(column.name.toLowerCase(), column)
     }
     const comment = /^[^;]*?\bCOMMENT\s*=?\s*('(?:[^']|'')*')/i.exec(sql.slice(i))?.[1]
-    out.push({ schema: parts.length > 1 ? parts[0] : undefined, name: parts.at(-1)!, columns, ...(comment ? { comment: literal(comment) } : {}) })
+    out.push({ schema: parts.length > 1 ? parts[0] : undefined, name: parts.at(-1)!, columns, ...(comment ? { comment: mySqlLiteral(comment) } : {}) })
   }
   // SQL Server keeps comments as extended properties (MS_Description), added after the tables; pg_dump makes
   // identity columns after the tables too.

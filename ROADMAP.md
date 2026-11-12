@@ -398,7 +398,7 @@ Not a clone: their features, rethought and connected to live databases, the know
   set or relationship phrases; a dropped table takes the lines from views to it along (DeZign 14.5 draws views);
   files of DeZign 4 to 11 get their id counters (`LASTID`, `ATTRLASTID`, …) moved on with new objects
 - ✅ The diagram of a DeZign project draws relationships as DeZign does: identifying ones (the parent's key is part
-  of the child's key) solid, the others dashed
+  of the child's key) solid, the others dashed (compared with DeZign 14.9.3 drawing its own sample model)
 - ⬜ Subtype clusters edited from the model (today they are kept as they are)
 
 - ✅ The DROP script DeZign writes next to the CREATE one (SQL DDL → DROP script…): views, then the tables in an
@@ -429,6 +429,12 @@ Not a clone: their features, rethought and connected to live databases, the know
   their actions, references between schemas and in cycles. Tested on real dumps: a model created in PostgreSQL and
   MySQL, dumped by pg_dump/mysqldump, reads back with no difference (`ddl-dump.integration.test.ts`; a real
   project of hundreds of tables too). "Import SQL…" reads scripts the same way
+- ✅ A PostgreSQL model's script for MySQL and SQL Server runs there: serial becomes an identity integer (one per
+  table where the database allows only one; in MySQL it leads a unique key), `time with time zone` the time,
+  long strings what the database can hold (nvarchar(max); MySQL TEXT where a row would pass 65,535 bytes), the
+  date and the time in defaults and checks the database's own (checks MySQL and Oracle refuse are left out).
+  A real project of hundreds of tables is created in MySQL and SQL Server without a failed statement, and its
+  mysqldump reads back as the translated model (`ddl-dump.integration.test.ts`)
 - ✅ An archived version opens as it was ("Open this version" in its comparison): its tables and diagrams in a model
   tab of their own, not tied to the project, so nothing is written into it (DeZign: switch to an archived version)
 - ✅ A new DeZign project can be a folder project (Save as… → `.dezproj`, for Git): a folder of its name with a

@@ -193,6 +193,7 @@ const normDefault = (value: string | null | undefined) => {
     if (/^\((.*)\)$/s.test(v) && balanced(v.slice(1, -1))) v = v.slice(1, -1).trim()
   }
   if (/^(now\(\)|current_timestamp(\(\))?|localtimestamp|getdate\(\)|sysdatetime\(\))$/i.test(v)) return 'now()'
+  if (/^(current_date|curdate\(\)|cast\(getdate\(\) as date\)|trunc\(sysdate\))$/i.test(v)) return 'current_date'
   if (/^n'.*'$/is.test(v)) v = v.slice(1)
   // MySQL takes "…" for a string as well.
   if (/^"[^"']*"$/.test(v)) v = `'${v.slice(1, -1)}'`

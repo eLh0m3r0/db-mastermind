@@ -32,7 +32,8 @@ describe('DDL import', () => {
       CREATE TABLE sales.orders (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, customer_id integer REFERENCES public.customers(id), note varchar(40) UNIQUE, placed timestamp with time zone);
       CREATE TABLE [dbo].[notes] ([id] [int] IDENTITY(1,1) NOT NULL, [body] [nvarchar](300) NULL, CONSTRAINT [PK_notes] PRIMARY KEY ([id]))
       GO
-      CREATE TABLE \`items\` (\`id\` int(11) unsigned NOT NULL AUTO_INCREMENT, \`flag\` tinyint(1) DEFAULT '0' COMMENT 'not an identity, no auto_increment, default off', \`name\` varchar(50) COLLATE utf8mb4_bin DEFAULT NULL, PRIMARY KEY (\`id\`));
+      CREATE TABLE \`items\` (\`id\` int(11) unsigned NOT NULL AUTO_INCREMENT, \`flag\` tinyint(1) DEFAULT '0' COMMENT 'not an identity, no auto_increment, default off',
+        \`memo\` text COMMENT 'two\\nlines, a back\\\\slash and it''s', \`name\` varchar(50) COLLATE utf8mb4_bin DEFAULT NULL, PRIMARY KEY (\`id\`));
     `)
     const t = (name: string) => tables.find((x) => x.name === name)!
     expect(t('customers').schema).toBe('public')
@@ -44,7 +45,8 @@ describe('DDL import', () => {
     expect(tables.flatMap((x) => [...x.indexes.map((i) => i.name), ...x.foreignKeys.map((f) => f.name)]).filter((n) => n.includes('__dbm__'))).toEqual([])
     expect([t('notes').schema, t('notes').columns.map((c) => c.dataType), t('notes').columns[0]!.isIdentity]).toEqual(['dbo', ['int', 'nvarchar(300)'], true])
     expect([t('items').columns[1]!.isIdentity, t('items').columns[1]!.comment, t('items').columns[1]!.defaultValue]).toEqual([false, 'not an identity, no auto_increment, default off', '0'])
-    expect([t('items').schema, t('items').columns.map((c) => c.dataType), t('items').columns[0]!.isIdentity]).toEqual([undefined, ['int', 'tinyint(1)', 'varchar(50)'], true])
+    expect(t('items').columns.find((c) => c.name === 'memo')!.comment).toBe("two\nlines, a back\\slash and it's")
+    expect([t('items').schema, t('items').columns.map((c) => c.dataType), t('items').columns[0]!.isIdentity]).toEqual([undefined, ['int', 'tinyint(1)', 'text', 'varchar(50)'], true])
   })
 
   it('takes foreign keys as written: cycles, a table that references itself, actions', async () => {

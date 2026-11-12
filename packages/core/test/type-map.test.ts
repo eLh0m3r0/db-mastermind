@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createScript, getDialect, parseDbml, translateDefault, translateType } from '../src/index.js'
+import { createScript, getDialect, parseDbml, translateDefault, translateTables, translateType } from '../src/index.js'
 
 describe('type translation', () => {
   it('maps common types between databases', () => {
@@ -13,6 +13,39 @@ describe('type translation', () => {
     expect(translateType('datetime2', 'mysql')).toBe('datetime')
     expect(translateType('decimal(12,2)', 'oracle')).toBe('decimal(12,2)')
     expect(translateType('geometry', 'mssql')).toBe('geometry')
+  })
+
+  it("turns PostgreSQL's serial into an identity integer for other databases", () => {
+    const { tables } = parseDbml('Table t {\n  id bigserial [pk]\n  n serial\n  s smallserial\n}\n')
+    for (const to of ['mysql', 'mssql', 'oracle'] as const) {
+      const out = translateTables(tables, to, 'postgres')[0]!.columns
+      // (These number one column per table: the key's.)
+      expect(out.filter((c) => c.isIdentity).map((c) => c.name), to).toEqual(['id'])
+      expect(out.map((c) => c.dataType).join(' '), to).not.toMatch(/serial/i)
+      expect(createScript(tables, getDialect(to), { translateTypes: true, from: 'postgres' }), to).not.toMatch(/serial/i)
+    }
+    expect(translateTables(tables, 'mysql', 'postgres')[0]!.columns.map((c) => c.dataType)).toEqual(['bigint', 'integer', 'smallint'])
+    expect(translateTables(tables, 'postgres', 'postgres')[0]!.columns[0]!.dataType).toBe('bigserial')
+  })
+
+  it('keeps a PostgreSQL model creatable in MySQL and SQL Server', () => {
+    const { tables } = parseDbml(
+      "Table t {\n  id integer [pk]\n  line bigserial\n  opens \"time with time zone\"\n  code \"character(512)\"\n  huge varchar(20000)\n  n serial\n  a varchar(4000)\n  b varchar(4000)\n  c varchar(4000)\n  d varchar(4000)\n  e varchar(4000)\n  day date [default: `current_date`]\n\n  checks {\n    `day <= current_date` [name: 'not_future']\n    `id > 0` [name: 'positive']\n  }\n}\n",
+    )
+    const my = translateTables(tables, 'mysql', 'postgres')[0]!
+    const type = (name: string) => my.columns.find((c) => c.name === name)!.dataType
+    expect([type('opens'), type('code'), type('huge')]).toEqual(['time', 'varchar(512)', 'mediumtext'])
+    // Wider than 65,535 bytes: the longest strings become TEXT until the row fits.
+    expect(my.columns.reduce((n, c) => n + (/^varchar\((\d+)\)$/.exec(c.dataType) ? Number(/\d+/.exec(c.dataType)![0]) * 4 + 2 : 8), 0)).toBeLessThanOrEqual(65535)
+    expect(my.indexes.find((i) => i.columns[0] === 'line')).toMatchObject({ unique: true, constraint: true })
+    expect(createScript(tables, getDialect('mysql'), { translateTypes: true, from: 'postgres' })).toMatch(/CREATE TABLE[^;]*UNIQUE \(`line`\)/)
+    expect(my.checks!.map((c) => c.name)).toEqual(['positive'])
+    expect(my.columns.find((c) => c.name === 'day')!.defaultValue).toBe('(CURRENT_DATE)')
+    const ms = translateTables(tables, 'mssql', 'postgres')[0]!
+    expect(my.columns.filter((c) => c.isIdentity).map((c) => c.name)).toEqual(['line'])
+    expect(ms.columns.find((c) => c.name === 'huge')!.dataType).toBe('nvarchar(max)')
+    expect([ms.columns.find((c) => c.name === 'opens')!.dataType, ms.columns.find((c) => c.name === 'day')!.defaultValue, ms.checks!.map((c) => c.expression)]).toEqual(['time', 'CAST(GETDATE() AS date)', ['day <= CAST(GETDATE() AS date)', 'id > 0']])
+    expect(translateTables(tables, 'oracle', 'postgres')[0]!.checks!.map((c) => c.name)).toEqual(['positive'])
   })
 
   it('leaves the types of the model\'s own database as written', () => {

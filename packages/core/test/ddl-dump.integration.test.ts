@@ -69,7 +69,7 @@ for (const driver of ['postgres', 'mysql'] as const) {
   describe.skipIf(!container)(`a ${driver} dump of the model's database reads back as the model`, () => {
     it('finds no difference between the model and the dump', { timeout: 600_000 }, async () => {
       const svc = new DatabaseService()
-      const models = [{ label: 'shop', tables: SHOP, driver: 'postgres' as DriverId, scripting: undefined }, ...localModels().filter((m) => m.driver === driver)]
+      const models = [{ label: 'shop', tables: SHOP, driver: 'postgres' as DriverId, scripting: undefined }, ...localModels()]
       const failures: string[] = []
       try {
         await svc.connect(server)
@@ -92,6 +92,15 @@ for (const driver of ['postgres', 'mysql'] as const) {
           for (const c of changes) kinds[c.kind] = (kinds[c.kind] ?? 0) + 1
           // Kinds of what was skipped, in words of SQL and of the error only (local models are private).
           for (const x of read.skipped) report(`${model.label} skipped: ${x.sql.trim().split(/\s+/).slice(0, 2).join(' ').toUpperCase().replace(/[^A-Z ]/g, '')} | ${x.error.replace(/"[^"]*"|'[^']*'/g, 'Q').split(/\s+/).slice(0, 12).map((w) => (/^[A-Z][a-z]+:?$|^[a-z]{1,9}[:!.,]?$|^[A-Z_]{2,}$|^Q$/.test(w) && !/_/.test(w) ? w : 'x')).join(' ')}`)
+          if (process.env.DBM_DUMP_SHAPES) {
+            const shape: Record<string, number> = {}
+            const kind = (v: unknown) => (v == null ? 'none' : /^-?[\d.]+$/.test(String(v)) ? 'number' : /^'/.test(String(v)) ? 'string' : /\(/.test(String(v)) ? `fn:${String(v).replace(/\(.*$/s, '').toLowerCase().slice(0, 24)}` : 'word')
+            for (const c of changes as any[]) {
+              const k = c.kind === 'alter_column' ? `col ${Object.entries(c.changes).filter(([, v]) => v).map(([k]) => k).join('+')} type ${c.after.dataType}→${c.before.dataType} default ${kind(c.after.defaultValue)}→${kind(c.before.defaultValue)} comment ${(c.after.comment ?? '').length}→${(c.before.comment ?? '').length}` : c.kind === 'set_table_comment' ? `table comment ${String(c.comment ?? c.after ?? '').length}` : c.kind
+              shape[k] = (shape[k] ?? 0) + 1
+            }
+            for (const [k, v] of Object.entries(shape)) report(`${model.label} SHAPE ${v}× ${k}`)
+          }
           report(`${model.label} ${driver}: tables=${tables.length} created-failed=${failed} read=${read.tables.length} skipped=${read.skipped.length} differences=${JSON.stringify(kinds)}`)
           if (model.label === 'shop') expect(changes.map((c) => `${c.kind} ${'column' in c ? c.column : ''}`)).toEqual([])
           else if (failed === 0 && (read.skipped.length || changes.length)) failures.push(`${model.label}: skipped ${read.skipped.length}, differences ${JSON.stringify(kinds)}`)
@@ -105,3 +114,35 @@ for (const driver of ['postgres', 'mysql'] as const) {
     })
   })
 }
+
+// SQL Server has no dump tool in its container: the models are created there, translated, without a failure.
+describe.skipIf(skipped.includes('mssql') || !containerFor(14339))('a model translated for SQL Server is created there', () => {
+  it('runs every statement of the CREATE script', { timeout: 600_000 }, async () => {
+    const svc = new DatabaseService()
+    const server: ConnectionConfig = { id: 'dump-ms', name: 'dump', driver: 'mssql', host: '127.0.0.1', port: 14339, user: 'sa', password: 'Mastermind!2026', database: 'master', options: { trustServerCertificate: true } }
+    const failures: string[] = []
+    try {
+      await svc.connect(server)
+      for (const [n, model] of [{ label: 'shop', tables: SHOP, driver: 'postgres' as DriverId, scripting: undefined }, ...localModels()].entries()) {
+        const space = `dump_ms_${n + 1}`
+        await svc.runScript(server.id, `DROP DATABASE IF EXISTS ${space}`)
+        await svc.runScript(server.id, `CREATE DATABASE ${space}`)
+        const config: ConnectionConfig = { ...server, id: `${server.id}-${n}`, database: space }
+        await svc.connect(config)
+        const tables = model.scripting ? unquotedNames(model.tables, 'mssql') : model.tables
+        // (The script's schemas are made first: a model's schema is not dbo.)
+        for (const schema of new Set(tables.map((t) => t.schema).filter((s): s is string => !!s && s.toLowerCase() !== 'dbo'))) await svc.runScript(config.id, `CREATE SCHEMA ${getDialect('mssql').quoteIdent(schema)}`)
+        const outcomes = await svc.runScript(config.id, createScript(tables, getDialect('mssql'), { translateTypes: true, from: model.driver, ...dezignMigrationOptions(model.scripting, 'mssql') }), { continueOnError: true })
+        const failed = outcomes.filter((o) => o.error).length
+        const live = (await svc.schema(config.id, true)).tables.filter((t) => t.type === 'table').length
+        report(`${model.label} mssql: tables=${tables.length} created=${live} failed=${failed}`)
+        if (failed || live !== tables.length) failures.push(`${model.label}: ${failed} failed, ${live}/${tables.length} tables`)
+        await svc.disconnect(config.id)
+        await svc.runScript(server.id, `DROP DATABASE IF EXISTS ${space}`)
+      }
+    } finally {
+      await svc.disconnectAll()
+    }
+    expect(failures).toEqual([])
+  })
+})

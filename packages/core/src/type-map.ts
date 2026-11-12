@@ -54,11 +54,14 @@ export function translateType(type: string, to: DriverId, from?: DriverId): stri
   const m = /^(?:n?varchar2?|character varying|nvarchar2?)\s*\(\s*(\d+)\s*\)$/i.exec(type.trim())
   if (m) {
     const n = m[1]
-    if (to === 'mssql') return `nvarchar(${n})`
+    // nvarchar holds up to 4,000 characters; longer is nvarchar(max).
+    if (to === 'mssql') return Number(n) > 4000 ? 'nvarchar(max)' : `nvarchar(${n})`
     if (to === 'oracle') return `VARCHAR2(${n})`
     if (to === 'sqlite') return 'TEXT'
     if (to === 'clickhouse') return 'String'
     if (to === 'bigquery') return 'STRING'
+    // MySQL's varchar holds 65,535 bytes, 16,383 characters of utf8mb4.
+    if ((to === 'mysql' || to === 'mariadb') && Number(n) > 16383) return 'mediumtext'
     return `varchar(${n})`
   }
   if (to === 'bigquery' && /^(integer|int|bigint|smallint|serial|bigserial)$/i.test(type.trim())) return 'INT64'
@@ -87,6 +90,11 @@ function otherEngineType(t: string, to: DriverId): string | null {
     if (base === 'tinyint') return to === 'mssql' ? 'tinyint' : 'smallint'
     return base === 'mediumint' || base === 'int' ? (to === 'mssql' ? 'int' : 'integer') : base
   }
+  // A time of day with a time zone is PostgreSQL's alone: the time elsewhere.
+  if (/^(time with time zone|timetz|time without time zone)$/i.test(t) && to !== 'postgres') return to === 'oracle' ? 'TIMESTAMP WITH TIME ZONE' : to === 'sqlite' ? 'TEXT' : to === 'bigquery' ? 'TIME' : to === 'clickhouse' ? 'String' : 'time'
+  // MySQL's CHAR holds 255 characters.
+  const fixed = /^(?:character|char)\s*\(\s*(\d+)\s*\)$/i.exec(t)
+  if (fixed && my && Number(fixed[1]) > 255) return translateType(`varchar(${fixed[1]})`, to)
   if (name === 'int64' && to !== 'bigquery' && to !== 'clickhouse') return to === 'oracle' ? 'NUMBER(19)' : to === 'sqlite' ? 'INTEGER' : 'bigint'
   if (name === 'string' && sized && !sized[3]) return translateType(`varchar(${sized[2]})`, to)
   // MySQL's ENUM and SET: a short string elsewhere.
@@ -104,6 +112,9 @@ export function translateDefault(value: string, to: DriverId): string {
   const v = value.trim()
   if (/^(now\(\)|current_timestamp(\(\))?|getdate\(\)|sysdatetime\(\)|systimestamp|sysdate|localtimestamp)$/i.test(v)) {
     return to === 'mssql' ? 'SYSDATETIME()' : to === 'oracle' ? 'SYSTIMESTAMP' : to === 'postgres' ? 'now()' : 'CURRENT_TIMESTAMP'
+  }
+  if (/^(current_date|curdate\(\)|\(current_date\))$/i.test(v)) {
+    return to === 'mssql' ? 'CAST(GETDATE() AS date)' : to === 'oracle' ? 'TRUNC(SYSDATE)' : to === 'mysql' || to === 'mariadb' ? '(CURRENT_DATE)' : 'CURRENT_DATE'
   }
   const bool = /^(?:cast\s*\(\s*)?'?(t|f|true|false)'?(?:\s+as\s+boolean\s*\))?$/i.exec(v)
   if (bool) {
@@ -123,7 +134,10 @@ export function translateTables(tables: TableInfo[], to: DriverId, from?: Driver
     const keyed = new Set([...t.primaryKey, ...t.indexes.flatMap((i) => i.columns), ...t.foreignKeys.flatMap((f) => f.columns)])
     return {
       ...t,
-      columns: t.columns.map((c) => {
+      columns: t.columns.map((given) => {
+        // PostgreSQL's serial is an integer that numbers itself: elsewhere the integer, as an identity column.
+        const serial = /^(small|big)?serial[248]?$/i.exec(given.dataType.trim())
+        const c = serial ? { ...given, dataType: serial[1]?.toLowerCase() === 'big' ? 'bigint' : serial[1]?.toLowerCase() === 'small' ? 'smallint' : 'integer', isIdentity: true } : given
         const f = family(c.dataType)
         let dataType = keyed.has(c.name) && (f === 'text' || f === 'json' || f === 'string') && KEY_STRING[to] ? KEY_STRING[to]! : translateType(c.dataType, to)
         // A one-digit number that defaults to something other than 0 or 1 was never a flag.
@@ -136,4 +150,57 @@ export function translateTables(tables: TableInfo[], to: DriverId, from?: Driver
       }),
     }
   })
+    .map((t) => (t.checks ? { ...t, checks: t.checks.map((c) => ({ ...c, expression: translateCondition(c.expression, to) })).filter((c) => !((to === 'oracle' || to === 'mysql' || to === 'mariadb') && NOT_IN_MYSQL_CHECK.test(c.expression))) } : t))
+    .map((t) => (['mysql', 'mariadb', 'mssql', 'oracle'].includes(to) ? oneIdentity(t) : t))
+    .map((t) => (to === 'mysql' || to === 'mariadb' ? forMySql(t) : t))
+}
+
+/** MySQL, SQL Server and Oracle number one column per table: the key's, if it is one of them. */
+function oneIdentity(t: TableInfo): TableInfo {
+  const auto = t.columns.filter((c) => c.isIdentity)
+  if (auto.length < 2) return t
+  const kept = auto.find((c) => c.name.toLowerCase() === t.primaryKey[0]?.toLowerCase()) ?? auto[0]
+  return { ...t, columns: t.columns.map((c) => (c.isIdentity && c !== kept ? { ...c, isIdentity: false } : c)) }
+}
+
+/** The time and the date in a condition, as the target database says them (MySQL and Oracle allow neither in a check). */
+function translateCondition(expression: string, to: DriverId): string {
+  if (to !== 'mssql') return expression
+  return expression.replace(/\b(now\s*\(\s*\)|current_timestamp|localtimestamp|clock_timestamp\s*\(\s*\))/gi, 'SYSDATETIME()').replace(/\bcurrent_date\b/gi, 'CAST(GETDATE() AS date)')
+}
+
+/** Bytes a MySQL row takes for a column (utf8mb4: four per character), BLOB and TEXT not counted. */
+function mySqlBytes(type: string): number {
+  const sized = /^(?:var)?char(?:acter)?(?: varying)?\s*\(\s*(\d+)\s*\)$/i.exec(type.trim())
+  if (sized) return Number(sized[1]) * 4 + 2
+  return /text|blob|json/i.test(type) ? 0 : 8
+}
+
+/** Only deterministic conditions are allowed in a MySQL check. */
+const NOT_IN_MYSQL_CHECK = /\b(now|current_timestamp|current_date|current_time|curdate|curtime|sysdate|localtime|localtimestamp|utc_date|utc_time|utc_timestamp|rand|uuid|user|current_user|connection_id)\b/i
+
+/**
+ * What MySQL refuses in a table that other databases take: a row wider than 65,535 bytes (the longest strings
+ * that are not keys become TEXT), an auto-increment column that does not lead a key (it gets a unique constraint),
+ * and checks that ask for the time or a random value.
+ */
+function forMySql(t: TableInfo): TableInfo {
+  const keyed = new Set([...t.primaryKey, ...t.indexes.flatMap((i) => i.columns), ...t.foreignKeys.flatMap((f) => f.columns)])
+  const columns = [...t.columns]
+  let width = columns.reduce((sum, c) => sum + mySqlBytes(c.dataType), 0)
+  while (width > 65535) {
+    const widest = columns.map((c, i) => ({ c, i, bytes: mySqlBytes(c.dataType) })).filter((x) => !keyed.has(x.c.name) && x.bytes > 8).sort((a, b) => b.bytes - a.bytes)[0]
+    if (!widest) break
+    columns[widest.i] = { ...widest.c, dataType: 'text' }
+    width -= widest.bytes
+  }
+  // The auto-increment column has to lead a key when the table is created: a unique constraint, which its values
+  // are anyway.
+  const leads = new Set([t.primaryKey[0], ...t.indexes.map((i) => i.columns[0])].filter(Boolean).map((c) => c!.toLowerCase()))
+  const indexes = [...t.indexes]
+  for (const c of columns) {
+    if (c.isIdentity && !leads.has(c.name.toLowerCase())) indexes.push({ name: `${t.name}_${c.name}_ai`.slice(0, 64), columns: [c.name], unique: true, primary: false, constraint: true })
+  }
+  const checks = t.checks?.filter((ch) => !NOT_IN_MYSQL_CHECK.test(ch.expression))
+  return { ...t, columns, indexes, ...(t.checks ? { checks } : {}) }
 }
