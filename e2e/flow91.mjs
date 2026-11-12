@@ -296,12 +296,11 @@ try {
     await browser.getByTestId('browser-search').fill('')
     t0 = Date.now()
     await browser.locator('[data-testid^="browser-table-"]').nth(Math.floor(listed / 2)).dblclick()
-    await win.getByTestId('table-dialog-grid').waitFor({ timeout: 20000 })
+    await win.getByTestId('table-panel').waitFor({ timeout: 20000 })
     const dialogMs = Date.now() - t0
-    const rows = await win.locator('[data-testid="table-dialog-grid"] tbody tr').count()
-    await win.getByRole('button', { name: 'SQL', exact: true }).click()
-    const sqlLines = (await win.getByTestId('table-dialog-sql').innerText()).split('\n').length
-    await win.getByRole('button', { name: 'Cancel', exact: true }).click()
+    const rows = await win.locator('[data-testid="table-panel"] [data-testid^="column-name-"]').count()
+    const sqlLines = ((await win.getByTestId('table-sql').textContent()) ?? '').split('\n').length
+    await win.keyboard.press('Escape')
     console.log('local model browser: tables listed', listed, '| search', searchMs, 'ms,', found, 'found | table dialog', dialogMs, 'ms,', rows, 'columns,', sqlLines, 'lines of SQL')
 
     // Editing and saving, only on a copy and only when asked (DBM_DEZ_WRITE=1): a column added in a table's dialog,
@@ -309,19 +308,19 @@ try {
     if (process.env.DBM_DEZ_WRITE === '1') {
       const packages = await browser.locator('[data-testid^="browser-package-"]').count()
       await browser.locator('[data-testid^="browser-table-"]').nth(Math.floor(listed / 3)).dblclick()
-      await win.getByTestId('table-dialog-grid').waitFor({ timeout: 20000 })
-      const before = await win.locator('[data-testid="table-dialog-grid"] tbody tr').count()
-      await win.getByTestId('table-dialog-add-column').click()
-      await win.locator('[data-testid="table-dialog-grid"] tbody tr').last().locator('input').first().fill('dbm_e2e_note')
+      await win.getByTestId('table-panel').waitFor({ timeout: 20000 })
+      const before = await win.locator('[data-testid="table-panel"] [data-testid^="column-name-"]').count()
+      await win.getByTestId('table-add-column').click()
+      await win.locator('[data-testid="table-panel"] [data-testid^="column-name-"]').last().fill('dbm_e2e_note')
       let packaged = 0
       if (packages) {
-        const offered = await win.getByTestId('table-dialog-add-package').locator('option:not([disabled])').evaluateAll((o) => o.map((x) => x.value).filter(Boolean))
+        const offered = await win.getByTestId('table-add-package').locator('option:not([disabled])').evaluateAll((o) => o.map((x) => x.value).filter(Boolean))
         if (offered.length) {
-          await win.getByTestId('table-dialog-add-package').selectOption(offered[0])
-          packaged = (await win.locator('[data-testid="table-dialog-grid"] tbody tr').count()) - before - 1
+          await win.getByTestId('table-add-package').selectOption(offered[0])
+          packaged = (await win.locator('[data-testid="table-panel"] [data-testid^="column-name-"]').count()) - before - 1
         }
       }
-      await win.getByTestId('table-dialog-ok').click()
+      await win.keyboard.press('Escape')
       t0 = Date.now()
       await win.getByRole('button', { name: 'Save', exact: true }).click()
       await win.getByText(/Write these changes into/).waitFor({ timeout: 120000 })

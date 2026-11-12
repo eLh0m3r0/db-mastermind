@@ -16,7 +16,7 @@ const write = async () => {
   await win.waitForTimeout(900)
 }
 const designing = async () => {
-  if (!(await win.getByRole('button', { name: /Write to DBML/ }).count())) await win.getByRole('button', { name: 'Design', exact: true }).click()
+  if (!(await win.getByRole('button', { name: /Write to DBML/ }).count())) if (await win.getByRole('button', { name: 'Design', exact: true }).count()) await win.getByRole('button', { name: 'Design', exact: true }).click()
   await win.getByRole('button', { name: /Write to DBML/ }).waitFor({ timeout: 10000 })
 }
 const node = (key) => win.locator(`.react-flow__node[data-id="${key}"]`)
@@ -81,33 +81,30 @@ try {
   const [e, f] = [await node('shop.invoice').boundingBox(), await node('shop.line').boundingBox()]
   console.log('undo and redo of the move:', Math.abs(c.x - d.x) > 2, Math.abs(e.x - f.x) < 2)
 
-  // DeZign's table dialog (double-click): the columns in a grid, the SQL it makes; nothing changes before OK.
+  // A table's details (double-click): its columns one line each, the SQL it makes, in the panel next to the diagram.
   await win.keyboard.press('Escape')
   await node('shop.invoice').dblclick({ position: { x: 40, y: 12 } })
-  await win.getByTestId('table-dialog-grid').waitFor({ timeout: 10000 })
-  await win.getByTestId('grid-type-total').fill('numeric(14,2)')
-  await win.getByTestId('table-dialog-add-column').click()
+  await win.getByTestId('table-panel').waitFor({ timeout: 10000 })
+  await win.getByTestId('column-type-total').fill('numeric(14,2)')
+  await win.getByTestId('table-add-column').click()
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow97-table-dialog.png') })
-  await win.getByRole('button', { name: 'SQL', exact: true }).click()
-  const preview = await win.getByTestId('table-dialog-sql').innerText()
-  await win.getByTestId('table-dialog-ok').click()
+  const preview = await win.getByTestId('table-sql').textContent()
   await write()
   text = await modelText()
-  console.log('table dialog:', /CREATE TABLE/.test(preview) && /numeric\(14,\s*2\)/i.test(preview), /total numeric\(14,2\)/.test(text), /column_4/.test(text))
+  console.log('table details:', /CREATE TABLE/.test(preview) && /numeric\(14,\s*2\)/i.test(preview), /total numeric\(14,2\)/.test(text), /column_4/.test(text))
 
-  // DeZign's relationship dialog (double-click on the line line → invoice): cardinality, identifying, on delete.
+  // A relationship's details (double-click on the line line → invoice), in the same panel: cardinality, identifying, on delete.
   await designing()
   await win.locator('[data-testid^="rf__edge-shop.line:"]').first().dispatchEvent('dblclick')
-  await win.getByTestId('relationship-cardinality').waitFor({ timeout: 10000 })
-  await win.getByTestId('cardinality-one-or-more').click()
-  await win.getByText('Identifying', { exact: true }).click()
-  await win.getByTestId('relationship-on-delete').selectOption('CASCADE')
+  await win.getByTestId('fk-cardinality').waitFor({ timeout: 10000 })
+  await win.getByTestId('fk-cardinality').selectOption('one-or-more')
+  await win.getByTestId('table-panel').getByText('Identifying', { exact: true }).click()
+  await win.getByTestId('fk-on-delete').selectOption('CASCADE')
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow97-relationship-dialog.png') })
-  await win.getByTestId('relationship-dialog-ok').click()
   await write()
   text = await modelText()
   const lineTable = /Table shop\.line \{[\s\S]*?\n\}/.exec(text)?.[0] ?? ''
-  console.log('relationship dialog:', /shop\.line\.invoice_id > shop\.invoice\.id \[[^\]]*delete: cascade[^\]]*cardinality: 'one or more'/i.test(text) || /cardinality: 'one or more'[^\]]*delete: cascade/i.test(text), /invoice_id bigint \[[^\]]*pk/.test(lineTable) || /\(id, invoice_id\) \[pk\]/.test(lineTable))
+  console.log('relationship details:', /shop\.line\.invoice_id > shop\.invoice\.id \[[^\]]*delete: cascade[^\]]*cardinality: 'one or more'/i.test(text) || /cardinality: 'one or more'[^\]]*delete: cascade/i.test(text), /invoice_id bigint \[[^\]]*pk/.test(lineTable) || /\(id, invoice_id\) \[pk\]/.test(lineTable))
 
   // The Delete key takes a selected table out of the model.
   await win.keyboard.press('Escape')
@@ -182,9 +179,9 @@ try {
   // A change made in a dialog goes into what the toolbar makes without "Write to DBML" first (as Save does).
   await designing()
   await node('sales.customer').dblclick({ position: { x: 40, y: 12 } })
-  await win.getByTestId('table-dialog-grid').waitFor({ timeout: 10000 })
-  await win.getByTestId('grid-type-name').fill('varchar(77)')
-  await win.getByTestId('table-dialog-ok').click()
+  await win.getByTestId('table-panel').waitFor({ timeout: 10000 })
+  await win.getByTestId('column-type-name').fill('varchar(77)')
+  await win.keyboard.press('Escape')
   // (Without a database the script is saved as a file: the dialog is answered here, never shown.)
   const firstDdl = join(dir, 'first.sql')
   await app.evaluate(({ dialog }, path) => {

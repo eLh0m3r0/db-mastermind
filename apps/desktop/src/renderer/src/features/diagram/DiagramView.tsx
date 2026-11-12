@@ -26,7 +26,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { toPng, toSvg } from 'html-to-image'
-import { AlignHorizontalJustifyStart, AlignVerticalJustifyStart, AlignHorizontalSpaceAround, AlignVerticalSpaceAround, Bookmark, Copy, Download, Trash2, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Plus, Route, Search, Layers, Redo, Sparkles, SquareDashed, StickyNote, Table2, Undo, Undo2, Users, X } from 'lucide-react'
+import { AlignHorizontalJustifyStart, AlignVerticalJustifyStart, AlignHorizontalSpaceAround, AlignVerticalSpaceAround, Bookmark, Copy, Download, Trash2, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Pin, PinOff, Plus, Route, Search, Layers, Redo, Sparkles, SquareDashed, StickyNote, Table2, Undo, Undo2, Users, X } from 'lucide-react'
 import {
   designId,
   designToTableInfo,
@@ -68,8 +68,6 @@ import type { SavedDiagram, DiagramNote, DiagramDisplay } from '@shared/api'
 import { MigrationModal } from './MigrationModal'
 import { ReportDialog } from './ReportDialog'
 import { TableEditor } from './TableEditor'
-import { TableDialog } from './TableDialog'
-import { RelationshipDialog } from './RelationshipDialog'
 import { formatDate, t, tp, useT } from '@/lib/i18n'
 import { askText, confirmAction } from '@/components/ui/ConfirmDialog'
 
@@ -440,13 +438,51 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
   // A model needs no database to be edited: without a connection the table editor works for the model's own.
   const editorDriver = connection?.driver ?? (model ? (modelDriver ?? 'postgres') : undefined)
   const newQuery = useWorkspace((s) => s.newQuery)
-  const [design, setDesign] = useState(!!tab.startDesign || (!!tab.design && Object.keys(tab.design).length > 0))
+  // A model is always being edited; a database's diagram is designed on when asked for.
+  const [designOn, setDesign] = useState(!!tab.startDesign || (!!tab.design && Object.keys(tab.design).length > 0))
+  const design = designOn || (!!model && !!onApplyModel)
   const [selected, setSelected] = useState<string | null>(tab.startDesign ?? null)
+  // The detail panel: docked when the window leaves room for the diagram next to it, else a drawer over it.
+  const workArea = useRef<HTMLDivElement>(null)
+  const [narrow, setNarrow] = useState(false)
+  useEffect(() => {
+    const el = workArea.current
+    if (!el) return
+    const watch = new ResizeObserver(([entry]) => setNarrow((entry?.contentRect.width ?? 0) < 1100))
+    watch.observe(el)
+    return () => watch.disconnect()
+  }, [])
+  const [pinned, setPinnedState] = useState(() => {
+    try {
+      return localStorage.getItem('dbm.detailPinned') === '1'
+    } catch {
+      return false
+    }
+  })
+  const setPinned = (on: boolean) => {
+    setPinnedState(on)
+    try {
+      localStorage.setItem('dbm.detailPinned', on ? '1' : '0')
+    } catch {
+      // (Remembered when it can be.)
+    }
+  }
+  const overlay = narrow && !pinned
+  // Esc closes the panel (not while a dialog or a menu is open).
+  useEffect(() => {
+    if (!selected) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || document.querySelector('[role="dialog"], [role="menu"]')) return
+      setSelected(null)
+      setFocusFk(undefined)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selected])
   // A relationship clicked on the canvas: the child table's panel shows its foreign key.
   const [focusFk, setFocusFk] = useState<string | undefined>()
   // DeZign's dialogs for a model: a table's (double-click) and a relationship's (double-click on its line).
   // (The draft is taken when the dialog opens: a table not edited yet gets a fresh draft, with new ids, each render.)
-  const [dialog, setDialog] = useState<{ kind: 'table'; key: string; table: DesignTable } | { kind: 'relationship'; key: string; fk: string; table: DesignTable } | null>(null)
   const [reviewOpen, setReviewOpen] = useState(false)
   const drafts = useMemo(() => tab.design ?? {}, [tab.design])
   // Changes arriving from outside (the AI assistant) switch the designer on.
@@ -1163,11 +1199,9 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
     if (!model || !onApplyModel) return
     const draft = draftFor(request.key)
     if (!draft) return
-    setDesign(true)
-    if (request.kind === 'table') return setDialog({ kind: 'table', key: request.key, table: draft })
-    const at = designToTableInfo(draft).foreignKeys.findIndex((f) => f.name === request.fk)
-    const fk = at >= 0 ? draft.foreignKeys[at] : undefined
-    if (fk) setDialog({ kind: 'relationship', key: request.key, fk: fk.id, table: draft })
+    // The table's details (and the relationship's, highlighted), in the panel.
+    setSelected(request.key)
+    setFocusFk(request.kind === 'relationship' ? request.fk : undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [request?.n])
   /** Lines the selected tables up on their left or top edge, or spreads them evenly. */
@@ -1475,7 +1509,7 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
         {/* The view actions wrap as one group when the window is narrow. */}
         <div className="ml-auto flex shrink-0 items-center gap-2">
         {layouting && <Spinner size={13} className="text-fg-faint" />}
-        {(!model || onApplyModel) && (
+        {!model && (
         <Button
           size="sm"
           variant={design ? 'subtle' : 'ghost'}
@@ -1719,7 +1753,7 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
           )}
         </div>
       )}
-      <div className="flex min-h-0 flex-1">
+      <div ref={workArea} className="relative flex min-h-0 flex-1">
       <div ref={wrapper} className="min-h-0 min-w-0 flex-1">
         <svg width="0" height="0" className="absolute">
           <defs>
@@ -1773,15 +1807,8 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
           }}
           onEdgeDoubleClick={(_, edge) => {
             if (!model || !onApplyModel) return
-            const draft = draftFor(edge.source)
-            const name = edge.id.slice(edge.source.length + 1)
-            const info = draft && designToTableInfo(draft)
-            // The edge is named as the table info names the key (a generated name for an unnamed one).
-            const at = info?.foreignKeys.findIndex((f) => f.name === name) ?? -1
-            const fk = draft && at >= 0 ? draft.foreignKeys[at] : undefined
-            if (!fk || !draft) return
-            setDesign(true)
-            setDialog({ kind: 'relationship', key: edge.source, fk: fk.id, table: draft })
+            setSelected(edge.source)
+            setFocusFk(edge.id.slice(edge.source.length + 1))
           }}
           onPaneClick={() => {
             setSelected(null)
@@ -1817,9 +1844,8 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
             if (isNote(n.id)) return
             // In a model, as in DeZign: the table's properties. In a database: its data.
             if (model && onApplyModel) {
-              const table = draftFor(n.id)
-              setDesign(true)
-              if (table) setDialog({ kind: 'table', key: n.id, table })
+              setFocusFk(undefined)
+              setSelected(n.id)
               return
             }
             openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: n.data.table.schema, name: n.data.table.name }, title: n.data.table.name })
@@ -1850,7 +1876,7 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
               ...(model && onApplyModel
                 ? [
                     'separator' as const,
-                    { label: tr('Properties…'), icon: <PencilRuler size={13} />, onClick: () => { const table = draftFor(n.id); setDesign(true); if (table) setDialog({ kind: 'table', key: n.id, table }) } },
+                    { label: tr('Properties…'), icon: <PencilRuler size={13} />, onClick: () => { setFocusFk(undefined); setSelected(n.id) } },
                     { label: tr('Duplicate table'), icon: <Copy size={13} />, onClick: () => duplicateTable(n.id) },
                     { label: tr('Delete table'), icon: <Trash2 size={13} />, onClick: () => dropTables([n.id]) },
                     'separator' as const,
@@ -1959,6 +1985,17 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
           allTables={tables}
           model={!!model}
           domains={domains}
+          userProperties={userProperties}
+          labels={labels}
+          // Next to the canvas when there is room for both; over it in a narrow window (unless pinned).
+          className={overlay ? 'absolute inset-y-0 right-0 z-20 max-w-[92%] shadow-2xl' : undefined}
+          headerExtra={
+            narrow ? (
+              <IconButton label={pinned ? tr('Let it slide over the diagram') : tr('Keep it next to the diagram')} onClick={() => setPinned(!pinned)} data-testid="table-panel-pin">
+                {pinned ? <PinOff size={13} /> : <Pin size={13} />}
+              </IconButton>
+            ) : undefined
+          }
           onChange={(t) => updateDraft(selected, t)}
           focusForeignKey={focusFk}
           onRevert={
@@ -1985,35 +2022,6 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
         />
       )}
       <DiagramNameModal open={naming} onClose={() => setNaming(false)} onSave={(name) => void saveAs(name)} />
-      {dialog?.kind === 'table' && editorDriver && (
-        <TableDialog
-          key={dialog.key}
-          table={dialog.table}
-          driver={editorDriver}
-          allTables={tables}
-          domains={domains}
-          userProperties={userProperties}
-          labels={labels}
-          onApply={(t) => {
-            updateDraft(dialog.key, t)
-            setDialog(null)
-          }}
-          onClose={() => setDialog(null)}
-        />
-      )}
-      {dialog?.kind === 'relationship' && (
-        <RelationshipDialog
-          key={`${dialog.key}:${dialog.fk}`}
-          child={dialog.table}
-          foreignKey={dialog.fk}
-          allTables={tables}
-          onApply={(t) => {
-            updateDraft(dialog.key, t)
-            setDialog(null)
-          }}
-          onClose={() => setDialog(null)}
-        />
-      )}
       {connection && schema && (
         <MigrationModal
           open={reviewOpen}

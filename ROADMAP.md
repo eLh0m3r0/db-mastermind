@@ -638,8 +638,11 @@ compatibility while the screens change).
 - ✅ A lean model bar: Save, SQL, AI, Compare (its arrow picks the database or a version/file; with no database
   linked, picking one compares at once), More (domains, project scripts, versions, rename,
   views and code, directives…); texts name DeZign only for its files ("as in DeZign" is gone from the screens)
-- ⬜ One detail panel for the selected table, column or relationship, docked right in a wide window and a drawer
-  over the canvas in a narrow one; the table and relationship dialogs go
+- ✅ One detail panel for the selected table, column or relationship, docked right in a wide window and a drawer
+  over the canvas in a narrow one (Esc closes it, a pin keeps it docked); the table and relationship dialogs are
+  gone. Columns are one line each (key, name, type, NOT NULL); the one being worked on shows its details (default,
+  comment, domain, notes, labels, properties, to do, its package). A relationship's identifying / mandatory /
+  subtype are in its row; the table's SQL is at the bottom. A model is always editable (no Design switch)
 - ⬜ In place on the canvas: rename a table or a column, add a column (Enter), its type and NOT NULL
 
 ---

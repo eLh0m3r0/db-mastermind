@@ -24,7 +24,7 @@ try {
   await win.keyboard.type('Open ER diagram')
   await win.keyboard.press('Enter')
   await win.waitForTimeout(2000)
-  await win.getByRole('button', { name: 'Design', exact: true }).click()
+  if (await win.getByRole('button', { name: 'Design', exact: true }).count()) await win.getByRole('button', { name: 'Design', exact: true }).click()
   await win.getByRole('button', { name: 'Design with AI…' }).click()
   await win.getByRole('dialog').locator('textarea').fill('add a nullable deleted_at column (TEXT) to the customers table for soft delete; change nothing else')
   await win.keyboard.press('Enter')

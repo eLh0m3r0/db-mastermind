@@ -21,7 +21,7 @@ try {
   await win.keyboard.type('Open ER diagram')
   await win.keyboard.press('Enter')
   await win.waitForTimeout(2000)
-  await win.getByRole('button', { name: 'Design', exact: true }).click()
+  if (await win.getByRole('button', { name: 'Design', exact: true }).count()) await win.getByRole('button', { name: 'Design', exact: true }).click()
   await win.getByRole('button', { name: 'New table', exact: true }).first().click()
   await win.waitForTimeout(400)
   console.log('with change:', await nodes())

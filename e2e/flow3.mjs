@@ -28,7 +28,7 @@ try {
   // (The database may hold other schemas from other tests: the diagram shows the shop.)
   await win.locator('select', { has: win.locator('option', { hasText: /^shop$/ }) }).first().selectOption('shop').catch(() => {})
   await win.waitForTimeout(800)
-  await win.getByRole('button', { name: 'Design' }).click()
+  if (await win.getByRole('button', { name: 'Design' }).count()) await win.getByRole('button', { name: 'Design' }).click()
   await win.locator('.react-flow__node', { hasText: 'customers' }).first().click()
   await win.waitForTimeout(400)
   await win.getByRole('button', { name: 'Add', exact: true }).first().click()

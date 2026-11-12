@@ -29,7 +29,7 @@ try {
 
   await win.getByRole('button', { name: 'Text (DBML)' }).last().click()
 
-  await win.getByRole('button', { name: 'Design', exact: true }).click()
+  if (await win.getByRole('button', { name: 'Design', exact: true }).count()) await win.getByRole('button', { name: 'Design', exact: true }).click()
   await win.waitForTimeout(500)
   // Dragging from a table's own dot to another table makes the key column and the foreign key, as DeZign does.
   const dot = await win.locator('.react-flow__node[data-id="shop.invoice"] .react-flow__handle[data-handleid="s-*"]').boundingBox()
@@ -44,9 +44,11 @@ try {
   await win.locator('.react-flow__node[data-id="shop.customer"]').click()
   await win.getByText('Edit table').waitFor({ timeout: 10000 })
   console.log('table panel opens:', await win.getByText('Edit table').count() === 1)
+  // A column shows its details when worked on (one at a time).
+  await win.getByTestId('column-name-email').click()
   await win.getByTestId('column-comment-email').fill('Přihlašovací e-mail')
   // email goes before name
-  await win.getByRole('button', { name: 'Move up' }).nth(2).click()
+  await win.getByTestId('table-panel').getByRole('button', { name: 'Move up' }).first().click()
   await win.getByRole('button', { name: 'Add', exact: true }).nth(0).click()
   await win.locator('input[value="column_4"]').fill('credit')
   await win.getByRole('button', { name: 'Add', exact: true }).nth(3).click()
@@ -104,8 +106,8 @@ try {
     await win.getByTestId('domain-name-0').fill('money_t')
     await win.getByTestId('domain-type-0').fill('numeric(12,2)')
   })
-  await win.getByRole('button', { name: /Design/ }).first().click()
   await win.locator('.react-flow__node[data-id="shop.customer"]').click()
+  await win.getByTestId('column-name-credit').click()
   await win.getByTitle('The named type (domain) the column follows').last().selectOption('money_t')
   await win.getByRole('button', { name: /Write to DBML/ }).click()
   await win.waitForTimeout(800)
@@ -213,9 +215,9 @@ try {
   await win.getByTestId('browser-search').fill('INVOI')
   const listed = await win.locator('[data-testid^="browser-table-"]').count()
   await win.getByTestId('browser-table-invoice').dblclick()
-  await win.getByTestId('table-dialog-grid').waitFor({ timeout: 10000 })
-  console.log('object browser:', listed === 1, await win.getByTestId('grid-name-total').count() === 1)
-  await win.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await win.getByTestId('table-panel').waitFor({ timeout: 10000 })
+  console.log('object browser:', listed === 1, await win.getByTestId('column-name-total').count() === 1)
+  await win.keyboard.press('Escape')
 
   // A batch rename (DeZign's renaming tool): the invoice table and all its columns at once, saved into the project
   // as the same table (its id kept), not as one dropped and another made.
@@ -239,10 +241,10 @@ try {
   await win.getByTestId('browser-search').fill('')
   const packageListed = await win.getByTestId('browser-package-Stamp').count()
   await win.getByTestId('browser-table-customer').dblclick()
-  await win.getByTestId('table-dialog-grid').waitFor({ timeout: 10000 })
-  await win.getByTestId('table-dialog-add-package').selectOption('Stamp')
-  const badge = await win.getByTestId('grid-package-created_at').count()
-  await win.getByTestId('table-dialog-ok').click()
+  await win.getByTestId('table-panel').waitFor({ timeout: 10000 })
+  await win.getByTestId('table-add-package').selectOption('Stamp')
+  const badge = await win.getByTestId('column-package-created_at').count()
+  await win.keyboard.press('Escape')
   await saveProject()
   const packaged = readFileSync(dez, 'latin1').split('</VERSION>')[0]
   const customerEnt = /<ENT>\s*<NAME>customer<\/NAME>[\s\S]*?<\/ENT>/.exec(packaged)?.[0] ?? ''
@@ -250,12 +252,11 @@ try {
 
   // Custom properties (DeZign's user defined properties): the table's on their own tab, a column's under the grid.
   await win.getByTestId('browser-table-customer').dblclick()
-  await win.getByTestId('table-dialog-grid').waitFor({ timeout: 10000 })
-  await win.getByTestId('grid-name-email').click()
+  await win.getByTestId('table-panel').waitFor({ timeout: 10000 })
+  await win.getByTestId('column-name-email').click()
   await win.getByTestId('properties-attribute').getByTestId('property-Personal data').selectOption('Yes')
-  await win.getByRole('button', { name: 'Properties', exact: true }).click()
   await win.getByTestId('properties-entity').getByTestId('property-Owner').selectOption('Team B')
-  await win.getByTestId('table-dialog-ok').click()
+  await win.keyboard.press('Escape')
   const listedProps = await saveProject()
   const withProps = readFileSync(dez, 'latin1').split('</VERSION>')[0]
   const customerProps = /<ENT>\s*<NAME>customer<\/NAME>[\s\S]*?<\/ENT>/.exec(withProps)?.[0] ?? ''
@@ -264,21 +265,20 @@ try {
   // A relationship made a subtype's (DeZign: a cluster under the supertype), from its dialog.
   await win.getByTestId('browser-group-relationships').click()
   await win.locator('[data-testid^="browser-relationship-"]').first().dblclick()
-  await win.getByText('Subtype', { exact: true }).waitFor({ timeout: 10000 })
-  await win.getByText('Subtype', { exact: true }).click()
-  await win.getByRole('button', { name: 'OK', exact: true }).last().click()
+  await win.getByTestId('table-panel').getByText('Subtype', { exact: true }).waitFor({ timeout: 10000 })
+  await win.getByTestId('table-panel').getByText('Subtype', { exact: true }).click()
+  await win.keyboard.press('Escape')
   const listedSubtype = await saveProject()
   const withSubtype = readFileSync(dez, 'latin1').split('</VERSION>')[0]
   console.log('subtype:', /subtype/.test(listedSubtype), /<SUBCAT>[\s\S]*?<AOID>/.test(withSubtype), /<RELTYPE>2<\/RELTYPE>/.test(withSubtype), /<SUBCATC>/.test(withSubtype))
 
   // Labels (DeZign: e.g. PII) on a table and on a column, shown under "Labeled objects".
   await win.getByTestId('browser-table-customer').dblclick()
-  await win.getByTestId('table-dialog-grid').waitFor({ timeout: 10000 })
-  await win.getByTestId('grid-name-email').click()
+  await win.getByTestId('table-panel').waitFor({ timeout: 10000 })
+  await win.getByTestId('column-name-email').click()
   await win.getByTestId('column-labels').getByTestId('label-PII').click()
-  await win.getByRole('button', { name: 'Description', exact: true }).click()
   await win.getByTestId('table-labels').getByTestId('label-PII').click()
-  await win.getByTestId('table-dialog-ok').click()
+  await win.keyboard.press('Escape')
   await saveProject()
   const withLabels = readFileSync(dez, 'latin1').split('</VERSION>')[0]
   const customerLabels = /<ENT>\s*<NAME>customer<\/NAME>[\s\S]*?<\/ENT>/.exec(withLabels)?.[0] ?? ''
@@ -288,12 +288,11 @@ try {
 
   // To-do items (DeZign: To do) of a table and a column, listed in the object browser.
   await win.getByTestId('browser-table-customer').dblclick()
-  await win.getByTestId('table-dialog-grid').waitFor({ timeout: 10000 })
-  await win.getByTestId('grid-name-email').click()
+  await win.getByTestId('table-panel').waitFor({ timeout: 10000 })
+  await win.getByTestId('column-name-email').click()
   await win.getByTestId('column-todo').fill('Check the format')
-  await win.getByRole('button', { name: 'Description', exact: true }).click()
   await win.getByTestId('table-todo').fill('Split names')
-  await win.getByTestId('table-dialog-ok').click()
+  await win.keyboard.press('Escape')
   await saveProject()
   const withTodo = readFileSync(dez, 'latin1').split('</VERSION>')[0]
   const listedTodos = await win.locator('[data-testid^="browser-todo-"]').count()

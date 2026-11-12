@@ -1,13 +1,34 @@
-import { useEffect, useRef } from 'react'
-import { ArrowDown, ArrowRight, ArrowUp, KeyRound, Plus, RotateCcw, Trash2, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  ArrowDown,
+  ArrowRight,
+  ArrowUp,
+  ChevronDown,
+  ChevronRight,
+  KeyRound,
+  Package,
+  Plus,
+  RotateCcw,
+  Trash2,
+  X,
+} from 'lucide-react'
 import {
   COMMON_TYPES,
+  attributePackages,
+  createScript,
   designId,
+  designToTableInfo,
+  getDialect,
   leavesPackage,
+  packageColumnsFor,
   type DesignTable,
+  type DezignLabel,
+  type DezignUserProperty,
   type DriverId,
   type TableInfo,
 } from '@dbmastermind/core/browser'
+import { LabelsPicker } from './LabelsPicker'
+import { PropertiesEditor } from './PropertiesEditor'
 import { Button, IconButton } from '@/components/ui/Button'
 import { Checkbox, Input, Select, Textarea } from '@/components/ui/Input'
 import { cn } from '@/lib/utils'
@@ -36,6 +57,10 @@ export function TableEditor({
   onClose,
   focusForeignKey,
   only,
+  userProperties = [],
+  labels = [],
+  className,
+  headerExtra,
 }: {
   table: DesignTable
   driver: DriverId
@@ -51,6 +76,14 @@ export function TableEditor({
   focusForeignKey?: string
   /** Inside the table dialog: just these sections, without the panel's frame. */
   only?: ('foreignKeys' | 'indexes' | 'checks')[]
+  /** The custom properties the project defines (DeZign's user defined properties). */
+  userProperties?: DezignUserProperty[]
+  /** The labels the project defines. */
+  labels?: DezignLabel[]
+  /** Where the panel sits: docked next to the canvas, or over it (a narrow window). */
+  className?: string
+  /** Buttons for the panel's header (pin). */
+  headerExtra?: React.ReactNode
 }) {
   const tr = useT()
   // Foreign keys can only point at tables, not views.
@@ -61,6 +94,18 @@ export function TableEditor({
   useEffect(() => {
     if (isNew) nameInput.current?.select()
   }, [table.id, isNew])
+  // One column shows its details at a time (the one being worked on); the others stay one line each.
+  // (By its place: a table not drafted yet gets new column ids each time it is drawn.)
+  const [openColumn, setOpenColumn] = useState<number>()
+  const packages = useMemo(() => (model ? attributePackages(everything) : []), [everything, model])
+  const sql = useMemo(() => {
+    if (!model) return ''
+    try {
+      return createScript([designToTableInfo(table)], getDialect(driver))
+    } catch (err) {
+      return `-- ${err instanceof Error ? err.message : String(err)}`
+    }
+  }, [table, driver, model])
   const focused = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (focusForeignKey) focused.current?.scrollIntoView({ block: 'center' })
@@ -93,6 +138,8 @@ export function TableEditor({
     const columns = [...table.columns]
     columns.splice(to, 0, ...columns.splice(from, 1))
     set({ columns })
+    // The column being worked on stays open where it went.
+    if (openColumn === from) setOpenColumn(to)
   }
   // The named types (domains) the model's columns follow, with the type each stands for.
   const domains = [
@@ -178,11 +225,52 @@ export function TableEditor({
               />
             </label>
           )}
+          {model && labels.length > 0 && (
+            <div className="mb-3 flex flex-col gap-1">
+              <span className="text-[11.5px] font-medium text-fg-muted">{tr('Labels')}</span>
+              <LabelsPicker
+                labels={labels}
+                value={table.labels}
+                onChange={(l) => set({ labels: l })}
+                testId="table-labels"
+              />
+            </div>
+          )}
+          {model && userProperties.some((d) => d.objectTypes.some((x) => /^entity$/i.test(x))) && (
+            <div className="mb-3 flex flex-col gap-1">
+              <span className="text-[11.5px] font-medium text-fg-muted">{tr('Properties')}</span>
+              <PropertiesEditor
+                definitions={userProperties}
+                objectType="Entity"
+                values={table.properties}
+                onChange={(properties) => set({ properties })}
+                compact
+              />
+            </div>
+          )}
+          {model && (
+            <label className="mb-4 flex flex-col gap-1">
+              <span
+                className="text-[11.5px] font-medium text-fg-muted"
+                title={tr('What is still to be done; listed in the object browser')}
+              >
+                {tr('To do')}
+              </span>
+              <Textarea
+                rows={1}
+                className="resize-y text-[12px]"
+                value={table.todo ?? ''}
+                onChange={(e) => set({ todo: e.target.value || undefined })}
+                data-testid="table-todo"
+              />
+            </label>
+          )}
         </>
       )}
       {show('columns') && (
         <Section
           title={tr('Columns')}
+          testId="table-add-column"
           onAdd={() =>
             set({
               columns: [
@@ -198,8 +286,16 @@ export function TableEditor({
           }
         >
           <div className="flex flex-col gap-1">
-            {table.columns.map((c) => (
-              <div key={c.id} className="rounded-md border border-line bg-bg p-1.5">
+            {table.columns.map((c, at) => (
+              <div
+                key={c.id}
+                className={cn(
+                  'rounded-md border bg-bg p-1',
+                  openColumn === at ? 'border-accent/60' : 'border-line',
+                )}
+                onFocusCapture={() => setOpenColumn(at)}
+                data-testid={`column-${c.name}`}
+              >
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
@@ -218,116 +314,201 @@ export function TableEditor({
                   </button>
                   <Input
                     inputSize="sm"
-                    className="h-6 flex-1 font-mono text-[12px]"
+                    className="h-6 min-w-0 flex-1 font-mono text-[12px]"
                     value={c.name}
                     onChange={(e) => setColumn(c.id, { name: e.target.value })}
+                    data-testid={`column-name-${c.name}`}
                   />
+                  {c.package && (
+                    <span
+                      className="flex shrink-0 items-center gap-0.5 rounded bg-subtle px-1 text-[10px] text-fg-muted"
+                      title={tr('From the attribute package {name}', { name: c.package })}
+                      data-testid={`column-package-${c.name}`}
+                    >
+                      <Package size={9} />
+                      {c.package}
+                    </span>
+                  )}
                   <Input
                     inputSize="sm"
-                    className="h-6 w-[130px] font-mono text-[12px]"
+                    className="h-6 w-[118px] font-mono text-[12px]"
                     list="dbm-types"
                     value={c.dataType}
                     onChange={(e) => setColumn(c.id, { dataType: e.target.value })}
+                    data-testid={`column-type-${c.name}`}
                   />
-                  <IconButton label={tr('Move up')} onClick={() => moveColumn(c.id, -1)}>
-                    <ArrowUp size={12} />
-                  </IconButton>
-                  <IconButton label={tr('Move down')} onClick={() => moveColumn(c.id, 1)}>
-                    <ArrowDown size={12} />
-                  </IconButton>
-                  <IconButton
-                    label={tr('Delete column')}
-                    onClick={() =>
-                      set({
-                        columns: table.columns.filter((x) => x.id !== c.id),
-                        primaryKey: table.primaryKey.filter((x) => x !== c.name),
-                        foreignKeys: table.foreignKeys.filter((f) => !f.columns.includes(c.name)),
-                        indexes: table.indexes.filter((i) => !i.columns.includes(c.name)),
-                      })
-                    }
-                  >
-                    <Trash2 size={12} />
-                  </IconButton>
-                </div>
-                <div className="mt-1 flex items-center gap-3 pl-7">
-                  <Checkbox
-                    checked={!c.nullable}
-                    onChange={(v) => setColumn(c.id, { nullable: !v })}
-                    label={<span className="text-[11.5px]">NOT NULL</span>}
-                  />
-                  {(model || !c.originalName) &&
-                    (driver !== 'sqlite' || table.primaryKey.includes(c.name)) && (
-                      <Checkbox
-                        checked={!!c.identity}
-                        onChange={(v) => setColumn(c.id, { identity: v })}
-                        label={<span className="text-[11.5px]">{tr('auto-increment')}</span>}
-                      />
+                  <button
+                    type="button"
+                    title="NOT NULL"
+                    aria-pressed={!c.nullable}
+                    onClick={() => setColumn(c.id, { nullable: !c.nullable })}
+                    className={cn(
+                      'h-6 shrink-0 rounded px-1 text-[10px] font-semibold',
+                      !c.nullable ? 'bg-accent-soft text-accent' : 'text-fg-faint hover:text-fg',
                     )}
-                  <Input
-                    inputSize="sm"
-                    className="h-6 flex-1 font-mono text-[11px]"
-                    placeholder={tr('default')}
-                    value={c.defaultValue ?? ''}
-                    onChange={(e) => setColumn(c.id, { defaultValue: e.target.value || null })}
-                  />
+                    data-testid={`column-nn-${c.name}`}
+                  >
+                    NN
+                  </button>
+                  <IconButton
+                    label={openColumn === at ? tr('Fewer details') : tr('More details')}
+                    onClick={() => setOpenColumn(openColumn === at ? undefined : at)}
+                    data-testid={`column-expand-${c.name}`}
+                  >
+                    {openColumn === at ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                  </IconButton>
                 </div>
-                <div className="mt-1 flex items-center gap-1.5 pl-7">
-                  <Input
-                    inputSize="sm"
-                    className="h-6 flex-1 text-[11.5px]"
-                    placeholder={tr('Comment')}
-                    value={c.comment ?? ''}
-                    onChange={(e) => setColumn(c.id, { comment: e.target.value || null })}
-                    data-testid={`column-comment-${c.name}`}
-                  />
-                  {(domains.length > 0 || c.domain) && (
-                    <Select
-                      inputSize="sm"
-                      className="h-6 w-[130px] text-[11px]"
-                      title={tr('The named type (domain) the column follows')}
-                      value={c.domain ?? ''}
-                      onChange={(e) => {
-                        const picked = domains.find(([name]) => name === e.target.value)
-                        setColumn(
-                          c.id,
-                          picked ? { domain: picked[0], dataType: picked[1] } : { domain: undefined },
-                        )
-                      }}
-                    >
-                      <option value="">{tr('own type')}</option>
-                      {c.domain && !domains.some(([name]) => name === c.domain) && (
-                        <option value={c.domain}>{c.domain}</option>
-                      )}
-                      {domains.map(([name]) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </Select>
-                  )}
-                </div>
-                {model && (
-                  <div className="mt-1 flex items-center gap-1.5 pl-7">
-                    <Input
-                      inputSize="sm"
-                      className="h-6 flex-1 text-[11.5px]"
-                      placeholder={tr('Notes')}
-                      title={tr('Notes kept with the model; never in a script')}
-                      value={c.remarks ?? ''}
-                      onChange={(e) => setColumn(c.id, { remarks: e.target.value || undefined })}
-                      data-testid={`column-remarks-${c.name}`}
-                    />
-                    {(COLLATING.includes(driver) || c.collation) && (
+                {openColumn === at && (
+                  <>
+                    <div className="mt-1 flex items-center justify-end gap-0.5 pl-7">
+                      <IconButton label={tr('Move up')} onClick={() => moveColumn(c.id, -1)}>
+                        <ArrowUp size={12} />
+                      </IconButton>
+                      <IconButton label={tr('Move down')} onClick={() => moveColumn(c.id, 1)}>
+                        <ArrowDown size={12} />
+                      </IconButton>
+                      <IconButton
+                        label={tr('Delete column')}
+                        onClick={() =>
+                          set({
+                            columns: table.columns.filter((x) => x.id !== c.id),
+                            primaryKey: table.primaryKey.filter((x) => x !== c.name),
+                            foreignKeys: table.foreignKeys.filter((f) => !f.columns.includes(c.name)),
+                            indexes: table.indexes.filter((i) => !i.columns.includes(c.name)),
+                          })
+                        }
+                      >
+                        <Trash2 size={12} />
+                      </IconButton>
+                    </div>
+                    <div className="mt-1 flex items-center gap-3 pl-7">
+                      {(model || !c.originalName) &&
+                        (driver !== 'sqlite' || table.primaryKey.includes(c.name)) && (
+                          <Checkbox
+                            checked={!!c.identity}
+                            onChange={(v) => setColumn(c.id, { identity: v })}
+                            label={<span className="text-[11.5px]">{tr('auto-increment')}</span>}
+                          />
+                        )}
                       <Input
                         inputSize="sm"
-                        className="h-6 w-[130px] font-mono text-[11px]"
-                        placeholder={tr('collation')}
-                        value={c.collation ?? ''}
-                        onChange={(e) => setColumn(c.id, { collation: e.target.value.trim() || undefined })}
-                        data-testid={`column-collation-${c.name}`}
+                        className="h-6 flex-1 font-mono text-[11px]"
+                        placeholder={tr('default')}
+                        value={c.defaultValue ?? ''}
+                        onChange={(e) => setColumn(c.id, { defaultValue: e.target.value || null })}
                       />
+                    </div>
+                    <div className="mt-1 flex items-center gap-1.5 pl-7">
+                      <Input
+                        inputSize="sm"
+                        className="h-6 flex-1 text-[11.5px]"
+                        placeholder={tr('Comment')}
+                        value={c.comment ?? ''}
+                        onChange={(e) => setColumn(c.id, { comment: e.target.value || null })}
+                        data-testid={`column-comment-${c.name}`}
+                      />
+                      {(domains.length > 0 || c.domain) && (
+                        <Select
+                          inputSize="sm"
+                          className="h-6 w-[130px] text-[11px]"
+                          title={tr('The named type (domain) the column follows')}
+                          value={c.domain ?? ''}
+                          onChange={(e) => {
+                            const picked = domains.find(([name]) => name === e.target.value)
+                            setColumn(
+                              c.id,
+                              picked ? { domain: picked[0], dataType: picked[1] } : { domain: undefined },
+                            )
+                          }}
+                        >
+                          <option value="">{tr('own type')}</option>
+                          {c.domain && !domains.some(([name]) => name === c.domain) && (
+                            <option value={c.domain}>{c.domain}</option>
+                          )}
+                          {domains.map(([name]) => (
+                            <option key={name} value={name}>
+                              {name}
+                            </option>
+                          ))}
+                        </Select>
+                      )}
+                    </div>
+                    {model && (
+                      <div className="mt-1 flex items-center gap-1.5 pl-7">
+                        <Input
+                          inputSize="sm"
+                          className="h-6 flex-1 text-[11.5px]"
+                          placeholder={tr('Notes')}
+                          title={tr('Notes kept with the model; never in a script')}
+                          value={c.remarks ?? ''}
+                          onChange={(e) => setColumn(c.id, { remarks: e.target.value || undefined })}
+                          data-testid={`column-remarks-${c.name}`}
+                        />
+                        {(COLLATING.includes(driver) || c.collation) && (
+                          <Input
+                            inputSize="sm"
+                            className="h-6 w-[130px] font-mono text-[11px]"
+                            placeholder={tr('collation')}
+                            value={c.collation ?? ''}
+                            onChange={(e) =>
+                              setColumn(c.id, { collation: e.target.value.trim() || undefined })
+                            }
+                            data-testid={`column-collation-${c.name}`}
+                          />
+                        )}
+                      </div>
                     )}
-                  </div>
+                    {model && c.package && (
+                      <div className="mt-1 flex items-center gap-1.5 pl-7 text-[11px] text-fg-muted">
+                        {tr(
+                          'From the attribute package {name}: a changed name or definition makes it the table’s own.',
+                          { name: c.package },
+                        )}
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          onClick={() => setColumn(c.id, { package: undefined })}
+                          data-testid="column-leave-package"
+                        >
+                          {tr('Make it the table’s own')}
+                        </Button>
+                      </div>
+                    )}
+                    {model && labels.length > 0 && (
+                      <div className="mt-1 pl-7">
+                        <LabelsPicker
+                          labels={labels}
+                          value={c.labels}
+                          onChange={(l) => setColumn(c.id, { labels: l })}
+                          testId="column-labels"
+                        />
+                      </div>
+                    )}
+                    {model &&
+                      userProperties.some((d) => d.objectTypes.some((x) => /^attribute$/i.test(x))) && (
+                        <div className="mt-1 pl-7">
+                          <PropertiesEditor
+                            definitions={userProperties}
+                            objectType="Attribute"
+                            values={c.properties}
+                            onChange={(properties) => setColumn(c.id, { properties })}
+                            compact
+                          />
+                        </div>
+                      )}
+                    {model && (
+                      <div className="mt-1 pl-7">
+                        <Input
+                          inputSize="sm"
+                          className="h-6 w-full text-[11.5px]"
+                          placeholder={tr('To do')}
+                          value={c.todo ?? ''}
+                          onChange={(e) => setColumn(c.id, { todo: e.target.value || undefined })}
+                          data-testid="column-todo"
+                        />
+                      </div>
+                    )}
+                  </>
                 )}
                 {!model && c.originalName && c.originalName !== c.name && (
                   <div className="mt-1 pl-7 text-[10.5px] text-fg-faint">
@@ -337,6 +518,40 @@ export function TableEditor({
               </div>
             ))}
           </div>
+          {packages.length > 0 && (
+            <Select
+              inputSize="sm"
+              className="mt-1.5 h-7 w-full text-[12px]"
+              value=""
+              onChange={(e) => {
+                const pkg = packages.find((x) => x.name === e.target.value)
+                if (!pkg) return
+                const added = packageColumnsFor(table, pkg).map((c) => ({
+                  id: designId('c'),
+                  name: c.name,
+                  dataType: c.dataType,
+                  nullable: c.nullable,
+                  defaultValue: c.defaultValue ?? null,
+                  identity: c.isIdentity,
+                  comment: c.comment ?? null,
+                  ...(c.domain ? { domain: c.domain } : {}),
+                  ...(c.collation ? { collation: c.collation } : {}),
+                  ...(c.remarks ? { remarks: c.remarks } : {}),
+                  package: pkg.name,
+                }))
+                if (added.length) set({ columns: [...table.columns, ...added] })
+              }}
+              title={tr('Put the columns of an attribute package into the table')}
+              data-testid="table-add-package"
+            >
+              <option value="">{tr('Add a package…')}</option>
+              {packages.map((p) => (
+                <option key={p.name} value={p.name} disabled={!packageColumnsFor(table, p).length}>
+                  {p.name} ({p.columns.map((c) => c.name).join(', ')})
+                </option>
+              ))}
+            </Select>
+          )}
         </Section>
       )}
 
@@ -511,6 +726,7 @@ export function TableEditor({
                     className="h-5 w-28 text-[11px]"
                     value={fk.onDelete ?? 'NO ACTION'}
                     onChange={(e) => update({ onDelete: e.target.value })}
+                    data-testid="fk-on-delete"
                   >
                     {FK_ACTIONS.map((a) => (
                       <option key={a}>{a}</option>
@@ -557,6 +773,78 @@ export function TableEditor({
                     ))}
                   </Select>
                 </div>
+                {model && (
+                  <div className="flex items-center gap-3 pl-1 text-[11px]">
+                    <Checkbox
+                      checked={fk.columns.length > 0 && fk.columns.every((c) => table.primaryKey.includes(c))}
+                      onChange={(on) =>
+                        set({
+                          primaryKey: on
+                            ? [
+                                ...table.primaryKey,
+                                ...fk.columns.filter((x) => !table.primaryKey.includes(x)),
+                              ]
+                            : table.primaryKey.filter((x) => !fk.columns.includes(x)),
+                          columns: on
+                            ? table.columns.map((x) =>
+                                fk.columns.includes(x.name) ? { ...x, nullable: false } : x,
+                              )
+                            : table.columns,
+                        })
+                      }
+                      label={
+                        <span
+                          title={tr("The parent's key is part of this table's primary key (drawn solid)")}
+                        >
+                          {tr('Identifying')}
+                        </span>
+                      }
+                    />
+                    <Checkbox
+                      checked={
+                        fk.columns.length > 0 &&
+                        fk.columns.every((c) => table.columns.find((x) => x.name === c)?.nullable === false)
+                      }
+                      onChange={(on) =>
+                        set({
+                          columns: table.columns.map((x) =>
+                            fk.columns.includes(x.name) ? { ...x, nullable: !on } : x,
+                          ),
+                        })
+                      }
+                      label={
+                        <span title={tr('Every row needs a parent: the key columns are NOT NULL')}>
+                          {tr('Mandatory parent')}
+                        </span>
+                      }
+                    />
+                    <Checkbox
+                      checked={!!fk.subtype}
+                      onChange={(on) => {
+                        // A subtype shares its supertype's key: identifying and mandatory.
+                        const key = on
+                          ? [...table.primaryKey, ...fk.columns.filter((x) => !table.primaryKey.includes(x))]
+                          : table.primaryKey
+                        set({
+                          primaryKey: key,
+                          columns: on
+                            ? table.columns.map((x) =>
+                                fk.columns.includes(x.name) ? { ...x, nullable: false } : x,
+                              )
+                            : table.columns,
+                          foreignKeys: table.foreignKeys.map((f) =>
+                            f.id === fk.id ? { ...f, subtype: on || undefined } : f,
+                          ),
+                        })
+                      }}
+                      label={
+                        <span title={tr('This table is a kind of the parent table (its subtype)')}>
+                          {tr('Subtype')}
+                        </span>
+                      }
+                    />
+                  </div>
+                )}
               </div>
             )
           })}
@@ -652,12 +940,28 @@ export function TableEditor({
           })}
         </Section>
       )}
+      {model && !only && (
+        <details className="mb-2">
+          <summary className="cursor-pointer text-[11px] font-semibold tracking-wide text-fg-faint uppercase">
+            SQL
+          </summary>
+          <pre
+            className="mt-1.5 max-h-64 overflow-auto rounded-md border border-line bg-bg p-2 font-mono text-[11px] whitespace-pre"
+            data-testid="table-sql"
+          >
+            {sql}
+          </pre>
+        </details>
+      )}
     </>
   )
   if (only) return sections
 
   return (
-    <div className="flex w-[420px] shrink-0 flex-col border-l border-line bg-subtle">
+    <div
+      className={cn('flex w-[420px] shrink-0 flex-col border-l border-line bg-subtle', className)}
+      data-testid="table-panel"
+    >
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line pr-1.5 pl-3">
         <span className="text-[12.5px] font-semibold">
           {table.originalName ? tr('Edit table') : tr('New table')}
@@ -668,6 +972,7 @@ export function TableEditor({
           </span>
         )}
         <div className="flex-1" />
+        {headerExtra}
         {onRevert && (
           <IconButton label={tr('Revert changes to this table')} onClick={onRevert}>
             <RotateCcw size={13} />
@@ -710,10 +1015,12 @@ export function TableEditor({
 function Section({
   title,
   onAdd,
+  testId,
   children,
 }: {
   title: string
   onAdd: () => void
+  testId?: string
   children: React.ReactNode
 }) {
   const tr = useT()
@@ -721,7 +1028,7 @@ function Section({
     <div className="mb-4">
       <div className="mb-1.5 flex items-center justify-between">
         <span className="text-[11px] font-semibold tracking-wide text-fg-faint uppercase">{title}</span>
-        <Button size="xs" variant="ghost" icon={<Plus size={11} />} onClick={onAdd}>
+        <Button size="xs" variant="ghost" icon={<Plus size={11} />} onClick={onAdd} data-testid={testId}>
           {tr('Add')}
         </Button>
       </div>

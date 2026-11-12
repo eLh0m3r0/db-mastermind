@@ -25,7 +25,7 @@ try {
   await win.locator('select').filter({ hasText: 'All areas' }).selectOption('Warehouse')
   await win.waitForTimeout(1500)
   console.log('Warehouse:', await win.locator('.react-flow__node').count(), (await win.locator('.react-flow__node').allInnerTexts()).map((t) => t.split('\n')[0]).join(','))
-  await win.getByRole('button', { name: 'Design', exact: true }).click()
+  if (await win.getByRole('button', { name: 'Design', exact: true }).count()) await win.getByRole('button', { name: 'Design', exact: true }).click()
   await win.getByRole('button', { name: 'New table', exact: true }).first().click()
   await win.waitForTimeout(400)
   await win.getByRole('button', { name: /Write to DBML/ }).click()

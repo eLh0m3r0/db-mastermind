@@ -18,7 +18,7 @@ try {
   await win.keyboard.press('Meta+k')
   await win.keyboard.type('Open ER diagram')
   await win.keyboard.press('Enter')
-  await win.getByRole('button', { name: 'Design', exact: true }).click()
+  if (await win.getByRole('button', { name: 'Design', exact: true }).count()) await win.getByRole('button', { name: 'Design', exact: true }).click()
   await win.getByRole('button', { name: 'Design with AI…' }).click()
   const dialog = win.getByRole('dialog')
   const box = dialog.locator('textarea')
