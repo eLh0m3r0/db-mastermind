@@ -158,6 +158,8 @@ describe.skipIf(!from || !to || isFolder)('a kit of saved files to open in DeZig
     file('novy-diagram', `projekt má nový diagram „DB Mastermind“ se dvěma tabulkami (${withColumns.name}, ${parent.name}) a čarami vazeb mezi nimi, pokud nějaké mají.`, () => {}, {
       diagrams: { 'new:1': { name: 'DB Mastermind', exact: true, tables: [key(withColumns), key(parent)], positions: { [key(withColumns)]: { x: 0, y: 0 }, [key(parent)]: { x: 500, y: 0 } } } },
     })
+    const view = source.sqlObjects.find((o) => o.kind === 'view' && o.id && o.code)
+    if (view) file('zmeneny-pohled', `pohled ${view.name}: kód má na konci nový řádek s komentářem „upraveno v DB Mastermind“.`, () => {}, { views: [{ id: view.id!, code: `${view.code!.replace(/[;\s]+$/, '')}\n-- upraveno v DB Mastermind` }] })
     file(
       'vsechno-najednou',
       'všechny předchozí druhy změn v jednom souboru: nová tabulka s vazbou, nový a přejmenovaný sloupec, index, kontrola, poznámka, barva, nový diagram.',

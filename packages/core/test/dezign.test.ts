@@ -521,6 +521,29 @@ describe('saving back into a DeZign project', () => {
     expect(() => dezignAsFolder(dez.replace('</DATADICT>', '<SOMETHINGNEW>\n<X>\n</X>\n</SOMETHINGNEW>\n</DATADICT>'), 'Shop')).toThrow(/SOMETHINGNEW/)
   })
 
+  it("writes a view's code into the project, under DeZign's placeholders, and nothing else", () => {
+    const withId = dez.replace('<NAME>v_open</NAME>\n', '<NAME>v_open</NAME>\n<ID>40</ID>\n')
+    const view = readDezign(withId).sqlObjects.find((o) => o.kind === 'view')!
+    expect([view.id, view.code]).toEqual(['40', 'CREATE VIEW %viewname% AS\nSELECT id FROM shop.invoice WHERE issued IS NULL;'])
+    const files: DezignFile[] = [{ path: 'shop.dez', text: withId }]
+    const code = 'CREATE VIEW %viewname% AS\nSELECT id, total\nFROM shop.invoice\nWHERE issued IS NULL AND total > 0'
+    const r = saveToDezign(files, model(files), model(files), { normalize: viaDbml, views: [{ id: '40', code }] })
+    expect(r.changes).toEqual([{ kind: 'alter_view', table: 'v_open' }])
+    expect(changedLines(withId, r.files[0]!.text)).toEqual(['SELECT id, total', 'FROM shop.invoice', 'WHERE issued IS NULL AND total &gt; 0</CODE>'])
+    const after = readDezign(r.files[0]!.text).sqlObjects.find((o) => o.kind === 'view')!
+    expect(after.sql).toBe('CREATE VIEW shop.v_open AS\nSELECT id, total\nFROM shop.invoice\nWHERE issued IS NULL AND total > 0')
+    // The same code again, an unknown id or an empty code: nothing to write.
+    expect(saveToDezign(r.files, model(r.files), model(r.files), { normalize: viaDbml, views: [{ id: '40', code: `${code}\n` }, { id: '99', code }, { id: '40', code: ' ' }] }).files).toEqual([])
+  })
+
+  it("writes a view's code into its own file of a folder project, with the project's line ends", () => {
+    const view = '<VIEW>\n<NAME>v_open</NAME>\n<ID>40</ID>\n<SCHEMA>shop</SCHEMA>\n<DESC></DESC>\n<CODE>CREATE VIEW %viewname% AS SELECT 1</CODE>\n</VIEW>'
+    const files = [...folder, { path: 'data dictionary/views/shop.v_open.xml', text: xml(view) }]
+    const r = saveToDezign(files, model(files), model(files), { normalize: viaDbml, views: [{ id: '40', code: 'CREATE VIEW %viewname% AS\nSELECT 2' }] })
+    expect(r.files.map((f) => f.path)).toEqual(['data dictionary/views/shop.v_open.xml'])
+    expect(r.files[0]!.text).toBe(xml(view.replace('AS SELECT 1', 'AS\nSELECT 2')))
+  })
+
   it('writes nothing when the model was not edited', () => {
     expect(save(single, () => {})).toEqual({ files: [], deleted: [], changes: [] })
     expect(save(folder, () => {})).toEqual({ files: [], deleted: [], changes: [] })

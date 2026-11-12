@@ -71,6 +71,7 @@ export type DezignChangeKind =
   | 'diagram_display'
   | 'add_domain'
   | 'alter_domain'
+  | 'alter_view'
   | 'add_box'
   | 'drop_box'
   | 'alter_box'
@@ -137,6 +138,8 @@ export interface SaveDezignOptions {
    * model, into every column that follows it; a name the project does not have makes a new domain.
    */
   domains?: { name: string; dataType: string; comment?: string | null }[]
+  /** The code of the project's views, by id (`DezignSqlObject.id`): a view whose code differs gets it. */
+  views?: { id: string; code: string }[]
   /**
    * Brings a model read from DeZign into the representation of `baseline` and `target` (for DBML documents: a
    * round trip through DBML). The written project is read back through it and compared with `target`.
@@ -145,7 +148,7 @@ export interface SaveDezignOptions {
 }
 
 type El = DezignElement
-type Kind = 'DOMAIN' | 'ENT' | 'REL' | 'ENTC' | 'RELC' | 'DIAGRAM' | 'SUBCAT' | 'SUBCONN' | 'SUBCATC' | 'SUBCONNC' | 'TEXTAR' | 'TEXTC' | 'VIEWCONN' | 'VIEWCONNC' | 'GROUPBOX' | 'GROUPBOXC'
+type Kind = 'DOMAIN' | 'ENT' | 'REL' | 'ENTC' | 'RELC' | 'DIAGRAM' | 'SUBCAT' | 'SUBCONN' | 'SUBCATC' | 'SUBCONNC' | 'TEXTAR' | 'TEXTC' | 'VIEWCONN' | 'VIEWCONNC' | 'GROUPBOX' | 'GROUPBOXC' | 'VIEW'
 
 interface Slot {
   el: El
@@ -170,6 +173,7 @@ const SINGLE: Record<Kind, string[]> = {
   VIEWCONNC: ['DIAGRAMS', 'CONTROLS', 'VIEWCONNECTORS'],
   GROUPBOX: ['DATADICT', 'GROUPBOXES'],
   GROUPBOXC: ['DIAGRAMS', 'CONTROLS', 'GROUPBOXESCONTROLS'],
+  VIEW: ['DATADICT', 'VIEWS'],
 }
 const FOLDER: Record<Kind, string> = {
   DOMAIN: 'data dictionary/domains',
@@ -188,6 +192,7 @@ const FOLDER: Record<Kind, string> = {
   VIEWCONNC: 'diagrams/diagramobjects/viewconnectors',
   GROUPBOX: 'data dictionary/groupboxes',
   GROUPBOXC: 'diagrams/diagramobjects/groupboxcontrols',
+  VIEW: 'data dictionary/views',
 }
 
 const DIAGRAM_OBJECT_DIRS = ['diagrams/diagramobjects/stampcontrols', 'diagrams/diagramobjects/viewcontrols']
@@ -707,6 +712,13 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     project.add('DOMAIN', el, sample && project.fileStem(sample) === text(sample.el, 'ID') ? id : wanted.name)
     domainsByName.set(lower(wanted.name), el)
     changes.push({ kind: 'add_domain', table: wanted.name, name: wanted.dataType })
+  }
+  // A view is SQL the model does not read: its code is written as given, under DeZign's own placeholders.
+  for (const wanted of options.views ?? []) {
+    const view = project.list('VIEW').find((v) => text(v.el, 'ID') === wanted.id)
+    if (!view || !wanted.code.trim() || normText(text(view.el, 'CODE')) === normText(wanted.code)) continue
+    set(view.el, 'CODE', wanted.code.replace(/\s+$/, ''))
+    changes.push({ kind: 'alter_view', table: text(view.el, 'NAME') })
   }
   /** Takes a column out of the attribute package it was inherited from (see `DezignChange.detached`). */
   const detach = (attr: El): { detached?: string } => {

@@ -64,6 +64,7 @@ const CHANGE_LABELS: Record<DezignChange['kind'], string> = {
   diagram_display: 'what the tables show',
   add_domain: 'new domain',
   alter_domain: 'changed domain',
+  alter_view: 'changed view',
   add_box: 'new frame',
   drop_box: 'removed frame',
   alter_box: 'changed frame',

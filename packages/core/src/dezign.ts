@@ -51,6 +51,16 @@ export interface DezignSqlObject {
   table?: string
   /** One statement, without its terminator. */
   sql: string
+  /** A view's own id and its code as the project keeps it (DeZign's placeholders such as `%viewname%` in it). */
+  id?: string
+  code?: string
+}
+
+/** The statement a view's code (with DeZign's placeholders for its name) stands for. */
+export function dezignViewSql(view: { name: string; schema?: string }, code: string): string {
+  const full = (view.schema ? `${view.schema}.` : '') + view.name
+  const sql = code.replace(/%(\w+)%/g, (whole, key: string) => (['viewname', 'name'].includes(key.toLowerCase()) ? full : whole)).replace(/[;/\s]+$/, '')
+  return !sql.trim() || /^\s*create\b/i.test(sql) ? sql : `CREATE VIEW ${full} AS\n${sql}`
 }
 
 export interface DezignDiagram {
@@ -489,8 +499,8 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   }
   for (const view of kids(kid(dict, 'VIEWS'), 'VIEW')) {
     const q = qualified(view)
-    const sql = code(view, { viewname: q.full, name: q.full })
-    if (sql) sqlObjects.push({ kind: 'view', name: q.name, schema: q.schema, sql: /^\s*create\b/i.test(sql) ? sql : `CREATE VIEW ${q.full} AS\n${sql}` })
+    const sql = dezignViewSql({ name: q.name, schema: q.schema }, text(view, 'CODE'))
+    if (sql) sqlObjects.push({ kind: 'view', name: q.name, schema: q.schema, sql, ...(text(view, 'ID') ? { id: text(view, 'ID'), code: text(view, 'CODE') } : {}) })
   }
   for (const proc of kids(kid(dict, 'PROCEDURES'))) {
     const q = qualified(proc)

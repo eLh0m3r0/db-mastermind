@@ -477,8 +477,10 @@ Not a clone: their features, rethought and connected to live databases, the know
   in the model and `cardinality: '…'` where it says more, drawn at the child's end of the line, written back.
   Codes checked by how DeZign 14.9.3 draws them; never in a script
 - ⬜ Custom properties on tables and columns; DeZign attribute packages as `TablePartial`
-- ⬜ Views, sequences, triggers and procedures edited in the model (a DeZign project's are carried into the DDL
-  as they are; a model made here has none yet)
+- ✅ Views of a DeZign project edited in the model ("Views…"): their SQL as DeZign keeps it (`%viewname%` for the
+  view's name), written back on Save and used in the DDL script. DeZign 14.9.3 opens the saved view as written
+- ⬜ Sequences, triggers and procedures edited in the model, and views in a model made here (a DeZign project's
+  are carried into the DDL as they are)
 - ✅ Domains of a DeZign project managed from the model ("Domains…"): a new type for a domain goes to every column
   that follows it, as DeZign propagates it; new domains are made and offered in the table panel. Saved into the
   project (a new domain with a column that follows it opened in DeZign 14.9.3 as saved; projects of the full
