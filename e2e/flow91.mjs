@@ -281,6 +281,37 @@ try {
     const sqlLines = (await win.getByTestId('table-dialog-sql').innerText()).split('\n').length
     await win.getByRole('button', { name: 'Cancel', exact: true }).click()
     console.log('local model browser: tables listed', listed, '| search', searchMs, 'ms,', found, 'found | table dialog', dialogMs, 'ms,', rows, 'columns,', sqlLines, 'lines of SQL')
+
+    // Editing and saving, only on a copy and only when asked (DBM_DEZ_WRITE=1): a column added in a table's dialog,
+    // an attribute package put in, Save without "Write to DBML", the file read again. Counts and times only.
+    if (process.env.DBM_DEZ_WRITE === '1') {
+      const packages = await browser.locator('[data-testid^="browser-package-"]').count()
+      await browser.locator('[data-testid^="browser-table-"]').nth(Math.floor(listed / 3)).dblclick()
+      await win.getByTestId('table-dialog-grid').waitFor({ timeout: 20000 })
+      const before = await win.locator('[data-testid="table-dialog-grid"] tbody tr').count()
+      await win.getByTestId('table-dialog-add-column').click()
+      await win.locator('[data-testid="table-dialog-grid"] tbody tr').last().locator('input').first().fill('dbm_e2e_note')
+      let packaged = 0
+      if (packages) {
+        const offered = await win.getByTestId('table-dialog-add-package').locator('option:not([disabled])').evaluateAll((o) => o.map((x) => x.value).filter(Boolean))
+        if (offered.length) {
+          await win.getByTestId('table-dialog-add-package').selectOption(offered[0])
+          packaged = (await win.locator('[data-testid="table-dialog-grid"] tbody tr').count()) - before - 1
+        }
+      }
+      await win.getByTestId('table-dialog-ok').click()
+      t0 = Date.now()
+      await win.getByRole('button', { name: 'Save', exact: true }).click()
+      await win.getByText(/Write these changes into/).waitFor({ timeout: 120000 })
+      const previewMs = Date.now() - t0
+      const listedChanges = (await win.locator('[role="dialog"]').last().innerText()).split('\n').filter((l) => /^(added|changed|renamed|dropped|new|removed)/i.test(l.trim())).length
+      t0 = Date.now()
+      await win.getByRole('button', { name: 'Write to the DeZign file' }).click()
+      await win.getByText(/Saved to /).last().waitFor({ timeout: 120000 })
+      const writeMs = Date.now() - t0
+      const again = await win.evaluate(async (p) => (await window.mastermind.api.openModelFile(p)).text, process.env.DBM_DEZ_FILE)
+      console.log('local model saved: packages', packages, '| package columns put in', packaged, '| save preview', previewMs, 'ms | listed', listedChanges, '| write', writeMs, 'ms | read back with the column', /dbm_e2e_note/.test(again), '| package columns in the file', (again.match(/package: '/g) ?? []).length)
+    }
   }
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])
