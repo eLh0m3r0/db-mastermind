@@ -71,6 +71,8 @@ export interface CompareTab extends BaseTab {
   /** The model is a DeZign project: its names are created as DeZign's scripts create them, without quotes. */
   sourceUnquoted?: boolean
   sourceScripting?: DezignScripting
+  /** The generation directives that apply (DeZign's conditional generation) to the model's checks. */
+  sourceDirectives?: string[]
   /** Compare with another DBML model (e.g. an older version) instead of the database. */
   targetModel?: string
   /** File name of `targetModel`, for the header. */
@@ -102,6 +104,8 @@ export interface ModelTab extends BaseTab {
   /** Views, sequences, procedures and triggers of the source, as SQL for `sqlDatabase`: added to generated DDL. */
   sqlObjects?: DezignSqlObject[]
   /** The custom properties the source defines (DeZign's user defined properties): tables and columns get values. */
+  /** The generation directives that apply to scripts made from the model (DeZign's conditional generation). */
+  directives?: string[]
   userProperties?: DezignUserProperty[]
   /** The labels the source defines (DeZign's labels): tables and columns carry them. */
   labels?: DezignLabel[]

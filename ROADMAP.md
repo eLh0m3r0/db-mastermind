@@ -402,6 +402,9 @@ Not a clone: their features, rethought and connected to live databases, the know
   the index DeZign keeps on the key (older projects) in step, so DeZign 14.9.3 draws a file we saved, a new
   identifying relationship and one made identifying, exactly as the app does (checked side by side); changing a
   primary key used to fail the save check in projects with that index
+- ✅ Conditional generation (DeZign Expert): `{$IFDEF name}` / `{$IFNOTDEF name}` … `{$ENDIF name}`, nested, in view,
+  trigger and procedure code, check constraints and the project's scripts; "Directives" (shown when the model has
+  any) picks the ones that apply, and SQL DDL and the comparison with a database make the script with them
 - ✅ IDEF1X notation per diagram (DeZign's NOTATION), next to crow's feet: dependent tables rounded, independent
   ones square, a dot at the child's end with P / Z / 1 for the cardinality, a diamond at an optional parent's end,
   non-identifying relationships dashed; chosen above the canvas and saved into the project's diagram
@@ -601,8 +604,7 @@ Not a clone: their features, rethought and connected to live databases, the know
 
 ### Later, when the pilot asks for it 💡
 - The rest of DeZign for Databases, with no date (the team's projects don't use it): switching a project's target database in the file (scripts for another database exist), configurable
-  documentation and report templates (today: the HTML data dictionary and the diagram as PDF), conditional
-  generation directives
+  documentation and report templates (today: the HTML data dictionary and the diagram as PDF)
 - Naming rules and a glossary of abbreviations kept in the knowledge base (logical name ↔ physical name)
 - Logical model: one model, several target databases
 - Test data generated in foreign-key order

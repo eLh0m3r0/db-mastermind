@@ -4,8 +4,8 @@ import { bracketMatching, StreamLanguage } from '@codemirror/language'
 import { Compartment, EditorState } from '@codemirror/state'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
-import { AlertTriangle, Archive, Database, Eye, Pencil, Shapes, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare, Plus } from 'lucide-react'
-import { checkModel, withModelLayout, createScript, dezignDriver, dezignMigrationOptions, dezignWrapScript, dropScript, fixModelIssue, unquotedNames, getDialect, parseDbml, toDbml, updateModelFromDatabase, type DezignSqlObject, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
+import { Filter, AlertTriangle, Archive, Database, Eye, Pencil, Shapes, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare, Plus } from 'lucide-react'
+import { applyGenerationDirectives, generationDirectivesIn, scriptingWithDirectives, tablesWithDirectives, withDezignSql, checkModel, withModelLayout, createScript, dezignDriver, dezignMigrationOptions, dezignWrapScript, dropScript, fixModelIssue, unquotedNames, getDialect, parseDbml, toDbml, updateModelFromDatabase, type DezignSqlObject, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { DRIVERS } from '../connections/drivers'
@@ -380,6 +380,19 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   // The project's views: their SQL as the project keeps it, written back on Save (see ./views).
   const views = useMemo(() => editableViews(tab.sqlObjects), [tab.sqlObjects])
   const [viewsOpen, setViewsOpen] = useState<false | { start?: string }>(false)
+  // DeZign's conditional generation: the directives the model's code, checks and scripts name, and those applied.
+  const directives = tab.directives ?? []
+  const availableDirectives = useMemo(
+    () => generationDirectivesIn(...model.tables.flatMap((x) => (x.checks ?? []).map((c) => c.expression)), ...(tab.sqlObjects ?? []).map((o) => o.code), ...(tab.scripting?.around ? [...tab.scripting.around.create, ...tab.scripting.around.alter] : [])),
+    [model, tab.sqlObjects, tab.scripting],
+  )
+  const directivesMenu = (anchor: HTMLElement) =>
+    openMenu(anchor, [
+      ...availableDirectives.map((d) => {
+        const on = directives.some((x) => x.toLowerCase() === d.toLowerCase())
+        return { label: d, checked: on, onClick: () => updateTab(tab.id, { directives: on ? directives.filter((x) => x.toLowerCase() !== d.toLowerCase()) : [...directives, d] }) }
+      }),
+    ])
   const [scriptsOpen, setScriptsOpen] = useState(false)
   const [enumsOpen, setEnumsOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
@@ -432,13 +445,16 @@ export function ModelView({ tab }: { tab: ModelTab }) {
         label: d.label,
         onClick: () => {
           // A DeZign project's names are created as DeZign's own scripts create them: without quotes.
-          const named = tab.source?.kind === 'dezign' ? unquotedNames(model.tables, d.id) : model.tables
-          const folded = named !== model.tables && named.some((x, i) => x.name !== model.tables[i]!.name || x.columns.some((c, k) => c.name !== model.tables[i]!.columns[k]!.name))
+          // (Conditional generation: what the applied directives leave of checks, code and the project's scripts.)
+          const own = tablesWithDirectives(model.tables, directives)
+          const named = tab.source?.kind === 'dezign' ? unquotedNames(own, d.id) : own
+          const folded = named !== own && named.some((x, i) => x.name !== own[i]!.name || x.columns.some((c, k) => c.name !== own[i]!.columns[k]!.name))
           const note = folded ? `-- ${t('Names are created as DeZign creates them, without quotes: {db} stores them in {case} case.', { db: d.label, case: d.id === 'oracle' ? t('upper') : t('lower') })}\n` : ''
           // The project's own begin and end scripts go around it, for the database they were written for.
-          const own = dezignDriver(tab.sqlDatabase)
-          const body = `${createScript(named, getDialect(d.id), { translateTypes: true, from: own ?? connection?.driver, ...dezignMigrationOptions(tab.scripting, d.id) })}${sqlObjectsScript(tab.sqlObjects, tab.sqlDatabase, d.id)}`
-          const script = `-- ${t('Model as {db} DDL', { db: d.label })}\n${note}${own === d.id ? dezignWrapScript(body, tab.scripting, 'create') : body}`
+          const target = dezignDriver(tab.sqlDatabase)
+          const objects = tab.sqlObjects?.map((o) => (o.code?.includes('{$') ? withDezignSql({ ...o, code: applyGenerationDirectives(o.code, directives) }) : o))
+          const body = `${createScript(named, getDialect(d.id), { translateTypes: true, from: target ?? connection?.driver, ...dezignMigrationOptions(tab.scripting, d.id) })}${sqlObjectsScript(objects, tab.sqlDatabase, d.id)}`
+          const script = `-- ${t('Model as {db} DDL', { db: d.label })}${directives.length ? ` (${directives.join(', ')})` : ''}\n${note}${target === d.id ? dezignWrapScript(body, scriptingWithDirectives(tab.scripting, directives), 'create') : body}`
           // With a database the script opens in its editor; a model on its own saves it as a file.
           deliver(script, `DDL · ${d.label}`, `${fileName.replace(/\.\w+$/, '') || 'model'}-${d.id}.sql`)
         },
@@ -493,7 +509,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const compareWithDatabase = async () => {
     if (!connection) return
     if (!liveSchema && !(await connectAndSelect(connection.id))) return
-    openTab({ kind: 'compare', connectionId: tab.connectionId, sourceModel: text, sourceUnquoted: tab.source?.kind === 'dezign', sourceScripting: tab.scripting, title: t('Model → {name}', { name: connection.name }) }, { reuse: false })
+    openTab({ kind: 'compare', connectionId: tab.connectionId, sourceModel: text, sourceUnquoted: tab.source?.kind === 'dezign', sourceScripting: scriptingWithDirectives(tab.scripting, directives), sourceDirectives: directives, title: t('Model → {name}', { name: connection.name }) }, { reuse: false })
   }
   const fileName = (tab.path ?? tab.source?.path)?.split(/[\\/]/).pop() ?? ''
 
@@ -722,6 +738,12 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           </Button>
         )}
         <DomainsModal open={domainsOpen} domains={domains} used={new Set(model.tables.flatMap((x) => x.columns.filter((c) => c.domain).map((c) => c.domain!.toLowerCase())))} onClose={() => setDomainsOpen(false)} onApply={applyDomains} />
+        {availableDirectives.length > 0 && (
+          <Button size="sm" variant="ghost" icon={<Filter size={13} />} onClick={(e) => directivesMenu(e.currentTarget)} title={t('Generation directives that apply to the scripts made from the model (DeZign: conditional generation)')} data-testid="model-directives">
+            {t('Directives')}
+            {directives.length ? ` (${directives.length})` : ''}
+          </Button>
+        )}
         {(views.length > 0 || tab.source?.kind === 'dezign' || (!tab.source && model.tables.length > 0)) && (
           <Button size="sm" variant="ghost" icon={<Eye size={13} />} onClick={() => setViewsOpen({})} title={t('The project’s views, triggers, procedures and sequences')} data-testid="model-views">
             {t('Views and code…')}

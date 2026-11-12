@@ -1048,6 +1048,8 @@ export const cs: Record<string, string> = {
   'To-do list': 'Úkoly',
   'How relationships are drawn': 'Jak se kreslí vztahy',
   'Crow’s feet': 'Vraní stopa',
+  'Directives': 'Direktivy',
+  'Generation directives that apply to the scripts made from the model (DeZign: conditional generation)': 'Direktivy generování, které platí pro skripty z modelu (DeZign: podmíněné generování)',
   'What is still to be done (DeZign: To do); listed in the object browser': 'Co ještě zbývá udělat (DeZign: To do); prohlížeč objektů je vypíše',
   'subtype': 'podtyp',
   'This table is a kind of the parent table (DeZign: a subtype in the supertype’s cluster)': 'Tato tabulka je druhem nadřazené tabulky (DeZign: podtyp ve shluku nadtypu)',

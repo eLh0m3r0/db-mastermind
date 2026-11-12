@@ -229,6 +229,31 @@ try {
   }, file)
   console.log('own view kept and in the DDL:', /"name":"v_big_invoices"/.test(saved), /CREATE VIEW (\w+\.)?v_big_invoices AS\s+SELECT id, total FROM shop\.invoice WHERE total > 1000;/.test(ownDdl))
   console.log('layout kept in the file:', /\n\/\/ dbmastermind-layout: \{.*"Billing part"/.test(saved), /Table shop\.invoice/.test(saved), areas.some((a) => a.startsWith('Billing part')), !/dbmastermind-layout/.test(reopenedText))
+
+  // Conditional generation (DeZign): a view's code with a directive; the script keeps that part only when it applies.
+  await win.getByTestId('model-views').click()
+  await win.getByTestId('objects-add-view').click()
+  await win.getByTestId('objects-name').fill('v_cond')
+  await win.getByTestId('views-code').fill('CREATE VIEW %viewname% AS\nSELECT id\n{$IFDEF Full}\n  , total\n{$ENDIF Full}\nFROM shop.invoice')
+  await win.getByTestId('views-apply').click()
+  const ddlWith = async (name) => {
+    const path = join(dir, name)
+    await app.evaluate(({ dialog }, p) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: p })
+    }, path)
+    await win.getByRole('button', { name: 'SQL DDL', exact: true }).click()
+    await win.getByRole('menuitem', { name: 'PostgreSQL', exact: true }).click()
+    await win.waitForTimeout(1500)
+    return readFileSync(path, 'utf8')
+  }
+  const plain = await ddlWith('plain.sql')
+  await win.getByTestId('model-directives').click()
+  await win.getByRole('menuitemcheckbox', { name: 'Full' }).or(win.getByRole('menuitem', { name: 'Full' })).first().click()
+  const full = await ddlWith('full.sql')
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: path })
+  }, file)
+  console.log('generation directives:', /CREATE VIEW (\w+\.)?v_cond AS\s+SELECT id\s+FROM shop\.invoice;/.test(plain), /CREATE VIEW (\w+\.)?v_cond AS\s+SELECT id\s+, total\s+FROM shop\.invoice;/.test(full), !/IFDEF/.test(full + plain))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow97.png') })
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])

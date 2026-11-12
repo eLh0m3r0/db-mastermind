@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ArrowRight, GitCompare, Minus, Pencil, Plus } from 'lucide-react'
-import { compareSchemas, dezignMigrationOptions, dezignWrapScript, findChangedChecks, generateMigration, getDialect, guessRenames, migrationScript, parseDbml, translateTables, unquotedNames, type SchemaChange, type SchemaSnapshot } from '@dbmastermind/core/browser'
+import { tablesWithDirectives, compareSchemas, dezignMigrationOptions, dezignWrapScript, findChangedChecks, generateMigration, getDialect, guessRenames, migrationScript, parseDbml, translateTables, unquotedNames, type SchemaChange, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Checkbox, Select } from '@/components/ui/Input'
@@ -80,7 +80,9 @@ export function CompareView({ tab }: { tab: CompareTab }) {
         const model = parseDbml(tab.sourceModel, { defaultSchema: targetSnap.defaultSchema, enumType: target?.driver === 'mssql' ? 'nvarchar(50)' : target?.driver === 'oracle' ? 'VARCHAR2(50)' : 'varchar(50)' })
         if (model.errors.length) throw new Error(model.errors.map((e) => `${t('line {n}', { n: String(e.line) })}: ${e.message}`).join('\n'))
         // A DeZign project's names are the ones DeZign's own scripts create: bare, so PostgreSQL stores them in lower case.
-        const tables = tab.sourceUnquoted && target ? unquotedNames(model.tables, target.driver) : model.tables
+        // (Conditional generation: the checks as the applied directives leave them.)
+        const own = tablesWithDirectives(model.tables, tab.sourceDirectives ?? [])
+        const tables = tab.sourceUnquoted && target ? unquotedNames(own, target.driver) : own
         const schemas = [...new Set(tables.map((x) => x.schema ?? ''))]
         // A check of the same name may have another condition in the model: the database says (it stores conditions rewritten).
         const checkChanged = await findChangedChecks(tables, targetSnap.tables, (items) => api.canonicalChecks(tab.connectionId, items)).catch(() => undefined)

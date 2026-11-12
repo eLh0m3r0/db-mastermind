@@ -108,6 +108,9 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   ukáže prohlížeč objektů ve skupině *Balíčky atributů*. V dialogu tabulky je vloží *Přidat balíček…*; sloupce
   zůstanou s balíčkem propojené jako v DeZignu. Sloupec z balíčku, kterému změníte název nebo definici, se stane
   vlastním sloupcem tabulky.
+- **Podmíněné generování:** v kódu pohledů, triggerů a procedur, v kontrolách CHECK a ve skriptech projektu mohou
+  být části `{$IFDEF název} … {$ENDIF název}` (nebo `{$IFNOTDEF …}`). Tlačítko *Direktivy* (je vidět, jen když je
+  model obsahuje) určí, které platí; SQL DDL i porovnání s databází pak udělají skript podle nich.
 - **Notace IDEF1X:** nad plátnem zvolte *Vraní stopa* nebo *IDEF1X*. V IDEF1X mají závislé tabulky zaoblené rohy,
   nezávislé hranaté, na straně potomka je bod s P / Z / 1 a u volitelného rodiče kosočtverec. U projektu DeZignu se
   notace uloží k diagramu.
