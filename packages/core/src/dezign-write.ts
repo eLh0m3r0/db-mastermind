@@ -71,6 +71,8 @@ export type DezignChangeKind =
   | 'diagram_display'
   | 'add_domain'
   | 'alter_domain'
+  | 'rename_domain'
+  | 'drop_domain'
   | 'alter_view'
   | 'project_scripts'
   | 'add_box'
@@ -138,7 +140,9 @@ export interface SaveDezignOptions {
    * Domains (named types) to change or make, by name. A changed type is written into the domain and, through the
    * model, into every column that follows it; a name the project does not have makes a new domain.
    */
-  domains?: { name: string; dataType: string; comment?: string | null }[]
+  domains?: { name: string; dataType: string; comment?: string | null; /** The name it had: a domain renamed. */ was?: string }[]
+  /** Domains taken out of the project (one a column still follows stays). */
+  removeDomains?: string[]
   /** The code of the project's views, by id (`DezignSqlObject.id`): a view whose code differs gets it. */
   views?: { id: string; code: string }[]
   /** The project's scripts before and after a CREATE script and an ALTER script (DeZign's project settings). */
@@ -691,6 +695,26 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
   // Domains of the project by name: a column that follows one has its id and a copy of its type.
   const domainsByName = new Map(project.list('DOMAIN').map((d) => [lower(text(d.el, 'NAME')), d.el]))
   // Domains first: the columns that follow one take its type from it.
+  // A column follows a domain by its id: renaming one is its name only; one no column follows can go.
+  const followed = new Set(project.list('ENT').flatMap((e) => kids(kid(e.el, 'ATTRIBUTES'), 'ATTR').map((a) => text(a, 'DOMAINID')).filter(Boolean)))
+  for (const name of options.removeDomains ?? []) {
+    const slot = project.list('DOMAIN').find((d) => lower(text(d.el, 'NAME')) === lower(name))
+    if (!slot || followed.has(text(slot.el, 'ID'))) continue
+    project.remove('DOMAIN', slot)
+    domainsByName.delete(lower(name))
+    changes.push({ kind: 'drop_domain', table: text(slot.el, 'NAME') })
+  }
+  for (const wanted of options.domains ?? []) {
+    if (!wanted.was || lower(wanted.was) === lower(wanted.name) || !wanted.name.trim()) continue
+    const slot = project.list('DOMAIN').find((d) => lower(text(d.el, 'NAME')) === lower(wanted.was!))
+    if (!slot || domainsByName.has(lower(wanted.name))) continue
+    set(slot.el, 'NAME', wanted.name)
+    // (A folder project before 14.5.1 names the domain's file after it.)
+    if (project.fileStem(slot) && project.fileStem(slot) !== text(slot.el, 'ID')) project.rename('DOMAIN', slot, wanted.name)
+    domainsByName.delete(lower(wanted.was))
+    domainsByName.set(lower(wanted.name), slot.el)
+    changes.push({ kind: 'rename_domain', table: wanted.name, name: `${wanted.was} → ${wanted.name}` })
+  }
   for (const wanted of options.domains ?? []) {
     if (!wanted.name.trim() || !wanted.dataType.trim()) continue
     const existing = domainsByName.get(lower(wanted.name))

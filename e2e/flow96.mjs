@@ -176,7 +176,32 @@ try {
   await win.getByText('Script saved').last().waitFor({ timeout: 10000 })
   const drop = readFileSync(sql, 'utf8')
   console.log('drop script:', drop.indexOf('DROP TABLE "shop"."invoice"') > -1 && drop.indexOf('DROP TABLE "shop"."invoice"') < drop.indexOf('DROP TABLE "shop"."customer"'), !/CREATE/.test(drop))
+  // Domains renamed and removed, as in DeZign: the columns follow the new name; a domain no column follows goes.
+  const saveProject = async () => {
+    await win.getByRole('button', { name: 'Save', exact: true }).click()
+    await win.getByText(/Write these changes into shop\.dez\?/).waitFor({ timeout: 10000 })
+    const listed = await win.locator('[role="dialog"]').last().innerText()
+    await win.getByRole('button', { name: 'Write to the DeZign file' }).click()
+    await win.getByText(/Saved to shop\.dez/).last().waitFor({ timeout: 10000 })
+    return listed
+  }
   await win.getByText('shop.dez', { exact: true }).first().click()
+  await domainsDialog(async () => {
+    await win.getByTestId('domain-add').click()
+    await win.getByTestId('domain-name-1').fill('spare_t')
+    await win.getByTestId('domain-type-1').fill('integer')
+  })
+  await saveProject()
+  const spareSaved = /<NAME>spare_t<\/NAME>/.test(readFileSync(dez, 'latin1'))
+  await domainsDialog(async () => {
+    await win.getByTestId('domain-name-0').fill('amount_t')
+    await win.getByTestId('domain-remove-1').click()
+  })
+  const renamedText = await win.locator('.cm-content:visible').first().innerText()
+  const listedDomains = await saveProject()
+  const renamedFile = readFileSync(dez, 'latin1')
+  console.log('domains renamed and removed:', spareSaved, /\[domain: 'amount_t'\]/.test(renamedText), /renamed domain/.test(listedDomains) && /removed domain/.test(listedDomains), /<NAME>amount_t<\/NAME>/.test(renamedFile) && !/money_t|spare_t/.test(renamedFile.split('</VERSION>')[0]))
+
   await win.getByRole('button', { name: 'Objects', exact: true }).last().click()
   // A DeZign project opens on its objects, as DeZign's object browser: found by name, opened by a double-click.
   await win.getByTestId('object-browser').waitFor({ timeout: 10000 })

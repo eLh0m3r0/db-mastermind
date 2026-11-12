@@ -83,17 +83,21 @@ describe.skipIf(!from || !to || isFolder)('a kit of saved files to open in DeZig
     let n = 0
     const column = (name: string, dataType: string, more: Partial<TableInfo['columns'][number]> = {}): TableInfo['columns'][number] => ({ name, ordinal: 99, dataType, nullable: true, defaultValue: null, isPrimaryKey: false, isIdentity: false, comment: null, ...more })
     /** One file of the kit: the model with `edit` applied, saved into a copy of the original. */
-    const file = (name: string, look: string, edit: (tables: TableInfo[]) => void, options: SaveDezignOptions = {}) => {
-      const target = model()
+    /** `from`: a file of the kit made before, for an edit that needs one (a domain to rename). */
+    const file = (name: string, look: string, edit: (tables: TableInfo[]) => void, options: SaveDezignOptions = {}, from = original) => {
+      const of = () => viaDbml(readDezign(from, czech).tables)
+      const target = of()
       edit(target)
-      const saved = saveToDezign([{ path: 'model.dez', text: original }], model(), viaDbml(target), { normalize: viaDbml, ...czech, ...options })
-      const text = saved.files[0]?.text ?? original
+      const saved = saveToDezign([{ path: 'model.dez', text: from }], of(), viaDbml(target), { normalize: viaDbml, ...czech, ...options })
+      const text = saved.files[0]?.text ?? from
       expect(dezignIntegrity(text).length, name).toBeLessThanOrEqual(dezignIntegrity(original).length)
       n += 1
       const fileName = `${String(n).padStart(2, '0')}-${name}.dez`
       writeFileSync(join(to!, fileName), text, 'latin1')
+      made.set(name, text)
       lines.push(`## ${fileName}`, '', `Co jsme změnili: ${saved.changes.length ? saved.changes.map((c) => `${c.kind} ${c.table}${c.name ? ` (${c.name})` : ''}`).join('; ') : 'nic (kontrolní kopie originálu)'}`, '', `Na co se podívat: ${look}`, '', '- [ ] otevřel se bez hlášky', '- [ ] změna je vidět, jak je popsáno', '- [ ] Generate → SQL (CREATE skript) proběhne', '- [ ] po Uložit v DeZignu jde soubor znovu otevřít', '')
     }
+    const made = new Map<string, string>()
     mkdirSync(to!, { recursive: true })
 
     // Tables to work on: one with a few plain columns, and one it can reference.
@@ -170,6 +174,18 @@ describe.skipIf(!from || !to || isFolder)('a kit of saved files to open in DeZig
         for (const c of table.columns) if (fk.columns.includes(c.name)) Object.assign(c, { isPrimaryKey: true, nullable: false })
       }
     }, { positions: { ...source.positions, [`${parent.schema ?? ''}.dbm_line`]: { x: 40, y: 40 } } })
+    // Domains: two made (a column of the table follows one), then one renamed and the other one removed.
+    const money = (t: TableInfo[], domain: string) => Object.assign(find(t, withColumns).columns.find((c) => c.name === plain[1]!.name)!, { dataType: 'numeric(12,2)', domain })
+    file('nove-domeny', `projekt má domény dbm_money (numeric(12,2)) a dbm_spare (integer); sloupec ${plain[1]!.name} tabulky ${withColumns.name} se řídí doménou dbm_money.`, (t) => void money(t, 'dbm_money'), {
+      domains: [{ name: 'dbm_money', dataType: 'numeric(12,2)' }, { name: 'dbm_spare', dataType: 'integer' }],
+    })
+    file(
+      'prejmenovana-domena',
+      `doména dbm_money se jmenuje dbm_amount a sloupec ${plain[1]!.name} se jí dál řídí; doména dbm_spare zmizela.`,
+      (t) => void money(t, 'dbm_amount'),
+      { domains: [{ name: 'dbm_amount', dataType: 'numeric(12,2)', was: 'dbm_money' }], removeDomains: ['dbm_spare'] },
+      made.get('nove-domeny'),
+    )
     file('skripty-projektu', 'v nastavení projektu (Project settings → Scripts) jsou nové skripty před a za CREATE i ALTER skriptem, s českými znaky.', () => {}, {
       scripts: { create: ['-- začátek vytvoření\nSET NOCOUNT ON;', '-- konec vytvoření'], alter: ['-- začátek změn', '-- konec změn'] },
     })

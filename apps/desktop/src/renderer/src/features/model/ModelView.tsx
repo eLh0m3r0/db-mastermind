@@ -168,7 +168,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
 
   /** A model opened from a DeZign project goes back into it: the changes are listed first, the old files are kept. */
   const saveToSource = async (source: NonNullable<ModelTab['source']>) => {
-    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, notes: tab.notes, colors: tab.colors, diagrams: tab.diagrams, display: tab.display, boxes: tab.boxes, removedDiagrams: tab.removedDiagrams, domains: domainsOfText(text), views: editableViews(tab.sqlObjects).map(({ id, code }) => ({ id, code })), scripts: tab.scripting?.around, layout: !!source.layout, defaultSchema: liveSchema?.defaultSchema }
+    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, notes: tab.notes, colors: tab.colors, diagrams: tab.diagrams, display: tab.display, boxes: tab.boxes, removedDiagrams: tab.removedDiagrams, domains: domainsOfText(text).map((d) => ({ ...d, ...(Object.entries(tab.domainRenames ?? {}).find(([, to]) => to === d.name)?.[0] ? { was: Object.entries(tab.domainRenames ?? {}).find(([, to]) => to === d.name)![0] } : {}) })), removeDomains: tab.domainRemovals, views: editableViews(tab.sqlObjects).map(({ id, code }) => ({ id, code })), scripts: tab.scripting?.around, layout: !!source.layout, defaultSchema: liveSchema?.defaultSchema }
     const name = source.path.split(/[\\/]/).pop() ?? ''
     try {
       const preview = await api.saveDezignModel({ ...request, dryRun: true })
@@ -188,7 +188,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
       // and keeps the text as it was typed.
       const selected = diagram?.name
       const { text: _saved, title: _title, dirty: _dirty, ...fresh } = modelTabFromFile(await api.openModelFile(source.path).then((f) => f!), liveSchema?.defaultSchema, { quiet: true })
-      updateTab(tab.id, { ...fresh, dirty: false, text, source: { ...source, hash: done.hash, layout: true } })
+      updateTab(tab.id, { ...fresh, dirty: false, text, source: { ...source, hash: done.hash, layout: true }, domainRenames: undefined, domainRemovals: undefined })
       if (diagram) setArea(fresh.diagrams?.find((d) => d.name === selected) ? `d:${fresh.diagrams.find((d) => d.name === selected)!.id}` : '')
       toast({ kind: 'success', message: t('Saved to {file}', { file: name }), detail: done.backup ? t('Backup of the previous files: {dir}', { dir: done.backup }) : undefined })
     } catch (err) {
@@ -331,12 +331,26 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const domains = useMemo(() => domainsOfText(text), [text])
   const [domainsOpen, setDomainsOpen] = useState(false)
   /** New domain types go to the columns that follow them; the note lists the domains as they are now. */
-  const applyDomains = (next: ModelDomainDef[]) => {
+  const applyDomains = (next: ModelDomainDef[], removed: string[] = []) => {
     setDomainsOpen(false)
     if (model.errors.length) return toast({ kind: 'error', message: t('Fix the errors in the model first') })
+    // A renamed domain: the columns that follow it follow the new name.
+    const renamedTo = new Map(next.filter((d) => d.was).map((d) => [d.was!.toLowerCase(), d.name]))
     const typeOf = new Map(next.map((d) => [d.name.toLowerCase(), d.dataType]))
-    const tables = model.tables.map((tb) => ({ ...tb, columns: tb.columns.map((c) => (c.domain && typeOf.has(c.domain.toLowerCase()) && typeOf.get(c.domain.toLowerCase()) !== c.dataType ? { ...c, dataType: typeOf.get(c.domain.toLowerCase())! } : c)) }))
+    const tables = model.tables.map((tb) => ({
+      ...tb,
+      columns: tb.columns.map((c) => {
+        const domain = c.domain && (renamedTo.get(c.domain.toLowerCase()) ?? c.domain)
+        const type = domain && typeOf.get(domain.toLowerCase())
+        return domain !== c.domain || (type && type !== c.dataType) ? { ...c, domain, dataType: type || c.dataType } : c
+      }),
+    }))
     const rewritten = tables.some((tb, i) => tb.columns.some((c, k) => c !== model.tables[i]!.columns[k]))
+    // Remembered until the project is saved: the file learns the renames and removals then.
+    const renames = { ...(tab.domainRenames ?? {}) }
+    for (const d of next) if (d.was) renames[Object.entries(renames).find(([, to]) => to.toLowerCase() === d.was!.toLowerCase())?.[0] ?? d.was] = d.name
+    const removals = [...new Set([...(tab.domainRemovals ?? []), ...removed.map((r) => Object.entries(renames).find(([, to]) => to.toLowerCase() === r.toLowerCase())?.[0] ?? r)])]
+    updateTab(tab.id, { domainRenames: renames, domainRemovals: removals })
     const body = rewritten ? toDbml(tables, { defaultSchema: snapshot.defaultSchema, enums: model.enums, groups: model.groups, extras: model.extras }) : text
     const changed = withDomains(body, next)
     if (changed !== text) replaceText(changed, { dirty: true })
@@ -495,11 +509,12 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   }
   const diagramTab = { ...tab, kind: 'diagram', colors: { ...groupColors, ...(diagram ? diagram.colors : tab.colors) }, notes: diagram ? diagram.notes : tab.notes, boxes: diagram ? diagram.boxes : tab.boxes, positions: diagram ? diagram.positions : tab.positions, tables: diagram ? diagram.tables : undefined, display: diagram ? diagram.display : tab.display } as unknown as DiagramTab
   /** A new diagram of the project the model came from: empty at first, tables are added from the search above the canvas. */
-  const newDiagram = async () => {
-    const name = (await askText({ title: t('New diagram'), message: t('A diagram shows a part of the model: add tables with the search above the canvas, take them off from their menu. The tables stay in the model.'), placeholder: t('Name of the diagram'), confirmLabel: t('Create') }))?.trim()
+  /** A new diagram: empty, or of the tables selected on the canvas where they stand (DeZign: subdiagram from selection). */
+  const newDiagram = async (from?: { tables: string[]; positions: Record<string, { x: number; y: number }> }) => {
+    const name = (await askText({ title: t('New diagram'), message: from ? t('A diagram of the {n} selected tables. The tables stay in the model.', { n: String(from.tables.length) }) : t('A diagram shows a part of the model: add tables with the search above the canvas, take them off from their menu. The tables stay in the model.'), placeholder: t('Name of the diagram'), confirmLabel: t('Create') }))?.trim()
     if (!name) return
     const id = `new:${crypto.randomUUID()}`
-    updateTab(tab.id, { dirty: true, diagrams: [...(tab.diagrams ?? []), { id, name, tables: [], positions: {} }] })
+    updateTab(tab.id, { dirty: true, diagrams: [...(tab.diagrams ?? []), { id, name, tables: from?.tables ?? [], positions: from?.positions ?? {} }] })
     setArea(`d:${id}`)
   }
   /** A diagram of the project under another name, or out of it (the tables stay in the model). */
@@ -648,7 +663,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
             {t('Domains…')}
           </Button>
         )}
-        <DomainsModal open={domainsOpen} domains={domains} onClose={() => setDomainsOpen(false)} onApply={applyDomains} />
+        <DomainsModal open={domainsOpen} domains={domains} used={new Set(model.tables.flatMap((x) => x.columns.filter((c) => c.domain).map((c) => c.domain!.toLowerCase())))} onClose={() => setDomainsOpen(false)} onApply={applyDomains} />
         {views.length > 0 && (
           <Button size="sm" variant="ghost" icon={<Eye size={13} />} onClick={() => setViewsOpen(true)} title={t('The SQL of the project’s views')} data-testid="model-views">
             {t('Views…')}
@@ -764,6 +779,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
               domains={domains}
               dashNonIdentifying={tab.source?.kind === 'dezign'}
               request={request}
+              onNewDiagram={(tables, positions) => void newDiagram({ tables, positions })}
               onLayout={(patch) => (diagram ? patchDiagram(diagram.id, () => ({ ...patch, ...('positions' in patch ? { positions: patch.positions ?? {} } : {}) })) : updateTab(tab.id, { ...patch, dirty: tab.source ? true : tab.dirty }))}
               onApplyModel={(tables) => {
                 // Editing one area keeps the model's other tables; tables added there join the area.

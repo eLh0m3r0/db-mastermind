@@ -547,7 +547,9 @@ export interface DezignSaveRequest {
   /** Diagrams of the project to take out of it (ids). */
   removedDiagrams?: string[]
   /** The project's domains as the model lists them: changed types and new ones are written. */
-  domains?: { name: string; dataType: string }[]
+  domains?: { name: string; dataType: string; was?: string }[]
+  /** Domains taken out of the project (never one a column follows). */
+  removeDomains?: string[]
   /** The code of the project's views by id: a changed one is written. */
   views?: { id: string; code: string }[]
   /** The project's scripts before and after a CREATE and an ALTER script: written where they differ. */

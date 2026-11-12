@@ -99,7 +99,9 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
 - **Týmová práce v Gitu:** u složkového projektu (`.dezproj`) uložení změní jen soubory upravených objektů, takže
   dva kolegové, kteří upravují různé tabulky ve svých větvích, je sloučí bez konfliktu.
 - **Domény:** *Domény…* u modelu z DeZignu ukáže pojmenované typy projektu. Změna typu domény se propíše do všech
-  sloupců, které se jí řídí; nová doména se nabídne v panelu tabulky.
+  sloupců, které se jí řídí; nová doména se nabídne v panelu tabulky. Doménu lze přejmenovat (sloupce ji následují)
+  a smazat, pokud ji žádný sloupec nepoužívá.
+- **Diagram z výběru:** vyberte tabulky a v liště nad nimi zvolte *Nový diagram z těchto tabulek*.
 - **Porovnání s databází:** přejmenovaný sloupec nebo tabulku pozná a nabídne jako přejmenování (data zůstanou);
   jednotlivé změny lze ze skriptu vynechat. ALTER i CREATE skript dostanou úvodní a závěrečný skript projektu.
 - **Skript DROP:** *SQL DDL → Skript DROP…* odstraní vše, co model vytváří (pohledy, tabulky v pořadí, které
@@ -115,10 +117,11 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   tabulku její panel. V panelu je i víceřádkový komentář, poznámky (Notes), řazení (collation) a schéma, do kterého
   tabulka patří. Pravým tlačítkem tabulku zduplikujete nebo smažete; klávesa Delete smaže vybrané tabulky (v panelu
   je jde vrátit). Více tabulek vyberete tažením s klávesou Shift nebo klikáním s Shiftem a v liště nahoře je
-  zarovnáte nebo rovnoměrně rozmístíte; tabulky se při přesunu přichytávají k mřížce. ⌘Z vrací i přesuny.
-  ⌘C zkopíruje vybrané tabulky (i s vazbami mezi nimi), ⌘V je vloží jako nové do téhož nebo jiného modelu.
+  zarovnáte nebo rovnoměrně rozmístíte; tabulky se při přesunu přichytávají k mřížce. ⌘Z / Ctrl+Z vrací i přesuny.
+  ⌘C / Ctrl+C zkopíruje vybrané tabulky (i s vazbami mezi nimi), ⌘V / Ctrl+V je vloží jako nové do téhož nebo
+  jiného modelu.
   Na plátně modelu se tažením po prázdné ploše vybírají tabulky (jako v DeZignu), kolečkem nebo dvěma prsty se
-  posouvá a s klávesou ⌘ přibližuje; ⌘A vybere všechny tabulky, ukazatel vlevo dole vrátí přiblížení na 100 %.
+  posouvá a s klávesou ⌘ (Ctrl) přibližuje; ⌘A / Ctrl+A vybere všechny tabulky, ukazatel vlevo dole vrátí přiblížení na 100 %.
 - **Objekty modelu:** vlevo od diagramu je přepínač *Objekty / Text*. Objekty (u projektu z DeZignu výchozí)
   ukazují tabulky, vazby, domény a pohledy s hledáním; kliknutím tabulku najdete v diagramu, dvojklikem otevřete
   její dialog. Text modelu (DBML) je o jedno kliknutí dál pro ty, kdo ho rádi píší. U modelů vytvořených

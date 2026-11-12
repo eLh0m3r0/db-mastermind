@@ -581,6 +581,24 @@ describe('saving back into a DeZign project', () => {
     }
   })
 
+  it('renames a domain (its columns follow it by id) and removes one no column follows, never one in use', () => {
+    const base = model(single)
+    const followedBy = base.flatMap((t) => t.columns.filter((c) => c.domain).map((c) => c.domain!))
+    expect(followedBy).toContain('country_code')
+    // The rename comes through the option; the model says what the columns follow now. (Without the option, a
+    // domain the project doesn't have is refused: see the error the writer gives.)
+    const r = saveToDezign(single, model(single), viaDbml(model(single).map((x) => ({ ...x, columns: x.columns.map((c) => (c.domain === 'country_code' ? { ...c, domain: 'iso_country' } : c)) }))), { normalize: viaDbml, domains: [{ name: 'iso_country', dataType: readDezign(dez).domains.find((d) => d.name === 'country_code')!.dataType, was: 'country_code' }] })
+    expect(r.changes.map((c) => c.kind)).toContain('rename_domain')
+    const after = readDezign(r.files[0]!.text)
+    expect(after.domains.map((d) => d.name)).toContain('iso_country')
+    expect(after.tables.flatMap((t) => t.columns.filter((c) => c.domain).map((c) => c.domain))).toEqual(['iso_country'])
+    // A domain in use stays; a new one nobody follows goes.
+    const added = saveToDezign(r.files, model(r.files), model(r.files), { normalize: viaDbml, domains: [{ name: 'spare_t', dataType: 'integer' }] })
+    const gone = saveToDezign(added.files, model(added.files), model(added.files), { normalize: viaDbml, removeDomains: ['spare_t', 'iso_country'] })
+    expect(gone.changes.map((c) => `${c.kind} ${c.table}`)).toEqual(['drop_domain spare_t'])
+    expect(readDezign(gone.files[0]!.text).domains.map((d) => d.name)).toEqual(['iso_country'])
+  })
+
   it('writes nothing when the model was not edited', () => {
     expect(save(single, () => {})).toEqual({ files: [], deleted: [], changes: [] })
     expect(save(folder, () => {})).toEqual({ files: [], deleted: [], changes: [] })

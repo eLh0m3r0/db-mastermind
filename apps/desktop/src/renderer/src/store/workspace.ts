@@ -116,6 +116,9 @@ export interface ModelTab extends BaseTab {
   diagrams?: ModelDiagram[]
   /** Diagrams of the source taken out here: Save takes them out of the project too. */
   removedDiagrams?: string[]
+  /** Domains renamed here (name in the project → name now) and removed: Save does the same in the project. */
+  domainRenames?: Record<string, string>
+  domainRemovals?: string[]
 }
 
 /** Pinned query results; without `dashboardId` it lists the connection's dashboards. */

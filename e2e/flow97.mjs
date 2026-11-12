@@ -149,6 +149,20 @@ try {
   await win.waitForTimeout(400)
   console.log('select all and zoom:', all === (await win.locator('.react-flow__node:visible').count()), /%/.test(zoomBefore), (await win.getByTestId('zoom-level').innerText()).trim() === '100 %')
 
+  // A diagram of the selected tables (DeZign: subdiagram from the selection), where they stand.
+  await win.locator('.react-flow__pane:visible').click({ position: { x: 20, y: 20 } })
+  await win.locator('.react-flow__controls-fitview:visible').click()
+  await win.waitForTimeout(300)
+  await node('shop.line').click({ modifiers: ['Meta'] })
+  await node('shop.invoice').click({ modifiers: ['Meta'], position: { x: 40, y: 12 } })
+  await win.getByTestId('diagram-from-selection').click()
+  await win.getByPlaceholder('Name of the diagram').fill('Billing part')
+  await win.getByRole('button', { name: 'Create', exact: true }).click()
+  await win.waitForTimeout(1200)
+  console.log('diagram from the selection:', await win.locator('.react-flow__node:visible').count() === 2, await win.locator('option:checked', { hasText: 'Billing part' }).count() > 0)
+  await win.locator('select:has(option:checked:text("Billing part"))').first().selectOption({ index: 0 })
+  await win.waitForTimeout(800)
+
   // Enums and table groups from the object browser, without typing DBML.
   await win.getByRole('button', { name: 'Objects', exact: true }).last().click()
   await win.getByTestId('browser-enums-edit').click()
