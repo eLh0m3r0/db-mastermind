@@ -550,6 +550,8 @@ export interface DezignSaveRequest {
   domains?: { name: string; dataType: string; was?: string }[]
   /** Domains taken out of the project (never one a column follows). */
   removeDomains?: string[]
+  /** Tables renamed here (`schema.table` in the project → now). */
+  renamedTables?: Record<string, string>
   /** The code of the project's views by id: a changed one is written. */
   views?: { id: string; code: string }[]
   /** The project's scripts before and after a CREATE and an ALTER script: written where they differ. */

@@ -16,7 +16,8 @@ import {
   type DezignEncoding,
   type DezignModel,
 } from './dezign.js'
-import { defaultFkName } from './dbml.js'
+import { renameInCondition } from './batch-rename.js'
+import { checkOneLine, defaultFkName } from './dbml.js'
 import type { ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfo } from './types.js'
 
 /**
@@ -143,6 +144,11 @@ export interface SaveDezignOptions {
   domains?: { name: string; dataType: string; comment?: string | null; /** The name it had: a domain renamed. */ was?: string }[]
   /** Domains taken out of the project (one a column still follows stays). */
   removeDomains?: string[]
+  /**
+   * Tables renamed in the model (`schema.table` before → after): known renames, not guessed from their columns
+   * (a table renamed together with all its columns has no column left to be recognised by).
+   */
+  renamedTables?: Record<string, string>
   /** The code of the project's views, by id (`DezignSqlObject.id`): a view whose code differs gets it. */
   views?: { id: string; code: string }[]
   /** The project's scripts before and after a CREATE script and an ALTER script (DeZign's project settings). */
@@ -859,6 +865,15 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     return shared / Math.max(1, x.size + b.columns.length - shared)
   }
   const dropped: TableInfo[] = []
+  const told = new Map(Object.entries(options.renamedTables ?? {}).map(([from, to]) => [lower(from), lower(to)]))
+  for (const base of [...lostBase]) {
+    const to = told.get(tableKey(base))
+    const next = to ? created.find((t) => tableKey(t) === to) : undefined
+    if (!next) continue
+    pairs.push({ base, next, entity: entities.get(tableKey(base))! })
+    created = created.filter((t) => t !== next)
+    lostBase.splice(lostBase.indexOf(base), 1)
+  }
   for (const base of lostBase) {
     const best = created.map((t) => ({ t, score: similarity(base, t) })).sort((a, b) => b.score - a.score)[0]
     const mutual = best && best.score >= 0.6 && !lostBase.some((other) => other !== base && similarity(other, best.t) > best.score)
@@ -881,6 +896,8 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     const baseIds = new Map([...entity.attrs].map(([name, a]) => [name, text(a, 'ID')]))
     const droppedIds: string[] = []
     const orphanedChecks: string[] = []
+    /** Renamed columns (old name in lower case → new name): checks that name them follow. */
+    const columnRenames = new Map<string, string>()
     const keep = new Map<ColumnInfo, El>()
     const matched = new Set<ColumnInfo>()
     for (const c of next.columns) {
@@ -904,6 +921,7 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       constraintNames(attr, label, c.name)
       keep.set(c, attr)
       matched.add(b)
+      columnRenames.set(lower(b.name), c.name)
       changes.push({ kind: 'rename_column', table: label, name: `${b.name} → ${c.name}`, ...detach(attr) })
     }
     for (const b of baseCols.filter((x) => !matched.has(x))) {
@@ -975,7 +993,8 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     entity.attrs = new Map(next.columns.map((c) => [lower(c.name), keep.get(c)!]))
 
     const idOf = (name: string) => text(entity.attrs.get(lower(name)), 'ID')
-    if (!base || base.primaryKey.map(lower).join(',') !== next.primaryKey.map(lower).join(',')) {
+    // Compared by attribute: a renamed key column is the same key.
+    if (!base || base.primaryKey.map((c) => baseIds.get(lower(c)) ?? `?${lower(c)}`).join(',') !== next.primaryKey.map((c) => idOf(c) || `?${lower(c)}`).join(',')) {
       let pk = kid(entity.el, 'PKCON')
       if (!pk) insert(entity.el, (pk = container('PKCON', [...named('PKCONNAMETEMPLATE'), leaf('ID', `${entity.id}-PK`), leaf('CONLEVEL', '2'), leaf('CONTYPE', '3'), container('ATTRIBUTEIDS', [])])), ['ATTRIBUTES'])
       const was = idsOf(pk)
@@ -1053,7 +1072,25 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     // Check constraints, compared by their condition. A column's own check that changed becomes a table check
     // (the same thing to the database); new ones list the columns their condition names.
     const exprKey = (e: string) => e.replace(/\s+/g, ' ').trim().toLowerCase()
-    const baseChecks = new Set((base?.checks ?? []).map((c) => exprKey(c.expression)))
+    // A condition that changed only because a column it names was renamed is the same check: its text follows.
+    const checkKeys = new Set((next.checks ?? []).map((c) => exprKey(c.expression)))
+    // (A condition in the file may run over several lines with `--` comments: the model has it on one line.)
+    const known = (e: string) => checkKeys.has(exprKey(checkOneLine(e)))
+    const followed = (e: string) => {
+      if (!columnRenames.size || known(e)) return e
+      const now = renameInCondition(e, (n) => columnRenames.get(lower(n)))
+      return known(now) ? now : e
+    }
+    if (columnRenames.size) {
+      const follow = (el: El | undefined) => {
+        const value = text(el, 'VALUE')
+        const now = value && followed(value)
+        if (now && now !== value) set(el!, 'VALUE', now)
+      }
+      for (const c of kids(kid(entity.el, 'CONSTRAINTS'), 'CONSTRAINT')) if (text(c, 'CONTYPE') === '1') follow(c)
+      for (const a of kids(kid(entity.el, 'ATTRIBUTES'), 'ATTR')) follow(kid(a, 'CCON'))
+    }
+    const baseChecks = new Set((base?.checks ?? []).map((c) => exprKey(followed(c.expression))))
     const nextChecks = new Map((next.checks ?? []).map((c) => [exprKey(c.expression), c]))
     for (const key of baseChecks) {
       if (nextChecks.has(key)) continue
@@ -1068,10 +1105,10 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     const orphaned = new Set(orphanedChecks.map(exprKey))
     // The same condition under another name.
     for (const old of base?.checks ?? []) {
-      const now = nextChecks.get(exprKey(old.expression))
+      const now = nextChecks.get(exprKey(followed(old.expression)))
       if (!now?.name || !old.name || now.name === old.name || orphaned.has(exprKey(old.expression))) continue
       const tableCheck = kids(kid(entity.el, 'CONSTRAINTS'), 'CONSTRAINT').find((c) => text(c, 'CONTYPE') === '1' && text(c, 'NAME') === old.name)
-      const column = kids(kid(entity.el, 'ATTRIBUTES'), 'ATTR').find((a) => text(kid(a, 'CCON'), 'NAME') === old.name && exprKey(text(kid(a, 'CCON'), 'VALUE')) === exprKey(old.expression))
+      const column = kids(kid(entity.el, 'ATTRIBUTES'), 'ATTR').find((a) => text(kid(a, 'CCON'), 'NAME') === old.name && exprKey(text(kid(a, 'CCON'), 'VALUE')) === exprKey(followed(old.expression)))
       if (tableCheck) setName(tableCheck, now.name, 'TCCONNAMETEMPLATE', { table: next.name })
       else if (column) setName(kid(column, 'CCON')!, now.name, 'CCONNAMETEMPLATE', { table: next.name, column: text(column, 'NAME') })
       else continue
@@ -1876,6 +1913,11 @@ function verify(files: DezignFile[], result: { files: DezignFile[]; deleted: str
   const got = describe(options.normalize ? options.normalize(model.tables) : model.tables)
   const wrong = want.find((w, i) => w !== got[i]) ?? (got.length !== want.length ? got[want.length] : undefined)
   // Local debugging of the writer against public sample models.
-  if (wrong !== undefined && typeof process !== 'undefined' && process.env.DBM_DEZ_DEBUG) console.log(`WANT\n${wrong}\nGOT\n${got[want.indexOf(wrong)] ?? '(nothing)'}`)
+  // `shape` (safe with private models): only the lines that differ, every name, text and number masked.
+  if (wrong !== undefined && typeof process !== 'undefined' && process.env.DBM_DEZ_DEBUG === 'shape') {
+    const mask = (line: string) => line.replace(/'(?:[^']|'')*'/g, "'…'").replace(/"[^"]*"/g, '"w"').replace(/[A-Za-z_\u00C0-\u024F][\w$\u00C0-\u024F]*/g, (w) => (/^(and|or|not|in|is|null|like|between|check|pk|nn|id|varchar|char|int|integer|numeric|decimal|date|timestamp|boolean|text)$/i.test(w) ? w : 'w')).replace(/\d+/g, 'n')
+    const a = wrong.split('\n'), b = (got[want.indexOf(wrong)] ?? '').split('\n')
+    console.log(`WANT ONLY\n${a.filter((l) => !b.includes(l)).map(mask).join('\n')}\nGOT ONLY\n${b.filter((l) => !a.includes(l)).map(mask).join('\n')}`)
+  } else if (wrong !== undefined && typeof process !== 'undefined' && process.env.DBM_DEZ_DEBUG) console.log(`WANT\n${wrong}\nGOT\n${got[want.indexOf(wrong)] ?? '(nothing)'}`)
   if (wrong !== undefined) throw new Error(`The DeZign file could not be written safely: table "${wrong.split('\n')[0]}" would not read back as edited. Nothing was changed.`)
 }

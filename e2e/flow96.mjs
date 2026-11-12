@@ -211,6 +211,22 @@ try {
   await win.getByTestId('table-dialog-grid').waitFor({ timeout: 10000 })
   console.log('object browser:', listed === 1, await win.getByTestId('grid-name-total').count() === 1)
   await win.getByRole('button', { name: 'Cancel', exact: true }).click()
+
+  // A batch rename (DeZign's renaming tool): the invoice table and all its columns at once, saved into the project
+  // as the same table (its id kept), not as one dropped and another made.
+  const entityId = (text, name) => new RegExp(`<ENT>\\s*<NAME>${name}</NAME>\\s*<ID>([^<]*)</ID>`).exec(text)?.[1]
+  const idBefore = entityId(readFileSync(dez, 'latin1'), 'invoice')
+  await win.locator('[data-testid="model-batch-rename"]:visible').click()
+  await win.getByTestId('batch-find').fill('^')
+  await win.getByText('Regular expression', { exact: true }).click()
+  await win.getByTestId('batch-replace').fill('b_')
+  await win.getByTestId('batch-find').fill('^(invoice|id|total|customer_id)$')
+  await win.getByTestId('batch-replace').fill('b_$1')
+  const previewed = await win.getByTestId('batch-preview').innerText()
+  await win.getByTestId('batch-rename-ok').click()
+  const listedRename = await saveProject()
+  const renamedProject = readFileSync(dez, 'latin1')
+  console.log('batch rename:', /\binvoice\b[\s\S]*\bb_invoice\b/.test(previewed) && /b_total/.test(previewed), /renamed table/.test(listedRename) && !/dropped table/.test(listedRename), !!idBefore && entityId(renamedProject, 'b_invoice') === idBefore, /<NAME>b_total<\/NAME>/.test(renamedProject))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow96.png') })
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])

@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { applyDezignSave, assembleDezignProject, dezignIntegrity, newDezignProject, parseDbml, readDezign, sameType, saveToDezign, toDbml, type DezignFile, type SaveDezignOptions, type TableInfo } from '../src/index.js'
+import { applyDezignSave, assembleDezignProject, batchRename, dezignIntegrity, newDezignProject, parseDbml, readDezign, sameType, saveToDezign, toDbml, type DezignFile, type SaveDezignOptions, type TableInfo } from '../src/index.js'
 
 /**
  * A kit for the one check no test can make: opening what we write in DeZign for Databases itself.
@@ -191,6 +191,11 @@ describe.skipIf(!from || !to || isFolder)('a kit of saved files to open in DeZig
     })
     const view = source.sqlObjects.find((o) => o.kind === 'view' && o.id && o.code)
     if (view) file('zmeneny-pohled', `pohled ${view.name}: kód má na konci nový řádek s komentářem „upraveno v DB Mastermind“.`, () => {}, { views: [{ id: view.id!, code: `${view.code!.replace(/[;\s]+$/, '')}\n-- upraveno v DB Mastermind` }] })
+    // DeZign's batch rename: every table and column gets a prefix; the tables are told which is which, as the app does.
+    const renamedAll = batchRename(model(), { find: '^', replace: 'dbm_', regex: true, scope: 'both' })
+    file('hromadne-prejmenovani', 'každá tabulka a každý sloupec má předponu dbm_; klíče, indexy, vazby a kontrolní omezení zůstaly a jmenují nové názvy.', (t) => void t.splice(0, t.length, ...batchRename(t, { find: '^', replace: 'dbm_', regex: true, scope: 'both' }).tables), {
+      renamedTables: Object.fromEntries(renamedAll.renames.filter((r) => r.kind === 'table' && !r.skipped).map((r) => [`${r.schema ?? ''}.${r.from}`.toLowerCase(), `${r.schema ?? ''}.${r.to}`])),
+    })
     file(
       'vsechno-najednou',
       'všechny předchozí druhy změn v jednom souboru: nová tabulka s vazbou, nový a přejmenovaný sloupec, index, kontrola, poznámka, barva, nový diagram.',

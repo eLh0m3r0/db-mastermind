@@ -4,7 +4,7 @@ import { bracketMatching, StreamLanguage } from '@codemirror/language'
 import { Compartment, EditorState } from '@codemirror/state'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
-import { AlertTriangle, Archive, Database, Eye, Shapes, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare, Plus } from 'lucide-react'
+import { AlertTriangle, Archive, Database, Eye, Pencil, Shapes, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare, Plus } from 'lucide-react'
 import { checkModel, createScript, dezignDriver, dezignMigrationOptions, dezignViewSql, dezignWrapScript, dropScript, fixModelIssue, unquotedNames, getDialect, parseDbml, toDbml, updateModelFromDatabase, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
@@ -25,6 +25,7 @@ import { editableViews, ViewsModal } from './views'
 import { ObjectBrowser, type BrowserRequest } from './ObjectBrowser'
 import { ProjectScriptsModal } from './ProjectScripts'
 import { EnumsModal, GroupsModal } from './enums-groups'
+import { BatchRenameModal } from './batch-rename'
 import type { DiagramRequest } from '../diagram/DiagramView'
 import { IssuesChip, IssuesPanel } from './ModelIssues'
 import { rememberModelDatabase } from '@/lib/files'
@@ -168,7 +169,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
 
   /** A model opened from a DeZign project goes back into it: the changes are listed first, the old files are kept. */
   const saveToSource = async (source: NonNullable<ModelTab['source']>) => {
-    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, notes: tab.notes, colors: tab.colors, diagrams: tab.diagrams, display: tab.display, boxes: tab.boxes, removedDiagrams: tab.removedDiagrams, domains: domainsOfText(text).map((d) => ({ ...d, ...(Object.entries(tab.domainRenames ?? {}).find(([, to]) => to === d.name)?.[0] ? { was: Object.entries(tab.domainRenames ?? {}).find(([, to]) => to === d.name)![0] } : {}) })), removeDomains: tab.domainRemovals, views: editableViews(tab.sqlObjects).map(({ id, code }) => ({ id, code })), scripts: tab.scripting?.around, layout: !!source.layout, defaultSchema: liveSchema?.defaultSchema }
+    const request = { path: source.path, text, hash: source.hash, positions: tab.positions, notes: tab.notes, colors: tab.colors, diagrams: tab.diagrams, display: tab.display, boxes: tab.boxes, removedDiagrams: tab.removedDiagrams, domains: domainsOfText(text).map((d) => ({ ...d, ...(Object.entries(tab.domainRenames ?? {}).find(([, to]) => to === d.name)?.[0] ? { was: Object.entries(tab.domainRenames ?? {}).find(([, to]) => to === d.name)![0] } : {}) })), removeDomains: tab.domainRemovals, renamedTables: tab.tableRenames, views: editableViews(tab.sqlObjects).map(({ id, code }) => ({ id, code })), scripts: tab.scripting?.around, layout: !!source.layout, defaultSchema: liveSchema?.defaultSchema }
     const name = source.path.split(/[\\/]/).pop() ?? ''
     try {
       const preview = await api.saveDezignModel({ ...request, dryRun: true })
@@ -188,7 +189,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
       // and keeps the text as it was typed.
       const selected = diagram?.name
       const { text: _saved, title: _title, dirty: _dirty, ...fresh } = modelTabFromFile(await api.openModelFile(source.path).then((f) => f!), liveSchema?.defaultSchema, { quiet: true })
-      updateTab(tab.id, { ...fresh, dirty: false, text, source: { ...source, hash: done.hash, layout: true }, domainRenames: undefined, domainRemovals: undefined })
+      updateTab(tab.id, { ...fresh, dirty: false, text, source: { ...source, hash: done.hash, layout: true }, domainRenames: undefined, domainRemovals: undefined, tableRenames: undefined })
       if (diagram) setArea(fresh.diagrams?.find((d) => d.name === selected) ? `d:${fresh.diagrams.find((d) => d.name === selected)!.id}` : '')
       toast({ kind: 'success', message: t('Saved to {file}', { file: name }), detail: done.backup ? t('Backup of the previous files: {dir}', { dir: done.backup }) : undefined })
     } catch (err) {
@@ -361,6 +362,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const [viewsOpen, setViewsOpen] = useState(false)
   const [scriptsOpen, setScriptsOpen] = useState(false)
   const [enumsOpen, setEnumsOpen] = useState(false)
+  const [renameOpen, setRenameOpen] = useState(false)
   const [groupsOpen, setGroupsOpen] = useState(false)
   const applyViews = (codes: Record<string, string>) => {
     setViewsOpen(false)
@@ -658,6 +660,34 @@ export function ModelView({ tab }: { tab: ModelTab }) {
         >
           {tab.source ? t('Compare with version…') : t('Compare with file…')}
         </Button>
+        <Button size="sm" variant="ghost" icon={<Pencil size={13} />} disabled={model.errors.length > 0 || !model.tables.length} onClick={() => setRenameOpen(true)} title={t('Rename tables and columns by a pattern: keys, indexes and relationships follow')} data-testid="model-batch-rename">
+          {t('Rename…')}
+        </Button>
+        {renameOpen && (
+          <BatchRenameModal
+            tables={model.tables}
+            onClose={() => setRenameOpen(false)}
+            onApply={(tables, renames) => {
+              setRenameOpen(false)
+              // A renamed table keeps its place, colour and what it shows on every diagram.
+              const moved = new Map(renames.filter((r) => r.kind === 'table').map((r) => [`${r.schema ?? ''}.${r.from}`, `${r.schema ?? ''}.${r.to}`]))
+              const rekey = <T,>(map: Record<string, T> | undefined) => (map ? Object.fromEntries(Object.entries(map).map(([k, v]) => [moved.get(k) ?? k, v])) : map)
+              replaceText(toDbml(tables, { defaultSchema: snapshot.defaultSchema, enums: model.enums, groups: Object.fromEntries(Object.entries(model.groups).map(([g, names]) => [g, names.map((n) => renames.find((r) => r.kind === 'table' && r.from === n)?.to ?? n)])), extras: model.extras }), {
+                dirty: true,
+                positions: rekey(tab.positions),
+                colors: rekey(tab.colors),
+                display: tab.display ? { ...tab.display, hidden: rekey(tab.display.hidden) } : tab.display,
+                diagrams: tab.diagrams?.map((d) => ({ ...d, tables: d.tables.map((k) => moved.get(k) ?? k), positions: rekey(d.positions) ?? {}, colors: rekey(d.colors), display: d.display ? { ...d.display, hidden: rekey(d.display.hidden) } : d.display })),
+                // Chained with earlier renames: the project's name → the name now.
+                tableRenames: Object.fromEntries([
+                  ...Object.entries(tab.tableRenames ?? {}).map(([from, to]) => [from, moved.get(to) ?? to]),
+                  ...[...moved].filter(([from]) => !Object.values(tab.tableRenames ?? {}).includes(from)),
+                ]),
+              })
+              toast({ kind: 'success', message: tp(renames.length, { one: '{n} name changed', many: '{n} names changed' }) })
+            }}
+          />
+        )}
         {tab.source && (
           <Button size="sm" variant="ghost" icon={<Shapes size={13} />} onClick={() => setDomainsOpen(true)} title={t('The named types the project\'s columns follow')} data-testid="model-domains">
             {t('Domains…')}

@@ -3,7 +3,7 @@ import { diagramsAsLoaded, mutate, mutateDiagrams, random } from './dezign-fuzz.
 
 // More chains for a long local run: DBM_FUZZ_CHAINS=500 npx vitest run --root packages/core test/dezign.test.ts
 const CHAINS = Number(process.env.DBM_FUZZ_CHAINS) || 0
-import { applyDezignSave, archiveDezignVersion, assembleDezignProject, dezignAsFolder, dezignDomainsOfModel, withDezignDomains, compareSchemas, createScript, detectDezignEncoding, dezignDriver, dezignFolderAsVersion, dezignIntegrity, dezignMigrationOptions, dezignWrapScript, generateMigration, getDialect, unquotedNames, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
+import { applyDezignSave, archiveDezignVersion, batchRename, assembleDezignProject, dezignAsFolder, dezignDomainsOfModel, withDezignDomains, compareSchemas, createScript, detectDezignEncoding, dezignDriver, dezignFolderAsVersion, dezignIntegrity, dezignMigrationOptions, dezignWrapScript, generateMigration, getDialect, unquotedNames, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 // Hand-written models in DeZign's layout (no file from a real project is kept in the repository).
 const attr = (id: string, name: string, type: string, extra = '', more = '') =>
@@ -597,6 +597,30 @@ describe('saving back into a DeZign project', () => {
     const gone = saveToDezign(added.files, model(added.files), model(added.files), { normalize: viaDbml, removeDomains: ['spare_t', 'iso_country'] })
     expect(gone.changes.map((c) => `${c.kind} ${c.table}`)).toEqual(['drop_domain spare_t'])
     expect(readDezign(gone.files[0]!.text).domains.map((d) => d.name)).toEqual(['iso_country'])
+  })
+
+  it('a batch rename of whole tables (and all their columns) keeps the tables, told which table is which', () => {
+    const base = model(single)
+    const { tables, renames } = batchRename(base, { find: '^', replace: 'x_', regex: true, scope: 'both' })
+    const target = viaDbml(tables)
+    const guessed = saveToDezign(single, base, target, { normalize: viaDbml })
+    expect(guessed.changes.some((c) => c.kind === 'drop_table')).toBe(true)
+    const renamedTables = Object.fromEntries(renames.filter((r) => r.kind === 'table').map((r) => [`${r.schema ?? ''}.${r.from}`, `${r.schema ?? ''}.${r.to}`]))
+    const told = saveToDezign(single, base, target, { normalize: viaDbml, renamedTables })
+    expect(told.changes.filter((c) => c.kind === 'drop_table' || c.kind === 'add_table')).toEqual([])
+    expect(told.changes.filter((c) => c.kind === 'rename_table').length).toBe(base.length)
+    const ids = (text: string) => [...text.split('</VERSION>')[0]!.matchAll(/<ENT>\s*<NAME>[^<]*<\/NAME>\s*<ID>([^<]*)<\/ID>/g)].map((m) => m[1])
+    expect(ids(told.files[0]!.text)).toEqual(ids(dez))
+    expect(readDezign(told.files[0]!.text).tables.map((t) => t.name)).toEqual(['x_customer', 'x_invoice'])
+  })
+
+  it('a renamed column takes its check along: the condition follows the new name in place', () => {
+    const base = model(single)
+    const { tables } = batchRename(base, { find: '^', replace: 'x_', regex: true, scope: 'columns' })
+    const r = saveToDezign(single, base, viaDbml(tables), { normalize: viaDbml })
+    expect(new Set(r.changes.map((c) => c.kind))).toEqual(new Set(['rename_column']))
+    expect(r.files[0]!.text).toContain('<CCON>\n<VALUE>x_credit &gt;= 0</VALUE>\n</CCON>')
+    expect(readDezign(r.files[0]!.text).tables[0]!.checks).toEqual([{ expression: 'x_credit >= 0' }])
   })
 
   it('writes nothing when the model was not edited', () => {

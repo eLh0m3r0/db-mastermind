@@ -100,6 +100,8 @@ export async function saveDezignModel(request: DezignSaveRequest): Promise<Dezig
   const bare = (key: string) => (request.defaultSchema && key.startsWith(`${request.defaultSchema}.`) ? key.slice(request.defaultSchema.length) : undefined)
   const withBare = <T>(entries: [string, T][]): [string, T][] => entries.flatMap(([key, v]) => (bare(key) ? [[key, v], [bare(key)!, v]] : [[key, v]]))
   const positions = Object.fromEntries(withBare(Object.entries(request.positions ?? {})))
+  // (Renamed tables are keyed as the window keys them: bare ones under the connection's default schema.)
+  const withBareKeys = (map: Record<string, string>) => Object.fromEntries(Object.entries(map).map(([from, to]) => [bare(from) ?? from, bare(to) ?? to]))
   const diagrams: NonNullable<Parameters<typeof saveToDezign>[3]>['diagrams'] = Object.fromEntries(
     // A tab that loaded the source's diagrams knows them whole: what it lists is what each diagram shows.
     (request.diagrams ?? []).map((d) => [d.id, { name: d.name, exact: !!request.layout, tables: d.tables.flatMap((key) => [key, ...(bare(key) ? [bare(key)!] : [])]), positions: Object.fromEntries(withBare(Object.entries(d.positions))), notes: d.notes }]),
@@ -131,7 +133,7 @@ export async function saveDezignModel(request: DezignSaveRequest): Promise<Dezig
   const main = model.layout.diagramId
   if (main) diagrams[main] = request.layout ? { notes: request.notes ?? [], colors: colorChanges(main, request.colors), display: displayOf(request.display), ...(request.boxes ? { boxes: request.boxes } : {}) } : { notes: keepingAll(main, request.notes) }
   for (const id of request.removedDiagrams ?? []) if (id !== main) diagrams[id] = { remove: true }
-  const result = saveToDezign(files, viaDbml(model.tables), edited.tables, { node: NODE, fallbackEncoding, positions, diagrams, normalize: viaDbml, domains: request.domains, removeDomains: request.removeDomains, views: request.views, scripts: request.scripts })
+  const result = saveToDezign(files, viaDbml(model.tables), edited.tables, { node: NODE, fallbackEncoding, positions, diagrams, normalize: viaDbml, domains: request.domains, removeDomains: request.removeDomains, renamedTables: request.renamedTables && withBareKeys(request.renamedTables), views: request.views, scripts: request.scripts })
   const outcome: DezignSaveOutcome = { changes: result.changes, written: result.files.length, deleted: result.deleted.length, hash: request.hash }
   if (request.dryRun || (!result.files.length && !result.deleted.length)) return outcome
 

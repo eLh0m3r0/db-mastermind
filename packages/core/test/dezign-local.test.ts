@@ -2,7 +2,7 @@ import { appendFileSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { diagramsAsLoaded, mutate, mutateDiagrams, random } from './dezign-fuzz.js'
-import { applyDezignSave, assembleDezignProject, checkModel, codec, compareSchemas, dezignDriver, tablesFromDdl, unquotedNames, dezignIntegrity, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
+import { applyDezignSave, assembleDezignProject, batchRename, checkModel, codec, compareSchemas, dezignDriver, tablesFromDdl, unquotedNames, dezignIntegrity, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 /**
  * Real models stay out of the repository. Point DBM_DEZ_SAMPLES at a folder with `.dez` files and/or folder
@@ -142,6 +142,26 @@ describe.skipIf(!root)('DeZign models on this machine', () => {
       // (Letters the file's code page lacks are written without their accent, as DeZign itself would hold them.)
       expect(after.sqlObjects.find((o) => o.id === views[0]!.id)!.code === codec(after.encoding, '\n').fit(code)).toBe(true)
       expect(after.tables.length).toBe(read(project).tables.length)
+    })
+  })
+
+  it('a batch rename of every table and column is saved as renames: no table dropped or made, ids kept', { timeout: 300_000 }, () => {
+    const viaDbml = (tables: TableInfo[]) => parseDbml(toDbml(tables)).tables
+    find(root!).forEach((file, n) => {
+      const folder = /\.dezproj$/i.test(file)
+      const project: DezignFile[] = folder ? projectFiles(join(file, '..')) : [{ path: 'model.dez', text: readFileSync(file, 'latin1') }]
+      const read = (files: DezignFile[]) => readDezign(folder ? assembleDezignProject(files) : files[0]!.text)
+      const base = viaDbml(read(project).tables)
+      const { tables, renames } = batchRename(base, { find: '^', replace: 'dbm_', regex: true, scope: 'both' })
+      const renamedTables = Object.fromEntries(renames.filter((r) => r.kind === 'table' && !r.skipped).map((r) => [`${r.schema ?? ''}.${r.from}`, `${r.schema ?? ''}.${r.to}`]))
+      const saved = saveToDezign(project, base, viaDbml(tables), { normalize: viaDbml, renamedTables })
+      const after = applyDezignSave(project, saved)
+      const kinds = saved.changes.reduce<Record<string, number>>((all, c) => ({ ...all, [c.kind]: (all[c.kind] ?? 0) + 1 }), {})
+      report(`#${n + 1} ${folder ? 'folder' : 'file'} batch rename: renames=${renames.length} changes=${JSON.stringify(kinds)}`)
+      expect((kinds.drop_table ?? 0) + (kinds.add_table ?? 0)).toBe(0)
+      expect(kinds.rename_table ?? 0).toBe(Object.keys(renamedTables).length)
+      expect(dezignIntegrity(folder ? assembleDezignProject(after) : after[0]!.text).length).toBeLessThanOrEqual(dezignIntegrity(folder ? assembleDezignProject(project) : project[0]!.text).length)
+      expect(read(after).tables.filter((t) => !t.name.startsWith('dbm_')).length).toBe(0)
     })
   })
 

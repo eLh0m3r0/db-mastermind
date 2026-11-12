@@ -119,6 +119,8 @@ export interface ModelTab extends BaseTab {
   /** Domains renamed here (name in the project → name now) and removed: Save does the same in the project. */
   domainRenames?: Record<string, string>
   domainRemovals?: string[]
+  /** Tables renamed by a batch rename (`schema.table` in the project → now): Save tells the writer which is which. */
+  tableRenames?: Record<string, string>
 }
 
 /** Pinned query results; without `dashboardId` it lists the connection's dashboards. */

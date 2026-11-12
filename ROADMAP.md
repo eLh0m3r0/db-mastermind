@@ -506,6 +506,11 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ Domains of a DeZign project renamed (the columns that follow one follow its new name; DeZign keeps them by id)
   and removed (only one no column follows), saved into the project; DeZign 14.9.3 opens both kinds of file as saved
 - ✅ A diagram of the selected tables (DeZign: subdiagram from the selection), where they stand
+- ✅ Batch rename (DeZign's batch renaming tool, "Rename…" at the model): a text or a regular expression replaced in
+  the names of tables, columns or both, every rename shown before it is done (a name that would be empty or taken
+  is left out and says why). Keys, indexes, relationships at both ends and checks follow (not text in quotes or
+  comments). Saved into a DeZign project as renames: the tables and columns keep their ids, a column's check keeps
+  its place with the new name in it. DeZign 14.9.3 opens a project with every table and column renamed as saved
 - ✅ Enums and table groups of a model of its own edited in dialogs from the object browser (a renamed enum renames
   the type of the columns that use it; one in use can't be removed): nothing of a model needs typing DBML any more
 - ✅ A DeZign project's scripts before and after its CREATE and ALTER scripts edited in the model ("Project
@@ -560,8 +565,7 @@ Not a clone: their features, rethought and connected to live databases, the know
 
 ### Later, when the pilot asks for it 💡
 - The rest of DeZign for Databases, with no date (the team's projects don't use it; the open ⬜ items of 8.2 and 8.3
-  belong here too): labels on objects, IDEF1X notation, a batch rename tool (today: find and replace in the model
-  text), switching a project's target database in the file (scripts for another database exist), configurable
+  belong here too): labels on objects, IDEF1X notation, switching a project's target database in the file (scripts for another database exist), configurable
   documentation and report templates (today: the HTML data dictionary and the diagram as PDF), the to-do list,
   conditional generation directives
 - Naming rules and a glossary of abbreviations kept in the knowledge base (logical name ↔ physical name)

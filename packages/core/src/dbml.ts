@@ -418,9 +418,8 @@ export const defaultFkName = (table: string, columns: string[]) => `fk_${table}_
  * A check's condition on one line. A condition written over several lines may hold `--` comments, which would
  * swallow everything after them once the lines are joined: they become block comments.
  */
-const checkText = (expression: string) =>
-  `\`${expression
-    .replaceAll('`', "'")
+export const checkOneLine = (expression: string) =>
+  expression
     .split('\n')
     .map((line) => {
       let quoted = false
@@ -432,7 +431,8 @@ const checkText = (expression: string) =>
     })
     .join('\n')
     .replace(/\s*\n\s*/g, ' ')
-    .trim()}\``
+    .trim()
+const checkText = (expression: string) => `\`${checkOneLine(expression.replaceAll('`', "'"))}\``
 /** The check written on a column (the first, if there are several: a column setting holds one). */
 const ownCheck = (t: TableInfo, column: string) => t.checks?.find((c) => c.column === column)
 
