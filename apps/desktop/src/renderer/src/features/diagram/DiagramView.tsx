@@ -691,7 +691,8 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, dashNo
             strokeWidth: active ? 2 : 1.3,
             strokeDasharray: fk.virtual ? '5 4' : dashNonIdentifying && !identifying ? '6 4' : undefined,
           },
-          label: active ? fk.columns.join(', ') : undefined,
+          // A subtype's link to its supertype says so (DeZign draws it through the supertype's cluster).
+          label: active ? fk.columns.join(', ') : fk.subtype ? tr('subtype') : undefined,
           labelStyle: { fontSize: 10, fill: 'var(--text-muted)' },
           labelBgStyle: { fill: 'var(--bg-elevated)' },
         })

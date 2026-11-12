@@ -350,7 +350,7 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ Group boxes are drawn as captioned frames behind their tables (not edited here; stamps are kept in the file
   and not shown)
 
-### 8.2 Save it back ✅ (checked in DeZign 14.9.3 itself; subtype clusters are kept, not edited)
+### 8.2 Save it back ✅ (checked in DeZign 14.9.3 itself)
 - ✅ Save writes the edited model into the same `.dez` or folder project: only the touched elements change,
   everything else stays byte for byte, the file keeps its format version, code page and line ends
 - ✅ Rename, comments, types, nullability, defaults, identity, add/remove/reorder columns, primary key, unique
@@ -402,7 +402,11 @@ Not a clone: their features, rethought and connected to live databases, the know
   the index DeZign keeps on the key (older projects) in step, so DeZign 14.9.3 draws a file we saved, a new
   identifying relationship and one made identifying, exactly as the app does (checked side by side); changing a
   primary key used to fail the save check in projects with that index
-- ⬜ Subtype clusters edited from the model (today they are kept as they are)
+- ✅ Subtypes edited from the model: a relationship's dialog makes the table a subtype of its parent (DBML
+  `subtype: true`; the canvas labels the line). Saved as DeZign keeps them: the supertype's cluster (made once,
+  with its connection and its symbol on each diagram of the supertype), the relationship from the cluster (RELTYPE 2),
+  and back to an ordinary relationship. DeZign 14.9.3 opens new subtypes, one turned back and one added to a
+  cluster as saved (e2e/flow96)
 
 - ✅ The DROP script DeZign writes next to the CREATE one (SQL DDL → DROP script…): views, then the tables in an
   order their foreign keys allow, then the domains the model made

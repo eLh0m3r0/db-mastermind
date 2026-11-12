@@ -170,6 +170,18 @@ export function RelationshipDialog({
           <div className="flex flex-col gap-1.5">
             <Checkbox checked={identifying} onChange={setIdentifying} label={<span title={tr("The parent's key is part of this table's primary key (drawn solid)")}>{tr('Identifying')}</span>} />
             <Checkbox checked={mandatory} onChange={setMandatory} label={<span title={tr('Every row needs a parent: the key columns are NOT NULL')}>{tr('Mandatory parent')}</span>} />
+            <Checkbox
+              checked={!!fk.subtype}
+              onChange={(on) => {
+                // A subtype shares its supertype's key: the relationship is identifying and mandatory.
+                if (on) {
+                  setIdentifying(true)
+                  setMandatory(true)
+                }
+                update({ subtype: on || undefined })
+              }}
+              label={<span title={tr('This table is a kind of the parent table (DeZign: a subtype in the supertype’s cluster)')}>{tr('Subtype')}</span>}
+            />
           </div>
           <div className="grid flex-1 grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1.5">
             <span className="text-fg-muted">{tr('on delete')}</span>

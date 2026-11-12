@@ -254,6 +254,16 @@ try {
   const withProps = readFileSync(dez, 'latin1').split('</VERSION>')[0]
   const customerProps = /<ENT>\s*<NAME>customer<\/NAME>[\s\S]*?<\/ENT>/.exec(withProps)?.[0] ?? ''
   console.log('custom properties:', /changed column: customer\.email|customer/.test(listedProps), /<ID>10<\/ID>\s*<USERDEFPROPS>\s*<UDP_163>Team B<\/UDP_163>/.test(customerProps), /<NAME>email<\/NAME>[\s\S]*?<USERDEFPROPS>\s*<UDP_166>Yes<\/UDP_166>/.test(customerProps))
+
+  // A relationship made a subtype's (DeZign: a cluster under the supertype), from its dialog.
+  await win.getByTestId('browser-group-relationships').click()
+  await win.locator('[data-testid^="browser-relationship-"]').first().dblclick()
+  await win.getByText('Subtype', { exact: true }).waitFor({ timeout: 10000 })
+  await win.getByText('Subtype', { exact: true }).click()
+  await win.getByRole('button', { name: 'OK', exact: true }).last().click()
+  const listedSubtype = await saveProject()
+  const withSubtype = readFileSync(dez, 'latin1').split('</VERSION>')[0]
+  console.log('subtype:', /subtype/.test(listedSubtype), /<SUBCAT>[\s\S]*?<AOID>/.test(withSubtype), /<RELTYPE>2<\/RELTYPE>/.test(withSubtype), /<SUBCATC>/.test(withSubtype))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow96.png') })
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])

@@ -741,6 +741,38 @@ describe('saving back into a DeZign project', () => {
     expect(() => save(files, (t) => void (t[0]!.properties = { Owner: 'x' }))).toThrow(/no custom property "Owner"/)
   })
 
+  it('makes a relationship a subtype one (DeZign: a cluster under the supertype) and back', () => {
+    const r = save(single, (t) => void (t[1]!.foreignKeys[0]!.subtype = true))
+    expect(r.changes).toEqual([{ kind: 'alter_relationship', table: 'invoice', name: 'customer (subtype)' }])
+    const out = r.files[0]!.text
+    const current = out.split('</VERSION>')[0]!
+    const cluster = /<SUBCAT>\n<NAME>SubCategory1<\/NAME>\n<ID>([^<]+)<\/ID>\n<AOID>10<\/AOID>/.exec(current)
+    expect(cluster).not.toBeNull()
+    expect(current).toMatch(new RegExp(`<SUBCATEGORYCONNECTION>[\\s\\S]*?<PARENTOBJECTID>10</PARENTOBJECTID>\\n<CHILDOBJECTID>${cluster![1]}</CHILDOBJECTID>`))
+    expect(current).toMatch(new RegExp(`<PARENTOBJECTID>${cluster![1]}</PARENTOBJECTID>\\n<CHILDOBJECTID>20</CHILDOBJECTID>[\\s\\S]*?<RELTYPE>2</RELTYPE>`))
+    expect(current).toMatch(new RegExp(`<SUBCATC>\\n<ID>${cluster![1]}</ID>`))
+    expect(readDezign(out).tables[1]!.foreignKeys[0]).toMatchObject({ refTable: 'customer', subtype: true })
+    expect(toDbml(readDezign(out).tables)).toContain('subtype: true')
+    expect(dezignIntegrity(out)).toEqual(dezignIntegrity(dez))
+    // Back to an ordinary relationship (not identifying: the key is not the invoice's own); the cluster stays.
+    const back = save([{ path: 'shop.dez', text: out }], (t) => void delete t[1]!.foreignKeys[0]!.subtype)
+    const again = back.files[0]!.text.split('</VERSION>')[0]!
+    expect(again).toMatch(/<PARENTOBJECTID>10<\/PARENTOBJECTID>\n<CHILDOBJECTID>20<\/CHILDOBJECTID>[\s\S]*?<RELTYPE>1<\/RELTYPE>/)
+    expect(readDezign(back.files[0]!.text).tables[1]!.foreignKeys[0]!.subtype).toBeUndefined()
+    expect(dezignIntegrity(back.files[0]!.text)).toEqual(dezignIntegrity(dez))
+  })
+
+  it('makes a new table a subtype: its relationship starts at the supertype\'s cluster, made once', () => {
+    const sub = (name: string): TableInfo => ({ schema: 'shop', name, type: 'table', comment: null, columns: [column('id', 'bigint', { nullable: false, isPrimaryKey: true, ordinal: 1 })], primaryKey: ['id'], foreignKeys: [{ name: `fk_${name}_id`, columns: ['id'], refSchema: 'shop', refTable: 'customer', refColumns: ['id'], subtype: true }], indexes: [] })
+    const r = save(single, (t) => [...t, sub('company'), sub('person')])
+    const current = r.files[0]!.text.split('</VERSION>')[0]!
+    expect(current.match(/<SUBCAT>/g)).toHaveLength(1)
+    expect(current.match(/<RELTYPE>2<\/RELTYPE>/g)).toHaveLength(2)
+    const back = readDezign(r.files[0]!.text).tables
+    expect(back.filter((t) => t.foreignKeys.some((f) => f.subtype)).map((t) => t.name)).toEqual(['company', 'person'])
+    expect(dezignIntegrity(r.files[0]!.text)).toEqual(dezignIntegrity(dez))
+  })
+
   it('writes nothing when the model was not edited', () => {
     expect(save(single, () => {})).toEqual({ files: [], deleted: [], changes: [] })
     expect(save(folder, () => {})).toEqual({ files: [], deleted: [], changes: [] })

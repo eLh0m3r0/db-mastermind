@@ -415,6 +415,8 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
     const card = /cardinality\s*:\s*'([^']*)'/i.exec(r.settings)?.[1]?.trim().toLowerCase().replace(/\s+/g, '-')
     if (card === 'one-or-more' || card === 'zero-or-one' || card === 'exactly-one') fk.cardinality = card
     else if (r.op === '-') fk.cardinality = 'zero-or-one'
+    // A custom setting: the table is a subtype of the referenced one (DeZign's subtype cluster).
+    if (/\bsubtype\s*:\s*true\b/i.test(r.settings)) fk.subtype = true
     owner.foreignKeys.push(fk)
   }
   // Aliases in groups mean their tables.
@@ -522,6 +524,7 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
       const named = fk.name && fk.name !== defaultFkName(t.name, fk.columns) && fk.name !== `${t.name}_${fk.columns.join('_')}_fkey` ? ` ${/^[\w$]+$/.test(fk.name) ? fk.name : `"${fk.name.replaceAll('"', '')}"`}` : ''
       const oneToOne = fk.cardinality === 'zero-or-one' || fk.cardinality === 'exactly-one'
       if (fk.cardinality === 'exactly-one' || fk.cardinality === 'one-or-more') actions.push(`cardinality: '${fk.cardinality.replaceAll('-', ' ')}'`)
+      if (fk.subtype) actions.push('subtype: true')
       out.push(`Ref${named}: ${tableName(t)}.${cols(fk.columns)} ${oneToOne ? '-' : '>'} ${tableName({ schema: fk.refSchema ?? t.schema, name: fk.refTable })}.${cols(fk.refColumns)}${actions.length ? ` [${actions.join(', ')}]` : ''}`)
     }
   }

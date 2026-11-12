@@ -108,6 +108,8 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   ukáže prohlížeč objektů ve skupině *Balíčky atributů*. V dialogu tabulky je vloží *Přidat balíček…*; sloupce
   zůstanou s balíčkem propojené jako v DeZignu. Sloupec z balíčku, kterému změníte název nebo definici, se stane
   vlastním sloupcem tabulky.
+- **Podtypy:** v dialogu vztahu zaškrtněte *Podtyp*: tabulka je pak druhem nadřazené tabulky (v DeZignu podtyp ve
+  shluku nadtypu). Vztah se nastaví jako identifikující a povinný a na plátně má popisek „podtyp“.
 - **Vlastní vlastnosti:** pokud projekt DeZignu definuje vlastní vlastnosti (User defined properties, např.
   „Odpovědná osoba“), vyplníte je v dialogu tabulky na záložce *Vlastnosti* a u vybraného sloupce pod mřížkou.
   Uloží se do projektu; samotné vlastnosti se definují v DeZignu.

@@ -1584,8 +1584,64 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     project.add('RELC', connector, controlFileName('relc', diagramId, relId))
   }
 
-  // --- apply: relationships ---------------------------------------------------------------------------
+  // --- subtype clusters --------------------------------------------------------------------------------------
+  // DeZign: a supertype has a cluster (SUBCAT, AOID = the supertype), joined to it by a SUBCATEGORYCONNECTION; each
+  // subtype's relationship starts at the cluster (RELTYPE 2). Diagrams draw the cluster as its own small control.
+  const middleOf = (c: El) => ({ x: Math.round(Number(text(c, 'L')) + Number(text(c, 'W')) / 2) || 0, y: Math.round(Number(text(c, 'T')) + Number(text(c, 'H')) / 2) || 0 })
+  const points = (list: { x: number; y: number }[]) => container('POINTS', list.map((p) => container('POINT', [leaf('X', String(p.x)), leaf('Y', String(p.y))])))
+  const connectorOf = (tag: string, id: string, diagramId: string, from: { x: number; y: number }, to: { x: number; y: number }) =>
+    container(tag, [leaf('ID', id), leaf('DIAGRAMID', diagramId), leaf('FONT', 'Arial,8,,0,clWindowText,0'), leaf('PEN', '0,1,4,0'), leaf('HIDDEN', '0'), leaf('FROMRELATIVEX', '5000'), leaf('FROMRELATIVEY', '5000'), leaf('TORELATIVEX', '5000'), leaf('TORELATIVEY', '5000'), points([from, to])])
+  const fileStemFor = (kind: 'SUBCAT' | 'SUBCONN', el: El) => {
+    const sample = project.list(kind)[0]
+    return sample && project.fileStem(sample) === text(sample.el, 'ID') ? text(el, 'ID') : text(el, 'NAME')
+  }
+  /** Cluster id → its supertype's id, also of clusters made here (relationships are matched through it). */
   const subcategories = new Map(project.list('SUBCAT').map((s) => [text(s.el, 'ID'), text(s.el, 'AOID')]))
+  /** The supertype's cluster, made (with its connection and its controls on the supertype's diagrams) when it has none. */
+  const clusterOf = (supertype: Entity): string => {
+    const found = project.list('SUBCAT').find((x) => text(x.el, 'AOID') === supertype.id)
+    if (found) return text(found.el, 'ID')
+    const n = project.list('SUBCAT').length + 1
+    const id = newObjectId()
+    const meta = [leaf('POSNR', '0'), leaf('SCHEMA'), leaf('DESC'), leaf('NOTE')]
+    const cluster = container('SUBCAT', [leaf('NAME', `SubCategory${n}`), leaf('ID', id), leaf('AOID', supertype.id), ...meta])
+    project.add('SUBCAT', cluster, fileStemFor('SUBCAT', cluster))
+    subcategories.set(id, supertype.id)
+    const linkId = newObjectId()
+    const link = container('SUBCATEGORYCONNECTION', [leaf('NAME', `SubCategoryConnection${project.list('SUBCONN').length + 1}`), leaf('ID', linkId), ...meta.map((m) => clone(m)), leaf('PARENTOBJECTID', supertype.id), leaf('CHILDOBJECTID', id)])
+    project.add('SUBCONN', link, fileStemFor('SUBCONN', link))
+    for (const control of project.list('ENTC').filter((c) => text(c.el, 'ID') === supertype.id)) {
+      const diagramId = text(control.el, 'DIAGRAMID')
+      const below = { x: Math.round(Number(text(control.el, 'L')) + Number(text(control.el, 'W')) / 2) || 0, y: (Number(text(control.el, 'T')) || 0) + (Number(text(control.el, 'H')) || 0) }
+      const symbol = container('SUBCATC', [leaf('ID', id), leaf('DIAGRAMID', diagramId), leaf('W', '30'), leaf('H', '40'), leaf('L', String(below.x - 15)), leaf('T', String(below.y + 30)), leaf('BRUSH', '1,16777215'), leaf('PEN', '0,1,4,0'), leaf('FONT', 'Arial,8,,0,clWindowText,0'), leaf('TR', '1'), leaf('AS', '1'), leaf('ROUNDED', '0')])
+      project.add('SUBCATC', symbol, controlFileName('subcatc', diagramId, id))
+      project.add('SUBCONNC', connectorOf('SUBCATEGORYCONNECTOR', linkId, diagramId, below, { x: below.x, y: below.y + 30 }), controlFileName('subconnc', diagramId, linkId))
+    }
+    return id
+  }
+  /** A relationship made a subtype's (from the supertype's cluster) or an ordinary one again, its lines redrawn. */
+  const setSubtype = (rel: El, supertype: Entity, child: Entity, subtype: boolean, identifying: boolean) => {
+    const relId = text(rel, 'ID')
+    for (const c of project.list('RELC')) if (text(c.el, 'ID') === relId) project.remove('RELC', c)
+    if (subtype) {
+      const cluster = clusterOf(supertype)
+      set(rel, 'PARENTOBJECTID', cluster)
+      set(rel, 'RELTYPE', '2', ['MANDATORYPARENT', 'UPDATERULE', 'DELETERULE', 'CONSTRAINT', 'PAIRS'])
+      for (const symbol of project.list('SUBCATC').filter((c) => text(c.el, 'ID') === cluster)) {
+        const diagramId = text(symbol.el, 'DIAGRAMID')
+        const to = project.list('ENTC').find((c) => text(c.el, 'ID') === child.id && text(c.el, 'DIAGRAMID') === diagramId)
+        if (!to) continue
+        const top = middleOf(symbol.el)
+        project.add('RELC', connectorOf('RELC', relId, diagramId, { x: top.x, y: top.y + 20 }, middleOf(to.el)), controlFileName('relc', diagramId, relId))
+      }
+    } else {
+      set(rel, 'PARENTOBJECTID', supertype.id)
+      set(rel, 'RELTYPE', identifying ? '0' : '1', ['MANDATORYPARENT', 'UPDATERULE', 'DELETERULE', 'CONSTRAINT', 'PAIRS'])
+      for (const diagramId of new Set(project.list('ENTC').map((c) => text(c.el, 'DIAGRAMID')))) addConnector(relId, diagramId, child.id, supertype.id)
+    }
+  }
+
+  // --- apply: relationships ---------------------------------------------------------------------------
   const signatureOfRel = (el: El) => {
     const parent = text(el, 'PARENTOBJECTID')
     const pairsOf = kids(kid(el, 'PAIRS'), 'PAIR').map((p) => `${text(p, 'FOREIGNKEYID')}>${text(p, 'KEYID')}`)
@@ -1636,6 +1692,15 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     }
     // Identifying or not (DeZign draws it solid or dashed): follows the child's primary key when that changed.
     const identifying = (r: { table: TableInfo; fk: ForeignKeyInfo }) => r.fk.columns.length > 0 && r.fk.columns.every((c) => r.table.primaryKey.map(lower).includes(lower(c)))
+    // A subtype's relationship (from the supertype's cluster) or an ordinary one.
+    if (!!old.fk.subtype !== !!now.fk.subtype) {
+      const child = entities.get(tableKey(now.table))
+      const supertype = entities.get(now.parentKey)
+      if (child && supertype) {
+        setSubtype(slot.el, supertype, child, !!now.fk.subtype, identifying(now))
+        changes.push({ kind: 'alter_relationship', table: now.table.name, name: `${now.fk.refTable}${now.fk.subtype ? ' (subtype)' : ''}` })
+      }
+    }
     if (identifying(old) !== identifying(now) && /^[01]$/.test(text(slot.el, 'RELTYPE'))) {
       set(slot.el, 'RELTYPE', identifying(now) ? '0' : '1')
       changes.push({ kind: 'alter_relationship', table: now.table.name, name: now.fk.refTable })
@@ -1742,7 +1807,8 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     project.add('REL', el, relFileName(el))
     // A connector in every diagram that shows both tables.
     for (const diagramId of new Set(project.list('ENTC').map((c) => text(c.el, 'DIAGRAMID')))) addConnector(id, diagramId, child.id, parent.id)
-    changes.push({ kind: 'add_relationship', table: table.name, name: fk.refTable })
+    if (fk.subtype) setSubtype(el, parent, child, true, true)
+    changes.push({ kind: 'add_relationship', table: table.name, name: `${fk.refTable}${fk.subtype ? ' (subtype)' : ''}` })
   }
 
   // Diagrams that gained or lost tables: every relationship between two tables on the diagram is drawn there, and

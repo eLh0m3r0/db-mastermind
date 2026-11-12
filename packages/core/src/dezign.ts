@@ -551,6 +551,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
     const cardinality = DEZIGN_CARDINALITIES[Number(text(rel, 'CARDINALITY'))]
     if (cardinality) fk.cardinality = cardinality
     if (text(rel, 'VIRTUALREL') === '1') fk.virtual = true
+    if (subcategories.has(parentId)) fk.subtype = true
     child.table.foreignKeys.push(fk)
   }
 

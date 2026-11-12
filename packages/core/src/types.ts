@@ -152,6 +152,11 @@ export interface ForeignKeyInfo {
    * cardinality); none: zero or more. Drawn on the diagram, never in a script.
    */
   cardinality?: 'one-or-more' | 'zero-or-one' | 'exactly-one'
+  /**
+   * The table is a subtype of the referenced one, its supertype (DeZign: a subtype cluster under the supertype). A
+   * model's own fact: the database sees an ordinary foreign key.
+   */
+  subtype?: boolean
 }
 
 export interface IndexInfo {
