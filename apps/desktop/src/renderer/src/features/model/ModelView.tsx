@@ -238,7 +238,8 @@ export function ModelView({ tab }: { tab: ModelTab }) {
    */
   const updateFromDatabase = async (removeMissing: boolean) => {
     if (!connection) return
-    const snap = liveSchema ?? ((await connectAndSelect(connection.id)) ? await loadSchema(tab.connectionId) : undefined)
+    // Read again: what the database has now, not what was loaded when the model was first compared with it.
+    const snap = (await connectAndSelect(connection.id)) ? await loadSchema(tab.connectionId, true) : undefined
     if (!snap) return
     // The schemas the model is about, when the database has them; all of it otherwise.
     const schemas = new Set(model.tables.map((x) => (x.schema ?? snap.defaultSchema ?? '').toLowerCase()))

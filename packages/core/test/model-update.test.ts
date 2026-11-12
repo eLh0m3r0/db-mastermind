@@ -59,6 +59,16 @@ const database = (): TableInfo[] => [
 ]
 
 describe('updating a model from a database', () => {
+
+  // PostgreSQL reports a column typed by a domain (CREATE DOMAIN) with the domain's name as its type.
+  it('keeps a column that follows a domain the database reports by its name', () => {
+    const m = parseDbml("Table sales.invoice {\n  id integer [pk]\n  total numeric(10,2) [not null, domain: 'AMOUNT_T']\n}").tables
+    const db = parseDbml('Table sales.invoice {\n  id integer [pk]\n  total amount_t [not null]\n  phone varchar(30)\n}').tables
+    const { tables, summary } = updateModelFromDatabase(m, db)
+    const total = tables[0]!.columns.find((c) => c.name === 'total')!
+    expect(total).toMatchObject({ dataType: 'numeric(10,2)', domain: 'AMOUNT_T' })
+    expect(summary).toMatchObject({ columnsAdded: 1, columnsChanged: 0 })
+  })
   it('takes what the database has and keeps what only the model knows', () => {
     const { tables, summary } = updateModelFromDatabase(model(), database())
     expect(tables.map((t) => t.name)).toEqual(['customers', 'orders', 'drafts', 'payments'])

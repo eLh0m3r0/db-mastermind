@@ -6,7 +6,7 @@
 // a table, a check, a column gone) and the ALTER script brings the database along.
 // Needs the `postgres` service of docker-compose.test.yml.
 import { _electron as electron } from '@playwright/test'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -162,10 +162,36 @@ try {
   const kept = await sql(team.id, 'SELECT e_mail FROM sales.customer WHERE id = 1')
   check('the data of the renamed column is still there', JSON.stringify(kept).includes('ada@example.com'), JSON.stringify(kept).slice(0, 200))
 
-  // 5. What the database really has.
+  // 5. The model as it is now goes into the project; then somebody changes the database directly, the model is
+  // updated from it and that change saved into the project too.
+  await win.getByText('team.dez', { exact: true }).first().click()
+  await win.getByRole('button', { name: 'Save', exact: true }).click()
+  await win.getByText(/Write these changes into team\.dez\?/).waitFor({ timeout: 10000 })
+  await win.getByRole('button', { name: 'Write to the DeZign file' }).click()
+  await win.getByText(/Saved to team\.dez/).last().waitFor({ timeout: 10000 })
+  await sql(team.id, 'ALTER TABLE sales.customer ADD COLUMN phone varchar(30); CREATE TABLE sales.note (id integer PRIMARY KEY, customer_id integer NOT NULL REFERENCES sales.customer (id), body text)')
+  await win.getByText('team.dez', { exact: true }).first().click()
+  const beforeUpdate = await win.locator('.cm-content:visible').first().innerText()
+  await win.getByRole('button', { name: 'From database' }).click()
+  await win.getByText('Update the model (keeps its comments, domains and layout)').click()
+  await win.getByText(/Model updated from Team DB/).waitFor({ timeout: 20000 })
+  await win.waitForTimeout(800)
+  const updated = await win.locator('.cm-content:visible').first().innerText()
+  check('the model has what the database has new', /phone (varchar|"character varying)\(30\)/.test(updated) && /Table sales\.note/.test(updated), updated.replace(/\s+/g, ' ').slice(0, 600))
+  await win.getByRole('button', { name: 'Save', exact: true }).click()
+  await win.getByText(/Write these changes into team\.dez\?/).waitFor({ timeout: 10000 })
+  const listedUpdate = await win.locator('[role="dialog"], .fixed').filter({ hasText: 'Write these changes' }).last().innerText()
+  check('the update lists only what the database has new', /new column: customer \(phone\)/.test(listedUpdate) && /new table: note/.test(listedUpdate) && !/dropped|renamed/.test(listedUpdate), listedUpdate.replace(/\s+/g, ' ').slice(180, 900))
+  await win.getByRole('button', { name: 'Write to the DeZign file' }).click()
+  await win.getByText(/Saved to team\.dez/).last().waitFor({ timeout: 10000 })
+  const savedUpdate = readFileSync(dez, 'latin1')
+  check('the project has the new column and table', /<NAME>phone<\/NAME>/.test(savedUpdate) && /<NAME>note<\/NAME>/.test(savedUpdate), String(beforeUpdate.length))
+  check('after the update the model and the database are identical', (await compare()) === '')
+
+  // 6. What the database really has.
   const schema = await api('getSchema', team.id, true)
   const tables = (schema.tables ?? []).filter((t) => t.schema === 'sales')
-  check('the database has the three tables in the schema', tables.map((t) => t.name).sort().join(',') === 'customer,invoice,receipt')
+  check('the database has the four tables in the schema', tables.map((t) => t.name).sort().join(',') === 'customer,invoice,note,receipt')
   check('with both checks', tables.flatMap((t) => (t.checks ?? []).map((c) => c.name)).sort().join(',') === 'invoice_total_ok,payment_positive')
   check('and the other table is still there', (schema.tables ?? []).some((t) => t.schema === 'public' && t.name === 'legacy'))
 

@@ -22,6 +22,10 @@ const fromSequence = (c: ColumnInfo) => c.isIdentity || /nextval\s*\(/i.test(c.d
 
 /** The same type under the names a model and a database give it (`bigserial` and a `bigint` fed by a sequence, `int4` and `integer`). */
 function sameType(model: ColumnInfo, db: ColumnInfo): boolean {
+  // A column that follows a domain the database has as a type of its own (PostgreSQL's CREATE DOMAIN): the
+  // database reports the domain's name as the type.
+  const bare = (name: string) => lower(name).replace(/^.*\./, '').replaceAll('"', '')
+  if (model.domain && bare(db.dataType) === bare(model.domain)) return true
   if (typeFamily(model.dataType) !== typeFamily(db.dataType)) return false
   return size(model.dataType) === size(db.dataType) || !size(model.dataType) || !size(db.dataType)
 }
