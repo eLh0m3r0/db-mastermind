@@ -31,6 +31,7 @@ import { CommandPalette } from './features/shell/CommandPalette'
 import { HomeScreen } from './features/shell/HomeScreen'
 import { StatusBar } from './features/shell/StatusBar'
 import { TabBar } from './features/shell/TabBar'
+import { setSidebarShown, toggleSidebar, useSidebarShown } from './features/shell/sidebar-shown'
 import { Sidebar, useCurrentConnectionId } from './features/sidebar/Sidebar'
 import { StructureView } from './features/structure/StructureView'
 import { TableView } from './features/table/TableView'
@@ -83,7 +84,7 @@ function useGlobalCommands() {
             else if (ws.activeTabId) ws.splitRight(ws.activeTabId)
             break
           case 'toggle-sidebar':
-            ui.set({ sidebarVisible: !ui.sidebarVisible })
+            toggleSidebar()
             break
           case 'toggle-ai':
             ui.set({ aiPanelVisible: !ui.aiPanelVisible })
@@ -115,7 +116,7 @@ function useGlobalCommands() {
             break
           case 'history':
           case 'saved-queries':
-            ui.set({ sidebarVisible: true })
+            setSidebarShown(true)
             break
         }
       }),
@@ -153,8 +154,6 @@ function useOpenedFiles() {
   useEffect(() => {
     const off = bridge.on('file:open', openFile)
     void window.mastermind.api.takeOpenedFiles().then((paths) => {
-      // Started with a model (a double-click in the system): the designer gets the whole window.
-      if (paths.some((p) => MODEL_FILE.test(p))) useUi.getState().set({ sidebarVisible: false })
       paths.forEach(openFile)
       bridge.listenForFiles()
     })
@@ -169,7 +168,9 @@ export function App() {
   const activate = useWorkspace((s) => s.activate)
   const [splitRatio, setSplitRatio] = useState(0.5)
   const panesRef = useRef<HTMLDivElement>(null)
-  const { sidebarVisible, sidebarWidth, aiPanelVisible, aiPanelWidth, set } = useUi()
+  const { sidebarWidth, aiPanelVisible, aiPanelWidth, set } = useUi()
+  // (Next to a model the connections sidebar is hidden unless asked for: see sidebar-shown.)
+  const sidebarVisible = useSidebarShown()
   useGlobalCommands()
   useFileDrop()
   useOpenedFiles()

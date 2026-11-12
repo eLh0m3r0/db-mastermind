@@ -25,6 +25,27 @@ Three pillars, in priority order:
 
 AI runs through all three. The same capabilities are exposed in the app and over MCP.
 
+## Two ways in: a database or a model
+
+The owner's direction (2026-11-13), after the DeZign work: the app is a product of its own, not a copy of
+DeZign for Databases. It does what DeZign does, the way a tool of today does it.
+
+1. **Two equal jobs.** *Work with a database* (connections, data, SQL, a live diagram, AI on it) and *design a
+   model* (a document, like a Word file, with no database needed until it is compared or migrated). The home
+   page offers the two side by side and fits a laptop screen without scrolling.
+2. **DeZign is a file format, not the way the app works.** Its projects open, are edited and save back in place,
+   checked against DeZign itself, so a team can switch person by person. The app's texts name DeZign only where a
+   file is opened or saved; nothing is "as in DeZign". A new model's own format is DBML (text, Git friendly) with
+   "Save as DeZign project" for those who need it.
+3. **Edit in place, details beside it.** What is done most is done on the canvas: rename a table or a column,
+   add a column, change its type, NOT NULL, draw a relationship. The rest of the selected object (indexes,
+   checks, notes, properties, a relationship's settings) is in one detail panel: docked on the right in a wide
+   window, a drawer over the canvas in a narrow one (Esc closes it, a pin keeps it). No setting decides this; the
+   window's width does. Modal dialogs only for decisions: save, delete, switch the database.
+4. **Few buttons.** A model's bar holds Save, Compare with database, SQL and View; everything else is behind
+   "More" and the command palette. A model hides the connections sidebar: its left side is its own objects.
+5. **Free for developers.** MIT as everything else: colleagues use it without a licence, DeZign users included.
+
 ## License and business model
 
 **Decision:** open core.

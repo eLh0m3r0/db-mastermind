@@ -1,10 +1,11 @@
-import { ArrowRight, BookOpen, Coffee, Database, Download, FileSpreadsheet, Keyboard, Plus, Sparkles, FileCode2, FilePlus2 } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowRight, Coffee, Database, Download, FileSpreadsheet, Plus, Shapes, FileCode2, FilePlus2 } from 'lucide-react'
 import { isFileDriver } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { runCommand } from '@/lib/commands'
 import { Kbd } from '@/components/ui/Input'
 import { api, modKey } from '@/lib/api'
-import { queryFile, openModel } from '@/lib/files'
+import { forgetRecentModel, queryFile, openModel, recentModels } from '@/lib/files'
 import { useConnections } from '@/store/connections'
 import { useUi } from '@/store/ui'
 import { DriverIcon } from '../connections/drivers'
@@ -21,120 +22,178 @@ export function HomeScreen() {
   const list = useConnections((s) => s.list)
   const setUi = useUi((s) => s.set)
   const t = useT()
-  const recent = [...list].sort((a, b) => (b.lastUsedAt ?? '').localeCompare(a.lastUsedAt ?? '')).slice(0, 8)
+  const recent = [...list].sort((a, b) => (b.lastUsedAt ?? '').localeCompare(a.lastUsedAt ?? '')).slice(0, 5)
+  const [models, setModels] = useState(recentModels)
+  const modelFolder = (path: string) => path.split(/[\\/]/).slice(-3, -1).join('/')
 
   return (
     <div className="h-full overflow-auto">
-      <div className="mx-auto flex max-w-[860px] flex-col gap-8 px-8 py-12">
-        <div className="flex items-center gap-4">
-          <Logo size={52} />
+      <div className="mx-auto flex max-w-[1040px] flex-col gap-6 px-6 py-8">
+        <div className="flex items-center gap-3.5">
+          <Logo size={40} />
           <div>
-            <h1 className="text-[24px] font-semibold tracking-tight">DB Mastermind</h1>
-            <p className="text-[13px] text-fg-muted">{t('Browse, query, diagram and understand your databases. Free & open source, no limits.')}</p>
+            <h1 className="text-[20px] font-semibold tracking-tight">DB Mastermind</h1>
+            <p className="text-[12.5px] text-fg-muted">{t('Work with your databases, or design a new one. Free & open source.')}</p>
           </div>
         </div>
 
-        <section>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-[13px] font-semibold text-fg-muted">{recent.length ? t('Recent connections') : t('Get started')}</h2>
-            <div className="flex gap-2">
-              <Button size="sm" variant="ghost" icon={<Coffee size={13} />} onClick={() => void openDemo()}>
-                {t('Try the demo database')}
-              </Button>
-              <Button size="sm" variant="ghost" icon={<FileSpreadsheet size={13} />} onClick={() => void queryFile()} title={t('CSV, Parquet, JSON or Excel: query it with SQL, no import needed')}>
-                {t('Query a file')}
-              </Button>
-              <Button size="sm" variant="ghost" icon={<FilePlus2 size={13} />} onClick={() => runCommand('new-model')} title={t('Design a database from scratch: draw the tables, then get the SQL for any database. No connection needed')}>
-                {t('New model')}
-              </Button>
-              <Button size="sm" variant="ghost" icon={<FileCode2 size={13} />} onClick={() => void openModel()} title={t('A database model: DBML, or a DeZign for Databases project (.dez, .dezproj). No connection needed')}>
-                {t('Open a model')}
-              </Button>
-              <Button size="sm" variant="ghost" icon={<Download size={13} />} onClick={(e) => void openImportMenu(e.currentTarget)} title={t('From Beekeeper, DBeaver, DataGrip, pgAdmin, SSMS, Workbench, HeidiSQL…')}>
-                {t('Import connections')}
-              </Button>
-              <Button size="sm" variant="primary" icon={<Plus size={14} />} onClick={() => setUi({ modal: { kind: 'connection' } })}>
-                {t('New connection')}
-              </Button>
-            </div>
-          </div>
-          {recent.length ? (
-            <div className="grid grid-cols-2 gap-2.5">
-              {recent.map((c) => (
-                <button
+        {/* The two ways in: a database, or a model (a document of its own, no database needed). */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <Way
+            icon={<Database size={18} />}
+            title={t('Databases')}
+            points={[t('Data, filters and the SQL editor'), t('A live diagram and the relationships of a schema'), t('AI that knows your schema')]}
+            actions={
+              <>
+                <Button size="sm" variant="primary" icon={<Plus size={14} />} onClick={() => setUi({ modal: { kind: 'connection' } })}>
+                  {t('New connection')}
+                </Button>
+                <Button size="sm" variant="ghost" icon={<Download size={13} />} onClick={(e) => void openImportMenu(e.currentTarget)} title={t('From Beekeeper, DBeaver, DataGrip, pgAdmin, SSMS, Workbench, HeidiSQL…')}>
+                  {t('Import connections')}
+                </Button>
+                <Button size="sm" variant="ghost" icon={<Coffee size={13} />} onClick={() => void openDemo()}>
+                  {t('Try the demo database')}
+                </Button>
+                <Button size="sm" variant="ghost" icon={<FileSpreadsheet size={13} />} onClick={() => void queryFile()} title={t('CSV, Parquet, JSON or Excel: query it with SQL, no import needed')}>
+                  {t('Query a file')}
+                </Button>
+              </>
+            }
+          >
+            {recent.length ? (
+              recent.map((c) => (
+                <Item
                   key={c.id}
-                  type="button"
                   onClick={() => void connectAndSelect(c.id)}
-                  className="group flex items-center gap-3 rounded-lg border border-line bg-elevated p-3 text-left transition-colors hover:border-accent/50 hover:bg-hover"
-                  style={c.color ? { boxShadow: `inset 3px 0 0 ${c.color}` } : undefined}
-                >
-                  <DriverIcon driver={c.driver} size={28} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="truncate text-[13px] font-medium">{c.name}</span>
+                  icon={<DriverIcon driver={c.driver} size={22} />}
+                  title={
+                    <>
+                      <span className="truncate">{c.name}</span>
                       {c.environment === 'production' && <span className="rounded bg-danger px-1 text-[9.5px] font-bold text-white">PROD</span>}
-                    </div>
-                    <div className="truncate text-[11.5px] text-fg-faint">{isFileDriver(c.driver) ? c.filePath || t('in-memory') : `${c.host ?? ''}${c.database ? `/${c.database}` : ''}`}</div>
-                  </div>
-                  <StatusDot id={c.id} />
-                  <ArrowRight size={14} className="text-fg-faint opacity-0 transition-opacity group-hover:opacity-100" />
-                </button>
-              ))}
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setUi({ modal: { kind: 'connection' } })}
-              className="flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-line-strong p-10 text-fg-muted hover:border-accent hover:text-fg"
-            >
-              <Database size={28} />
-              <span className="text-[14px] font-medium">{t('Add your first connection')}</span>
-              <span className="text-[12px] text-fg-faint">PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB · ClickHouse · CockroachDB · BigQuery · Trino</span>
-            </button>
-          )}
-        </section>
+                    </>
+                  }
+                  detail={isFileDriver(c.driver) ? c.filePath || t('in-memory') : `${c.host ?? ''}${c.database ? `/${c.database}` : ''}`}
+                  extra={<StatusDot id={c.id} />}
+                  accent={c.color}
+                />
+              ))
+            ) : (
+              <Empty>{t('No connections yet. PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite, DuckDB, ClickHouse, CockroachDB, BigQuery, Trino.')}</Empty>
+            )}
+          </Way>
 
-        <section className="grid grid-cols-3 gap-3">
-          <Feature icon={<Keyboard size={16} />} title={t('Keyboard first')}>
-            <div className="flex flex-col gap-1.5">
-              <Shortcut keys={[modKey, 'K']} label={t('Command palette')} />
-              <Shortcut keys={[modKey, 'P']} label={t('Open table')} />
-              <Shortcut keys={[modKey, '↵']} label={t('Run statement')} />
-              <Shortcut keys={[modKey, 'T']} label={t('New query')} />
-            </div>
-          </Feature>
-          <Feature icon={<Sparkles size={16} />} title={t('AI that knows your schema')}>
-            {t('Connect Claude, OpenAI, OpenRouter or a local model, or use your Claude Code / Codex subscription.')} <span className="whitespace-nowrap">
-              {t('Press')} <Kbd>{modKey}</Kbd> <Kbd>J</Kbd>.
-            </span>
-          </Feature>
-          <Feature icon={<BookOpen size={16} />} title={t('Open source')}>
+          <Way
+            icon={<Shapes size={18} />}
+            title={t('Models')}
+            points={[t('Tables and relationships designed without a database'), t('Compared with a database, with the migration script'), t('SQL for any database; opens DeZign for Databases projects too')]}
+            actions={
+              <>
+                <Button size="sm" variant="primary" icon={<FilePlus2 size={14} />} onClick={() => runCommand('new-model')} title={t('Design a database from scratch: draw the tables, then get the SQL for any database. No connection needed')}>
+                  {t('New model')}
+                </Button>
+                <Button size="sm" variant="ghost" icon={<FileCode2 size={13} />} onClick={() => void openModel()} title={t('A database model: DBML, or a DeZign for Databases project (.dez, .dezproj). No connection needed')}>
+                  {t('Open a model')}
+                </Button>
+              </>
+            }
+          >
+            {models.length ? (
+              models.slice(0, 5).map((m) => (
+                <Item
+                  key={m.path}
+                  onClick={() => void openModel(m.path)}
+                  icon={<FileCode2 size={18} className="text-fg-muted" />}
+                  title={<span className="truncate">{m.name}</span>}
+                  detail={modelFolder(m.path)}
+                  hint={m.path}
+                  extra={
+                    <span
+                      role="button"
+                      tabIndex={-1}
+                      title={t('Remove from the list')}
+                      className="rounded px-1 text-fg-faint opacity-0 hover:bg-subtle hover:text-fg group-hover:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        forgetRecentModel(m.path)
+                        setModels(recentModels())
+                      }}
+                    >
+                      ×
+                    </span>
+                  }
+                />
+              ))
+            ) : (
+              <Empty>{t('Models you open show here.')}</Empty>
+            )}
+          </Way>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11.5px] text-fg-muted">
+          <Shortcut keys={[modKey, 'K']} label={t('Command palette')} />
+          <Shortcut keys={[modKey, 'P']} label={t('Open table')} />
+          <Shortcut keys={[modKey, 'J']} label={t('AI assistant')} />
+          <span className="flex-1" />
+          <span>
             {t('MIT licensed, no feature limits.')}{' '}
             <button type="button" className="text-accent hover:underline" onClick={() => void api.openExternal('https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md')}>
               {t('See the roadmap')}
             </button>
-          </Feature>
-        </section>
+          </span>
+        </div>
       </div>
     </div>
   )
 }
 
-function Feature({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+function Way({ icon, title, points, actions, children }: { icon: React.ReactNode; title: string; points: string[]; actions: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-line bg-subtle p-3.5">
-      <div className="mb-2 flex items-center gap-2 text-[12.5px] font-semibold">
-        <span className="text-accent">{icon}</span>
-        {title}
+    <section className="flex min-w-0 flex-col gap-3 rounded-xl border border-line bg-elevated p-4">
+      <div className="flex items-center gap-2">
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-soft text-accent">{icon}</span>
+        <h2 className="text-[15px] font-semibold">{title}</h2>
       </div>
-      <div className="text-[12px] leading-relaxed text-fg-muted">{children}</div>
-    </div>
+      <ul className="flex flex-col gap-1 text-[12px] text-fg-muted">
+        {points.map((p) => (
+          <li key={p} className="flex gap-1.5">
+            <span className="text-accent">·</span>
+            {p}
+          </li>
+        ))}
+      </ul>
+      <div className="flex flex-wrap gap-1.5">{actions}</div>
+      <div className="flex flex-col gap-1">{children}</div>
+    </section>
   )
+}
+
+function Item({ onClick, icon, title, detail, hint, extra, accent }: { onClick: () => void; icon: React.ReactNode; title: React.ReactNode; detail?: string; hint?: string; extra?: React.ReactNode; accent?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={hint}
+      className="group flex items-center gap-2.5 rounded-lg border border-line px-2.5 py-2 text-left transition-colors hover:border-accent/50 hover:bg-hover"
+      style={accent ? { boxShadow: `inset 3px 0 0 ${accent}` } : undefined}
+    >
+      {icon}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 text-[12.5px] font-medium">{title}</div>
+        {detail && <div className="truncate text-[11px] text-fg-faint">{detail}</div>}
+      </div>
+      {extra}
+      <ArrowRight size={13} className="shrink-0 text-fg-faint opacity-0 transition-opacity group-hover:opacity-100" />
+    </button>
+  )
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+  return <div className="rounded-lg border border-dashed border-line px-3 py-4 text-center text-[11.5px] text-fg-faint">{children}</div>
 }
 
 function Shortcut({ keys, label }: { keys: string[]; label: string }) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex items-center justify-between gap-1.5">
       <span>{label}</span>
       <span className="flex gap-0.5">
         {keys.map((k) => (

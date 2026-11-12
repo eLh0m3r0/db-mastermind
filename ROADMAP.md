@@ -626,6 +626,21 @@ Not a clone: their features, rethought and connected to live databases, the know
 - A separate modeler application: the designer is its own module in the code and opens like a stand-alone
   tool, but one install and one update channel stay
 
+## Milestone 9 — A modeling tool of its own
+
+What docs/STRATEGY.md ("Two ways in") asks for, without losing anything of Milestone 8 (the DeZign tests guard
+compatibility while the screens change).
+
+- ✅ Home page: *Databases* and *Models* side by side, each with a short list of what it does, connections and
+  recent models under them; fits a laptop screen without scrolling (recent models are remembered when opened)
+- ✅ A model tab hides the connections sidebar (⌘B or the button in the tab bar shows it; remembered apart from
+  the databases' choice, and the sidebar has its own hide button); its left side is the model's objects
+- ⬜ A lean model bar: Save, Compare with database, SQL, View, More (domains, project scripts, versions, rename,
+  views and code, directives…); texts name DeZign only for its files
+- ⬜ One detail panel for the selected table, column or relationship, docked right in a wide window and a drawer
+  over the canvas in a narrow one; the table and relationship dialogs go
+- ⬜ In place on the canvas: rename a table or a column, add a column (Enter), its type and NOT NULL
+
 ---
 
 ## Comparison target

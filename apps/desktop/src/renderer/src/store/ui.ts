@@ -18,6 +18,8 @@ export interface Toast {
 
 interface UiState {
   sidebarVisible: boolean
+  /** The connections sidebar next to a model (a model has its own objects on its left: hidden unless asked for). */
+  sidebarInModels: boolean
   sidebarWidth: number
   aiPanelVisible: boolean
   aiPanelWidth: number
@@ -46,6 +48,7 @@ function loadLayout(): Partial<UiState> {
 
 export const useUi = create<UiState>((set, get) => ({
   sidebarVisible: true,
+  sidebarInModels: false,
   sidebarWidth: 270,
   aiPanelVisible: false,
   aiPanelWidth: 380,
@@ -53,9 +56,9 @@ export const useUi = create<UiState>((set, get) => ({
   ...loadLayout(),
   set(patch) {
     set(patch)
-    const { sidebarVisible, sidebarWidth, aiPanelVisible, aiPanelWidth } = get()
+    const { sidebarVisible, sidebarInModels, sidebarWidth, aiPanelVisible, aiPanelWidth } = get()
     try {
-      localStorage.setItem('layout', JSON.stringify({ sidebarVisible, sidebarWidth, aiPanelVisible, aiPanelWidth }))
+      localStorage.setItem('layout', JSON.stringify({ sidebarVisible, sidebarInModels, sidebarWidth, aiPanelVisible, aiPanelWidth }))
     } catch {
       // Storage unavailable: layout just isn't remembered.
     }

@@ -1,3 +1,4 @@
+import { setSidebarShown, useSidebarShown } from './sidebar-shown'
 import { useRef, useState } from 'react'
 import { Activity, BookOpen, FileCode2, LayoutDashboard, Rows3, ShieldCheck, GitCompare, Layers, Network, PanelLeft, Plus, Sparkles, Table2, TerminalSquare, X, Columns2 } from 'lucide-react'
 import { IconButton } from '@/components/ui/Button'
@@ -20,7 +21,7 @@ export function TabBar() {
   const split = useWorkspace((s) => s.split)
   const connections = useConnections((s) => s.list)
   const currentConnection = useCurrentConnectionId()
-  const sidebarVisible = useUi((s) => s.sidebarVisible)
+  const sidebarVisible = useSidebarShown()
   const aiVisible = useUi((s) => s.aiPanelVisible)
   const setUi = useUi((s) => s.set)
   const dragId = useRef<string | null>(null)
@@ -52,7 +53,7 @@ export function TabBar() {
   return (
     <div className={cn('drag-region flex h-[38px] shrink-0 items-end border-b border-line bg-subtle', !sidebarVisible && isMac && 'pl-[78px]')}>
       {!sidebarVisible && (
-        <IconButton label={`${t('Show sidebar')} (${modKey}B)`} className="no-drag mb-1.5 ml-1.5" onClick={() => setUi({ sidebarVisible: true })}>
+        <IconButton label={`${t('Show sidebar')} (${modKey}B)`} className="no-drag mb-1.5 ml-1.5" onClick={() => setSidebarShown(true)}>
           <PanelLeft size={14} />
         </IconButton>
       )}

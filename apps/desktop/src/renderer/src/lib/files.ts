@@ -22,6 +22,37 @@ export function rememberModelDatabase(path: string | undefined, connectionId: st
   if (path) localStorage.setItem(LINKS, JSON.stringify({ ...links(), [path]: connectionId }))
 }
 
+const RECENT = 'dbm.recentModels'
+export interface RecentModel {
+  path: string
+  name: string
+  at: string
+}
+/** Model files opened lately, newest first (the home page lists them). */
+export function recentModels(): RecentModel[] {
+  try {
+    const list = JSON.parse(localStorage.getItem(RECENT) ?? '[]') as RecentModel[]
+    return Array.isArray(list) ? list.filter((m) => m && typeof m.path === 'string') : []
+  } catch {
+    return []
+  }
+}
+function rememberRecentModel(path: string): void {
+  try {
+    const name = path.split(/[\\/]/).pop() ?? path
+    localStorage.setItem(RECENT, JSON.stringify([{ path, name, at: new Date().toISOString() }, ...recentModels().filter((m) => m.path !== path)].slice(0, 12)))
+  } catch {
+    // (A convenience: nothing breaks without it.)
+  }
+}
+export function forgetRecentModel(path: string): void {
+  try {
+    localStorage.setItem(RECENT, JSON.stringify(recentModels().filter((m) => m.path !== path)))
+  } catch {
+    // (As above.)
+  }
+}
+
 /**
  * Opens a model file (.dbml, or a DeZign for Databases .dez / .dezproj) in a model tab. A model needs no database:
  * it is linked to the one it was last used with, else to the current connection, else to none.
@@ -36,6 +67,7 @@ export async function openModel(path?: string): Promise<void> {
     const remembered = links()[file.path]
     const connectionId = remembered && connections.list.some((c) => c.id === remembered) ? remembered : current
     ws.open({ kind: 'model', connectionId, ...modelTabFromFile(file, connections.runtime[connectionId]?.schema?.defaultSchema) }, { reuse: false })
+    rememberRecentModel(file.path)
   } catch (err) {
     toast({ kind: 'error', message: t('Could not open the model'), detail: errorMessage(err) })
   }

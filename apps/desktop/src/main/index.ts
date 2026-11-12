@@ -1,6 +1,6 @@
 import { deliverOpenedFilesTo, filesFromArgs, openFileInApp } from './opened-files'
 import { join } from 'node:path'
-import { app, BrowserWindow, ipcMain, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, screen, shell } from 'electron'
 import { describeError, sqliteWorkersAlive, useKnownHostsFile } from '@dbmastermind/core'
 import { API_CHANNEL, type IpcResult, type MastermindApi } from '@shared/api'
 import { api, db } from './api'
@@ -37,11 +37,14 @@ function createWindow() {
   const state = readJson<WindowState>('window.json', { width: 1440, height: 900 })
   const theme = getSettings().theme
   nativeTheme.themeSource = theme
+  // A test run's window stays on the main display, in its far corner: a window placed off every screen is moved by
+  // macOS onto the nearest display, which can be a second monitor somebody is working on.
+  const main = e2eBackground ? screen.getPrimaryDisplay().workArea : undefined
   mainWindow = new BrowserWindow({
     width: state.width,
     height: state.height,
-    x: e2eBackground ? -4000 : state.x,
-    y: e2eBackground ? 0 : state.y,
+    x: main ? main.x + main.width - 40 : state.x,
+    y: main ? main.y + main.height - 40 : state.y,
     minWidth: 900,
     minHeight: 560,
     show: false,

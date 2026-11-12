@@ -7,6 +7,7 @@ import {
   Database,
   FileText,
   Home,
+  PanelLeftClose,
   Pencil,
   Plug,
   Plus,
@@ -24,11 +25,12 @@ import {
 } from 'lucide-react'
 import { isFileDriver } from '@dbmastermind/core/browser'
 import type { ImportSourceId, StoredConnection } from '@shared/api'
+import { setSidebarShown } from '../shell/sidebar-shown'
 import { IconButton } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { Input } from '@/components/ui/Input'
 import { Spinner } from '@/components/ui/Spinner'
-import { api, isMac } from '@/lib/api'
+import { api, isMac, keys } from '@/lib/api'
 import { exportDataDictionary } from '@/lib/dictionary'
 import { cn, errorMessage, formatBytes, fuzzyScore } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
@@ -189,6 +191,9 @@ export function Sidebar() {
           </IconButton>
           <IconButton label={t('New connection')} onClick={() => useUi.getState().set({ modal: { kind: 'connection' } })}>
             <Plus size={15} />
+          </IconButton>
+          <IconButton label={`${t('Hide sidebar')} (${keys('⌘B')})`} onClick={() => setSidebarShown(false)} data-testid="sidebar-hide">
+            <PanelLeftClose size={14} />
           </IconButton>
         </div>
       </div>
