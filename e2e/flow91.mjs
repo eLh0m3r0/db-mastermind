@@ -262,6 +262,25 @@ try {
     const shown = Date.now() - started
     const said = await win.evaluate(() => (document.body.innerText.match(/Opened a DeZign for Databases model: \d+/g) ?? []).pop()?.replace(/\D+/, ''))
     console.log('local model: tables', said, '| diagram after', shown, 'ms | tables drawn', (await win.locator('.react-flow__node').count()) - before, '| dbml errors', await win.locator('.text-warning button').count())
+    // The object browser and the table dialog on a real model: times and counts only.
+    const browser = win.locator('[data-testid="object-browser"]:visible')
+    await win.getByRole('button', { name: 'Objects', exact: true }).last().click()
+    await browser.waitFor({ timeout: 10000 })
+    const listed = await browser.locator('[data-testid^="browser-table-"]').count()
+    let t0 = Date.now()
+    await browser.getByTestId('browser-search').fill('a')
+    const found = await browser.locator('[data-testid^="browser-table-"]').count()
+    const searchMs = Date.now() - t0
+    await browser.getByTestId('browser-search').fill('')
+    t0 = Date.now()
+    await browser.locator('[data-testid^="browser-table-"]').nth(Math.floor(listed / 2)).dblclick()
+    await win.getByTestId('table-dialog-grid').waitFor({ timeout: 20000 })
+    const dialogMs = Date.now() - t0
+    const rows = await win.locator('[data-testid="table-dialog-grid"] tbody tr').count()
+    await win.getByRole('button', { name: 'SQL', exact: true }).click()
+    const sqlLines = (await win.getByTestId('table-dialog-sql').innerText()).split('\n').length
+    await win.getByRole('button', { name: 'Cancel', exact: true }).click()
+    console.log('local model browser: tables listed', listed, '| search', searchMs, 'ms,', found, 'found | table dialog', dialogMs, 'ms,', rows, 'columns,', sqlLines, 'lines of SQL')
   }
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])
