@@ -105,7 +105,8 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   ukáže prohlížeč objektů ve skupině *Balíčky atributů*. V dialogu tabulky je vloží *Přidat balíček…*; sloupce
   zůstanou s balíčkem propojené jako v DeZignu. Sloupec z balíčku, kterému změníte název nebo definici, se stane
   vlastním sloupcem tabulky.
-- **Uložení:** *Uložit* (⌘S) vezme i změny z plátna a dialogů, které ještě nejsou v textu modelu.
+- **Uložení:** *Uložit* (⌘S) vezme i změny z plátna a dialogů, které ještě nejsou v textu modelu; stejně tak SQL DDL,
+  porovnání, *Přejmenovat…* a *Domény…*.
 - **Hromadné přejmenování:** *Přejmenovat…* u modelu nahradí text nebo regulární výraz v názvech tabulek, sloupců
   nebo obojího (třeba předponu `tbl_` za nic). Než se cokoli změní, ukáže každé přejmenování; název, který by byl
   prázdný nebo už existuje, vynechá. Klíče, indexy, vazby a kontroly názvy následují a do projektu DeZign se uloží

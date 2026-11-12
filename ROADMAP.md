@@ -539,7 +539,7 @@ Not a clone: their features, rethought and connected to live databases, the know
   column whose name or definition is changed leaves its package. DeZign 14.9.3 treats the columns put in here as
   the package's: a change to the package's definition reaches them as it reaches the others
 - ✅ Saving a model also saves what the canvas has not written into the model yet (no separate "Write to DBML"
-  before Save)
+  before Save); so do SQL DDL, the comparisons, Rename… and Domains… (e2e/flow97)
 - ⬜ Custom properties on tables and columns
 - ✅ Views of a DeZign project edited in the model ("Views…"): their SQL as DeZign keeps it (`%viewname%` for the
   view's name), written back on Save and used in the DDL script. DeZign 14.9.3 opens the saved view as written

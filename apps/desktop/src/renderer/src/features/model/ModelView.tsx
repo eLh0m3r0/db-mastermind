@@ -200,15 +200,22 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   // Changes on the canvas not yet written into the model are saved too: they are written first, and the save runs
   // once the model text has them.
   const flushCanvas = useRef<(() => boolean) | null>(null)
-  const [saveAfterWrite, setSaveAfterWrite] = useState<{ as: boolean } | null>(null)
+  // What a toolbar action runs once the canvas's changes are in the model text (`latest`: this render's functions,
+  // which see that text).
+  const [afterWrite, setAfterWrite] = useState<{ run: () => void } | null>(null)
+  const latest = useRef<{ save: (as: boolean) => unknown; then: Record<string, (arg?: HTMLElement) => void> }>({ save: () => {}, then: {} })
   useEffect(() => {
-    if (!saveAfterWrite) return
-    setSaveAfterWrite(null)
-    void save(saveAfterWrite.as)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saveAfterWrite])
+    if (!afterWrite) return
+    setAfterWrite(null)
+    afterWrite.run()
+  }, [afterWrite])
+  /** Runs a model action with the canvas's changes written into the model first. */
+  const withCanvas = (name: string, arg?: HTMLElement) => {
+    if (flushCanvas.current?.()) setAfterWrite({ run: () => latest.current.then[name]?.(arg) })
+    else latest.current.then[name]?.(arg)
+  }
   const save = async (as = false) => {
-    if (flushCanvas.current?.()) return setSaveAfterWrite({ as })
+    if (flushCanvas.current?.()) return setAfterWrite({ run: () => void latest.current.save(as) })
     if (!as && !tab.path && tab.source) return saveToSource(tab.source)
     try {
       const path = await api.saveModelFile(text, as ? undefined : tab.path, connection?.knowledgeBasePath, { positions: tab.positions, defaultSchema: liveSchema?.defaultSchema, driver: connection?.driver, name: fileName })
@@ -231,6 +238,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     }
   }
 
+  latest.current.save = save
   const open = async () => {
     try {
       const file = await api.openModelFile(undefined, connection?.knowledgeBasePath)
@@ -523,6 +531,13 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const diagramTab = { ...tab, kind: 'diagram', colors: { ...groupColors, ...(diagram ? diagram.colors : tab.colors) }, notes: diagram ? diagram.notes : tab.notes, boxes: diagram ? diagram.boxes : tab.boxes, positions: diagram ? diagram.positions : tab.positions, tables: diagram ? diagram.tables : undefined, display: diagram ? diagram.display : tab.display } as unknown as DiagramTab
   /** A new diagram of the project the model came from: empty at first, tables are added from the search above the canvas. */
   /** A new diagram: empty, or of the tables selected on the canvas where they stand (DeZign: subdiagram from selection). */
+  latest.current.then = {
+    ddl: (anchor) => anchor && ddlMenu(anchor),
+    compare: () => void compareWithDatabase(),
+    versions: (anchor) => anchor && void compareMenu(anchor),
+    rename: () => setRenameOpen(true),
+    domains: () => setDomainsOpen(true),
+  }
   const newDiagram = async (from?: { tables: string[]; positions: Record<string, { x: number; y: number }> }) => {
     const name = (await askText({ title: t('New diagram'), message: from ? t('A diagram of the {n} selected tables. The tables stay in the model.', { n: String(from.tables.length) }) : t('A diagram shows a part of the model: add tables with the search above the canvas, take them off from their menu. The tables stay in the model.'), placeholder: t('Name of the diagram'), confirmLabel: t('Create') }))?.trim()
     if (!name) return
@@ -588,7 +603,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
         <Button size="sm" variant="ghost" icon={<FileInput size={13} />} onClick={() => void importDdl()} title={t('Read tables from a SQL script (pg_dump, mysqldump, SSMS…) or a Prisma schema')}>
           {t('Import SQL…')}
         </Button>
-        <Button size="sm" variant="ghost" icon={<TerminalSquare size={13} />} disabled={!model.tables.length} onClick={(e) => ddlMenu(e.currentTarget)}>
+        <Button size="sm" variant="ghost" icon={<TerminalSquare size={13} />} disabled={!model.tables.length} onClick={(e) => withCanvas('ddl', e.currentTarget)}>
           {t('SQL DDL')}
         </Button>
         <Button
@@ -655,7 +670,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           variant="primary"
           icon={<GitCompare size={13} />}
           disabled={!connection || model.errors.length > 0 || !model.tables.length}
-          onClick={() => void compareWithDatabase()}
+          onClick={() => withCanvas('compare')}
           title={connection ? t('Compare the model with the database and generate the migration') : t('Pick a database on the left first')}
         >
           {connection ? t('Compare with {name}', { name: connection.name }) : t('Compare with database')}
@@ -666,12 +681,12 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           icon={<GitCompare size={13} />}
           disabled={model.errors.length > 0}
           title={tab.source ? t('What changed since a version archived in the project, or compared with another file: the changes and the ALTER script') : t('What changed compared with another model file or a SQL script (e.g. a dump of the database): the changes and the ALTER script')}
-          onClick={(e) => void compareMenu(e.currentTarget)}
+          onClick={(e) => withCanvas('versions', e.currentTarget)}
           data-testid="model-compare-versions"
         >
           {tab.source ? t('Compare with version…') : t('Compare with file…')}
         </Button>
-        <Button size="sm" variant="ghost" icon={<Pencil size={13} />} disabled={model.errors.length > 0 || !model.tables.length} onClick={() => setRenameOpen(true)} title={t('Rename tables and columns by a pattern: keys, indexes and relationships follow')} data-testid="model-batch-rename">
+        <Button size="sm" variant="ghost" icon={<Pencil size={13} />} disabled={model.errors.length > 0 || !model.tables.length} onClick={() => withCanvas('rename')} title={t('Rename tables and columns by a pattern: keys, indexes and relationships follow')} data-testid="model-batch-rename">
           {t('Rename…')}
         </Button>
         {renameOpen && (
@@ -700,7 +715,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           />
         )}
         {tab.source && (
-          <Button size="sm" variant="ghost" icon={<Shapes size={13} />} onClick={() => setDomainsOpen(true)} title={t('The named types the project\'s columns follow')} data-testid="model-domains">
+          <Button size="sm" variant="ghost" icon={<Shapes size={13} />} onClick={() => withCanvas('domains')} title={t('The named types the project\'s columns follow')} data-testid="model-domains">
             {t('Domains…')}
           </Button>
         )}

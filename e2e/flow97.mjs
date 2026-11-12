@@ -178,6 +178,18 @@ try {
   await win.getByRole('button', { name: 'Text (DBML)', exact: true }).last().click()
   text = await modelText()
   console.log('enums and groups:', /Enum invoice_status \{\s*new\s*paid\s*cancelled\s*\}/.test(text), /TableGroup Billing \{[^}]*invoice/.test(text))
+
+  // A change made in a dialog goes into what the toolbar makes without "Write to DBML" first (as Save does).
+  await designing()
+  await node('sales.customer').dblclick({ position: { x: 40, y: 12 } })
+  await win.getByTestId('table-dialog-grid').waitFor({ timeout: 10000 })
+  await win.getByTestId('grid-type-name').fill('varchar(77)')
+  await win.getByTestId('table-dialog-ok').click()
+  await win.getByRole('button', { name: 'SQL DDL', exact: true }).click()
+  await win.getByRole('menuitem', { name: 'PostgreSQL', exact: true }).click()
+  await win.waitForTimeout(1200)
+  const ddl = await win.locator('.cm-content:visible').first().innerText()
+  console.log('toolbar takes the canvas along:', /varchar\(77\)/i.test(ddl), (await win.getByRole('button', { name: /Write to DBML \(\d+\)/ }).count()) === 0)
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow97.png') })
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])
