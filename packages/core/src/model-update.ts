@@ -66,7 +66,8 @@ export function updateModelFromDatabase(model: TableInfo[], database: TableInfo[
       const typeKept = sameType(old, c)
       const defaultKept = sameDefault(old, c)
       if (!typeKept || !defaultKept || old.nullable !== c.nullable) summary.columnsChanged++
-      const { domain, ...rest } = old
+      const { domain, package: pkg, ...rest } = old
+      const kept = typeKept && defaultKept && old.nullable === c.nullable
       return {
         ...rest,
         ordinal: i + 1,
@@ -79,6 +80,8 @@ export function updateModelFromDatabase(model: TableInfo[], database: TableInfo[
         comment: c.comment || old.comment || null,
         // A column whose type changed no longer follows the named type it had.
         ...(domain && typeKept ? { domain } : {}),
+        // One the database changed in any way leaves its attribute package (the package decides all of it).
+        ...(pkg && kept ? { package: pkg } : {}),
       }
     })
     summary.columnsRemoved += mine.columns.filter((c) => !db.columns.some((x) => lower(x.name) === lower(c.name))).length

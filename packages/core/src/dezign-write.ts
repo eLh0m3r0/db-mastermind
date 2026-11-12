@@ -620,6 +620,11 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
   const schemaOf = (el: El) => text(el, 'SCHEMA') || text(el, 'SCHEMANAME') || undefined
   const entities = new Map<string, Entity>()
   for (const slot of project.list('ENT')) entities.set(tableKey({ schema: schemaOf(slot.el), name: text(slot.el, 'NAME') }), entityOf(slot))
+  // The attribute packages as the project uses them: a column marks the package it comes from (PKGNAME) and its
+  // place in it (PKGITEM, from 0). The packages themselves live in DeZign's installation, not in the project.
+  const packageItems = new Map<string, { name: string; item: string }>()
+  for (const e of entities.values())
+    for (const a of e.attrs.values()) if (text(a, 'PKGNAME')) packageItems.set(`${lower(text(a, 'PKGNAME'))}\u0000${lower(text(a, 'NAME'))}`, { name: text(a, 'PKGNAME'), item: text(a, 'PKGITEM') })
   const everyAttr = () => [...entities.values()].flatMap((e) => [...e.attrs.values()])
   // "No domain" is -1 in the files of DeZign 4 to 6 and empty since: a column is taken off its domain the file's way.
   const noDomain = everyAttr().some((a) => text(a, 'DOMAINID') === '-1') ? '-1' : ''
@@ -786,6 +791,16 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     for (const tag of ['PKGNAME', 'PKGITEM']) remove(attr, kid(attr, tag))
     return { detached: name }
   }
+  /** Puts a column into its attribute package, as the column of that name the package has elsewhere in the project. */
+  const attachPackage = (attr: El, table: string, column: ColumnInfo) => {
+    const known = packageItems.get(`${lower(column.package!)}\u0000${lower(column.name)}`)
+    if (!known) {
+      const names = [...new Set([...packageItems.values()].map((p) => p.name))]
+      throw new Error(`${table}.${column.name}: no table of the project has the column "${column.name}" from the attribute package "${column.package}" (packages used: ${names.join(', ') || 'none'}). Remove the package setting to make it the table's own column.`)
+    }
+    set(attr, 'PKGNAME', known.name, ['PKGITEM', 'NNCON', 'CCON', 'DEFCON'])
+    set(attr, 'PKGITEM', known.item, ['NNCON', 'CCON', 'DEFCON'])
+  }
   /** A column's collation sits right after its type, and only when it has one. */
   const setCollation = (attr: El, collation: string | undefined) => setOptional(attr, 'COLLATE', collation ?? '', ['NNCON', 'CCON', 'DEFCON'])
   const setDomain = (attr: El, table: string, column: ColumnInfo) => {
@@ -842,6 +857,7 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     if (column.remarks) set(attr, 'NOTE', column.remarks, ['DOMAINID', 'DT'])
     if (column.domain) setDomain(attr, table, column)
     if (column.collation) setCollation(attr, column.collation)
+    if (column.package) attachPackage(attr, table, column)
     return attr
   }
 
@@ -985,7 +1001,14 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
         altered = typed = true
       }
       // (A new description is the column's own business: DeZign keeps the package's type, not what is said about it.)
-      if (altered) changes.push({ kind: 'alter_column', table: label, name: c.name, ...(typed ? detach(existing) : {}) })
+      // Into an attribute package (a column the package has, added by hand), or out of one.
+      let left: { detached?: string } = {}
+      if (!typed && (b.package ?? '') !== (c.package ?? '') && lower(text(existing, 'PKGNAME')) !== lower(c.package ?? '')) {
+        if (c.package) attachPackage(existing, label, c)
+        else left = detach(existing)
+        altered = true
+      }
+      if (altered) changes.push({ kind: 'alter_column', table: label, name: c.name, ...(typed ? detach(existing) : left) })
     }
     const order = next.columns.map((c) => keep.get(c)!).filter(Boolean)
     const current = kids(attributes, 'ATTR')

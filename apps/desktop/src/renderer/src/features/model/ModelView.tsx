@@ -197,7 +197,18 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     }
   }
 
+  // Changes on the canvas not yet written into the model are saved too: they are written first, and the save runs
+  // once the model text has them.
+  const flushCanvas = useRef<(() => boolean) | null>(null)
+  const [saveAfterWrite, setSaveAfterWrite] = useState<{ as: boolean } | null>(null)
+  useEffect(() => {
+    if (!saveAfterWrite) return
+    setSaveAfterWrite(null)
+    void save(saveAfterWrite.as)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saveAfterWrite])
   const save = async (as = false) => {
+    if (flushCanvas.current?.()) return setSaveAfterWrite({ as })
     if (!as && !tab.path && tab.source) return saveToSource(tab.source)
     try {
       const path = await api.saveModelFile(text, as ? undefined : tab.path, connection?.knowledgeBasePath, { positions: tab.positions, defaultSchema: liveSchema?.defaultSchema, driver: connection?.driver, name: fileName })
@@ -809,6 +820,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
               domains={domains}
               dashNonIdentifying={tab.source?.kind === 'dezign'}
               request={request}
+              flushRef={flushCanvas}
               onNewDiagram={(tables, positions) => void newDiagram({ tables, positions })}
               onLayout={(patch) => (diagram ? patchDiagram(diagram.id, () => ({ ...patch, ...('positions' in patch ? { positions: patch.positions ?? {} } : {}) })) : updateTab(tab.id, { ...patch, dirty: tab.source ? true : tab.dirty }))}
               onApplyModel={(tables) => {

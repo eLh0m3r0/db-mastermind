@@ -25,6 +25,8 @@ export interface DesignColumn {
   collation?: string
   /** See ColumnInfo.remarks. */
   remarks?: string
+  /** See ColumnInfo.package. */
+  package?: string
 }
 
 export interface DesignForeignKey {
@@ -134,6 +136,7 @@ export function toDesignTable(t: TableInfo): DesignTable {
       ...(c.domain ? { domain: c.domain } : {}),
       ...(c.collation ? { collation: c.collation } : {}),
       ...(c.remarks ? { remarks: c.remarks } : {}),
+      ...(c.package ? { package: c.package } : {}),
     })),
     primaryKey: [...t.primaryKey],
     foreignKeys: t.foreignKeys
@@ -1092,6 +1095,7 @@ export function designToTableInfo(t: DesignTable): TableInfo {
       ...(c.domain ? { domain: c.domain } : {}),
       ...(c.collation ? { collation: c.collation } : {}),
       ...(c.remarks ? { remarks: c.remarks } : {}),
+      ...(c.package ? { package: c.package } : {}),
     })),
     primaryKey: [...t.primaryKey],
     // (A key or an index nobody named gets the name a model gives an unnamed one, not the editor's own id.)

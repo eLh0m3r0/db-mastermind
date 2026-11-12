@@ -2,7 +2,7 @@ import { appendFileSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { diagramsAsLoaded, mutate, mutateDiagrams, random } from './dezign-fuzz.js'
-import { applyDezignSave, assembleDezignProject, batchRename, checkModel, codec, compareSchemas, dezignDriver, tablesFromDdl, unquotedNames, dezignIntegrity, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
+import { applyDezignSave, assembleDezignProject, attributePackages, batchRename, packageColumnsFor, checkModel, codec, compareSchemas, dezignDriver, tablesFromDdl, unquotedNames, dezignIntegrity, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 /**
  * Real models stay out of the repository. Point DBM_DEZ_SAMPLES at a folder with `.dez` files and/or folder
@@ -162,6 +162,35 @@ describe.skipIf(!root)('DeZign models on this machine', () => {
       expect(kinds.rename_table ?? 0).toBe(Object.keys(renamedTables).length)
       expect(dezignIntegrity(folder ? assembleDezignProject(after) : after[0]!.text).length).toBeLessThanOrEqual(dezignIntegrity(folder ? assembleDezignProject(project) : project[0]!.text).length)
       expect(read(after).tables.filter((t) => !t.name.startsWith('dbm_')).length).toBe(0)
+    })
+  })
+
+  it('every attribute package a project uses goes into a new table as DeZign links it', { timeout: 300_000 }, () => {
+    const viaDbml = (tables: TableInfo[]) => parseDbml(toDbml(tables)).tables
+    find(root!).forEach((file, n) => {
+      const folder = /\.dezproj$/i.test(file)
+      const project: DezignFile[] = folder ? projectFiles(join(file, '..')) : [{ path: 'model.dez', text: readFileSync(file, 'latin1') }]
+      const binary = (files: DezignFile[]) => (folder ? assembleDezignProject(files) : files[0]!.text)
+      const base = viaDbml(readDezign(binary(project)).tables)
+      const packages = attributePackages(base)
+      if (!packages.length) return
+      const host = base.find((t) => t.primaryKey.length === 1)!
+      const key = host.columns.find((c) => c.name === host.primaryKey[0])!
+      const target = viaDbml(base)
+      const table: TableInfo = { schema: host.schema, name: 'dbm_packaged', type: 'table', comment: null, columns: [{ ...key, name: 'dbm_id', domain: undefined, package: undefined, comment: null }], primaryKey: ['dbm_id'], foreignKeys: [], indexes: [] }
+      for (const p of packages) table.columns.push(...packageColumnsFor(table, p).map((c, i) => ({ ...c, ordinal: table.columns.length + i + 1, isPrimaryKey: false })))
+      target.push(table)
+      const saved = saveToDezign(project, base, viaDbml(target), { normalize: viaDbml })
+      const after = applyDezignSave(project, saved)
+      const back = readDezign(binary(after)).tables.find((t) => t.name === 'dbm_packaged')!
+      const wanted = table.columns.filter((c) => c.package).length
+      report(`#${n + 1} ${folder ? 'folder' : 'file'} packages: ${packages.length} with ${wanted} columns, read back in a package: ${back.columns.filter((c) => c.package).length}`)
+      expect(back.columns.filter((c) => c.package).map((c) => `${c.package}.${c.name}`)).toEqual(table.columns.filter((c) => c.package).map((c) => `${c.package}.${c.name}`))
+      // Each one the same place in its package as the package's columns elsewhere in the project.
+      const items = (text: string) => new Set([...text.matchAll(/<ATTR>\s*<NAME>([^<]*)<\/NAME>(?:(?!<\/ATTR>)[\s\S])*?<PKGNAME>([^<]*)<\/PKGNAME>\s*<PKGITEM>(\d+)<\/PKGITEM>/g)].map((m) => `${m[2]}|${m[1]!.toLowerCase()}|${m[3]}`))
+      const before = items(binary(project))
+      expect([...items(binary(after))].filter((x) => !before.has(x))).toEqual([])
+      expect(dezignIntegrity(binary(after)).length).toBeLessThanOrEqual(dezignIntegrity(binary(project)).length)
     })
   })
 

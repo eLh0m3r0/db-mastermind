@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, KeyRound, Plus, Trash2 } from 'lucide-react'
-import { COMMON_TYPES, createScript, designId, designToTableInfo, getDialect, type DesignTable, type DriverId, type TableInfo } from '@dbmastermind/core/browser'
+import { ArrowDown, ArrowUp, KeyRound, Package, Plus, Trash2 } from 'lucide-react'
+import { attributePackages, COMMON_TYPES, createScript, designId, designToTableInfo, getDialect, leavesPackage, packageColumnsFor, type DesignTable, type DriverId, type TableInfo } from '@dbmastermind/core/browser'
 import { Button, IconButton } from '@/components/ui/Button'
 import { Checkbox, Input, Segmented, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -46,6 +46,8 @@ export function TableDialog({
       const old = t.columns.find((c) => c.id === id)!
       // A column given its own type no longer follows the domain it had.
       if (patch.dataType !== undefined && patch.dataType !== old.dataType && old.domain && !('domain' in patch)) patch = { ...patch, domain: undefined }
+      // So does one whose name or definition changed its attribute package (the package decides them).
+      if (leavesPackage(old, patch)) patch = { ...patch, package: undefined }
       const rename = (name: string) => (patch.name && name === old.name ? patch.name : name)
       return {
         ...t,
@@ -78,6 +80,16 @@ export function TableDialog({
     const id = designId('c')
     set({ columns: [...table.columns, { id, name: `column_${table.columns.length + 1}`, dataType: textType, nullable: true }] })
     setCurrent(id)
+  }
+  // The attribute packages the model's columns come from (DeZign): a package is put into a table whole.
+  const packages = useMemo(() => attributePackages(allTables), [allTables])
+  const addPackage = (name: string) => {
+    const pkg = packages.find((p) => p.name === name)
+    if (!pkg) return
+    const added = packageColumnsFor(table, pkg).map((c) => ({ id: designId('c'), name: c.name, dataType: c.dataType, nullable: c.nullable, defaultValue: c.defaultValue ?? null, identity: c.isIdentity, comment: c.comment ?? null, ...(c.domain ? { domain: c.domain } : {}), ...(c.collation ? { collation: c.collation } : {}), ...(c.remarks ? { remarks: c.remarks } : {}), package: pkg.name }))
+    if (!added.length) return
+    set({ columns: [...table.columns, ...added] })
+    setCurrent(added[0]!.id)
   }
   const selected = table.columns.find((c) => c.id === current)
   const fkColumns = new Set(table.foreignKeys.flatMap((f) => f.columns))
@@ -159,7 +171,15 @@ export function TableDialog({
                         </button>
                       </td>
                       <td className="px-0.5">
-                        <Input inputSize="sm" className={cn(cell, 'w-full')} value={c.name} onChange={(e) => setColumn(c.id, { name: e.target.value })} data-testid={`grid-name-${c.name}`} />
+                        <div className="flex items-center">
+                          <Input inputSize="sm" className={cn(cell, 'w-full')} value={c.name} onChange={(e) => setColumn(c.id, { name: e.target.value })} data-testid={`grid-name-${c.name}`} />
+                          {c.package && (
+                            <span className="ml-0.5 flex shrink-0 items-center gap-0.5 rounded bg-subtle px-1 text-[10.5px] text-fg-muted" title={tr('From the attribute package {name}', { name: c.package })} data-testid={`grid-package-${c.name}`}>
+                              <Package size={10} />
+                              {c.package}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-0.5">
                         <Input inputSize="sm" className={cn(cell, 'w-full')} list="dbm-dialog-types" value={c.dataType} onChange={(e) => setColumn(c.id, { dataType: e.target.value })} data-testid={`grid-type-${c.name}`} />
@@ -216,13 +236,36 @@ export function TableDialog({
               </datalist>
             </div>
             <div className="flex items-start gap-3">
-              <Button size="sm" icon={<Plus size={12} />} onClick={add} data-testid="table-dialog-add-column">
-                {tr('Add column')}
-              </Button>
+              <div className="flex flex-col gap-1.5">
+                <Button size="sm" icon={<Plus size={12} />} onClick={add} data-testid="table-dialog-add-column">
+                  {tr('Add column')}
+                </Button>
+                {packages.length > 0 && (
+                  <Select inputSize="sm" className="h-7 w-40 text-[12px]" value="" onChange={(e) => addPackage(e.target.value)} title={tr('Put the columns of an attribute package into the table, as DeZign does')} data-testid="table-dialog-add-package">
+                    <option value="">{tr('Add a package…')}</option>
+                    {packages.map((p) => (
+                      <option key={p.name} value={p.name} disabled={!packageColumnsFor(table, p).length}>
+                        {p.name} ({p.columns.map((c) => c.name).join(', ')})
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </div>
               {selected && (
                 // What the grid has no room for, of the selected column (DeZign: the properties under the grid).
                 <div className="flex flex-1 items-start gap-2 rounded-md border border-line bg-subtle p-2">
-                  <span className="pt-1 font-mono text-[12px] font-semibold">{selected.name}</span>
+                  <div className="flex flex-col gap-1 pt-1">
+                    <span className="font-mono text-[12px] font-semibold">{selected.name}</span>
+                    {selected.package && (
+                      // DeZign keeps a package's columns as the package says; editing one makes it the table's own.
+                      <span className="flex max-w-48 flex-col gap-1 text-[11px] text-fg-muted">
+                        {tr('From the attribute package {name}: a changed name or definition makes it the table’s own.', { name: selected.package })}
+                        <Button size="sm" variant="ghost" className="self-start" onClick={() => setColumn(selected.id, { package: undefined })} data-testid="table-dialog-leave-package">
+                          {tr('Make it the table’s own')}
+                        </Button>
+                      </span>
+                    )}
+                  </div>
                   <label className="flex flex-1 flex-col gap-0.5">
                     <span className="text-[11px] text-fg-muted" title={tr('Notes kept with the model (DeZign: Notes); never in a script')}>
                       {tr('Notes')}

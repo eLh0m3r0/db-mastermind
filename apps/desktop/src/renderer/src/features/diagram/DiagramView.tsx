@@ -402,7 +402,7 @@ function nodeHeight(t: TableInfo, shown: Shown, fk: Set<string>, ref: Set<string
   return HEADER + visible * ROW + (showsMore(shown) && visible < t.columns.length ? ROW : 0) + 2
 }
 
-function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; modelDriver?: DriverId; domains?: { name: string; dataType: string }[]; dashNonIdentifying?: boolean; request?: DiagramRequest; onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
+function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout, flushRef }: { tab: DiagramTab; flushRef?: React.MutableRefObject<(() => boolean) | null>; model?: SchemaSnapshot; modelDriver?: DriverId; domains?: { name: string; dataType: string }[]; dashNonIdentifying?: boolean; request?: DiagramRequest; onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
   const tr = useT()
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const loadSchema = useConnections((s) => s.loadSchema)
@@ -616,6 +616,32 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, re
 
   // (For a model: also the tables changed in ways a migration would not list.)
   const pending = changes.length || display.filter((d) => d.status === 'modified' || d.status === 'new' || d.status === 'dropped').length
+  /** A model's canvas changes into the model. */
+  const writeToModel = () => {
+    if (!onApplyModel) return
+    // The whole model goes back: tables the canvas doesn't show now (another schema, a focus, past the first 400)
+    // stay as they are and where they are, never left out.
+    const shown = new Map(display.map((d) => [d.key, d]))
+    const whole: TableInfo[] = []
+    for (const t of schema?.tables ?? []) {
+      const d = shown.get(keyOf(t))
+      if (!d) whole.push(t)
+      else if (d.status !== 'dropped') whole.push(d.info)
+    }
+    for (const d of display) if (d.status === 'new') whole.push(d.info)
+    onApplyModel(whole)
+    history.current = { past: [], future: [], at: 0 }
+    setSelected(null)
+    setDrafts({}, false)
+  }
+  // Saving the model takes what the canvas has not written yet along (DeZign has no separate step for it).
+  if (flushRef) flushRef.current = model && onApplyModel && pending ? () => (writeToModel(), true) : null
+  useEffect(
+    () => () => {
+      if (flushRef) flushRef.current = null
+    },
+    [flushRef],
+  )
 
   const columnSets = useMemo(() => {
     const fk = new Map<string, Set<string>>()
@@ -1624,22 +1650,7 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, re
               icon={<FileCode2 size={13} />}
               disabled={!pending}
               title={tr('Write the tables on the canvas to the DBML text')}
-              onClick={() => {
-                // The whole model goes back: tables the canvas doesn't show now (another schema, a focus, past the
-                // first 400) stay as they are and where they are, never left out.
-                const shown = new Map(display.map((d) => [d.key, d]))
-                const whole: TableInfo[] = []
-                for (const t of schema?.tables ?? []) {
-                  const d = shown.get(keyOf(t))
-                  if (!d) whole.push(t)
-                  else if (d.status !== 'dropped') whole.push(d.info)
-                }
-                for (const d of display) if (d.status === 'new') whole.push(d.info)
-                onApplyModel(whole)
-                history.current = { past: [], future: [], at: 0 }
-                setSelected(null)
-                setDrafts({}, false)
-              }}
+              onClick={writeToModel}
             >
               {tr('Write to DBML')}{pending ? ` (${pending})` : ''}
             </Button>
@@ -1973,10 +1984,10 @@ function DiagramInner({ tab, model, modelDriver, domains, dashNonIdentifying, re
   )
 }
 
-export function DiagramView({ tab, model, modelDriver, domains, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout }: { tab: DiagramTab; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; /** The project's domains, offered for columns. */ domains?: { name: string; dataType: string }[]; /** Lines of relationships whose key is not part of the child's primary key are dashed, as DeZign draws them. */ dashNonIdentifying?: boolean; /** From the model's object browser: show a table, or open a table's or a relationship's dialog. */ request?: DiagramRequest; /** A model's diagram of the selected tables (DeZign: subdiagram from selection). */ onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
+export function DiagramView({ tab, model, modelDriver, domains, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout, flushRef }: { tab: DiagramTab; /** Set to a function that writes the canvas's pending changes into the model (true when there were any). */ flushRef?: React.MutableRefObject<(() => boolean) | null>; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; /** The project's domains, offered for columns. */ domains?: { name: string; dataType: string }[]; /** Lines of relationships whose key is not part of the child's primary key are dashed, as DeZign draws them. */ dashNonIdentifying?: boolean; /** From the model's object browser: show a table, or open a table's or a relationship's dialog. */ request?: DiagramRequest; /** A model's diagram of the selected tables (DeZign: subdiagram from selection). */ onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
   return (
     <ReactFlowProvider>
-      <DiagramInner tab={tab} model={model} modelDriver={modelDriver} domains={domains} dashNonIdentifying={dashNonIdentifying} request={request} onNewDiagram={onNewDiagram} onApplyModel={onApplyModel} onLayout={onLayout} />
+      <DiagramInner tab={tab} model={model} modelDriver={modelDriver} domains={domains} dashNonIdentifying={dashNonIdentifying} request={request} onNewDiagram={onNewDiagram} onApplyModel={onApplyModel} onLayout={onLayout} flushRef={flushRef} />
     </ReactFlowProvider>
   )
 }

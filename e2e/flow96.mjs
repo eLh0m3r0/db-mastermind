@@ -11,7 +11,7 @@ const attr = (id, name, type, extra = '') => el('ATTR', `<NAME>${name}</NAME>\n<
 const ent = (id, name, pk, attrs) => el('ENT', `<NAME>${name}</NAME>\n<ID>${id}</ID>\n<SCHEMA>shop</SCHEMA>\n<DESC></DESC>\n<PKCON>\n<ATTRIBUTEIDS>\n<ATTRIBUTEID>${pk}</ATTRIBUTEID>\n</ATTRIBUTEIDS>\n</PKCON>\n<ATTRIBUTES>\n${attrs.join('\n')}\n</ATTRIBUTES>`)
 const entc = (id, l, t) => el('ENTC', `<ID>${id}</ID>\n<DIAGRAMID>1</DIAGRAMID>\n<W>240</W>\n<H>100</H>\n<L>${l}</L>\n<T>${t}</T>\n<BRUSH>0,16119285</BRUSH>`)
 const settings = el('PROJECTSETTINGS', el('COMMONSETTINGS', '<PROJECTNAME></PROJECTNAME>\n<BEGINDATABASESCRIPT>SET search_path = shop;</BEGINDATABASESCRIPT>\n<ENDDATABASESCRIPT>ANALYZE;</ENDDATABASESCRIPT>\n<FILEFORMATVERSION>140</FILEFORMATVERSION>'))
-const entities = [ent('10', 'customer', 'A1', [attr('A1', 'id', 'BIGINT'), attr('A2', 'name', 'TEXT'), attr('A3', 'email', 'TEXT')]), ent('20', 'invoice', 'B1', [attr('B1', 'id', 'BIGINT'), attr('B2', 'total', 'NUMERIC')])]
+const entities = [ent('10', 'customer', 'A1', [attr('A1', 'id', 'BIGINT'), attr('A2', 'name', 'TEXT'), attr('A3', 'email', 'TEXT')]), ent('20', 'invoice', 'B1', [attr('B1', 'id', 'BIGINT'), attr('B2', 'total', 'NUMERIC'), attr('B9', 'created_at', 'TIMESTAMP', '<PKGNAME>Stamp</PKGNAME>\n<PKGITEM>0</PKGITEM>')])]
 const dez = join(dir, 'shop.dez')
 writeFileSync(dez, `<?xml version="1.0" encoding="iso-8859-1"?><dezign>\n<VERSION>\n${settings}\n<DATADICT>\n<DBID>postgresql16</DBID>\n<DOMAINS>\n</DOMAINS>\n<ENTITIES>\n${entities.join('\n')}\n</ENTITIES>\n<RELATIONSHIPS>\n</RELATIONSHIPS>\n</DATADICT>\n<DIAGRAMS>\n${el('DIAGRAM', '<ID>1</ID>\n<NAME>Main</NAME>\n<ISMAINDIAGRAM>1</ISMAINDIAGRAM>')}\n<CONTROLS>\n<ENTITYCONTROLS>\n${[entc('10', 0, 0), entc('20', 600, 0)].join('\n')}\n</ENTITYCONTROLS>\n</CONTROLS>\n</DIAGRAMS>\n</VERSION>\n</dezign>\n`, 'latin1')
 
@@ -227,6 +227,20 @@ try {
   const listedRename = await saveProject()
   const renamedProject = readFileSync(dez, 'latin1')
   console.log('batch rename:', /\binvoice\b[\s\S]*\bb_invoice\b/.test(previewed) && /b_total/.test(previewed), /renamed table/.test(listedRename) && !/dropped table/.test(listedRename), !!idBefore && entityId(renamedProject, 'b_invoice') === idBefore, /<NAME>b_total<\/NAME>/.test(renamedProject))
+
+  // An attribute package (DeZign: the same columns in many tables, such as audit columns) put into another table
+  // from its dialog: the columns come linked to the package, as DeZign writes them.
+  await win.getByTestId('browser-search').fill('')
+  const packageListed = await win.getByTestId('browser-package-Stamp').count()
+  await win.getByTestId('browser-table-customer').dblclick()
+  await win.getByTestId('table-dialog-grid').waitFor({ timeout: 10000 })
+  await win.getByTestId('table-dialog-add-package').selectOption('Stamp')
+  const badge = await win.getByTestId('grid-package-created_at').count()
+  await win.getByTestId('table-dialog-ok').click()
+  await saveProject()
+  const packaged = readFileSync(dez, 'latin1').split('</VERSION>')[0]
+  const customerEnt = /<ENT>\s*<NAME>customer<\/NAME>[\s\S]*?<\/ENT>/.exec(packaged)?.[0] ?? ''
+  console.log('attribute package:', packageListed === 1, badge === 1, /<NAME>created_at<\/NAME>[\s\S]*?<\/DT>\s*<PKGNAME>Stamp<\/PKGNAME>\s*<PKGITEM>0<\/PKGITEM>/.test(customerEnt))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow96.png') })
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])

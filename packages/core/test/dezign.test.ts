@@ -3,7 +3,7 @@ import { diagramsAsLoaded, mutate, mutateDiagrams, random } from './dezign-fuzz.
 
 // More chains for a long local run: DBM_FUZZ_CHAINS=500 npx vitest run --root packages/core test/dezign.test.ts
 const CHAINS = Number(process.env.DBM_FUZZ_CHAINS) || 0
-import { applyDezignSave, archiveDezignVersion, batchRename, assembleDezignProject, dezignAsFolder, dezignDomainsOfModel, withDezignDomains, compareSchemas, createScript, detectDezignEncoding, dezignDriver, dezignFolderAsVersion, dezignIntegrity, dezignMigrationOptions, dezignWrapScript, generateMigration, getDialect, unquotedNames, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
+import { applyDezignSave, archiveDezignVersion, attributePackages, batchRename, packageColumnsFor, assembleDezignProject, dezignAsFolder, dezignDomainsOfModel, withDezignDomains, compareSchemas, createScript, detectDezignEncoding, dezignDriver, dezignFolderAsVersion, dezignIntegrity, dezignMigrationOptions, dezignWrapScript, generateMigration, getDialect, unquotedNames, listDezignVersions, newDezignProject, parseDbml, parseDezignXml, readDezign, saveToDezign, serializeDezignXml, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 // Hand-written models in DeZign's layout (no file from a real project is kept in the repository).
 const attr = (id: string, name: string, type: string, extra = '', more = '') =>
@@ -877,6 +877,50 @@ describe('saving back into a DeZign project', () => {
     expect(out.match(/<PKGNAME>/g)!.length).toBe(packaged[0]!.text.match(/<PKGNAME>/g)!.length - 1)
     expect(out.match(/<PKGITEM>/g)!.length).toBe(out.match(/<PKGNAME>/g)!.length)
     expect(out).toMatch(/<NAME>credit<\/NAME>\n<ID>[^<]*<\/ID>\n<PKGNAME>Audit<\/PKGNAME>\n<PKGITEM>credit<\/PKGITEM>/)
+  })
+
+  // As DeZign 14 writes it: the package and the column's place in it (from 0) right after the type.
+  const withAudit = () => {
+    let item = 0
+    const text = dez.split('</VERSION>')[0]!.replace(/(<NAME>(email|credit)<\/NAME>[\s\S]*?<\/DT>\n)/g, (m) => `${m}<PKGNAME>Audit</PKGNAME>\n<PKGITEM>${item++}</PKGITEM>\n`) + '</VERSION>' + dez.split('</VERSION>').slice(1).join('</VERSION>')
+    return [{ path: 'shop.dez', text }] as DezignFile[]
+  }
+
+  it('reads the attribute packages a project uses and puts one into another table as DeZign does', () => {
+    const files = withAudit()
+    const base = model(files)
+    expect(base[0]!.columns.filter((c) => c.package).map((c) => c.name)).toEqual(['email', 'credit'])
+    const [audit] = attributePackages(base)
+    expect(audit).toMatchObject({ name: 'Audit', tables: 1 })
+    expect(audit!.columns.map((c) => `${c.name} ${c.dataType}`)).toEqual(['email character varying(120)', 'credit numeric(10,2)'])
+    // The model says so in its text, and keeps it.
+    expect(toDbml(base)).toContain("[not null, package: 'Audit']")
+    const r = save(files, (t) => {
+      const invoice = t[1]!
+      invoice.columns.push(...packageColumnsFor(invoice, audit!).map((c, i) => ({ ...c, ordinal: invoice.columns.length + i + 1, isPrimaryKey: false })))
+    })
+    expect(r.changes).toEqual([
+      { kind: 'add_column', table: 'invoice', name: 'email' },
+      { kind: 'add_column', table: 'invoice', name: 'credit' },
+    ])
+    const out = r.files[0]!.text
+    const invoice = /<ENT>\s*<NAME>invoice<\/NAME>[\s\S]*?<\/ENT>/.exec(out)![0]
+    expect(invoice).toMatch(/<NAME>email<\/NAME>[\s\S]*?<\/DT>\n<PKGNAME>Audit<\/PKGNAME>\n<PKGITEM>0<\/PKGITEM>\n/)
+    expect(invoice).toMatch(/<NAME>credit<\/NAME>[\s\S]*?<\/DT>\n<PKGNAME>Audit<\/PKGNAME>\n<PKGITEM>1<\/PKGITEM>\n/)
+    expect(readDezign(out).tables[1]!.columns.filter((c) => c.package === 'Audit').map((c) => c.name)).toEqual(['email', 'credit'])
+    expect(dezignIntegrity(out)).toEqual(dezignIntegrity(files[0]!.text))
+    // A column the project's package does not have can't claim to come from it.
+    expect(() => save(files, (t) => void t[1]!.columns.push({ ...column('note', 'text'), package: 'Audit' }))).toThrow(/attribute package "Audit"/)
+  })
+
+  it('takes a column out of its package when the model says it is the table\'s own, and a renamed one too', () => {
+    const files = withAudit()
+    const r = save(files, (t) => void delete t[0]!.columns.find((c) => c.name === 'email')!.package)
+    expect(r.changes).toEqual([{ kind: 'alter_column', table: 'customer', name: 'email', detached: 'Audit' }])
+    expect(r.files[0]!.text.split('</VERSION>')[0]!.match(/<PKGNAME>/g)).toHaveLength(1)
+    const renamed = batchRename(model(files), { find: 'credit', replace: 'balance', scope: 'columns' }).tables
+    expect(renamed[0]!.columns.find((c) => c.name === 'balance')!.package).toBeUndefined()
+    expect(renamed[0]!.columns.find((c) => c.name === 'email')!.package).toBe('Audit')
   })
 
   it('does not copy UNSIGNED, ZEROFILL or a relationship\'s cardinality from the neighbour a new one is made like', () => {

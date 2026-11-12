@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Eye, FolderTree, Link2, ListOrdered, Plus, Search, Shapes, Table2 } from 'lucide-react'
-import type { DezignSqlObject, TableInfo } from '@dbmastermind/core/browser'
+import { ChevronDown, ChevronRight, Eye, FolderTree, Link2, ListOrdered, Package, Plus, Search, Shapes, Table2 } from 'lucide-react'
+import { attributePackages, type DezignSqlObject, type TableInfo } from '@dbmastermind/core/browser'
 import { Input } from '@/components/ui/Input'
 import { useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
@@ -53,6 +53,8 @@ export function ObjectBrowser({
   const shownRelationships = relationships.filter(({ table, fk }) => matches(fk.name, table.name, fk.refTable))
   const shownDomains = domains.filter((d) => matches(d.name, d.dataType))
   const shownViews = views.filter((v) => v.kind === 'view' && matches(v.name))
+  const packages = useMemo(() => attributePackages(tables), [tables])
+  const shownPackages = packages.filter((p) => matches(p.name, ...p.columns.map((c) => c.name)))
   const schemas = new Set(sorted.map((x) => x.schema ?? '')).size > 1
   const label = (x: { schema?: string; name: string }) => (schemas && x.schema ? `${x.schema}.${x.name}` : x.name)
 
@@ -149,6 +151,28 @@ export function ObjectBrowser({
                 undefined,
                 () => {},
                 onDomains,
+              ),
+            ),
+          )}
+        {packages.length > 0 &&
+          group(
+            'packages',
+            t('Attribute packages'),
+            shownPackages.length,
+            <Package size={12} />,
+            shownPackages.map((p) =>
+              item(
+                `p:${p.name}`,
+                <>
+                  <span className="truncate">{p.name}</span>
+                  <span className="ml-auto shrink-0 text-[11px] text-fg-faint" title={t('Used by {n} tables', { n: String(p.tables) })}>
+                    {p.tables}
+                  </span>
+                </>,
+                p.columns.map((c) => `${c.name} ${c.dataType}`).join('\n'),
+                () => {},
+                undefined,
+                `browser-package-${p.name}`,
               ),
             ),
           )}

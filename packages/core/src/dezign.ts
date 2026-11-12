@@ -407,6 +407,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
         ...(text(attr, 'NOTE') ? { remarks: text(attr, 'NOTE') } : {}),
         ...(domain && text(domain, 'NAME') ? { domain: text(domain, 'NAME') } : {}),
         ...(collates && text(attr, 'COLLATE') ? { collation: text(attr, 'COLLATE') } : {}),
+        ...(text(attr, 'PKGNAME') ? { package: text(attr, 'PKGNAME') } : {}),
       }
     })
     const primaryKey = pkIds.map((id) => columnNames.get(id)).filter((c): c is string => !!c)

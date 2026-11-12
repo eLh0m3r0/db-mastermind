@@ -101,6 +101,11 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
 - **Domény:** *Domény…* u modelu z DeZignu ukáže pojmenované typy projektu. Změna typu domény se propíše do všech
   sloupců, které se jí řídí; nová doména se nabídne v panelu tabulky. Doménu lze přejmenovat (sloupce ji následují)
   a smazat, pokud ji žádný sloupec nepoužívá.
+- **Balíčky atributů:** sloupce, které projekt DeZignu vkládá do mnoha tabulek najednou (např. auditní sloupce),
+  ukáže prohlížeč objektů ve skupině *Balíčky atributů*. V dialogu tabulky je vloží *Přidat balíček…*; sloupce
+  zůstanou s balíčkem propojené jako v DeZignu. Sloupec z balíčku, kterému změníte název nebo definici, se stane
+  vlastním sloupcem tabulky.
+- **Uložení:** *Uložit* (⌘S) vezme i změny z plátna a dialogů, které ještě nejsou v textu modelu.
 - **Hromadné přejmenování:** *Přejmenovat…* u modelu nahradí text nebo regulární výraz v názvech tabulek, sloupců
   nebo obojího (třeba předponu `tbl_` za nic). Než se cokoli změní, ukáže každé přejmenování; název, který by byl
   prázdný nebo už existuje, vynechá. Klíče, indexy, vazby a kontroly názvy následují a do projektu DeZign se uloží

@@ -533,7 +533,14 @@ Not a clone: their features, rethought and connected to live databases, the know
 - ✅ A relationship's cardinality (DeZign: zero or more, one or more, zero or one, exactly one): `-` for one-to-one
   in the model and `cardinality: '…'` where it says more, drawn at the child's end of the line, written back.
   Codes checked by how DeZign 14.9.3 draws them; never in a script
-- ⬜ Custom properties on tables and columns; DeZign attribute packages as `TablePartial`
+- ✅ DeZign attribute packages (the same columns put into many tables, such as audit columns): a column says which
+  package it comes from (`[package: 'name']`), the object browser lists the packages the project uses, a table's
+  dialog puts a package's columns into the table ("Add a package…") linked to it as DeZign links them, and a
+  column whose name or definition is changed leaves its package. DeZign 14.9.3 treats the columns put in here as
+  the package's: a change to the package's definition reaches them as it reaches the others
+- ✅ Saving a model also saves what the canvas has not written into the model yet (no separate "Write to DBML"
+  before Save)
+- ⬜ Custom properties on tables and columns
 - ✅ Views of a DeZign project edited in the model ("Views…"): their SQL as DeZign keeps it (`%viewname%` for the
   view's name), written back on Save and used in the DDL script. DeZign 14.9.3 opens the saved view as written
 - ⬜ Sequences, triggers and procedures edited in the model, and views in a model made here (a DeZign project's

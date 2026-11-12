@@ -128,6 +128,11 @@ export interface ColumnInfo {
   collation?: string
   /** Notes kept apart from the description (DeZign's Notes field): for people, never in a script. */
   remarks?: string
+  /**
+   * The attribute package (DeZign) the column comes from: a set of columns put into tables whole, such as
+   * the audit columns. The package decides the column's definition; one changed here leaves its package.
+   */
+  package?: string
 }
 
 export interface ForeignKeyInfo {

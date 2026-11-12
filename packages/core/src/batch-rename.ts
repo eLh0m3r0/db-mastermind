@@ -123,7 +123,12 @@ export function batchRename(
     return {
       ...t,
       name: tableTo.get(t) ?? t.name,
-      columns: t.columns.map((c) => (cols?.has(c.name) ? { ...c, name: cols.get(c.name)! } : c)),
+      columns: t.columns.map((c) => {
+        if (!cols?.has(c.name)) return c
+        // A package decides its columns' names: a renamed one is the table's own (DeZign locks them).
+        const { package: _pkg, ...own } = c
+        return { ...own, name: cols.get(c.name)! }
+      }),
       primaryKey: t.primaryKey.map((c) => col(t, c)),
       indexes: t.indexes.map((i) => ({ ...i, columns: i.columns.map((c) => col(t, c)) })),
       foreignKeys: t.foreignKeys.map((f) => {

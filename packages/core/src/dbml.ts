@@ -261,6 +261,8 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
         ...(value('domain') ? { domain: unquoteString(value('domain')!) } : {}),
         ...(value('collate') ? { collation: unquoteString(value('collate')!) } : {}),
         ...(value('remarks') ? { remarks: unquoteString(value('remarks')!) } : {}),
+        // A custom setting: the attribute package (DeZign) the column comes from.
+        ...(value('package') ? { package: unquoteString(value('package')!) } : {}),
       }
       // A table's own column wins over an injected one of the same name; so does a later partial.
       const earlier = t.columns.findIndex((c) => c.name.toLowerCase() === name.toLowerCase())
@@ -466,6 +468,7 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
       if (own) attrs.push(`check: ${checkText(own.expression)}`)
       if (c.comment) attrs.push(`note: ${noteText(c.comment)}`)
       if (c.remarks) attrs.push(`remarks: ${noteText(c.remarks)}`)
+      if (c.package) attrs.push(`package: '${c.package.replaceAll("'", '')}'`)
       const type = /^[\w$.]+(\(.*\))?(\[\])?$/.test(c.dataType) ? c.dataType : `"${c.dataType}"`
       out.push(`  ${quoteName(c.name)} ${type}${attrs.length ? ` [${attrs.join(', ')}]` : ''}`)
     }
