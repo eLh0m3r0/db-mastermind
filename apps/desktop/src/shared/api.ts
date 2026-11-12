@@ -10,6 +10,7 @@ import type {
   DezignScripting,
   DezignSqlObject,
   DezignUserProperty,
+  DezignLabel,
   DriverId,
   Grant,
   Principal,
@@ -471,6 +472,8 @@ export interface OpenedModelFile {
     sqlObjects: DezignSqlObject[]
     /** The custom properties the project defines (DeZign's user defined properties). */
     userProperties?: DezignUserProperty[]
+    /** The labels the project defines (DeZign's labels, e.g. PII). */
+    labels?: DezignLabel[]
     targetDatabase: string
     /** What the project decides about its scripts: the names of its primary keys, its domains as database types. */
     scripting: DezignScripting

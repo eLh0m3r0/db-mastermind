@@ -269,6 +269,8 @@ const lower = (s: string) => s.toLowerCase()
 const tableKey = (t: { schema?: string; name: string }) => lower(`${t.schema ?? ''}.${t.name}`)
 const normType = (s: string) => lower(s).replace(/\s+/g, ' ').replace(/\s*,\s*/g, ',').replace(/\s*\(\s*/g, '(').replace(/\s*\)/g, ')').trim()
 const normText = (s: string | null | undefined) => (s ?? '').replace(/\r\n?/g, '\n').trim()
+/** Labels compared as a set of names (case aside). */
+const labelsKey = (l: string[] | undefined) => [...new Set((l ?? []).map((x) => lower(x.trim())).filter(Boolean))].sort().join('|')
 /** Custom property values compared by name (case aside), empty ones left out. */
 const propertiesKey = (p: Record<string, string> | undefined) =>
   JSON.stringify(Object.entries(p ?? {}).filter(([, v]) => v !== '').map(([k, v]) => [lower(k), v.trim()]).sort(([a], [b]) => (a! < b! ? -1 : 1)))
@@ -880,6 +882,25 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     else holder.children = []
   }
   const sameProperties = (a: Record<string, string> | undefined, b: Record<string, string> | undefined) => propertiesKey(a) === propertiesKey(b)
+  // Labels (DeZign: defined in the project, put on objects as `OBJLABELS`, one name a line, right after POSNR).
+  const labelNames = new Map(source.labels.map((l) => [lower(l.name), l.name]))
+  const setLabels = (el: El, label: string, labels: string[] | undefined) => {
+    const names = (labels ?? []).map((n) => {
+      const known = labelNames.get(lower(n.trim()))
+      if (!known) throw new Error(`${label}: the project has no label "${n}" (it has: ${source.labels.map((l) => l.name).join(', ') || 'none'}). Labels are made in DeZign.`)
+      return known
+    })
+    const holder = kid(el, 'OBJLABELS')
+    if (!names.length) return void (holder && remove(el, holder))
+    const value = names.map((n) => `${n}\n`).join('')
+    if (holder) return set(el, 'OBJLABELS', value)
+    // After the custom properties, as DeZign 14.9.3 writes them (POSNR, USERDEFPROPS, OBJLABELS).
+    const elements = el.children.filter((k): k is El => typeof k !== 'string')
+    const anchor = ['USERDEFPROPS', 'POSNR', 'ID'].map((tag) => elements.findIndex((k) => k.tag === tag)).find((i) => i !== -1) ?? -1
+    const next = elements[anchor + 1]
+    insert(el, leaf('OBJLABELS', value), next ? [next.tag] : [])
+  }
+  const sameLabels = (a: string[] | undefined, b: string[] | undefined) => labelsKey(a) === labelsKey(b)
   /** Puts a column into its attribute package, as the column of that name the package has elsewhere in the project. */
   const attachPackage = (attr: El, table: string, column: ColumnInfo) => {
     const known = packageItems.get(`${lower(column.package!)}\u0000${lower(column.name)}`)
@@ -945,6 +966,7 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     if (column.comment) set(attr, 'DESC', column.comment, ['NOTE', 'DOMAINID', 'DT'])
     if (column.remarks) set(attr, 'NOTE', column.remarks, ['DOMAINID', 'DT'])
     if (column.properties) setProperties(attr, `${table}.${column.name}`, column.properties)
+    if (column.labels?.length) setLabels(attr, `${table}.${column.name}`, column.labels)
     if (column.domain) setDomain(attr, table, column)
     if (column.collation) setCollation(attr, column.collation)
     if (column.package) attachPackage(attr, table, column)
@@ -1084,6 +1106,10 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       }
       if (!sameProperties(b.properties, c.properties)) {
         setProperties(existing, `${label}.${c.name}`, c.properties)
+        altered = true
+      }
+      if (!sameLabels(b.labels, c.labels)) {
+        setLabels(existing, `${label}.${c.name}`, c.labels)
         altered = true
       }
       if (normText(b.remarks) !== normText(c.remarks)) {
@@ -1442,6 +1468,10 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       setProperties(entity.el, next.name, next.properties)
       changes.push({ kind: 'alter_table', table: next.name, name: 'properties' })
     }
+    if (!sameLabels(base.labels, next.labels)) {
+      setLabels(entity.el, next.name, next.labels)
+      changes.push({ kind: 'alter_table', table: next.name, name: 'labels' })
+    }
     if (normText(base.comment) !== normText(next.comment)) {
       set(entity.el, 'DESC', next.comment ?? '', ['NOTE', 'PKCON', 'ATTRIBUTES'])
       changes.push({ kind: 'alter_table', table: next.name })
@@ -1482,6 +1512,7 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     if (table.comment) set(el, 'DESC', table.comment, ['NOTE', 'PKCON', 'ATTRIBUTES'])
     if (table.remarks) set(el, 'NOTE', table.remarks, ['PKCON', 'ATTRIBUTES'])
     if (table.properties) setProperties(el, table.name, table.properties)
+    if (table.labels?.length) setLabels(el, table.name, table.labels)
     const entity: Entity = { slot: { el }, el, id, attrs: new Map() }
     syncColumns(entity, undefined, table)
     entity.slot = project.add('ENT', el, entityFileName(el))
@@ -2219,11 +2250,11 @@ function verify(files: DezignFile[], result: { files: DezignFile[]; deleted: str
     tables
       .filter((t) => t.type === 'table')
       .map((t) => {
-        const cols = t.columns.map((c) => `${lower(c.name)} ${normType(c.dataType)}${normText(c.remarks) ? ` !${normText(c.remarks)}` : ''}${c.domain ? ` @${lower(c.domain)}` : ''}${c.collation ? ` ~${c.collation}` : ''}${c.nullable ? '' : ' nn'}${c.isIdentity ? ' id' : ''}${normText(c.defaultValue) ? ` =${normText(c.defaultValue)}` : ''}${normText(c.comment) ? ` #${normText(c.comment)}` : ''}${propertiesKey(c.properties) ? ` ${propertiesKey(c.properties)}` : ''}`)
+        const cols = t.columns.map((c) => `${lower(c.name)} ${normType(c.dataType)}${normText(c.remarks) ? ` !${normText(c.remarks)}` : ''}${c.domain ? ` @${lower(c.domain)}` : ''}${c.collation ? ` ~${c.collation}` : ''}${c.nullable ? '' : ' nn'}${c.isIdentity ? ' id' : ''}${normText(c.defaultValue) ? ` =${normText(c.defaultValue)}` : ''}${normText(c.comment) ? ` #${normText(c.comment)}` : ''}${propertiesKey(c.properties) ? ` ${propertiesKey(c.properties)}` : ''}${labelsKey(c.labels) ? ` ${labelsKey(c.labels)}` : ''}`)
         const fks = t.foreignKeys.filter((f) => !f.virtual).map((f) => `${f.columns.map(lower).join(',')}>${lower(f.refTable)}(${f.refColumns.map(lower).join(',')})${f.cardinality ? ` ${f.cardinality}` : ''}`)
         const indexes = t.indexes.filter((ix) => !ix.primary).map(indexKey)
         const checks = (t.checks ?? []).map((c) => `check ${c.expression.replace(/\s+/g, ' ').trim().toLowerCase()}`)
-        return [tableKey(t), `pk(${t.primaryKey.map(lower).join(',')})`, normText(t.comment), normText(t.remarks), propertiesKey(t.properties), ...cols, ...fks.sort(), ...indexes.sort(), ...checks.sort()].join('\n  ')
+        return [tableKey(t), `pk(${t.primaryKey.map(lower).join(',')})`, normText(t.comment), normText(t.remarks), propertiesKey(t.properties), labelsKey(t.labels), ...cols, ...fks.sort(), ...indexes.sort(), ...checks.sort()].join('\n  ')
       })
       .sort()
   // (What the document's code page cannot hold was written the way it can: see `codec`.)

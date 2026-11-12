@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { ArrowDown, ArrowUp, KeyRound, Package, Plus, Trash2 } from 'lucide-react'
-import { attributePackages, COMMON_TYPES, createScript, designId, designToTableInfo, getDialect, leavesPackage, packageColumnsFor, type DesignTable, type DezignUserProperty, type DriverId, type TableInfo } from '@dbmastermind/core/browser'
+import { attributePackages, COMMON_TYPES, createScript, designId, designToTableInfo, getDialect, leavesPackage, packageColumnsFor, type DesignTable, type DezignLabel, type DezignUserProperty, type DriverId, type TableInfo } from '@dbmastermind/core/browser'
 import { Button, IconButton } from '@/components/ui/Button'
 import { Checkbox, Input, Segmented, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
+import { LabelsPicker } from './LabelsPicker'
 import { PropertiesEditor } from './PropertiesEditor'
 import { TableEditor } from './TableEditor'
 
@@ -21,6 +22,7 @@ export function TableDialog({
   allTables,
   domains,
   userProperties = [],
+  labels = [],
   onApply,
   onClose,
 }: {
@@ -30,6 +32,8 @@ export function TableDialog({
   domains?: { name: string; dataType: string }[]
   /** The custom properties the project defines (DeZign's user defined properties). */
   userProperties?: DezignUserProperty[]
+  /** The labels the project defines (DeZign's labels). */
+  labels?: DezignLabel[]
   onApply: (table: DesignTable) => void
   onClose: () => void
 }) {
@@ -277,6 +281,12 @@ export function TableDialog({
                     </span>
                     <Textarea rows={2} className="resize-y text-[12px]" value={selected.remarks ?? ''} onChange={(e) => setColumn(selected.id, { remarks: e.target.value || undefined })} />
                   </label>
+                  {labels.length > 0 && (
+                    <label className="flex w-56 shrink-0 flex-col gap-0.5">
+                      <span className="text-[11px] text-fg-muted">{tr('Labels')}</span>
+                      <LabelsPicker labels={labels} value={selected.labels} onChange={(l) => setColumn(selected.id, { labels: l })} testId="column-labels" />
+                    </label>
+                  )}
                   {userProperties.some((d) => d.objectTypes.some((x) => /^attribute$/i.test(x))) && (
                     <div className="w-72 shrink-0">
                       <PropertiesEditor definitions={userProperties} objectType="Attribute" values={selected.properties} onChange={(properties) => setColumn(selected.id, { properties })} compact />
@@ -295,6 +305,12 @@ export function TableDialog({
         {tab === 'relationships' && <TableEditor table={table} driver={driver} allTables={allTables} model domains={domains} onChange={setTable} onClose={onClose} only={['foreignKeys']} />}
         {tab === 'description' && (
           <div className="flex flex-col gap-3">
+            {labels.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <span className="text-[11.5px] font-medium text-fg-muted">{tr('Labels')}</span>
+                <LabelsPicker labels={labels} value={table.labels} onChange={(l) => set({ labels: l })} testId="table-labels" />
+              </div>
+            )}
             <label className="flex flex-col gap-1">
               <span className="text-[11.5px] font-medium text-fg-muted">{tr('Comment')}</span>
               <Textarea rows={6} className="text-[12.5px]" value={table.comment ?? ''} onChange={(e) => set({ comment: e.target.value || null })} placeholder={tr('What is stored here')} data-testid="table-dialog-comment" />

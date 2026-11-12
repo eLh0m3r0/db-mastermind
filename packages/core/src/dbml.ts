@@ -203,6 +203,13 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
         if (parsed) t.properties = parsed
         continue
       }
+      // `Labels:` the labels on the table (DeZign's labels) as a JSON list.
+      const labelRow = /^Labels\s*:\s*(.+)$/i.exec(row)
+      if (labelRow) {
+        const parsed = labelsOf(unquoteString(labelRow[1]!.trim()))
+        if (parsed) t.labels = parsed
+        continue
+      }
       // `Remarks:` the notes a model keeps apart from the description (DeZign's Notes).
       const remarks = /^Remarks\s*:\s*(.+)$/i.exec(row)
       if (remarks) {
@@ -269,6 +276,7 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
         ...(value('collate') ? { collation: unquoteString(value('collate')!) } : {}),
         ...(value('remarks') ? { remarks: unquoteString(value('remarks')!) } : {}),
         ...(value('properties') && propertiesOf(unquoteString(value('properties')!)) ? { properties: propertiesOf(unquoteString(value('properties')!)) } : {}),
+        ...(value('labels') && labelsOf(unquoteString(value('labels')!)) ? { labels: labelsOf(unquoteString(value('labels')!)) } : {}),
         // A custom setting: the attribute package (DeZign) the column comes from.
         ...(value('package') ? { package: unquoteString(value('package')!) } : {}),
       }
@@ -436,6 +444,18 @@ const propertiesOf = (json: string): Record<string, string> | undefined => {
   }
 }
 
+/** Labels written as a JSON list of names (`Labels:` of a table, `labels:` of a column). */
+const labelsOf = (json: string): string[] | undefined => {
+  try {
+    const value: unknown = JSON.parse(json)
+    if (!Array.isArray(value)) return undefined
+    const out = [...new Set(value.map((v) => String(v).trim()).filter(Boolean))]
+    return out.length ? out : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /** The name a foreign key gets when its relationship has none. */
 export const defaultFkName = (table: string, columns: string[]) => `fk_${table}_${columns.join('_')}`
 /**
@@ -492,6 +512,7 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
       if (c.remarks) attrs.push(`remarks: ${noteText(c.remarks)}`)
       if (c.package) attrs.push(`package: '${c.package.replaceAll("'", '')}'`)
       if (c.properties && Object.keys(c.properties).length) attrs.push(`properties: ${noteText(JSON.stringify(c.properties))}`)
+      if (c.labels?.length) attrs.push(`labels: ${noteText(JSON.stringify(c.labels))}`)
       const type = /^[\w$.]+(\(.*\))?(\[\])?$/.test(c.dataType) ? c.dataType : `"${c.dataType}"`
       out.push(`  ${quoteName(c.name)} ${type}${attrs.length ? ` [${attrs.join(', ')}]` : ''}`)
     }
@@ -512,6 +533,7 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
     if (t.comment) out.push('', `  Note: ${noteText(t.comment)}`)
     if (t.remarks) out.push(...(t.comment ? [] : ['']), `  Remarks: ${noteText(t.remarks)}`)
     if (t.properties && Object.keys(t.properties).length) out.push(...(t.comment || t.remarks ? [] : ['']), `  Properties: ${noteText(JSON.stringify(t.properties))}`)
+    if (t.labels?.length) out.push(...(t.comment || t.remarks || (t.properties && Object.keys(t.properties).length) ? [] : ['']), `  Labels: ${noteText(JSON.stringify(t.labels))}`)
     out.push('}', '')
   }
   for (const t of tables) {

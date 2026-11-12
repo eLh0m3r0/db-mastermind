@@ -797,6 +797,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
                 // (A DeZign project has neither: its domains and diagrams are its own.)
                 enums={model.enums}
                 groups={model.groups}
+                labels={tab.labels}
                 onEnums={tab.source || model.errors.length ? undefined : () => setEnumsOpen(true)}
                 onGroups={tab.source || model.errors.length ? undefined : () => setGroupsOpen(true)}
               />
@@ -836,6 +837,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
               modelDriver={dezignDriver(tab.sqlDatabase)}
               domains={domains}
               userProperties={tab.userProperties}
+              labels={tab.labels}
               dashNonIdentifying={tab.source?.kind === 'dezign'}
               request={request}
               flushRef={flushCanvas}

@@ -71,6 +71,7 @@ function opened(path: string, model: ReturnType<typeof readDezign>): OpenedModel
       display: model.diagrams.find((d) => d.main)?.display,
       sqlObjects: model.sqlObjects,
       userProperties: model.userProperties,
+      labels: model.labels,
       targetDatabase: model.targetDatabase,
       scripting: model.scripting,
       diagrams: model.diagrams.filter((d) => !d.main).map(({ id, name, tables, positions, colors, notes, boxes, display }) => ({ id, name, tables, positions, colors: paletteColors(colors), notes, boxes, display })),

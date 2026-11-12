@@ -1042,6 +1042,8 @@ export const cs: Record<string, string> = {
   'New procedure': 'Nová procedura',
   'New view': 'Nový pohled',
   'Subtype': 'Podtyp',
+  'Labels': 'Štítky',
+  'Labeled objects': 'Objekty se štítky',
   'subtype': 'podtyp',
   'This table is a kind of the parent table (DeZign: a subtype in the supertype’s cluster)': 'Tato tabulka je druhem nadřazené tabulky (DeZign: podtyp ve shluku nadtypu)',
   'The model’s own SQL objects (DBML has none): %viewname%, %triggername%, %procname% and %table% stand for the names. They are kept in the model file and go into the DDL script.': 'Vlastní SQL objekty modelu (DBML je nemá): %viewname%, %triggername%, %procname% a %table% zastupují názvy. Ukládají se do souboru modelu a jdou do DDL skriptu.',

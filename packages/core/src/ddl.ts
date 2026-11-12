@@ -29,6 +29,8 @@ export interface DesignColumn {
   package?: string
   /** See ColumnInfo.properties. */
   properties?: Record<string, string>
+  /** See ColumnInfo.labels. */
+  labels?: string[]
 }
 
 export interface DesignForeignKey {
@@ -75,6 +77,8 @@ export interface DesignTable {
   remarks?: string
   /** See TableInfo.properties. */
   properties?: Record<string, string>
+  /** See TableInfo.labels. */
+  labels?: string[]
   /** Diagram position, kept with the draft. */
   position?: { x: number; y: number }
 }
@@ -144,6 +148,7 @@ export function toDesignTable(t: TableInfo): DesignTable {
       ...(c.remarks ? { remarks: c.remarks } : {}),
       ...(c.package ? { package: c.package } : {}),
       ...(c.properties ? { properties: c.properties } : {}),
+      ...(c.labels ? { labels: c.labels } : {}),
     })),
     primaryKey: [...t.primaryKey],
     foreignKeys: t.foreignKeys
@@ -155,6 +160,7 @@ export function toDesignTable(t: TableInfo): DesignTable {
     ...(t.checks?.length ? { checks: t.checks.map((c) => ({ ...c })) } : {}),
     ...(t.remarks ? { remarks: t.remarks } : {}),
     ...(t.properties ? { properties: t.properties } : {}),
+    ...(t.labels ? { labels: t.labels } : {}),
   }
 }
 
@@ -1105,6 +1111,7 @@ export function designToTableInfo(t: DesignTable): TableInfo {
       ...(c.remarks ? { remarks: c.remarks } : {}),
       ...(c.package ? { package: c.package } : {}),
       ...(c.properties ? { properties: c.properties } : {}),
+      ...(c.labels ? { labels: c.labels } : {}),
     })),
     primaryKey: [...t.primaryKey],
     // (A key or an index nobody named gets the name a model gives an unnamed one, not the editor's own id.)
@@ -1124,6 +1131,7 @@ export function designToTableInfo(t: DesignTable): TableInfo {
     ...(t.checks?.some((c) => c.expression.trim()) ? { checks: t.checks.filter((c) => c.expression.trim()).map((c) => ({ ...c, ...(c.column ? { column: t.columns.find((x) => x.originalName === c.column)?.name ?? c.column } : {}) })) } : {}),
     ...(t.remarks ? { remarks: t.remarks } : {}),
     ...(t.properties ? { properties: t.properties } : {}),
+    ...(t.labels ? { labels: t.labels } : {}),
   }
 }
 

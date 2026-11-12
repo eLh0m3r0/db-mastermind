@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Code2, Eye, FolderTree, Hash, Link2, ListOrdered, Package, Plus, Search, Shapes, Table2, Zap } from 'lucide-react'
-import { attributePackages, type DezignSqlObject, type TableInfo } from '@dbmastermind/core/browser'
+import { ChevronDown, ChevronRight, Code2, Eye, FolderTree, Hash, Link2, ListOrdered, Package, Plus, Search, Shapes, Table2, Tag, Zap } from 'lucide-react'
+import { attributePackages, type DezignLabel, type DezignSqlObject, type TableInfo } from '@dbmastermind/core/browser'
 import { Input } from '@/components/ui/Input'
 import { useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
@@ -28,6 +28,7 @@ export function ObjectBrowser({
   groups,
   onEnums,
   onGroups,
+  labels,
 }: {
   tables: TableInfo[]
   domains: { name: string; dataType: string }[]
@@ -41,6 +42,8 @@ export function ObjectBrowser({
   groups?: Record<string, string[]>
   onEnums?: () => void
   onGroups?: () => void
+  /** The labels the project defines (DeZign's "Labeled objects"). */
+  labels?: DezignLabel[]
 }) {
   const t = useT()
   const [query, setQuery] = useState('')
@@ -59,6 +62,12 @@ export function ObjectBrowser({
   const shownPackages = packages.filter((p) => matches(p.name, ...p.columns.map((c) => c.name)))
   const schemas = new Set(sorted.map((x) => x.schema ?? '')).size > 1
   const label = (x: { schema?: string; name: string }) => (schemas && x.schema ? `${x.schema}.${x.name}` : x.name)
+  // What carries each label: tables, and columns as `table.column`.
+  const labeled = (labels ?? []).map((l) => {
+    const is = (list: string[] | undefined) => !!list?.some((x) => x.toLowerCase() === l.name.toLowerCase())
+    const objects = sorted.flatMap((x) => [...(is(x.labels) ? [{ table: x, text: label(x) }] : []), ...x.columns.filter((c) => is(c.labels)).map((c) => ({ table: x, text: `${label(x)}.${c.name}` }))])
+    return { label: l, objects: objects.filter((o) => matches(l.name, o.text)) }
+  })
 
   const group = (id: string, title: string, count: number, icon: React.ReactNode, children: React.ReactNode) => {
     // A search opens every group that has something.
@@ -177,6 +186,25 @@ export function ObjectBrowser({
                 `browser-package-${p.name}`,
               ),
             ),
+          )}
+        {labeled.some((l) => l.objects.length) &&
+          group(
+            'labels',
+            t('Labeled objects'),
+            labeled.reduce((n, l) => n + l.objects.length, 0),
+            <Tag size={12} />,
+            labeled
+              .filter((l) => l.objects.length)
+              .map((l) => (
+                <div key={l.label.id}>
+                  <div className="flex h-6 items-center gap-1.5 pl-5 text-[12px] font-medium text-fg-muted">
+                    <Tag size={10} />
+                    <span className="truncate">{l.label.name}</span>
+                    <span className="ml-auto pr-2 text-[11px] font-normal text-fg-faint">{l.objects.length}</span>
+                  </div>
+                  {l.objects.map((o) => item(`l:${l.label.id}:${o.text}`, <span className="truncate">{o.text}</span>, undefined, () => onRequest({ kind: 'locate', key: tableKey(o.table) }), () => onRequest({ kind: 'table', key: tableKey(o.table) }), `browser-labeled-${o.text}`))}
+                </div>
+              )),
           )}
         {views.some((v) => v.kind === 'view') &&
           group(

@@ -135,6 +135,8 @@ export interface ColumnInfo {
   package?: string
   /** Custom properties a model gives the column (DeZign's user defined properties), by name; never in a script. */
   properties?: Record<string, string>
+  /** Labels a model puts on the column (DeZign's labels, e.g. "PII"), by name; never in a script. */
+  labels?: string[]
 }
 
 export interface ForeignKeyInfo {
@@ -196,6 +198,8 @@ export interface TableInfo {
   remarks?: string
   /** Custom properties a model gives the table (DeZign's user defined properties), by name; never in a script. */
   properties?: Record<string, string>
+  /** Labels a model puts on the table (DeZign's labels, e.g. "PII"), by name; never in a script. */
+  labels?: string[]
 }
 
 export interface RoutineInfo {

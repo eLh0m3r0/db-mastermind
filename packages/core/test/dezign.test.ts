@@ -773,6 +773,33 @@ describe('saving back into a DeZign project', () => {
     expect(dezignIntegrity(r.files[0]!.text)).toEqual(dezignIntegrity(dez))
   })
 
+  it('reads and writes the labels on tables and columns (DeZign: labels such as PII), also in a folder project', () => {
+    const defs = '<LABELS>\n<LABEL>\n<NAME>Personally Identifiable Information (PII)</NAME>\n<ID>L1</ID>\n<POSNR>0</POSNR>\n<LABCOL>clRed</LABCOL>\n<ISTREELABEL>1</ISTREELABEL>\n<PARENTLABELID></PARENTLABELID>\n</LABEL>\n<LABEL>\n<NAME>Second opinion needed</NAME>\n<ID>L2</ID>\n<POSNR>0</POSNR>\n<ISTREELABEL>1</ISTREELABEL>\n<PARENTLABELID></PARENTLABELID>\n</LABEL>\n</LABELS>\n'
+    const [current, ...rest] = dez.split('</VERSION>')
+    const text = [current!.replace(/<\/DIAGRAMS>\n?/, (m) => `${m.endsWith('\n') ? m : `${m}\n`}${defs}`).replace('<NAME>email</NAME>\n<ID>A2</ID>\n', '<NAME>email</NAME>\n<ID>A2</ID>\n<OBJLABELS>Personally Identifiable Information (PII)\n</OBJLABELS>\n'), ...rest].join('</VERSION>')
+    const files: DezignFile[] = [{ path: 'shop.dez', text }]
+    const read = readDezign(text)
+    expect(read.labels.map((l) => `${l.name}:${l.color ?? ''}`)).toEqual(['Personally Identifiable Information (PII):clRed', 'Second opinion needed:'])
+    expect(read.tables[0]!.columns.find((c) => c.name === 'email')!.labels).toEqual(['Personally Identifiable Information (PII)'])
+    expect(toDbml(model(files))).toContain(`labels: '["Personally Identifiable Information (PII)"]'`)
+    const r = save(files, (t) => {
+      t[0]!.columns.find((c) => c.name === 'email')!.labels = ['Personally Identifiable Information (PII)', 'Second opinion needed']
+      t[1]!.labels = ['Second opinion needed']
+    })
+    expect(r.changes.map((c) => `${c.kind} ${c.table}${c.name ? ` ${c.name}` : ''}`)).toEqual(['alter_column customer email', 'alter_table invoice labels'])
+    const out = r.files[0]!.text
+    expect(out).toContain('<OBJLABELS>Personally Identifiable Information (PII)\nSecond opinion needed\n</OBJLABELS>')
+    const after = readDezign(out).tables
+    expect(after[1]!.labels).toEqual(['Second opinion needed'])
+    expect(dezignIntegrity(out)).toEqual(dezignIntegrity(text))
+    expect(() => save(files, (t) => void (t[0]!.labels = ['Nope']))).toThrow(/no label "Nope"/)
+    // A folder project keeps its labels in a folder of their own.
+    const folder = dezignAsFolder(text, 'Shop')
+    expect(readDezign(assembleDezignProject(folder)).labels).toHaveLength(2)
+    const f = saveToDezign(folder, model(folder), viaDbml(model(folder).map((t, i) => (i === 1 ? { ...t, labels: ['Personally Identifiable Information (PII)'] } : t))), { normalize: viaDbml })
+    expect(readDezign(assembleDezignProject(applyDezignSave(folder, f))).tables[1]!.labels).toEqual(['Personally Identifiable Information (PII)'])
+  })
+
   it('writes nothing when the model was not edited', () => {
     expect(save(single, () => {})).toEqual({ files: [], deleted: [], changes: [] })
     expect(save(folder, () => {})).toEqual({ files: [], deleted: [], changes: [] })

@@ -402,6 +402,10 @@ Not a clone: their features, rethought and connected to live databases, the know
   the index DeZign keeps on the key (older projects) in step, so DeZign 14.9.3 draws a file we saved, a new
   identifying relationship and one made identifying, exactly as the app does (checked side by side); changing a
   primary key used to fail the save check in projects with that index
+- ✅ Labels on tables and columns (DeZign's labels, such as "PII"): picked in a table's dialog (the table's on its
+  Description tab, a column's under the grid), listed under "Labeled objects" in the object browser, kept in the
+  model and saved where DeZign keeps them (`OBJLABELS`; a folder project's labels are read from its `labels`
+  folder). The labels themselves are made in DeZign
 - ✅ Subtypes edited from the model: a relationship's dialog makes the table a subtype of its parent (DBML
   `subtype: true`; the canvas labels the line). Saved as DeZign keeps them: the supertype's cluster (made once,
   with its connection and its symbol on each diagram of the supertype), the relationship from the cluster (RELTYPE 2),
@@ -590,8 +594,7 @@ Not a clone: their features, rethought and connected to live databases, the know
   as it needs (each marked with its row and column)
 
 ### Later, when the pilot asks for it 💡
-- The rest of DeZign for Databases, with no date (the team's projects don't use it; the open ⬜ items of 8.2 and 8.3
-  belong here too): labels on objects, IDEF1X notation, switching a project's target database in the file (scripts for another database exist), configurable
+- The rest of DeZign for Databases, with no date (the team's projects don't use it): IDEF1X notation, switching a project's target database in the file (scripts for another database exist), configurable
   documentation and report templates (today: the HTML data dictionary and the diagram as PDF), the to-do list,
   conditional generation directives
 - Naming rules and a glossary of abbreviations kept in the knowledge base (logical name ↔ physical name)

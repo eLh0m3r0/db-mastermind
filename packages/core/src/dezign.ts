@@ -22,6 +22,15 @@ export interface DezignElement {
 
 export type DezignEncoding = 'utf-8' | 'windows-1250' | 'windows-1252'
 
+/** A label a project defines (DeZign: Labels, e.g. "Personally Identifiable Information"), possibly under another. */
+export interface DezignLabel {
+  id: string
+  name: string
+  /** DeZign's color: a Delphi name (`clRed`) or `$00BBGGRR`. */
+  color?: string
+  parent?: string
+}
+
 /** A custom property a project defines for its objects (DeZign: user defined property). */
 export interface DezignUserProperty {
   id: string
@@ -168,6 +177,8 @@ export interface DezignModel {
   diagrams: DezignDiagram[]
   /** The custom properties the project defines (values: `TableInfo.properties`, `ColumnInfo.properties`). */
   userProperties: DezignUserProperty[]
+  /** The labels the project defines (on objects: `TableInfo.labels`, `ColumnInfo.labels`). */
+  labels: DezignLabel[]
   /** The project's domains (named reusable types): a column follows one through `ColumnInfo.domain`. */
   domains: { name: string; dataType: string }[]
   /** Views, sequences, procedures and triggers as the SQL the project holds for them (in its target database's dialect). */
@@ -394,6 +405,12 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
     ...(text(p, 'GROUP') ? { group: text(p, 'GROUP') } : {}),
   }))
   const propertyNames = new Map(userProperties.map((p) => [p.id, p.name]))
+  const labels: DezignLabel[] = kids(kid(version, 'LABELS'), 'LABEL').map((l) => ({ id: text(l, 'ID'), name: text(l, 'NAME'), ...(text(l, 'LABCOL') ? { color: text(l, 'LABCOL') } : {}), ...(text(l, 'PARENTLABELID') ? { parent: text(l, 'PARENTLABELID') } : {}) }))
+  /** An object's labels (`OBJLABELS`: one name a line). */
+  const labelsOf = (el: DezignElement | undefined) => {
+    const names = text(el, 'OBJLABELS').split(/\r?\n/).map((x) => x.trim()).filter(Boolean)
+    return names.length ? names : undefined
+  }
   /** An object's custom property values by name (`USERDEFPROPS/UDP_<id>`), empty ones left out. */
   const dezignPropertyValues = (el: DezignElement | undefined, byId: Map<string, string>): Record<string, string> | undefined => {
     const props = kid(el, 'USERDEFPROPS')
@@ -480,6 +497,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
         comment: text(attr, 'DESC') || null,
         ...(text(attr, 'NOTE') ? { remarks: text(attr, 'NOTE') } : {}),
         ...(dezignPropertyValues(attr, propertyNames) ? { properties: dezignPropertyValues(attr, propertyNames) } : {}),
+        ...(labelsOf(attr) ? { labels: labelsOf(attr) } : {}),
         ...(domain && text(domain, 'NAME') ? { domain: text(domain, 'NAME') } : {}),
         ...(collates && text(attr, 'COLLATE') ? { collation: text(attr, 'COLLATE') } : {}),
         ...(text(attr, 'PKGNAME') ? { package: text(attr, 'PKGNAME') } : {}),
@@ -513,6 +531,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
       comment: text(ent, 'DESC') || null,
       ...(text(ent, 'NOTE') ? { remarks: text(ent, 'NOTE') } : {}),
       ...(dezignPropertyValues(ent, propertyNames) ? { properties: dezignPropertyValues(ent, propertyNames) } : {}),
+      ...(labelsOf(ent) ? { labels: labelsOf(ent) } : {}),
       columns,
       primaryKey,
       foreignKeys: [],
@@ -653,7 +672,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
   const positions = main?.positions ?? {}
   const layout = { diagramId: mainId, ...(main?.layout ?? { originX: 0, originY: 0, scaleX: 1, scaleY: 1 }) }
 
-  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, diagrams: described, sqlObjects, userProperties, domains: domainList.map(({ name, dataType }) => ({ name, dataType })), scripting: { primaryKeys, domains: convertDomains ? [] : domainList, uniqueConstraints, uniqueIndexes, ...([...around.create, ...around.alter].some(Boolean) ? { around } : {}) }, nameTemplates, leftOut }
+  return { formatVersion, targetDatabase: text(dict, 'DBID'), encoding, tables, positions, layout, diagrams: described, sqlObjects, userProperties, labels, domains: domainList.map(({ name, dataType }) => ({ name, dataType })), scripting: { primaryKeys, domains: convertDomains ? [] : domainList, uniqueConstraints, uniqueIndexes, ...([...around.create, ...around.alter].some(Boolean) ? { around } : {}) }, nameTemplates, leftOut }
 }
 
 const PROJECT_SECTIONS: [folder: string, element: string][] = [
@@ -688,7 +707,7 @@ export function assembleDezignProject(files: { path: string; text: string }[]): 
   const header = top('.dds').replace(/<\/?DATADICT>/g, '')
   const sections = PROJECT_SECTIONS.map(([folder, element]) => `<${element}>${inDir('data dictionary', folder)}</${element}>`).join('\n')
   const controls = `<ENTITYCONTROLS>${inDir('diagrams', 'diagramobjects', 'entitycontrols')}</ENTITYCONTROLS>\n<TEXTAREACONTROLS>${inDir('diagrams', 'diagramobjects', 'textareacontrols')}</TEXTAREACONTROLS>\n<GROUPBOXESCONTROLS>${inDir('diagrams', 'diagramobjects', 'groupboxcontrols')}</GROUPBOXESCONTROLS>\n<RELATIONSHIPCONNECTORS>${inDir('diagrams', 'diagramobjects', 'relationshipconnectors')}</RELATIONSHIPCONNECTORS>`
-  return `<?xml version="1.0" encoding="iso-8859-1"?><dezign>\n<VERSION>\n${settings}\n<DATADICT>${header}\n${sections}</DATADICT>\n<DIAGRAMS>${top('.ddp')}\n${inDir('diagrams')}\n<CONTROLS>${controls}</CONTROLS></DIAGRAMS>\n</VERSION>\n</dezign>`
+  return `<?xml version="1.0" encoding="iso-8859-1"?><dezign>\n<VERSION>\n${settings}\n<DATADICT>${header}\n${sections}</DATADICT>\n<DIAGRAMS>${top('.ddp')}\n${inDir('diagrams')}\n<CONTROLS>${controls}</CONTROLS></DIAGRAMS>\n<LABELS>${inDir('labels')}</LABELS>\n</VERSION>\n</dezign>`
 }
 
 /**
