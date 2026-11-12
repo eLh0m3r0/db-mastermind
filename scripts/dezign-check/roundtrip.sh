@@ -19,7 +19,8 @@ title() { xdotool search --name "DeZign for Databases 14" 2>/dev/null | head -1 
 tops() { xwininfo -root -tree 2>/dev/null | grep -E '^\s+0x' | grep 'dezign.exe' | grep -v 'FormProgress\|DeZign for Databases 14\|x2+\|1x1+\|Default IME'; }
 dialogs() { tops | grep 'has no name' | grep -oE '[0-9]+x[0-9]+\+[0-9]+\+[0-9]+' | awk -Fx '$1 >= 400'; }   # (smaller ones are hints)
 named() { tops | grep -v 'has no name'; }
-alive() { ps -eo stat,args | grep "dezign.exe" | grep -vq "^Z\|grep\|defunct"; }
+# (By the process's own name: a command line that merely mentions dezign.exe is not DeZign.)
+alive() { ps -C dezign.exe -o stat= | grep -vq '^Z'; }
 idle() { local n=0; while [ $n -lt "${1:-90}" ]; do sleep 2; cpu=$(top -b -n1 | grep dezign.exe | awk '{print $9}' | head -1); [ -z "$cpu" ] && return 1; [ "${cpu%.*}" -lt 8 ] && { sleep 1; return 0; }; n=$((n+1)); done; }
 windows_path() { echo "Z:$(echo "$1" | sed 's#/#\\#g')"; }
 crop() { import -window root "$out/.screen.png" 2>/dev/null; convert "$out/.screen.png" -crop "$1" +repage "$2" 2>/dev/null; rm -f "$out/.screen.png"; }
@@ -28,7 +29,8 @@ for model in "$@"; do
  # (A second try when DeZign showed nothing at all: it was still starting after a restart.)
  for attempt in 1 2; do
   if [ -d "$model" ]; then label=$(basename "$model"); file=$(ls "$model"/*.dezproj | head -1); else label=$(basename "$model" .dez); file="$model"; fi
-  alive || bash "$here/start.sh" >/dev/null
+  # (Freshly started, DeZign is still settling its last project for a while after it looks quiet.)
+  alive || { bash "$here/start.sh" >/dev/null 2>&1; sleep 30; }
   xdotool mousemove 960 30 click 1; sleep 0.5
   xdotool key ctrl+F11                                           # File > Open project
   for _ in $(seq 30); do sleep 2; named | grep -q 'Open Project' && break; done
@@ -78,6 +80,8 @@ for model in "$@"; do
     if [ -n "$after" ]; then crop "$(dialogs | head -1)" "$out/$label-savedialog.png"; xdotool key Escape; sleep 2; xdotool key Escape; sleep 1; left="$after"; fi
     if [ -s "$back/$label.dez" ] || ls "$back/$label"/*.dezproj >/dev/null 2>&1; then ok="$ok+SAVED"; else ok="$ok+NOT-SAVED"; fi
   fi
+  # (What the screen showed when nothing at all happened: for whoever looks into it.)
+  [ "$ok" = NOT-OPEN ] && [ -z "$seen$left" ] && import -window root "$out/$label-nothing-$attempt.png" 2>/dev/null
   if [ "$ok" = NOT-OPEN ] && [ -z "$seen$left" ] && [ "$attempt" = 1 ]; then pkill -x dezign.exe; sleep 10; continue; fi
   echo "$ok | $label | asked: ${seen:-nothing} | left open: ${left:-nothing}" | tee -a "$out/result.txt"
   # Whatever went wrong must not reach the next model: DeZign starts again.

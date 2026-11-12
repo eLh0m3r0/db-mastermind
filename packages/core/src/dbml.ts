@@ -196,6 +196,12 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
         j = close
         continue
       }
+      // `Remarks:` the notes a model keeps apart from the description (DeZign's Notes).
+      const remarks = /^Remarks\s*:\s*(.+)$/i.exec(row)
+      if (remarks) {
+        t.remarks = unquoteString(remarks[1]!.trim())
+        continue
+      }
       const note = /^Note\s*:\s*(.+)$/i.exec(row)
       if (note) {
         t.comment = unquoteString(note[1]!.trim())
@@ -254,6 +260,7 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
         // A custom setting: the named type (a DeZign domain) the column follows.
         ...(value('domain') ? { domain: unquoteString(value('domain')!) } : {}),
         ...(value('collate') ? { collation: unquoteString(value('collate')!) } : {}),
+        ...(value('remarks') ? { remarks: unquoteString(value('remarks')!) } : {}),
       }
       // A table's own column wins over an injected one of the same name; so does a later partial.
       const earlier = t.columns.findIndex((c) => c.name.toLowerCase() === name.toLowerCase())
@@ -454,6 +461,7 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
       const own = ownCheck(t, c.name)
       if (own) attrs.push(`check: ${checkText(own.expression)}`)
       if (c.comment) attrs.push(`note: ${noteText(c.comment)}`)
+      if (c.remarks) attrs.push(`remarks: ${noteText(c.remarks)}`)
       const type = /^[\w$.]+(\(.*\))?(\[\])?$/.test(c.dataType) ? c.dataType : `"${c.dataType}"`
       out.push(`  ${quoteName(c.name)} ${type}${attrs.length ? ` [${attrs.join(', ')}]` : ''}`)
     }
@@ -472,6 +480,7 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
       out.push('', '  checks {', ...checks.map((c) => `    ${checkText(c.expression)}${c.name ? ` [name: '${c.name.replaceAll("'", '')}']` : ''}`), '  }')
     }
     if (t.comment) out.push('', `  Note: ${noteText(t.comment)}`)
+    if (t.remarks) out.push(...(t.comment ? [] : ['']), `  Remarks: ${noteText(t.remarks)}`)
     out.push('}', '')
   }
   for (const t of tables) {

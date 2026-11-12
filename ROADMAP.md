@@ -464,6 +464,8 @@ Not a clone: their features, rethought and connected to live databases, the know
   columns, the named type (domain) it follows, auto-increment; the names of foreign keys and indexes, ON UPDATE;
   check constraints. It opens for a model with no database connected (e2e/flow96: a DeZign model edited in the
   panel and saved back into its file)
+- ✅ The Notes DeZign keeps next to a description, of tables and columns: `Remarks:` in a table, `remarks:` on a
+  column (never in a script), read from the project and written back; DeZign 14.9.3 opens them as saved
 - ⬜ Custom properties on tables and columns; DeZign attribute packages as `TablePartial`
 - ⬜ Views, sequences, triggers and procedures edited in the model (a DeZign project's are carried into the DDL
   as they are; a model made here has none yet)

@@ -767,6 +767,7 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     setNullable(attr, column.nullable)
     setDefault(attr, column.defaultValue)
     if (column.comment) set(attr, 'DESC', column.comment, ['NOTE', 'DOMAINID', 'DT'])
+    if (column.remarks) set(attr, 'NOTE', column.remarks, ['DOMAINID', 'DT'])
     if (column.domain) setDomain(attr, table, column)
     if (column.collation) setCollation(attr, column.collation)
     return attr
@@ -889,6 +890,10 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       }
       if (normText(b.comment) !== normText(c.comment)) {
         set(existing, 'DESC', c.comment ?? '', ['NOTE', 'DOMAINID', 'DT'])
+        altered = true
+      }
+      if (normText(b.remarks) !== normText(c.remarks)) {
+        set(existing, 'NOTE', c.remarks ?? '', ['DOMAINID', 'DT'])
         altered = true
       }
       if (b.name !== c.name && lower(b.name) === lower(c.name)) {
@@ -1188,6 +1193,10 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       project.rename('ENT', entity.slot, entityFileName(entity.el))
       changes.push({ kind: 'rename_table', table: next.name, name: `${base.name} → ${next.name}` })
     }
+    if (normText(base.remarks) !== normText(next.remarks)) {
+      set(entity.el, 'NOTE', next.remarks ?? '', ['PKCON', 'ATTRIBUTES'])
+      changes.push({ kind: 'alter_table', table: next.name })
+    }
     if (normText(base.comment) !== normText(next.comment)) {
       set(entity.el, 'DESC', next.comment ?? '', ['NOTE', 'PKCON', 'ATTRIBUTES'])
       changes.push({ kind: 'alter_table', table: next.name })
@@ -1226,6 +1235,7 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     if (!template && madeKey && table.primaryKey.length && text(madeKey, 'NAMETEMPLATE')) set(madeKey, 'NAME', fromTemplate(text(madeKey, 'NAMETEMPLATE'), { table: table.name }))
     set(el, kid(el, 'SCHEMANAME') ? 'SCHEMANAME' : 'SCHEMA', table.schema ?? '', ['DESC', 'NOTE', 'PKCON'])
     if (table.comment) set(el, 'DESC', table.comment, ['NOTE', 'PKCON', 'ATTRIBUTES'])
+    if (table.remarks) set(el, 'NOTE', table.remarks, ['PKCON', 'ATTRIBUTES'])
     const entity: Entity = { slot: { el }, el, id, attrs: new Map() }
     syncColumns(entity, undefined, table)
     entity.slot = project.add('ENT', el, entityFileName(el))
@@ -1754,11 +1764,11 @@ function verify(files: DezignFile[], result: { files: DezignFile[]; deleted: str
     tables
       .filter((t) => t.type === 'table')
       .map((t) => {
-        const cols = t.columns.map((c) => `${lower(c.name)} ${normType(c.dataType)}${c.domain ? ` @${lower(c.domain)}` : ''}${c.collation ? ` ~${c.collation}` : ''}${c.nullable ? '' : ' nn'}${c.isIdentity ? ' id' : ''}${normText(c.defaultValue) ? ` =${normText(c.defaultValue)}` : ''}${normText(c.comment) ? ` #${normText(c.comment)}` : ''}`)
+        const cols = t.columns.map((c) => `${lower(c.name)} ${normType(c.dataType)}${normText(c.remarks) ? ` !${normText(c.remarks)}` : ''}${c.domain ? ` @${lower(c.domain)}` : ''}${c.collation ? ` ~${c.collation}` : ''}${c.nullable ? '' : ' nn'}${c.isIdentity ? ' id' : ''}${normText(c.defaultValue) ? ` =${normText(c.defaultValue)}` : ''}${normText(c.comment) ? ` #${normText(c.comment)}` : ''}`)
         const fks = t.foreignKeys.filter((f) => !f.virtual).map((f) => `${f.columns.map(lower).join(',')}>${lower(f.refTable)}(${f.refColumns.map(lower).join(',')})`)
         const indexes = t.indexes.filter((ix) => !ix.primary).map(indexKey)
         const checks = (t.checks ?? []).map((c) => `check ${c.expression.replace(/\s+/g, ' ').trim().toLowerCase()}`)
-        return [tableKey(t), `pk(${t.primaryKey.map(lower).join(',')})`, normText(t.comment), ...cols, ...fks.sort(), ...indexes.sort(), ...checks.sort()].join('\n  ')
+        return [tableKey(t), `pk(${t.primaryKey.map(lower).join(',')})`, normText(t.comment), normText(t.remarks), ...cols, ...fks.sort(), ...indexes.sort(), ...checks.sort()].join('\n  ')
       })
       .sort()
   // (What the document's code page cannot hold was written the way it can: see `codec`.)

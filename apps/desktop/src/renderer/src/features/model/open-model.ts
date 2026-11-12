@@ -6,7 +6,7 @@ import type { ModelTab } from '@/store/workspace'
 
 const LEFT_OUT: [keyof NonNullable<OpenedModelFile['imported']>['leftOut'], string][] = [
   ['relationshipsWithoutColumns', 'relationships without columns: {n}'],
-  ['objectNotes', 'notes of tables and columns (kept in the file): {n}'],
+  ['objectNotes', 'notes of relationships (kept in the file): {n}'],
 ]
 
 /**

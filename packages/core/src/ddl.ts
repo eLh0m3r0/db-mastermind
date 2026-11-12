@@ -23,6 +23,8 @@ export interface DesignColumn {
   domain?: string
   /** See ColumnInfo.collation. */
   collation?: string
+  /** See ColumnInfo.remarks. */
+  remarks?: string
 }
 
 export interface DesignForeignKey {
@@ -61,6 +63,8 @@ export interface DesignTable {
   indexes: DesignIndex[]
   /** Check constraints: created with a new table; on an existing table added and dropped by name (see `diffTable`). */
   checks?: CheckInfo[]
+  /** See TableInfo.remarks. */
+  remarks?: string
   /** Diagram position, kept with the draft. */
   position?: { x: number; y: number }
 }
@@ -127,6 +131,7 @@ export function toDesignTable(t: TableInfo): DesignTable {
       comment: c.comment ?? null,
       ...(c.domain ? { domain: c.domain } : {}),
       ...(c.collation ? { collation: c.collation } : {}),
+      ...(c.remarks ? { remarks: c.remarks } : {}),
     })),
     primaryKey: [...t.primaryKey],
     foreignKeys: t.foreignKeys
@@ -136,6 +141,7 @@ export function toDesignTable(t: TableInfo): DesignTable {
       .filter((i) => !i.primary)
       .map((i) => ({ id: designId('i'), name: i.name, originalName: i.name, columns: [...i.columns], unique: i.unique, ...(i.constraint ? { constraint: true } : {}) })),
     ...(t.checks?.length ? { checks: t.checks.map((c) => ({ ...c })) } : {}),
+    ...(t.remarks ? { remarks: t.remarks } : {}),
   }
 }
 
@@ -1078,6 +1084,7 @@ export function designToTableInfo(t: DesignTable): TableInfo {
       comment: c.comment ?? null,
       ...(c.domain ? { domain: c.domain } : {}),
       ...(c.collation ? { collation: c.collation } : {}),
+      ...(c.remarks ? { remarks: c.remarks } : {}),
     })),
     primaryKey: [...t.primaryKey],
     // (A key or an index nobody named gets the name a model gives an unnamed one, not the editor's own id.)
@@ -1093,6 +1100,7 @@ export function designToTableInfo(t: DesignTable): TableInfo {
     indexes: t.indexes.map((i) => ({ name: i.name || `${i.unique ? 'ux' : 'ix'}_${t.name}_${i.columns.join('_')}`, columns: i.columns, unique: i.unique, primary: false, ...(i.constraint ? { constraint: true } : {}) })),
     // A check written on a column follows the column through a rename.
     ...(t.checks?.some((c) => c.expression.trim()) ? { checks: t.checks.filter((c) => c.expression.trim()).map((c) => ({ ...c, ...(c.column ? { column: t.columns.find((x) => x.originalName === c.column)?.name ?? c.column } : {}) })) } : {}),
+    ...(t.remarks ? { remarks: t.remarks } : {}),
   }
 }
 

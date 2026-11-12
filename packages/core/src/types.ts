@@ -126,6 +126,8 @@ export interface ColumnInfo {
   domain?: string
   /** The collation a model gives the column, as it is written there (`COLLATE <this>` in a script). */
   collation?: string
+  /** Notes kept apart from the description (DeZign's Notes field): for people, never in a script. */
+  remarks?: string
 }
 
 export interface ForeignKeyInfo {
@@ -173,6 +175,8 @@ export interface TableInfo {
   indexes: IndexInfo[]
   /** Check constraints, where the source knows them (models; not read from live databases yet). */
   checks?: CheckInfo[]
+  /** Notes kept apart from the description (DeZign's Notes field): for people, never in a script. */
+  remarks?: string
 }
 
 export interface RoutineInfo {

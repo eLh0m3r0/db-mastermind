@@ -2,10 +2,10 @@
 # Runs inside the container: starts the display and DeZign, and passes the trial's opening dialog when there is one.
 export DISPLAY=:99 HODLL=libwow64fex.dll
 pgrep -x Xvfb >/dev/null || { Xvfb :99 -screen 0 1920x1200x24 >/dev/null 2>&1 & sleep 2; }
-ps -eo stat,args | grep "dezign.exe" | grep -vq "^Z\|grep\|defunct" && { echo "already running"; exit 0; }
+ps -C dezign.exe -o stat= | grep -vq '^Z' && { echo "already running"; exit 0; }
 exe=$(find "$WINEPREFIX/drive_c" -iname dezign.exe | head -1)
 [ -z "$exe" ] && { echo "DeZign is not installed in this container (see README.md)"; exit 1; }
-cd "$(dirname "$exe")" && setsid nohup wine dezign.exe >/tmp/dezign.log 2>&1 </dev/null &
+(cd "$(dirname "$exe")" && exec nohup wine dezign.exe >/tmp/dezign.log 2>&1 </dev/null) &
 main() { xdotool search --name "DeZign for Databases 14" 2>/dev/null | head -1; }
 # The trial's opening dialog is a 700x587 window without a name; a licensed copy shows none.
 trial() { xwininfo -root -tree 2>/dev/null | grep 'dezign.exe' | grep 'has no name' | grep -c ' 700x587+'; }

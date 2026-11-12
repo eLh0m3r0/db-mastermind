@@ -361,7 +361,6 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
 
   for (const ent of kids(kid(dict, 'ENTITIES'), 'ENT')) {
     const pkIds = idsOf(kid(ent, 'PKCON'))
-    leftOut.objectNotes += [ent, ...kids(kid(ent, 'ATTRIBUTES'), 'ATTR')].filter((el) => text(el, 'NOTE')).length
     // (A key without a name is written without one: the database names it.)
     const pkName = text(kid(ent, 'PKCON'), 'NAME')
     if (pkIds.length) primaryKeys.names[`${(text(ent, 'SCHEMA') || text(ent, 'SCHEMANAME')).toLowerCase()}.${text(ent, 'NAME').toLowerCase()}`] = pkName
@@ -390,6 +389,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
         isPrimaryKey,
         isIdentity: text(dt, 'AN') === '1',
         comment: text(attr, 'DESC') || null,
+        ...(text(attr, 'NOTE') ? { remarks: text(attr, 'NOTE') } : {}),
         ...(domain && text(domain, 'NAME') ? { domain: text(domain, 'NAME') } : {}),
         ...(collates && text(attr, 'COLLATE') ? { collation: text(attr, 'COLLATE') } : {}),
       }
@@ -420,6 +420,7 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
       name: tableName,
       type: 'table',
       comment: text(ent, 'DESC') || null,
+      ...(text(ent, 'NOTE') ? { remarks: text(ent, 'NOTE') } : {}),
       columns,
       primaryKey,
       foreignKeys: [],

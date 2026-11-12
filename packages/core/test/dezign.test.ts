@@ -255,9 +255,11 @@ describe('DeZign for Databases models', () => {
 
   it('says what it left out instead of dropping it silently', () => {
     expect(readDezign(dez).leftOut).toEqual({ domains: 1, views: 1, procedures: 0, sequences: 1, triggers: 0, checks: 0, relationshipsWithoutColumns: 1, subdiagrams: 1, objectNotes: 0 })
-    // DeZign's "Notes" next to a description are counted, not dropped silently, and stay in the file.
-    const noted = dez.replace('<NAME>customer</NAME>', '<NAME>customer</NAME>\n<NOTE>Ask the owner before changing</NOTE>')
+    // DeZign's "Notes" next to a description: a table's and a column's are the model's remarks, a relationship's
+    // are counted (kept in the file).
+    const noted = dez.replace('<NAME>customer</NAME>', '<NAME>customer</NAME>\n<NOTE>Ask the owner before changing</NOTE>').replace(/(<REL>\n<NAME>customer_invoice<\/NAME>\n)/, '$1<NOTE>Billing</NOTE>\n')
     expect(readDezign(noted).leftOut.objectNotes).toBe(1)
+    expect(readDezign(noted).tables[0]!.remarks).toBe('Ask the owner before changing')
     // The column's check constraint is part of the model.
     expect(readDezign(dez).tables[0]!.checks).toEqual([{ expression: 'credit >= 0' }])
   })
@@ -790,6 +792,25 @@ describe('saving back into a DeZign project', () => {
     expect(attr('invoice_id')).not.toContain('<ZF>1<')
     const rel = /<REL>\s*<NAME>invoice_payment<\/NAME>[\s\S]*?<\/REL>/.exec(out)?.[0] ?? /<REL>[\s\S]*?<CHILDOBJECTID>NEW-\d+<\/CHILDOBJECTID>[\s\S]*?<\/REL>/.exec(out)![0]
     expect(rel).toContain('<CARDINALITY>0</CARDINALITY>')
+  })
+
+  it('writes the Notes of tables and columns (remarks) apart from their descriptions', () => {
+    const r = save(single, (t) => {
+      t[0]!.remarks = 'Ask the owner\nbefore changing'
+      t[0]!.columns[1]!.remarks = 'Unique per shop'
+      t[0]!.columns.push(column('vip', 'boolean', { remarks: 'Set by sales' }))
+    })
+    expect(r.changes.map((c) => c.kind)).toEqual(['alter_table', 'alter_column', 'add_column'])
+    const after = readDezign(r.files[0]!.text).tables[0]!
+    expect(after.remarks).toBe('Ask the owner\nbefore changing')
+    expect(after.columns.filter((c) => c.remarks).map((c) => `${c.name}: ${c.remarks}`)).toEqual(['email: Unique per shop', 'vip: Set by sales'])
+    expect(after.comment).toBe(readDezign(dez).tables[0]!.comment)
+    // In the model text: `Remarks:` for the table, `remarks:` for a column, and back again.
+    const dbml = toDbml(readDezign(r.files[0]!.text).tables)
+    expect(dbml).toContain("remarks: 'Unique per shop'")
+    expect(dbml).toContain("Remarks: '''Ask the owner\nbefore changing'''")
+    expect(parseDbml(dbml).tables[0]!.remarks).toBe('Ask the owner\nbefore changing')
+    expect(save(r.files, () => {})).toEqual({ files: [], deleted: [], changes: [] })
   })
 
   it('writes changed check constraints: a column check that changed becomes a table check', () => {

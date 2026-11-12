@@ -1033,7 +1033,7 @@ export const cs: Record<string, string> = {
   'removed note': 'odebraná poznámka',
   'table color': 'barva tabulky',
   'relationships without columns: {n}': 'vazby bez sloupců: {n}',
-  'notes of tables and columns (kept in the file): {n}': 'poznámky (Notes) u tabulek a sloupců, zůstávají v souboru: {n}',
+  'notes of relationships (kept in the file): {n}': 'poznámky vazeb (zůstávají v souboru): {n}',
   'Edit as model (DBML)…': 'Upravit jako model (DBML)…',
   'Apply to model': 'Použít jako model',
   'Dashboard {n}': 'Dashboard {n}',
