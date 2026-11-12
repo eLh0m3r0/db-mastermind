@@ -3,7 +3,7 @@
 // relationships that point at it, a table duplicated from its menu, several tables lined up, a table deleted with
 // the Delete key. Everything ends up in the model text without writing any.
 import { _electron as electron } from '@playwright/test'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -185,11 +185,50 @@ try {
   await win.getByTestId('table-dialog-grid').waitFor({ timeout: 10000 })
   await win.getByTestId('grid-type-name').fill('varchar(77)')
   await win.getByTestId('table-dialog-ok').click()
+  // (Without a database the script is saved as a file: the dialog is answered here, never shown.)
+  const firstDdl = join(dir, 'first.sql')
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: path })
+  }, firstDdl)
   await win.getByRole('button', { name: 'SQL DDL', exact: true }).click()
   await win.getByRole('menuitem', { name: 'PostgreSQL', exact: true }).click()
-  await win.waitForTimeout(1200)
-  const ddl = await win.locator('.cm-content:visible').first().innerText()
+  await win.getByText(/Script saved/).first().waitFor({ timeout: 10000 })
+  const ddl = readFileSync(firstDdl, 'utf8')
   console.log('toolbar takes the canvas along:', /varchar\(77\)/i.test(ddl), (await win.getByRole('button', { name: /Write to DBML \(\d+\)/ }).count()) === 0)
+
+  // A model of its own keeps its diagrams and layout in its .dbml file (a comment DBML tools skip) and gets them back.
+  const file = join(dir, 'shop.dbml')
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: path })
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
+  }, file)
+  // A view of the model's own (DBML has none): made in "Views and code…", kept in the file, in the DDL.
+  await win.getByTestId('model-views').click()
+  await win.getByTestId('objects-add-view').click()
+  await win.getByTestId('objects-name').fill('v_big_invoices')
+  await win.getByTestId('views-code').fill('CREATE VIEW %viewname% AS\nSELECT id, total FROM shop.invoice WHERE total > 1000')
+  await win.getByTestId('views-apply').click()
+  await win.getByRole('button', { name: 'Save', exact: true }).click()
+  await win.getByText(/Model saved/).first().waitFor({ timeout: 10000 })
+  const saved = readFileSync(file, 'utf8')
+  await win.getByRole('button', { name: 'Open…', exact: true }).click()
+  await win.waitForTimeout(2500)
+  const areas = await win.getByTestId('model-area').last().locator('option').allInnerTexts()
+  const reopenedText = await modelText()
+  // (Without a database the script is saved as a file.)
+  const ddlFile = join(dir, 'model.sql')
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: path })
+  }, ddlFile)
+  await win.getByRole('button', { name: 'SQL DDL', exact: true }).click()
+  await win.getByRole('menuitem', { name: 'PostgreSQL', exact: true }).click()
+  await win.getByText(/Script saved/).first().waitFor({ timeout: 10000 })
+  const ownDdl = readFileSync(ddlFile, 'utf8')
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: path })
+  }, file)
+  console.log('own view kept and in the DDL:', /"name":"v_big_invoices"/.test(saved), /CREATE VIEW (\w+\.)?v_big_invoices AS\s+SELECT id, total FROM shop\.invoice WHERE total > 1000;/.test(ownDdl))
+  console.log('layout kept in the file:', /\n\/\/ dbmastermind-layout: \{.*"Billing part"/.test(saved), /Table shop\.invoice/.test(saved), areas.some((a) => a.startsWith('Billing part')), !/dbmastermind-layout/.test(reopenedText))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow97.png') })
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])

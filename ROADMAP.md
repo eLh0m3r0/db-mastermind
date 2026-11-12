@@ -457,7 +457,7 @@ Not a clone: their features, rethought and connected to live databases, the know
   They found and fixed two defects before anyone met them (ids replaced inside other values in files that
   number their objects; a dropped supertype leaving its subtype cluster)
 
-### 8.3 The model holds a whole database 🚧
+### 8.3 The model holds a whole database ✅
 - ✅ Check constraints in the model: DBML `checks` blocks and column `check:`, written into CREATE TABLE for any
   database, read from DeZign models and saved back to them
 - ✅ Checks in the ALTER script: PostgreSQL, MySQL and SQL Server say which checks a table has, so a check the
@@ -555,13 +555,17 @@ Not a clone: their features, rethought and connected to live databases, the know
   sequence as a file of its own) and used in the DDL. DeZign 14.9.3 opens a project with a changed, a new and a
   removed trigger and a new sequence, and an older PostgreSQL project with a changed and a new sequence, as saved
   (e2e/flow91). Fixed on the way: a sequence's CYCLE was read only as `1`, but DeZign keeps `cycle`/`CYCLE`
-- ⬜ Views in a model made here (a .dbml model; a DeZign project's are edited as above)
+- ✅ Views, triggers, procedures and sequences in a model made here (DBML has none): made in "Views and code…",
+  kept in the model's file with its layout and written into the DDL (e2e/flow97)
 - ✅ Domains of a DeZign project managed from the model ("Domains…"): a new type for a domain goes to every column
   that follows it, as DeZign propagates it; new domains are made and offered in the table panel. Saved into the
   project (a new domain with a column that follows it opened in DeZign 14.9.3 as saved; projects of the full
   version, which the trial refuses, were not checked there). The model's domains note is the list
-- ⬜ Several diagrams per model with their own layout, notes and group boxes
-- ⬜ A model as a folder (one file per table, SQL files for the rest): small Git diffs, merges without conflicts
+- ✅ Several diagrams per model with their own layout, notes and frames, also for a model made here: its layout
+  (positions, colors, notes, frames, named diagrams) is kept at the end of its .dbml file as one comment line that
+  DBML tools skip, and comes back when the file is opened (it used to be lost)
+- ✅ A model as a folder (one file per object): Save as… → DeZign folder project (`.dezproj`), which the team uses
+  anyway; saving changes only the files of the objects that changed, so branches merge without conflicts
 
 ### 8.4 Easy on the first day ✅
 - ✅ Update a model from its database ("From database" → Update the model): what the database has and the model

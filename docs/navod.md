@@ -111,6 +111,9 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
 - **Vlastní vlastnosti:** pokud projekt DeZignu definuje vlastní vlastnosti (User defined properties, např.
   „Odpovědná osoba“), vyplníte je v dialogu tabulky na záložce *Vlastnosti* a u vybraného sloupce pod mřížkou.
   Uloží se do projektu; samotné vlastnosti se definují v DeZignu.
+- **Vlastní model (.dbml):** rozložení diagramu (pozice, barvy, poznámky, rámečky) i pojmenované diagramy se ukládají
+  na konec souboru jako jeden komentářový řádek, který ostatní nástroje pro DBML přeskočí; po otevření se vrátí.
+  *Pohledy a kód…* přidá i do vlastního modelu pohledy, triggery, procedury a sekvence (DBML je nemá).
 - **Uložení:** *Uložit* (⌘S) vezme i změny z plátna a dialogů, které ještě nejsou v textu modelu; stejně tak SQL DDL,
   porovnání, *Přejmenovat…* a *Domény…*.
 - **Hromadné přejmenování:** *Přejmenovat…* u modelu nahradí text nebo regulární výraz v názvech tabulek, sloupců

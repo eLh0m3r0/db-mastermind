@@ -1,4 +1,4 @@
-import { dezignDriver, type DezignChange, type DezignSqlObject } from '@dbmastermind/core/browser'
+import { dezignDriver, splitModelLayout, type DezignChange, type DezignSqlObject } from '@dbmastermind/core/browser'
 import type { OpenedModelFile } from '@shared/api'
 import { t, tp } from '@/lib/i18n'
 import { toast } from '@/store/ui'
@@ -15,7 +15,12 @@ const LEFT_OUT: [keyof NonNullable<OpenedModelFile['imported']>['leftOut'], stri
  */
 export function modelTabFromFile(file: OpenedModelFile, defaultSchema?: string, options: { /** No notice about what was opened (the caller says its own). */ quiet?: boolean } = {}): Pick<ModelTab, 'text' | 'path' | 'source' | 'dirty' | 'title' | 'positions' | 'diagrams' | 'colors' | 'notes' | 'boxes' | 'display' | 'removedDiagrams' | 'sqlObjects' | 'userProperties' | 'sqlDatabase' | 'scripting'> {
   const name = file.path.split(/[\\/]/).pop() ?? t('Model')
-  if (!file.imported) return { text: file.text, path: file.path, source: undefined, dirty: false, title: name, positions: undefined, diagrams: undefined, colors: undefined, notes: undefined, boxes: undefined, display: undefined, removedDiagrams: undefined, sqlObjects: undefined, sqlDatabase: undefined, scripting: undefined }
+  if (!file.imported) {
+    // A model of its own keeps its diagrams' layout in its file (see core/model-layout.ts).
+    const { text, layout } = splitModelLayout(file.text)
+    const l = (layout ?? {}) as Partial<Pick<ModelTab, 'positions' | 'diagrams' | 'colors' | 'notes' | 'boxes' | 'display'>> & { objects?: DezignSqlObject[] }
+    return { text, path: file.path, source: undefined, dirty: false, title: name, positions: l.positions, diagrams: l.diagrams?.length ? l.diagrams : undefined, colors: l.colors, notes: l.notes, boxes: l.boxes, display: l.display, removedDiagrams: undefined, sqlObjects: l.objects?.length ? l.objects : undefined, userProperties: undefined, sqlDatabase: undefined, scripting: undefined }
+  }
   // Tables without a schema land in the connection's default schema when the DBML is read.
   const keyed = (key: string) => (key.startsWith('.') ? `${defaultSchema ?? ''}${key}` : key)
   const rekey = <T,>(map: Record<string, T> | undefined) => Object.fromEntries(Object.entries(map ?? {}).map(([key, v]) => [keyed(key), v]))
@@ -98,12 +103,14 @@ export function describeDezignChanges(changes: DezignChange[], limit = 40): stri
 export function sqlObjectsScript(objects: DezignSqlObject[] | undefined, database: string | undefined, driver: string): string {
   if (!objects?.length) return ''
   const own = dezignDriver(database)
-  const same = !!own && (own === driver || (['mysql', 'mariadb'].includes(own) && ['mysql', 'mariadb'].includes(driver)))
+  // (A model of its own has no target database: its objects are written as they are.)
+  const mine = database === undefined
+  const same = mine || (!!own && (own === driver || (['mysql', 'mariadb'].includes(own) && ['mysql', 'mariadb'].includes(driver))))
   const order = ['sequence', 'view', 'procedure', 'trigger']
   const body = [...objects]
     .sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind))
     .map((o) => `${o.sql};`)
     .join('\n\n')
-  const head = same ? t('Views, sequences, procedures and triggers from the DeZign project') : t('Views, sequences, procedures and triggers from the DeZign project, written for {db}: rewrite them for this database', { db: database ?? '?' })
+  const head = mine ? t('Views, sequences, procedures and triggers of the model') : same ? t('Views, sequences, procedures and triggers from the DeZign project') : t('Views, sequences, procedures and triggers from the DeZign project, written for {db}: rewrite them for this database', { db: database ?? '?' })
   return `\n\n-- ${head}\n${same ? body : body.split('\n').map((l) => `-- ${l}`).join('\n')}\n`
 }

@@ -36,6 +36,7 @@ export function ViewsModal({
   objects,
   tables,
   start,
+  newViews,
   onClose,
   onApply,
 }: {
@@ -45,6 +46,8 @@ export function ViewsModal({
   tables: { schema?: string; name: string }[]
   /** The object shown first (its id). */
   start?: string
+  /** New views can be made (a model of its own; a DeZign project's views are DeZign's to make). */
+  newViews?: boolean
   onClose: () => void
   onApply: (objects: DezignSqlObject[]) => void
 }) {
@@ -77,7 +80,7 @@ export function ViewsModal({
         : o.name
   const original = (o: DezignSqlObject) => objects.find((x) => x.id && x.id === o.id)
   const changed = (o: DezignSqlObject) => !original(o) || JSON.stringify(original(o)) !== JSON.stringify(o)
-  const add = (kind: 'trigger' | 'sequence' | 'procedure') => {
+  const add = (kind: 'trigger' | 'sequence' | 'procedure' | 'view') => {
     const table = tables[0]
     const count = list.filter((o) => o.kind === kind).length + 1
     const o: DezignSqlObject =
@@ -90,20 +93,28 @@ export function ViewsModal({
             code: 'CREATE TRIGGER %triggername%\n  BEFORE INSERT OR UPDATE ON %table%\n  FOR EACH ROW\n  EXECUTE FUNCTION ',
             sql: '',
           })
-        : kind === 'procedure'
+        : kind === 'view'
           ? withDezignSql({
               kind,
-              name: `usp_${count}`,
-              code: 'CREATE PROCEDURE %procname%\nAS\nBEGIN\n  \nEND',
-              sql: '',
-            })
-          : withDezignSql({
-              kind,
-              name: `seq_${count}`,
+              name: `v_${count}`,
               schema: tables[0]?.schema,
-              sequence: { increment: '1', start: '1' },
+              code: 'CREATE VIEW %viewname% AS\nSELECT ',
               sql: '',
             })
+          : kind === 'procedure'
+            ? withDezignSql({
+                kind,
+                name: `usp_${count}`,
+                code: 'CREATE PROCEDURE %procname%\nAS\nBEGIN\n  \nEND',
+                sql: '',
+              })
+            : withDezignSql({
+                kind,
+                name: `seq_${count}`,
+                schema: tables[0]?.schema,
+                sequence: { increment: '1', start: '1' },
+                sql: '',
+              })
     setList((l) => [...l, o])
     setSelected(`new:${list.length}`)
   }
@@ -151,20 +162,24 @@ export function ViewsModal({
       }
     >
       <p className="mb-2 text-[12px] text-fg-muted">
-        {t(
-          'The project’s SQL objects as DeZign keeps them: %viewname%, %triggername% and %table% stand for the names. They go into the project and into the DDL script.',
-        )}
+        {newViews
+          ? t(
+              'The model’s own SQL objects (DBML has none): %viewname%, %triggername%, %procname% and %table% stand for the names. They are kept in the model file and go into the DDL script.',
+            )
+          : t(
+              'The project’s SQL objects as DeZign keeps them: %viewname%, %triggername% and %table% stand for the names. They go into the project and into the DDL script.',
+            )}
       </p>
       <div className="flex h-[52vh] gap-2">
         <div className="flex w-56 shrink-0 flex-col gap-0.5 overflow-auto">
           {KINDS.map(([kind, title]) => {
             const items = editable.filter(({ o }) => o.kind === kind)
-            if (!items.length && kind === 'view') return null
+            if (!items.length && kind === 'view' && !newViews) return null
             return (
               <div key={kind} className="mb-1.5">
                 <div className="flex items-center px-1 text-[11px] font-semibold tracking-wide text-fg-muted uppercase">
                   <span className="flex-1">{t(title)}</span>
-                  {(kind === 'trigger' ? tables.length > 0 : kind !== 'view') && (
+                  {(kind === 'trigger' ? tables.length > 0 : kind !== 'view' || newViews) && (
                     <button
                       type="button"
                       className="rounded p-0.5 hover:bg-subtle"
@@ -173,9 +188,11 @@ export function ViewsModal({
                           ? t('New trigger')
                           : kind === 'procedure'
                             ? t('New procedure')
-                            : t('New sequence')
+                            : kind === 'view'
+                              ? t('New view')
+                              : t('New sequence')
                       }
-                      onClick={() => add(kind as 'trigger' | 'sequence' | 'procedure')}
+                      onClick={() => add(kind)}
                       data-testid={`objects-add-${kind}`}
                     >
                       <Plus size={12} />
@@ -203,7 +220,7 @@ export function ViewsModal({
         </div>
         {current && (
           <div className="flex min-w-0 flex-1 flex-col gap-2">
-            {current.o.kind !== 'view' && (
+            {(current.o.kind !== 'view' || newViews) && (
               <div className="flex items-end gap-2">
                 <div className="flex-1">
                   {field(t('Name'), current.o.name, (v) => update(current.i, { name: v }), 'objects-name')}

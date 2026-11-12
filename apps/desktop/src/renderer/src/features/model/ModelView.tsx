@@ -5,7 +5,7 @@ import { Compartment, EditorState } from '@codemirror/state'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
 import { AlertTriangle, Archive, Database, Eye, Pencil, Shapes, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare, Plus } from 'lucide-react'
-import { checkModel, createScript, dezignDriver, dezignMigrationOptions, dezignWrapScript, dropScript, fixModelIssue, unquotedNames, getDialect, parseDbml, toDbml, updateModelFromDatabase, type DezignSqlObject, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
+import { checkModel, withModelLayout, createScript, dezignDriver, dezignMigrationOptions, dezignWrapScript, dropScript, fixModelIssue, unquotedNames, getDialect, parseDbml, toDbml, updateModelFromDatabase, type DezignSqlObject, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { DRIVERS } from '../connections/drivers'
@@ -218,7 +218,8 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     if (flushCanvas.current?.()) return setAfterWrite({ run: () => void latest.current.save(as) })
     if (!as && !tab.path && tab.source) return saveToSource(tab.source)
     try {
-      const path = await api.saveModelFile(text, as ? undefined : tab.path, connection?.knowledgeBasePath, { positions: tab.positions, defaultSchema: liveSchema?.defaultSchema, driver: connection?.driver, name: fileName })
+      // A model of its own keeps its diagrams' layout at the end of its file (a comment DBML skips).
+      const path = await api.saveModelFile(withModelLayout(text, { positions: tab.positions, colors: tab.colors, notes: tab.notes, boxes: tab.boxes, display: tab.display, diagrams: tab.diagrams, objects: tab.source ? undefined : tab.sqlObjects }), as ? undefined : tab.path, connection?.knowledgeBasePath, { positions: tab.positions, defaultSchema: liveSchema?.defaultSchema, driver: connection?.driver, name: fileName })
       if (!path) return
       // Saved as a DeZign project: the tab now follows that file, as if it had been opened from it.
       if (/\.dez(proj)?$/i.test(path)) {
@@ -386,7 +387,9 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const applyViews = (objects: DezignSqlObject[]) => {
     setViewsOpen(false)
     if (JSON.stringify(objects) === JSON.stringify(tab.sqlObjects ?? [])) return
-    updateTab(tab.id, { sqlObjects: objects, dirty: true })
+    // A model of its own keeps them in its file and knows them by ids of its own.
+    const kept = tab.source ? objects : objects.map((o) => (o.id ? o : { ...o, id: `local:${crypto.randomUUID()}` }))
+    updateTab(tab.id, { sqlObjects: kept.length ? kept : undefined, dirty: true })
   }
 
   /** An empty model starts with one table open in the designer: nobody has to know DBML to begin. */
@@ -418,7 +421,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     const id = dezignDriver(tab.sqlDatabase) ?? connection?.driver ?? 'postgres'
     const d = DRIVERS.find((x) => x.id === id) ?? DRIVERS[0]!
     const named = tab.source?.kind === 'dezign' ? unquotedNames(model.tables, d.id) : model.tables
-    const views = (tab.sqlObjects ?? []).filter((o) => o.kind === 'view' && dezignDriver(tab.sqlDatabase) === d.id).map((o) => `DROP VIEW ${o.schema ? `${o.schema}.` : ''}${o.name};`)
+    const views = (tab.sqlObjects ?? []).filter((o) => o.kind === 'view' && (!tab.source || dezignDriver(tab.sqlDatabase) === d.id)).map((o) => `DROP VIEW ${o.schema ? `${o.schema}.` : ''}${o.name};`)
     const script = `-- ${t('Drops everything the model creates in {db}: run it only on a database you mean to empty.', { db: d.label })}\n${views.length ? `${views.join('\n')}\n\n` : ''}${dropScript(named, getDialect(d.id), dezignMigrationOptions(tab.scripting, d.id))}`
     deliver(script, `DROP · ${d.label}`, `${fileName.replace(/\.\w+$/, '') || 'model'}-drop-${d.id}.sql`)
   }
@@ -554,12 +557,12 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const removeDiagram = async (id: string) => {
     const d = tab.diagrams?.find((x) => x.id === id)
     if (!d) return
-    if (!(await confirmAction({ title: t('Remove the diagram {name}?', { name: d.name }), message: t('The tables stay in the model; only this diagram (its layout, notes and frames) goes. Save takes it out of the DeZign project too.'), confirmLabel: t('Remove'), danger: true }))) return
+    if (!(await confirmAction({ title: t('Remove the diagram {name}?', { name: d.name }), message: tab.source ? t('The tables stay in the model; only this diagram (its layout, notes and frames) goes. Save takes it out of the DeZign project too.') : t('The tables stay in the model; only this diagram (its layout, notes and frames) goes.'), confirmLabel: t('Remove'), danger: true }))) return
     setArea('')
     updateTab(tab.id, { dirty: true, diagrams: tab.diagrams?.filter((x) => x.id !== id), removedDiagrams: id.startsWith('new:') ? tab.removedDiagrams : [...(tab.removedDiagrams ?? []), id] })
   }
   const patchDiagram = (id: string, patch: (d: NonNullable<ModelTab['diagrams']>[number]) => Partial<NonNullable<ModelTab['diagrams']>[number]>) =>
-    updateTab(tab.id, { dirty: tab.source ? true : tab.dirty, diagrams: tab.diagrams?.map((d) => (d.id === id ? { ...d, ...patch(d) } : d)) })
+    updateTab(tab.id, { dirty: true, diagrams: tab.diagrams?.map((d) => (d.id === id ? { ...d, ...patch(d) } : d)) })
 
   // A renamed table keeps its place: when exactly one table disappears and one appears, layouts follow the new name.
   const tableKeys = useMemo(() => model.tables.map(keyOf), [model])
@@ -624,7 +627,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           {t('Design with AI')}
         </Button>
         <div className="flex-1" />
-        {(areaNames.length > 0 || !!tab.diagrams?.length || !!tab.source) && (
+        {model.tables.length > 0 && (
           <Select
             inputSize="sm"
             className="w-44"
@@ -642,9 +645,9 @@ export function ModelView({ tab }: { tab: ModelTab }) {
                 {d.name || t('Diagram')} ({d.tables.length})
               </option>
             ))}
-            {tab.source && <option value="+">{t('New diagram…')}</option>}
-            {tab.source && area.startsWith('d:') && <option value="~rename">{t('Rename this diagram…')}</option>}
-            {tab.source && area.startsWith('d:') && <option value="~remove">{t('Remove this diagram…')}</option>}
+            <option value="+">{t('New diagram…')}</option>
+            {area.startsWith('d:') && <option value="~rename">{t('Rename this diagram…')}</option>}
+            {area.startsWith('d:') && <option value="~remove">{t('Remove this diagram…')}</option>}
           </Select>
         )}
         <IssuesChip issues={issues} open={showIssues} onToggle={() => setShowIssues((v) => !v)} />
@@ -719,12 +722,12 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           </Button>
         )}
         <DomainsModal open={domainsOpen} domains={domains} used={new Set(model.tables.flatMap((x) => x.columns.filter((c) => c.domain).map((c) => c.domain!.toLowerCase())))} onClose={() => setDomainsOpen(false)} onApply={applyDomains} />
-        {(views.length > 0 || tab.source?.kind === 'dezign') && (
+        {(views.length > 0 || tab.source?.kind === 'dezign' || (!tab.source && model.tables.length > 0)) && (
           <Button size="sm" variant="ghost" icon={<Eye size={13} />} onClick={() => setViewsOpen({})} title={t('The project’s views, triggers, procedures and sequences')} data-testid="model-views">
             {t('Views and code…')}
           </Button>
         )}
-        <ViewsModal open={!!viewsOpen} objects={tab.sqlObjects ?? []} tables={model.tables.filter((x) => x.type !== 'view').map((x) => ({ schema: x.schema, name: x.name }))} start={viewsOpen ? viewsOpen.start : undefined} onClose={() => setViewsOpen(false)} onApply={applyViews} />
+        <ViewsModal open={!!viewsOpen} objects={tab.sqlObjects ?? []} tables={model.tables.filter((x) => x.type !== 'view').map((x) => ({ schema: x.schema, name: x.name }))} start={viewsOpen ? viewsOpen.start : undefined} newViews={!tab.source} onClose={() => setViewsOpen(false)} onApply={applyViews} />
         {tab.source && (
           <Button size="sm" variant="ghost" icon={<FileCode2 size={13} />} onClick={() => setScriptsOpen(true)} title={t('SQL the project puts before and after the scripts generated from it')} data-testid="model-project-scripts">
             {t('Project scripts…')}
@@ -789,7 +792,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
                 domains={domains}
                 views={tab.sqlObjects ?? []}
                 onRequest={browse}
-                onViews={tab.source?.kind === 'dezign' || views.length ? (start) => setViewsOpen({ start }) : undefined}
+                onViews={(start) => setViewsOpen({ start })}
                 onDomains={tab.source ? () => setDomainsOpen(true) : undefined}
                 // (A DeZign project has neither: its domains and diagrams are its own.)
                 enums={model.enums}
@@ -837,7 +840,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
               request={request}
               flushRef={flushCanvas}
               onNewDiagram={(tables, positions) => void newDiagram({ tables, positions })}
-              onLayout={(patch) => (diagram ? patchDiagram(diagram.id, () => ({ ...patch, ...('positions' in patch ? { positions: patch.positions ?? {} } : {}) })) : updateTab(tab.id, { ...patch, dirty: tab.source ? true : tab.dirty }))}
+              onLayout={(patch) => (diagram ? patchDiagram(diagram.id, () => ({ ...patch, ...('positions' in patch ? { positions: patch.positions ?? {} } : {}) })) : updateTab(tab.id, { ...patch, dirty: true }))}
               onApplyModel={(tables) => {
                 // Editing one area keeps the model's other tables; tables added there join the area.
                 const others = model.tables.filter((x) => !inArea(x))
