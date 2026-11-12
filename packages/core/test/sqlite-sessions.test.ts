@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -9,7 +9,12 @@ import { DatabaseService } from '../src/index.js'
  * script or an AI query must not roll back the transaction a tab opened.
  */
 const svc = new DatabaseService()
-afterAll(() => svc.disconnectAll())
+const made: string[] = []
+// The files go after their connections are closed.
+afterAll(async () => {
+  await svc.disconnectAll()
+  for (const dir of made) rmSync(dir, { recursive: true, force: true })
+})
 
 const count = async (id: string) => {
   const [o] = await svc.runScript(id, 'SELECT count(*) AS n FROM t')
@@ -19,7 +24,7 @@ const count = async (id: string) => {
 describe('SQLite sessions', () => {
   it('only the tab that opened a transaction rolls it back', async () => {
     const id = 'lite-sessions'
-    await svc.connect({ id, name: id, driver: 'sqlite', filePath: join(mkdtempSync(join(tmpdir(), 'dbm-lite-')), 'db.sqlite') })
+    await svc.connect({ id, name: id, driver: 'sqlite', filePath: join(made[made.push(mkdtempSync(join(tmpdir(), 'dbm-lite-'))) - 1]!, 'db.sqlite') })
     await svc.runScript(id, 'CREATE TABLE t (v int)')
 
     // Tab A opens a transaction and leaves it open.

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -87,6 +87,7 @@ beforeAll(async () => {
 })
 
 afterAll(() => {
+  rmSync(root, { recursive: true, force: true })
   for (const [key, value] of Object.entries(saved)) {
     if (value === undefined) delete process.env[key]
     else process.env[key] = value

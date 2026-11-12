@@ -1,9 +1,20 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync as makeTemp, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { enforceManagedSettings, managedConfigPaths, mergeManagedConnections, readManagedConfig, type ManagedConfig } from '../src/main/managed-config'
 import type { AppSettings, StoredConnection } from '../src/shared/api'
+
+// Folders made here go when the file's tests are done.
+const made: string[] = []
+const mkdtempSync = (prefix: string) => {
+  const dir = makeTemp(prefix)
+  made.push(dir)
+  return dir
+}
+afterAll(() => {
+  for (const dir of made) rmSync(dir, { recursive: true, force: true })
+})
 
 const now = '2026-01-01T00:00:00.000Z'
 const managed: ManagedConfig = {

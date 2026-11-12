@@ -1,7 +1,7 @@
 // A DeZign model edited in the table panel with no database connected: a column's comment, a new column with a
 // check, the order of columns, a named index. Written into the model and saved back into the DeZign file.
 import { _electron as electron } from '@playwright/test'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -132,4 +132,5 @@ try {
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow96-error.png') })
 } finally {
   await app.close()
+  rmSync(dir, { recursive: true, force: true })
 }

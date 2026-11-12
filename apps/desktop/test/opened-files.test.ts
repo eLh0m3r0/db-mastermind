@@ -1,8 +1,19 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync as makeTemp, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { deliverOpenedFilesTo, filesFromArgs, openFileInApp, takeOpenedFiles } from '../src/main/opened-files'
+
+// Folders made here go when the file's tests are done.
+const made: string[] = []
+const mkdtempSync = (prefix: string) => {
+  const dir = makeTemp(prefix)
+  made.push(dir)
+  return dir
+}
+afterAll(() => {
+  for (const dir of made) rmSync(dir, { recursive: true, force: true })
+})
 
 describe('files handed to the app', () => {
   const dir = mkdtempSync(join(tmpdir(), 'dbm-open-'))

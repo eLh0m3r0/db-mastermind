@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -9,9 +9,13 @@ import { createMcpServer } from '../src/server'
 
 /** The app's own assistant asks before a write (confirmWrite); external agents can't be asked. */
 
-const file = join(mkdtempSync(join(tmpdir(), 'dbm-confirm-')), 'notes.db')
+const dir = mkdtempSync(join(tmpdir(), 'dbm-confirm-'))
+const file = join(dir, 'notes.db')
 const db = new DatabaseService()
-afterAll(() => db.disconnectAll())
+afterAll(async () => {
+  await db.disconnectAll()
+  rmSync(dir, { recursive: true, force: true })
+})
 
 const text = (r: unknown) => ((r as { content: { text: string }[] }).content ?? []).map((c) => c.text).join('\n')
 

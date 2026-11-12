@@ -1,8 +1,19 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync as makeTemp, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { deleteTeamDiagram, deleteTeamQuery, isTeamQuery, readTeamFolder, removeTeamConnection, writeTeamConnection, writeTeamDiagram, writeTeamQuery } from '../src/main/team-folder'
+
+// Folders made here go when the file's tests are done.
+const made: string[] = []
+const mkdtempSync = (prefix: string) => {
+  const dir = makeTemp(prefix)
+  made.push(dir)
+  return dir
+}
+afterAll(() => {
+  for (const dir of made) rmSync(dir, { recursive: true, force: true })
+})
 
 function folder() {
   const dir = mkdtempSync(join(tmpdir(), 'dbm-team-'))

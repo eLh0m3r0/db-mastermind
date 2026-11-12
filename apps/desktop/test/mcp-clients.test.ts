@@ -1,8 +1,19 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync as makeTemp, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { addToMcpClient, mcpClientStatuses, mergeCodexToml, mergeJsonServers } from '../src/main/mcp-clients'
+
+// Folders made here go when the file's tests are done.
+const made: string[] = []
+const mkdtempSync = (prefix: string) => {
+  const dir = makeTemp(prefix)
+  made.push(dir)
+  return dir
+}
+afterAll(() => {
+  for (const dir of made) rmSync(dir, { recursive: true, force: true })
+})
 
 const launch = { command: 'C:\\Apps\\DB Mastermind\\DB Mastermind.exe', args: ['--mcp'] }
 

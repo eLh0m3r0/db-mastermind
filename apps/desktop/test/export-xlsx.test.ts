@@ -1,9 +1,20 @@
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync as makeTemp, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { strFromU8, unzipSync } from 'fflate'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { createExportWriter, exportResultSet, sheetNames } from '../src/main/export'
+
+// Folders made here go when the file's tests are done.
+const made: string[] = []
+const mkdtempSync = (prefix: string) => {
+  const dir = makeTemp(prefix)
+  made.push(dir)
+  return dir
+}
+afterAll(() => {
+  for (const dir of made) rmSync(dir, { recursive: true, force: true })
+})
 
 const unzipText = (path: string) => Object.fromEntries(Object.entries(unzipSync(readFileSync(path))).map(([name, data]) => [name, strFromU8(data)]))
 
