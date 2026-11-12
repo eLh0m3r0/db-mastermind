@@ -250,7 +250,7 @@ export function TableDialog({
                   {tr('Add column')}
                 </Button>
                 {packages.length > 0 && (
-                  <Select inputSize="sm" className="h-7 w-40 text-[12px]" value="" onChange={(e) => addPackage(e.target.value)} title={tr('Put the columns of an attribute package into the table, as DeZign does')} data-testid="table-dialog-add-package">
+                  <Select inputSize="sm" className="h-7 w-40 text-[12px]" value="" onChange={(e) => addPackage(e.target.value)} title={tr('Put the columns of an attribute package into the table')} data-testid="table-dialog-add-package">
                     <option value="">{tr('Add a package…')}</option>
                     {packages.map((p) => (
                       <option key={p.name} value={p.name} disabled={!packageColumnsFor(table, p).length}>
@@ -276,7 +276,7 @@ export function TableDialog({
                     )}
                   </div>
                   <label className="flex flex-1 flex-col gap-0.5">
-                    <span className="text-[11px] text-fg-muted" title={tr('Notes kept with the model (DeZign: Notes); never in a script')}>
+                    <span className="text-[11px] text-fg-muted" title={tr('Notes kept with the model; never in a script')}>
                       {tr('Notes')}
                     </span>
                     <Textarea rows={2} className="resize-y text-[12px]" value={selected.remarks ?? ''} onChange={(e) => setColumn(selected.id, { remarks: e.target.value || undefined })} />
@@ -320,13 +320,13 @@ export function TableDialog({
               <Textarea rows={6} className="text-[12.5px]" value={table.comment ?? ''} onChange={(e) => set({ comment: e.target.value || null })} placeholder={tr('What is stored here')} data-testid="table-dialog-comment" />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-[11.5px] font-medium text-fg-muted" title={tr('Notes kept with the model (DeZign: Notes); never in a script')}>
+              <span className="text-[11.5px] font-medium text-fg-muted" title={tr('Notes kept with the model; never in a script')}>
                 {tr('Notes')}
               </span>
               <Textarea rows={6} className="text-[12.5px]" value={table.remarks ?? ''} onChange={(e) => set({ remarks: e.target.value || undefined })} />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-[11.5px] font-medium text-fg-muted" title={tr('What is still to be done (DeZign: To do); listed in the object browser')}>
+              <span className="text-[11.5px] font-medium text-fg-muted" title={tr('What is still to be done; listed in the object browser')}>
                 {tr('To do')}
               </span>
               <Textarea rows={3} className="text-[12.5px]" value={table.todo ?? ''} onChange={(e) => set({ todo: e.target.value || undefined })} data-testid="table-todo" />

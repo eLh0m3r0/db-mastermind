@@ -203,7 +203,8 @@ try {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
   }, file)
   // A view of the model's own (DBML has none): made in "Views and code…", kept in the file, in the DDL.
-  await win.getByTestId('model-views').click()
+  await win.locator('[data-testid="model-more"]:visible').click()
+  await win.getByRole('menuitem', { name: 'Views and code…' }).click()
   await win.getByTestId('objects-add-view').click()
   await win.getByTestId('objects-name').fill('v_big_invoices')
   await win.getByTestId('views-code').fill('CREATE VIEW %viewname% AS\nSELECT id, total FROM shop.invoice WHERE total > 1000')
@@ -211,7 +212,8 @@ try {
   await win.getByRole('button', { name: 'Save', exact: true }).click()
   await win.getByText(/Model saved/).first().waitFor({ timeout: 10000 })
   const saved = readFileSync(file, 'utf8')
-  await win.getByRole('button', { name: 'Open…', exact: true }).click()
+  await win.locator('[data-testid="model-more"]:visible').click()
+  await win.getByRole('menuitem', { name: 'Open…' }).click()
   await win.waitForTimeout(2500)
   const areas = await win.getByTestId('model-area').last().locator('option').allInnerTexts()
   const reopenedText = await modelText()
@@ -231,7 +233,8 @@ try {
   console.log('layout kept in the file:', /\n\/\/ dbmastermind-layout: \{.*"Billing part"/.test(saved), /Table shop\.invoice/.test(saved), areas.some((a) => a.startsWith('Billing part')), !/dbmastermind-layout/.test(reopenedText))
 
   // Conditional generation (DeZign): a view's code with a directive; the script keeps that part only when it applies.
-  await win.getByTestId('model-views').click()
+  await win.locator('[data-testid="model-more"]:visible').click()
+  await win.getByRole('menuitem', { name: 'Views and code…' }).click()
   await win.getByTestId('objects-add-view').click()
   await win.getByTestId('objects-name').fill('v_cond')
   await win.getByTestId('views-code').fill('CREATE VIEW %viewname% AS\nSELECT id\n{$IFDEF Full}\n  , total\n{$ENDIF Full}\nFROM shop.invoice')
@@ -247,7 +250,8 @@ try {
     return readFileSync(path, 'utf8')
   }
   const plain = await ddlWith('plain.sql')
-  await win.getByTestId('model-directives').click()
+  await win.locator('[data-testid="model-more"]:visible').click()
+  await win.getByRole('menuitem', { name: /^Directives/ }).click()
   await win.getByRole('menuitemcheckbox', { name: 'Full' }).or(win.getByRole('menuitem', { name: 'Full' })).first().click()
   const full = await ddlWith('full.sql')
   await app.evaluate(({ dialog }, path) => {

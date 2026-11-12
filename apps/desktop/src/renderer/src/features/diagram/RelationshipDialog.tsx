@@ -180,7 +180,7 @@ export function RelationshipDialog({
                 }
                 update({ subtype: on || undefined })
               }}
-              label={<span title={tr('This table is a kind of the parent table (DeZign: a subtype in the supertype’s cluster)')}>{tr('Subtype')}</span>}
+              label={<span title={tr('This table is a kind of the parent table (its subtype)')}>{tr('Subtype')}</span>}
             />
           </div>
           <div className="grid flex-1 grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1.5">

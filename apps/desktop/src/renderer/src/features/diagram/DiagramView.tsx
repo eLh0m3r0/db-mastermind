@@ -1285,7 +1285,7 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
   // Dragged frames show where they are going until the drop saves the place.
   const [boxDrag, setBoxDrag] = useState<{ id: string; x: number; y: number } | null>(null)
   const addBox = async () => {
-    const title = await askText({ title: tr('New frame'), message: tr('A frame groups tables on the diagram (DeZign: group box). Drag it by its caption, resize it at its corner.'), confirmLabel: tr('Add') })
+    const title = await askText({ title: tr('New frame'), message: tr('A frame groups tables on the diagram. Drag it by its caption, resize it at its corner.'), confirmLabel: tr('Add') })
     if (!title) return
     const center = flow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 })
     setBoxes([...(tab.boxes ?? []), { id: uid('box'), title, x: Math.round(center.x - 200), y: Math.round(center.y - 150), w: 400, h: 300 }])

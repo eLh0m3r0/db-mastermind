@@ -82,7 +82,8 @@ try {
   await win.locator('.react-flow__node:visible').first().waitFor({ timeout: 30000 })
   // (A DeZign project opens on its objects: this flow works with the model's text.)
   await win.getByRole('button', { name: 'Text (DBML)' }).last().click()
-  await win.getByTestId('model-database').selectOption({ label: 'Team DB' })
+  await win.locator('[data-testid="model-compare-menu"]:visible').click()
+  await win.getByRole('menuitemcheckbox', { name: 'Team DB' }).click()
 
   // 1. The first script: the model's schema, both tables (in the model's order), the key between them, the check.
   const create = await compare()
@@ -174,7 +175,9 @@ try {
   await sql(team.id, 'ALTER TABLE sales.customer ADD COLUMN phone varchar(30); CREATE TABLE sales.note (id integer PRIMARY KEY, customer_id integer NOT NULL REFERENCES sales.customer (id), body text)')
   await win.getByText('team.dez', { exact: true }).first().click()
   const beforeUpdate = await win.locator('.cm-content:visible').first().innerText()
-  await win.getByRole('button', { name: 'From database' }).click()
+  await win.locator('[data-testid="model-more"]:visible').click()
+  await win.getByRole('menuitem', { name: 'From database' }).click()
+  if (await win.getByRole('menuitem', { name: 'Start the model from the database' }).count()) await win.getByRole('menuitem', { name: 'Start the model from the database' }).click()
   await win.getByText('Update the model (keeps its comments, domains and layout)').click()
   await win.getByText(/Model updated from Team DB/).waitFor({ timeout: 20000 })
   await win.waitForTimeout(800)

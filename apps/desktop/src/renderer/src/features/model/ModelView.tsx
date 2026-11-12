@@ -4,10 +4,10 @@ import { bracketMatching, StreamLanguage } from '@codemirror/language'
 import { Compartment, EditorState } from '@codemirror/state'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
-import { Filter, AlertTriangle, Archive, Database, Eye, Pencil, Shapes, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare, Plus } from 'lucide-react'
+import { ChevronDown, Filter, AlertTriangle, Archive, Database, Eye, MoreHorizontal, Pencil, Shapes, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare, Plus } from 'lucide-react'
 import { translateTables, translateType, applyGenerationDirectives, generationDirectivesIn, scriptingWithDirectives, tablesWithDirectives, withDezignSql, checkModel, withModelLayout, createScript, dezignDriver, dezignMigrationOptions, dezignWrapScript, dropScript, fixModelIssue, unquotedNames, getDialect, parseDbml, toDbml, updateModelFromDatabase, type DezignSqlObject, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
-import { openMenu } from '@/components/ui/ContextMenu'
+import { openMenu, type MenuItem } from '@/components/ui/ContextMenu'
 import { DRIVERS } from '../connections/drivers'
 import { Segmented, Select } from '@/components/ui/Input'
 import { Splitter } from '@/components/ui/Splitter'
@@ -16,7 +16,7 @@ import { tp, useT } from '@/lib/i18n'
 import { cn, debounce, errorMessage } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
-import { askAi, toast } from '@/store/ui'
+import { askAi, toast, useUi } from '@/store/ui'
 import { useWorkspace, type DiagramTab, type ModelTab } from '@/store/workspace'
 import { DiagramView } from '../diagram/DiagramView'
 import { describeDezignChanges, modelTabFromFile, sqlObjectsScript } from './open-model'
@@ -282,15 +282,15 @@ export function ModelView({ tab }: { tab: ModelTab }) {
       detail: t('Tables: {a} added, {b} removed. Columns: {c} added, {d} removed, {e} changed. Relationships changed: {f}. Indexes changed: {g}.', { a: String(n.tablesAdded), b: String(n.tablesRemoved), c: String(n.columnsAdded), d: String(n.columnsRemoved), e: String(n.columnsChanged), f: String(n.relationshipsChanged), g: String(n.indexesChanged) }),
     })
   }
-  const fromDatabaseMenu = (anchor: HTMLElement) => {
-    if (!model.tables.length) return void fromDatabase()
-    openMenu(anchor, [
-      { label: t('Update the model (keeps its comments, domains and layout)'), onClick: () => void updateFromDatabase(false) },
-      { label: t('Update, and remove tables the database does not have'), onClick: () => void updateFromDatabase(true) },
-      'separator',
-      { label: t('Replace the model with the database'), onClick: () => void fromDatabase() },
-    ])
-  }
+  const fromDatabaseItems = (): MenuItem[] =>
+    model.tables.length
+      ? [
+          { label: t('Update the model (keeps its comments, domains and layout)'), onClick: () => void updateFromDatabase(false) },
+          { label: t('Update, and remove tables the database does not have'), onClick: () => void updateFromDatabase(true) },
+          'separator',
+          { label: t('Replace the model with the database'), onClick: () => void fromDatabase() },
+        ]
+      : [{ label: t('Start the model from the database'), onClick: () => void fromDatabase() }]
 
   /** Versions: this model against another .dbml file (older copy, another branch…). */
   const compareWithFile = async () => {
@@ -338,7 +338,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     const stamp = `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())} ${two(now.getHours())}:${two(now.getMinutes())}`
     const label = await askText({
       title: t('Archive a version of {file}', { file: source.path.split(/[\\/]/).pop() ?? '' }),
-      message: t('The project as it is saved now is kept in it as a version, as DeZign keeps one: listed under File → Versions there, and under Compare with version… here.'),
+      message: t('The project as it is saved now is kept in it as a version: compare with it later under Compare with version….'),
       value: t('Version {date}', { date: stamp }),
       confirmLabel: t('Archive'),
     })
@@ -365,7 +365,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     const from = dezignDriver(tab.sqlDatabase)
     const label = DRIVERS.find((d) => d.id === to)?.label ?? to
     if (!id || from === to) return
-    const ok = await confirmAction({ title: t('Switch the project to {db}?', { db: label }), message: t('Every column and domain gets a type of {db} (as DeZign converts them). Save writes the project for {db}; scripts are made for it from now on.', { db: label }), confirmLabel: t('Switch') })
+    const ok = await confirmAction({ title: t('Switch the project to {db}?', { db: label }), message: t('Every column and domain gets a type of {db}. Save writes the project for {db}; scripts are made for it from now on.', { db: label }), confirmLabel: t('Switch') })
     if (!ok) return
     const tables = translateTables(model.tables, to, from)
     const domains = domainsOfText(text).map((d) => ({ ...d, dataType: translateType(d.dataType, to, from) }))
@@ -407,13 +407,6 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     () => generationDirectivesIn(...model.tables.flatMap((x) => (x.checks ?? []).map((c) => c.expression)), ...(tab.sqlObjects ?? []).map((o) => o.code), ...(tab.scripting?.around ? [...tab.scripting.around.create, ...tab.scripting.around.alter] : [])),
     [model, tab.sqlObjects, tab.scripting],
   )
-  const directivesMenu = (anchor: HTMLElement) =>
-    openMenu(anchor, [
-      ...availableDirectives.map((d) => {
-        const on = directives.some((x) => x.toLowerCase() === d.toLowerCase())
-        return { label: d, checked: on, onClick: () => updateTab(tab.id, { directives: on ? directives.filter((x) => x.toLowerCase() !== d.toLowerCase()) : [...directives, d] }) }
-      }),
-    ])
   const [scriptsOpen, setScriptsOpen] = useState(false)
   const [enumsOpen, setEnumsOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
@@ -470,7 +463,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           const own = tablesWithDirectives(model.tables, directives)
           const named = tab.source?.kind === 'dezign' ? unquotedNames(own, d.id) : own
           const folded = named !== own && named.some((x, i) => x.name !== own[i]!.name || x.columns.some((c, k) => c.name !== own[i]!.columns[k]!.name))
-          const note = folded ? `-- ${t('Names are created as DeZign creates them, without quotes: {db} stores them in {case} case.', { db: d.label, case: d.id === 'oracle' ? t('upper') : t('lower') })}\n` : ''
+          const note = folded ? `-- ${t('Names are created without quotes, as the project\'s own scripts create them: {db} stores them in {case} case.', { db: d.label, case: d.id === 'oracle' ? t('upper') : t('lower') })}\n` : ''
           // The project's own begin and end scripts go around it, for the database they were written for.
           const target = dezignDriver(tab.sqlDatabase)
           const objects = tab.sqlObjects?.map((o) => (o.code?.includes('{$') ? withDezignSql({ ...o, code: applyGenerationDirectives(o.code, directives) }) : o))
@@ -574,6 +567,49 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const diagramTab = { ...tab, kind: 'diagram', colors: { ...groupColors, ...(diagram ? diagram.colors : tab.colors) }, notes: diagram ? diagram.notes : tab.notes, boxes: diagram ? diagram.boxes : tab.boxes, positions: diagram ? diagram.positions : tab.positions, tables: diagram ? diagram.tables : undefined, display: diagram ? diagram.display : tab.display } as unknown as DiagramTab
   /** A new diagram of the project the model came from: empty at first, tables are added from the search above the canvas. */
   /** A new diagram: empty, or of the tables selected on the canvas where they stand (DeZign: subdiagram from selection). */
+  /** The database to compare with (picking one from the main button compares at once), or a version or file. */
+  const compareTargetMenu = (anchor: HTMLElement, compareNow: boolean) =>
+    openMenu(anchor, [
+      ...connections.map((c): MenuItem => ({
+        label: c.name,
+        checked: c.id === tab.connectionId,
+        onClick: () => {
+          linkDatabase(c.id)
+          if (compareNow) setAfterWrite({ run: () => latest.current.then.compare?.() })
+        },
+      })),
+      ...(connections.length ? [] : [{ label: t('New connection…'), onClick: () => useUi.getState().set({ modal: { kind: 'connection' } }) } as MenuItem]),
+      ...(connection ? (['separator', { label: t('No database'), onClick: () => linkDatabase('') }] as MenuItem[]) : []),
+      'separator',
+      { label: tab.source ? t('Compare with version…') : t('Compare with file…'), disabled: model.errors.length > 0, onClick: () => withCanvas('versions', anchor) },
+    ])
+  /** What the bar keeps out of sight: files, imports, and the model's less frequent tools. */
+  const moreMenu = (anchor: HTMLElement) =>
+    openMenu(anchor, [
+      { label: t('Open…'), icon: <FolderOpen size={13} />, onClick: () => void open() },
+      { label: t('Save as…'), icon: <Save size={13} />, onClick: () => void save(true) },
+      'separator',
+      { label: t('From database'), icon: <Database size={13} />, disabled: !connection, submenu: fromDatabaseItems() },
+      { label: t('Import SQL…'), icon: <FileInput size={13} />, onClick: () => void importDdl() },
+      'separator',
+      { label: t('Rename…'), icon: <Pencil size={13} />, disabled: model.errors.length > 0 || !model.tables.length, onClick: () => withCanvas('rename') },
+      ...(tab.source ? [{ label: t('Domains…'), icon: <Shapes size={13} />, onClick: () => withCanvas('domains') } as MenuItem] : []),
+      { label: t('Views and code…'), icon: <Eye size={13} />, onClick: () => setViewsOpen({}) },
+      ...(tab.source ? [{ label: t('Project scripts…'), icon: <FileCode2 size={13} />, onClick: () => setScriptsOpen(true) } as MenuItem] : []),
+      ...(availableDirectives.length
+        ? [
+            {
+              label: directives.length ? `${t('Directives')} (${directives.length})` : t('Directives'),
+              icon: <Filter size={13} />,
+              submenu: availableDirectives.map((d): MenuItem => {
+                const on = directives.some((x) => x.toLowerCase() === d.toLowerCase())
+                return { label: d, checked: on, onClick: () => updateTab(tab.id, { directives: on ? directives.filter((x) => x.toLowerCase() !== d.toLowerCase()) : [...directives, d] }) }
+              }),
+            } as MenuItem,
+          ]
+        : []),
+      ...(tab.source ? (['separator', { label: t('Archive version…'), icon: <Archive size={13} />, onClick: () => void archiveVersion() }] as MenuItem[]) : []),
+    ])
   latest.current.then = {
     ddl: (anchor) => anchor && ddlMenu(anchor),
     compare: () => void compareWithDatabase(),
@@ -630,21 +666,8 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           {(tab.path ?? tab.source?.path)?.split(/[\\/]/).pop() ?? t('Unsaved model')}
           {tab.dirty && ' •'}
         </span>
-        <Button size="sm" variant="ghost" icon={<FolderOpen size={13} />} onClick={() => void open()}>
-          {t('Open…')}
-        </Button>
-        <Button size="sm" variant="ghost" icon={<Save size={13} />} onClick={() => void save()} title={keys('⌘S')}>
+        <Button size="sm" variant="ghost" icon={<Save size={13} />} onClick={() => void save()} title={keys('⌘S')} data-testid="model-save">
           {t('Save')}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => void save(true)}>
-          {t('Save as…')}
-        </Button>
-        <div className="mx-1 h-4 w-px bg-line" />
-        <Button size="sm" variant="ghost" icon={<Database size={13} />} disabled={!connection} onClick={(e) => fromDatabaseMenu(e.currentTarget)} title={t('Bring changes made in the database into the model, or start the model from the database')}>
-          {t('From database')}
-        </Button>
-        <Button size="sm" variant="ghost" icon={<FileInput size={13} />} onClick={() => void importDdl()} title={t('Read tables from a SQL script (pg_dump, mysqldump, SSMS…) or a Prisma schema')}>
-          {t('Import SQL…')}
         </Button>
         <Button size="sm" variant="ghost" icon={<TerminalSquare size={13} />} disabled={!model.tables.length} onClick={(e) => withCanvas('ddl', e.currentTarget)}>
           {t('SQL DDL')}
@@ -693,44 +716,24 @@ export function ModelView({ tab }: { tab: ModelTab }) {
         )}
         <IssuesChip issues={issues} open={showIssues} onToggle={() => setShowIssues((v) => !v)} />
         <span className="text-[11.5px] text-fg-faint">{tp(model.tables.length, { one: '{n} table', many: '{n} tables' })}</span>
-        <Select
-          inputSize="sm"
-          className="w-44"
-          value={connection ? tab.connectionId : ''}
-          onChange={(e) => linkDatabase(e.target.value)}
-          title={t('The database this model is compared with. A model works without one; pick it when you need the ALTER script.')}
-          data-testid="model-database"
-        >
-          <option value="">{t('No database')}</option>
-          {connections.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </Select>
-        <Button
-          size="sm"
-          variant="primary"
-          icon={<GitCompare size={13} />}
-          disabled={!connection || model.errors.length > 0 || !model.tables.length}
-          onClick={() => withCanvas('compare')}
-          title={connection ? t('Compare the model with the database and generate the migration') : t('Pick a database on the left first')}
-        >
-          {connection ? t('Compare with {name}', { name: connection.name }) : t('Compare with database')}
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          icon={<GitCompare size={13} />}
-          disabled={model.errors.length > 0}
-          title={tab.source ? t('What changed since a version archived in the project, or compared with another file: the changes and the ALTER script') : t('What changed compared with another model file or a SQL script (e.g. a dump of the database): the changes and the ALTER script')}
-          onClick={(e) => withCanvas('versions', e.currentTarget)}
-          data-testid="model-compare-versions"
-        >
-          {tab.source ? t('Compare with version…') : t('Compare with file…')}
-        </Button>
-        <Button size="sm" variant="ghost" icon={<Pencil size={13} />} disabled={model.errors.length > 0 || !model.tables.length} onClick={() => withCanvas('rename')} title={t('Rename tables and columns by a pattern: keys, indexes and relationships follow')} data-testid="model-batch-rename">
-          {t('Rename…')}
+        {/* Compare with the linked database; the arrow picks another database or a version/file to compare with. */}
+        <div className="flex">
+          <Button
+            size="sm"
+            variant="primary"
+            icon={<GitCompare size={13} />}
+            className="rounded-r-none"
+            disabled={model.errors.length > 0 || !model.tables.length}
+            onClick={(e) => (connection ? withCanvas('compare') : compareTargetMenu(e.currentTarget, true))}
+            title={connection ? t('Compare the model with the database and generate the migration') : t('Pick the database to compare the model with')}
+            data-testid="model-compare"
+          >
+            {connection ? t('Compare with {name}', { name: connection.name }) : t('Compare with database')}
+          </Button>
+          <Button size="sm" variant="primary" className="rounded-l-none border-l border-white/25 px-1.5" icon={<ChevronDown size={13} />} onClick={(e) => compareTargetMenu(e.currentTarget.parentElement ?? e.currentTarget, false)} aria-label={t('Compare with…')} title={t('Compare with…')} data-testid="model-compare-menu" />
+        </div>
+        <Button size="sm" variant="ghost" icon={<MoreHorizontal size={14} />} onClick={(e) => moreMenu(e.currentTarget)} title={t('More')} data-testid="model-more">
+          {t('More')}
         </Button>
         {renameOpen && (
           <BatchRenameModal
@@ -757,29 +760,8 @@ export function ModelView({ tab }: { tab: ModelTab }) {
             }}
           />
         )}
-        {tab.source && (
-          <Button size="sm" variant="ghost" icon={<Shapes size={13} />} onClick={() => withCanvas('domains')} title={t('The named types the project\'s columns follow')} data-testid="model-domains">
-            {t('Domains…')}
-          </Button>
-        )}
         <DomainsModal open={domainsOpen} domains={domains} used={new Set(model.tables.flatMap((x) => x.columns.filter((c) => c.domain).map((c) => c.domain!.toLowerCase())))} onClose={() => setDomainsOpen(false)} onApply={applyDomains} />
-        {availableDirectives.length > 0 && (
-          <Button size="sm" variant="ghost" icon={<Filter size={13} />} onClick={(e) => directivesMenu(e.currentTarget)} title={t('Generation directives that apply to the scripts made from the model (DeZign: conditional generation)')} data-testid="model-directives">
-            {t('Directives')}
-            {directives.length ? ` (${directives.length})` : ''}
-          </Button>
-        )}
-        {(views.length > 0 || tab.source?.kind === 'dezign' || (!tab.source && model.tables.length > 0)) && (
-          <Button size="sm" variant="ghost" icon={<Eye size={13} />} onClick={() => setViewsOpen({})} title={t('The project’s views, triggers, procedures and sequences')} data-testid="model-views">
-            {t('Views and code…')}
-          </Button>
-        )}
         <ViewsModal open={!!viewsOpen} objects={tab.sqlObjects ?? []} tables={model.tables.filter((x) => x.type !== 'view').map((x) => ({ schema: x.schema, name: x.name }))} start={viewsOpen ? viewsOpen.start : undefined} newViews={!tab.source} onClose={() => setViewsOpen(false)} onApply={applyViews} />
-        {tab.source && (
-          <Button size="sm" variant="ghost" icon={<FileCode2 size={13} />} onClick={() => setScriptsOpen(true)} title={t('SQL the project puts before and after the scripts generated from it')} data-testid="model-project-scripts">
-            {t('Project scripts…')}
-          </Button>
-        )}
         {enumsOpen && (
           <EnumsModal
             enums={model.enums}
@@ -812,11 +794,6 @@ export function ModelView({ tab }: { tab: ModelTab }) {
               updateTab(tab.id, { scripting: { ...(tab.scripting ?? { primaryKeys: { names: {} }, domains: [] }), around } as ModelTab['scripting'], dirty: true })
             }}
           />
-        )}
-        {tab.source && (
-          <Button size="sm" variant="ghost" icon={<Archive size={13} />} onClick={() => void archiveVersion()} title={t('Keep the project as it is saved now as a version, as DeZign does')} data-testid="model-archive-version">
-            {t('Archive version…')}
-          </Button>
         )}
       </div>
       <div className="flex min-h-0 flex-1">

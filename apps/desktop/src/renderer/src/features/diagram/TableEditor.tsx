@@ -165,7 +165,7 @@ export function TableEditor({
             <label className="mb-4 flex flex-col gap-1">
               <span
                 className="text-[11.5px] font-medium text-fg-muted"
-                title={tr('Notes kept with the model (DeZign: Notes); never in a script')}
+                title={tr('Notes kept with the model; never in a script')}
               >
                 {tr('Notes')}
               </span>
@@ -312,7 +312,7 @@ export function TableEditor({
                       inputSize="sm"
                       className="h-6 flex-1 text-[11.5px]"
                       placeholder={tr('Notes')}
-                      title={tr('Notes kept with the model (DeZign: Notes); never in a script')}
+                      title={tr('Notes kept with the model; never in a script')}
                       value={c.remarks ?? ''}
                       onChange={(e) => setColumn(c.id, { remarks: e.target.value || undefined })}
                       data-testid={`column-remarks-${c.name}`}

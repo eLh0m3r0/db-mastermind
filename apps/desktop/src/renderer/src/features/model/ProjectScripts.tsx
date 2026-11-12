@@ -41,7 +41,7 @@ export function ProjectScriptsModal({ around, onClose, onApply }: { around?: Aro
         </>
       }
     >
-      <p className="mb-3 text-[12px] text-fg-muted">{t('SQL the project puts before and after the scripts generated from it, as DeZign’s project settings keep it. Saved into the project.')}</p>
+      <p className="mb-3 text-[12px] text-fg-muted">{t('SQL the project puts before and after the scripts generated from it. Saved into the project.')}</p>
       <div className="grid grid-cols-2 gap-3">
         {field('create', 0, t('Before the CREATE script'), 'script-create-begin')}
         {field('create', 1, t('After the CREATE script'), 'script-create-end')}

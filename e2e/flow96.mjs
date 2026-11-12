@@ -71,7 +71,8 @@ try {
   console.log('in the DeZign file:', names, /<DESC>P\xf8ihla\xb9ovac\xed e-mail<\/DESC>|<DESC>P.ihla.ovac. e-mail<\/DESC>/.test(saved), /<NAME>credit_not_negative<\/NAME>/.test(saved), /<VALUE>credit &gt;= 0<\/VALUE>/.test(saved), /<NAME>customer_by_email<\/NAME>/.test(saved))
 
   // A version of the project, as DeZign archives one: listed in the file, and a later save still works.
-  await win.getByTestId('model-archive-version').click()
+  await win.locator('[data-testid="model-more"]:visible').click()
+  await win.getByRole('menuitem', { name: 'Archive version…' }).click()
   await win.getByRole('button', { name: 'Archive', exact: true }).click()
   await win.getByText('Archived as version 1').waitFor({ timeout: 10000 })
   const versions = await win.evaluate((path) => window.mastermind.api.listModelVersions(path), dez)
@@ -92,7 +93,8 @@ try {
 
   // Domains: a new one, followed by a column, then a new type for it that goes to that column too.
   const domainsDialog = async (fill) => {
-    await win.getByTestId('model-domains').click()
+    await win.locator('[data-testid="model-more"]:visible').click()
+  await win.getByRole('menuitem', { name: 'Domains…' }).click()
     await fill()
     await win.getByTestId('domain-apply').click()
     await win.waitForTimeout(800)
@@ -117,7 +119,8 @@ try {
   console.log('domains:', /credit numeric\(14,2\) \[domain: 'money_t'\]/.test(withDomain), /money_t: numeric\(14,2\)/.test(withDomain), /<DOMAIN>\n<NAME>money_t<\/NAME>[\s\S]*?<DTLISTNAME>NUMERIC<\/DTLISTNAME>\n<LE>14<\/LE>\n<PR>2<\/PR>/.test(domainFile))
 
   // What changed since the archived version, with no database connected: the ALTER script for the project's own.
-  await win.getByTestId('model-compare-versions').click()
+  await win.locator('[data-testid="model-compare-menu"]:visible').click()
+  await win.getByRole('menuitem', { name: /Compare with (version|file)…/ }).click()
   await win.getByText(/^v1 · /).first().click()
   await win.getByRole('button', { name: 'Compare', exact: true }).click()
   await win.getByRole('button', { name: 'Save script…' }).waitFor({ timeout: 20000 })
@@ -141,7 +144,8 @@ try {
   const dump = join(dir, 'production.sql')
   writeFileSync(dump, `--\n-- PostgreSQL database dump\n--\nSET statement_timeout = 0;\nSELECT pg_catalog.set_config('search_path', '', false);\nCREATE SCHEMA shop;\nCREATE TABLE shop.customer (\n    id bigint NOT NULL,\n    name text,\n    email text\n);\nCREATE TABLE shop.invoice (\n    id bigint NOT NULL,\n    total numeric,\n    customer_id bigint\n);\nCOMMENT ON TABLE shop.customer IS 'It''s the DATETIME of [customers]';\nALTER TABLE ONLY shop.customer\n    ADD CONSTRAINT customer_pkey PRIMARY KEY (id);\nALTER TABLE ONLY shop.invoice\n    ADD CONSTRAINT invoice_pkey PRIMARY KEY (id);\n`)
   await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }) }, dump)
-  await win.locator('[data-testid="model-compare-versions"]:visible').click()
+  await win.locator('[data-testid="model-compare-menu"]:visible').click()
+  await win.getByRole('menuitem', { name: /Compare with (version|file)…/ }).click()
   await win.getByText('Another file…').click()
   await win.getByRole('button', { name: 'Compare', exact: true }).click()
   await win.getByRole('button', { name: 'Save script…' }).waitFor({ timeout: 20000 })
@@ -158,7 +162,8 @@ try {
   const script = readFileSync(sql, 'utf8')
   console.log('ddl with the project scripts:', script.includes('SET search_path = shop;'), script.trimEnd().endsWith('ANALYZE;'), script.indexOf('SET search_path') < script.indexOf('CREATE TABLE'), /COMMENT ON COLUMN/.test(script))
   // The scripts edited in the project's settings, as in DeZign: saved into the project and used by the next script.
-  await win.getByTestId('model-project-scripts').click()
+  await win.locator('[data-testid="model-more"]:visible').click()
+  await win.getByRole('menuitem', { name: 'Project scripts…' }).click()
   await win.getByTestId('script-create-end').fill('ANALYZE;\nVACUUM;')
   await win.getByTestId('project-scripts-ok').click()
   await win.getByRole('button', { name: 'Save', exact: true }).click()
@@ -216,7 +221,8 @@ try {
   // as the same table (its id kept), not as one dropped and another made.
   const entityId = (text, name) => new RegExp(`<ENT>\\s*<NAME>${name}</NAME>\\s*<ID>([^<]*)</ID>`).exec(text)?.[1]
   const idBefore = entityId(readFileSync(dez, 'latin1'), 'invoice')
-  await win.locator('[data-testid="model-batch-rename"]:visible').click()
+  await win.locator('[data-testid="model-more"]:visible').click()
+  await win.getByRole('menuitem', { name: 'Rename…' }).click()
   await win.getByTestId('batch-find').fill('^')
   await win.getByText('Regular expression', { exact: true }).click()
   await win.getByTestId('batch-replace').fill('b_')

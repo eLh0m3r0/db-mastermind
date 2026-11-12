@@ -23,7 +23,9 @@ try {
   await win.keyboard.type('New model')
   await win.keyboard.press('Enter')
   await win.waitForTimeout(800)
-  await win.getByRole('button', { name: 'From database' }).click()
+  await win.locator('[data-testid="model-more"]:visible').click()
+  await win.getByRole('menuitem', { name: 'From database' }).click()
+  if (await win.getByRole('menuitem', { name: 'Start the model from the database' }).count()) await win.getByRole('menuitem', { name: 'Start the model from the database' }).click()
   await win.waitForTimeout(1000)
   const before = (await win.locator('.cm-content').first().innerText()).match(/\[name:/g)?.length ?? 0
   await win.getByRole('button', { name: 'Design with AI' }).click()

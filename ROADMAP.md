@@ -635,8 +635,9 @@ compatibility while the screens change).
   recent models under them; fits a laptop screen without scrolling (recent models are remembered when opened)
 - ✅ A model tab hides the connections sidebar (⌘B or the button in the tab bar shows it; remembered apart from
   the databases' choice, and the sidebar has its own hide button); its left side is the model's objects
-- ⬜ A lean model bar: Save, Compare with database, SQL, View, More (domains, project scripts, versions, rename,
-  views and code, directives…); texts name DeZign only for its files
+- ✅ A lean model bar: Save, SQL, AI, Compare (its arrow picks the database or a version/file; with no database
+  linked, picking one compares at once), More (domains, project scripts, versions, rename,
+  views and code, directives…); texts name DeZign only for its files ("as in DeZign" is gone from the screens)
 - ⬜ One detail panel for the selected table, column or relationship, docked right in a wide window and a drawer
   over the canvas in a narrow one; the table and relationship dialogs go
 - ⬜ In place on the canvas: rename a table or a column, add a column (Enter), its type and NOT NULL

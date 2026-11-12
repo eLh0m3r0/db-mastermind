@@ -56,7 +56,7 @@ export function DomainsModal({ open, domains, used, onClose, onApply }: { open: 
         </>
       }
     >
-      <p className="mb-2 text-[12px] text-fg-muted">{t('A domain is a named type columns follow. A new type here changes every column that follows the domain, as in DeZign.')}</p>
+      <p className="mb-2 text-[12px] text-fg-muted">{t('A domain is a named type columns follow. A new type here changes every column that follows the domain.')}</p>
       <div className="flex max-h-[50vh] flex-col gap-1 overflow-auto">
         {rows.map((row, i) => (
           <div key={i} className="flex items-center gap-1.5">

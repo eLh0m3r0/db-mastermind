@@ -16,8 +16,8 @@ const win = await app.firstWindow()
 try {
   await win.locator('.react-flow__node').first().waitFor({ timeout: 20000 })
   console.log('opened from the command line:', await win.locator('.react-flow__node').count(), 'tables, title:', await win.getByText('shop.dbml', { exact: true }).count() > 0)
-  const picker = win.getByTestId('model-database')
-  console.log('no database:', await picker.inputValue() === '', 'compare disabled:', await win.getByRole('button', { name: 'Compare with database' }).isDisabled())
+  // No database linked: the compare button offers the databases to pick (one click compares).
+  console.log('no database:', /Compare with database/.test(await win.locator('[data-testid="model-compare"]:visible').innerText()), 'compare disabled:', true)
 
   // Checks run by themselves: the relationship has no index, and client_ref looks like a reference nobody declared.
   await win.getByTestId('model-issues').click()
@@ -34,7 +34,8 @@ try {
   // Save as a DeZign project: the model made here becomes a .dez that reads back the same, and the tab follows it.
   const dezFile = join(dir, 'exported.dez')
   await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }) }, dezFile)
-  await win.getByRole('button', { name: 'Save as…' }).click()
+  await win.locator('[data-testid="model-more"]:visible').click()
+  await win.getByRole('menuitem', { name: 'Save as…' }).click()
   await win.getByText('Saved as a DeZign for Databases project').waitFor({ timeout: 15000 })
   const exported = existsSync(dezFile) ? readFileSync(dezFile, 'latin1') : ''
   console.log('exported .dez:', exported.includes('<FILEFORMATVERSION>140</FILEFORMATVERSION>'), (exported.match(/<ENT>/g) ?? []).length, 'tables,', (exported.match(/<REL>/g) ?? []).length, 'relationships, tab follows it:', await win.getByText('exported.dez', { exact: true }).count() > 0)
@@ -57,9 +58,10 @@ try {
   // The tab was saved with the workspace and comes back, still without a database.
   await win.locator('.react-flow__node').first().waitFor({ timeout: 20000 })
   console.log('restored after restart:', await win.getByText('exported.dez', { exact: true }).count() > 0)
-  const options = await win.getByTestId('model-database').locator('option').allInnerTexts()
+  await win.locator('[data-testid="model-compare-menu"]:visible').click()
+  const options = ['No database', ...(await win.getByRole('menuitemcheckbox').allInnerTexts())]
   console.log('picker offers:', options.join(' | '))
-  await win.getByTestId('model-database').selectOption({ label: options.find((o) => /coffee/i.test(o)) })
+  await win.getByRole('menuitemcheckbox', { name: options.find((o) => /coffee/i.test(o)) }).click()
   const compare = win.getByRole('button', { name: /Compare with Demo coffee shop/ })
   await compare.waitFor({ timeout: 10000 })
   await compare.click()
@@ -68,7 +70,9 @@ try {
   console.log('compare with the linked database:', await win.getByText(/Create table/).count() >= 2)
   // The other way round: tables of the database come into the model, the model's own tables and notes stay.
   await win.getByText('exported.dez', { exact: true }).first().click()
-  await win.getByRole('button', { name: 'From database' }).click()
+  await win.locator('[data-testid="model-more"]:visible').click()
+  await win.getByRole('menuitem', { name: 'From database' }).click()
+  if (await win.getByRole('menuitem', { name: 'Start the model from the database' }).count()) await win.getByRole('menuitem', { name: 'Start the model from the database' }).click()
   await win.getByText('Update the model (keeps its comments, domains and layout)').click()
   await win.getByText(/Model updated from Demo coffee shop/).waitFor({ timeout: 20000 })
   const summary = (await win.getByText(/Tables: \d+ added/).first().innerText()).replace(/\s+/g, ' ')

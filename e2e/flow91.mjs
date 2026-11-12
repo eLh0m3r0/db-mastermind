@@ -208,7 +208,8 @@ try {
   console.log('layout changes:', state.full, '| tab without loaded notes removes nothing:', state.old === 0)
 
   // What changed since a version archived in the project: the payment table came after "First release".
-  await win.getByTestId('model-compare-versions').click()
+  await win.locator('[data-testid="model-compare-menu"]:visible').click()
+  await win.getByRole('menuitem', { name: /Compare with (version|file)…/ }).click()
   await win.getByText('v1 · First release · 2026-01-15').click()
   await win.getByRole('button', { name: 'Compare', exact: true }).click()
   await win.getByText(/Create table/).first().waitFor({ timeout: 20000 })
@@ -216,7 +217,8 @@ try {
 
   // The view's SQL edited in the model ("Views…") goes into the project and into the script.
   await win.getByText('shop.dez', { exact: true }).first().click()
-  await win.getByTestId('model-views').click()
+  await win.locator('[data-testid="model-more"]:visible').click()
+  await win.getByRole('menuitem', { name: 'Views and code…' }).click()
   await win.getByTestId('views-code').fill('CREATE VIEW %viewname% AS\nSELECT id, total FROM shop.invoice WHERE total > 0;')
   await win.getByTestId('views-apply').click()
   await win.getByRole('button', { name: 'Save', exact: true }).click()
@@ -227,7 +229,8 @@ try {
   console.log('view edited:', /changed view: v_unpaid/.test(listedView), readFileSync(dez, 'latin1').includes('<CODE>CREATE VIEW %viewname% AS\nSELECT id, total FROM shop.invoice WHERE total &gt; 0;</CODE>'))
 
   // A new trigger of a table and a new sequence (DeZign: the entity's Triggers tab, the Sequences dialog).
-  await win.getByTestId('model-views').click()
+  await win.locator('[data-testid="model-more"]:visible').click()
+  await win.getByRole('menuitem', { name: 'Views and code…' }).click()
   await win.getByTestId('objects-add-trigger').click()
   await win.getByTestId('objects-name').fill('trg_paid')
   await win.getByTestId('objects-code').fill('CREATE TRIGGER %triggername% AFTER UPDATE ON %table%\nFOR EACH ROW EXECUTE FUNCTION shop.paid();')
