@@ -1287,6 +1287,19 @@ export function compareSchemas(source: TableInfo[], target: TableInfo[], options
       // Identity defaults name the database's own sequence (nextval('shop.x_seq')): keep the target's.
       if (match && match.isIdentity && (c.identity || isSerialType(c.dataType))) c.defaultValue = match.defaultValue ?? null
     }
+    // Keys, indexes and references name columns and tables as the target spells them, like the columns themselves
+    // (`ID` in a script is `id` in PostgreSQL): a difference in letter case alone is no change.
+    const spelled = (columns: { name: string }[], list: string[]) => list.map((x) => columns.find((c) => same(c.name, x))?.name ?? x)
+    draft.primaryKey = spelled(draft.columns, draft.primaryKey)
+    for (const i of draft.indexes) i.columns = spelled(draft.columns, i.columns)
+    for (const f of draft.foreignKeys) {
+      f.columns = spelled(draft.columns, f.columns)
+      const referenced = inTarget(f.refTable, f.refSchema)
+      if (referenced) {
+        f.refTable = referenced.name
+        f.refColumns = spelled(referenced.columns, f.refColumns)
+      }
+    }
     // Constraint names differ between databases (fk_orders_customer vs orders_customer_id_fkey): match by structure.
     // (A key or an index on a renamed column is the same key: the database renames the column under it.)
     const cols = (list: string[]) => list.map((c) => (newName.get(c.toLowerCase()) ?? c).toLowerCase()).join(',')

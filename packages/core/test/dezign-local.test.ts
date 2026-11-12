@@ -2,7 +2,7 @@ import { appendFileSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { diagramsAsLoaded, mutate, mutateDiagrams, random } from './dezign-fuzz.js'
-import { applyDezignSave, assembleDezignProject, checkModel, codec, dezignIntegrity, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
+import { applyDezignSave, assembleDezignProject, checkModel, codec, compareSchemas, dezignDriver, tablesFromDdl, unquotedNames, dezignIntegrity, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '../src/index.js'
 
 /**
  * Real models stay out of the repository. Point DBM_DEZ_SAMPLES at a folder with `.dez` files and/or folder
@@ -223,5 +223,25 @@ describe.skipIf(!root)('DeZign models on this machine', () => {
       report(`#${n + 1} ${folder ? 'folder' : 'file'} mixed edits=${edits} ${failed ? `FAILED ${failed}` : 'ok'}`)
       expect(failed).toBe('')
     })
+  })
+})
+
+/**
+ * DeZign's own CREATE script next to its model (DBM_DEZ_PAIRS=<folder of <name>/model.dez + dezign.sql>, collected
+ * by scripts/dezign-samples.mjs): read as a SQL script, every statement is understood and every table is there.
+ * What still differs is reported (a published script can be a little older or newer than its model).
+ */
+const pairs = process.env.DBM_DEZ_PAIRS
+describe.skipIf(!pairs)("DeZign's scripts read back as their models", () => {
+  it('reads every script and reports what differs from the model', { timeout: 300_000 }, async () => {
+    for (const name of readdirSync(pairs!)) {
+      const model = readDezign(readFileSync(join(pairs!, name, 'model.dez'), 'latin1'))
+      const tables = unquotedNames(parseDbml(toDbml(model.tables)).tables.map((t) => ({ ...t, foreignKeys: t.foreignKeys.filter((f) => !f.virtual) })), dezignDriver(model.targetDatabase) ?? 'postgres')
+      const read = await tablesFromDdl(readFileSync(join(pairs!, name, 'dezign.sql'), 'utf8'))
+      const kinds = compareSchemas(tables, read.tables, { model: true }).reduce<Record<string, number>>((all, c) => ({ ...all, [c.kind]: (all[c.kind] ?? 0) + 1 }), {})
+      report(`pair ${name}: tables=${tables.length} read=${read.tables.length} skipped=${read.skipped.length} differences=${JSON.stringify(kinds)}`)
+      expect(read.skipped.length, name).toBe(0)
+      expect(read.tables.length, name).toBe(tables.length)
+    }
   })
 })

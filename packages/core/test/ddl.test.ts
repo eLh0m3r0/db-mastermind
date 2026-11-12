@@ -114,6 +114,15 @@ describe('schema diff & migration', () => {
   })
 })
 
+describe('letter case', () => {
+  it('a key, an index or a reference that differs from the database only in letter case is no change', () => {
+    // A script with unquoted capitals, as PostgreSQL then has the names (folded to lower case).
+    const model = parseDbml('Table DATA_SETS {\n  ID bigint [pk]\n}\nTable TIME_SERIES {\n  ID bigint [pk]\n  DASE_ID bigint [not null, ref: > DATA_SETS.ID]\n\n  indexes {\n    DASE_ID [name: \'TISE_DASE_FK_I\']\n  }\n}\n').tables
+    const database = parseDbml('Table data_sets {\n  id bigint [pk]\n}\nTable time_series {\n  id bigint [pk]\n  dase_id bigint [not null, ref: > data_sets.id]\n\n  indexes {\n    dase_id [name: \'tise_dase_fk_i\']\n  }\n}\n').tables
+    expect(compareSchemas(model, database)).toEqual([])
+  })
+})
+
 describe('sameType', () => {
   it("knows SQL Server's default precision of datetime2 and datetimeoffset", () => {
     expect(sameType('datetime2', 'datetime2(7)')).toBe(true)
