@@ -422,6 +422,13 @@ Not a clone: their features, rethought and connected to live databases, the know
   changes since then and the ALTER script for the model's database. DeZign sells this in its top edition only
 - ✅ Comparing with an archived version needs no database: the script is for the database the project is made
   for and goes to a file (Save script…), as DeZign's "Compare archived models" does
+- ✅ Compare the model with a SQL script ("Compare with file…" takes a `.sql` too, e.g. a pg_dump or mysqldump of
+  production, as DeZign's "compare model to SQL script"): the changes and the ALTER script. The script is read as
+  it declares its tables — types with their lengths, schemas, identities (also pg_dump's separate `ADD GENERATED`
+  and `nextval` defaults), defaults, comments (MySQL `COMMENT`, SQL Server `MS_Description`), foreign keys with
+  their actions, references between schemas and in cycles. Tested on real dumps: a model created in PostgreSQL and
+  MySQL, dumped by pg_dump/mysqldump, reads back with no difference (`ddl-dump.integration.test.ts`; a real
+  project of hundreds of tables too). "Import SQL…" reads scripts the same way
 - ✅ An archived version opens as it was ("Open this version" in its comparison): its tables and diagrams in a model
   tab of their own, not tied to the project, so nothing is written into it (DeZign: switch to an archived version)
 - ✅ A new DeZign project can be a folder project (Save as… → `.dezproj`, for Git): a folder of its name with a

@@ -267,9 +267,10 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   /** Versions: this model against another .dbml file (older copy, another branch…). */
   const compareWithFile = async () => {
     try {
-      const file = await api.openModelFile(undefined, connection?.knowledgeBasePath)
+      const file = await api.openModelFile(undefined, connection?.knowledgeBasePath, { scripts: true })
       if (!file) return
       const name = file.path.split(/[\\/]/).pop() ?? 'DBML'
+      if (file.skipped) toast({ kind: 'warning', message: tp(file.skipped, { one: '{n} statement of the script could not be read', many: '{n} statements of the script could not be read' }), detail: t('Tables they create are missing from the comparison.') })
       openTab({ kind: 'compare', connectionId: tab.connectionId, sourceModel: text, targetModel: file.text, targetLabel: name, targetDriver: dezignDriver(tab.sqlDatabase) ?? connection?.driver ?? 'postgres', title: t('Changes since {name}', { name }) }, { reuse: false })
     } catch (err) {
       toast({ kind: 'error', message: t('Could not open the model'), detail: errorMessage(err) })
@@ -620,7 +621,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           variant="ghost"
           icon={<GitCompare size={13} />}
           disabled={model.errors.length > 0}
-          title={tab.source ? t('What changed since a version archived in the project, or compared with another file: the changes and the ALTER script') : t('What changed compared with another DBML file, e.g. an older version of this model')}
+          title={tab.source ? t('What changed since a version archived in the project, or compared with another file: the changes and the ALTER script') : t('What changed compared with another model file or a SQL script (e.g. a dump of the database): the changes and the ALTER script')}
           onClick={(e) => void compareMenu(e.currentTarget)}
           data-testid="model-compare-versions"
         >

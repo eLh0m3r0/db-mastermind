@@ -89,6 +89,9 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   jako novou verzi, stejně jako v DeZignu (File → Versions); DeZign ji pak vidí mezi svými. Databázi k tomu
   připojovat nemusíte: skript je pro databázi projektu a uložíte ho do souboru (*Uložit skript…*). Tlačítkem
   *Otevřít tuto verzi* si verzi prohlédnete i s diagramy na vlastní záložce; do projektu se z ní nic nezapíše.
+- **Porovnání se SQL skriptem:** *Porovnat se souborem…* (u projektu DeZign v nabídce *Porovnat s verzí… → Jiný
+  soubor…*) přijme i `.sql`, třeba výpis produkční databáze z pg_dump nebo mysqldump. Uvidíte rozdíly a ALTER skript,
+  který databázi ze skriptu dorovná na model.
 - **Pohledy:** *Pohledy…* u modelu z DeZignu ukáže SQL pohledů projektu tak, jak ho drží DeZign (`%viewname%`
   zastupuje název pohledu). Úprava se při uložení zapíše do projektu a jde do DDL skriptu.
 - **Týmová práce v Gitu:** u složkového projektu (`.dezproj`) uložení změní jen soubory upravených objektů, takže

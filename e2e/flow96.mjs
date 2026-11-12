@@ -134,6 +134,21 @@ try {
   // As DeZign draws it: a relationship whose key is not part of the child's key is dashed.
   console.log('non-identifying dashed in the project, not in a plain model:', (await dashed()) > 0, dashedInVersion === 0)
 
+  // The model against a SQL script (a pg_dump of the database as it is): the ALTER script brings the database
+  // to the model; tables the script has are not created again.
+  const dump = join(dir, 'production.sql')
+  writeFileSync(dump, `--\n-- PostgreSQL database dump\n--\nSET statement_timeout = 0;\nSELECT pg_catalog.set_config('search_path', '', false);\nCREATE SCHEMA shop;\nCREATE TABLE shop.customer (\n    id bigint NOT NULL,\n    name text,\n    email text\n);\nCREATE TABLE shop.invoice (\n    id bigint NOT NULL,\n    total numeric,\n    customer_id bigint\n);\nCOMMENT ON TABLE shop.customer IS 'It''s the DATETIME of [customers]';\nALTER TABLE ONLY shop.customer\n    ADD CONSTRAINT customer_pkey PRIMARY KEY (id);\nALTER TABLE ONLY shop.invoice\n    ADD CONSTRAINT invoice_pkey PRIMARY KEY (id);\n`)
+  await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }) }, dump)
+  await win.locator('[data-testid="model-compare-versions"]:visible').click()
+  await win.getByText('Another file…').click()
+  await win.getByRole('button', { name: 'Compare', exact: true }).click()
+  await win.getByRole('button', { name: 'Save script…' }).waitFor({ timeout: 20000 })
+  const dumpScript = await win.evaluate(() => [...document.querySelectorAll('pre')].filter((e) => e.offsetParent !== null).pop()?.innerText ?? '')
+  console.log('compare with a SQL dump:', /ALTER TABLE "shop"\."customer"/.test(dumpScript), /"credit"/.test(dumpScript), !/CREATE TABLE/.test(dumpScript), (await win.getByText(/Changes since production\.sql/).count()) > 0)
+  await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }) }, dez)
+  await win.getByText('shop.dez', { exact: true }).first().click()
+  await win.waitForTimeout(400)
+
   // The project's begin and end scripts go around the DDL made for its own database.
   await win.getByRole('button', { name: /^SQL DDL/ }).click()
   await win.getByText('PostgreSQL', { exact: true }).last().click()

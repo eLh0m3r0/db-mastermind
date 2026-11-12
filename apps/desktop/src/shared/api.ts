@@ -451,6 +451,8 @@ export interface FileFilter {
 export interface OpenedModelFile {
   path: string
   text: string
+  /** A SQL script read as a model (to compare with): statements of it that could not be read. */
+  skipped?: number
   /** Set when the file is another tool's model: `path` is then the source, not a file the model saves to. */
   imported?: {
     from: 'dezign'
@@ -642,7 +644,8 @@ export interface MastermindApi {
   compareData(request: CompareDataRequest): Promise<DataCompareResult>
   /** Opens a CSV / Parquet / JSON / Excel file for SQL in the built-in DuckDB; asks for the file when `path` is omitted. */
   /** Opens a model file: .dbml, or a DeZign for Databases model (.dez, .dezproj) read as DBML. Asks for it when `path` is omitted. */
-  openModelFile(path?: string, defaultDir?: string): Promise<OpenedModelFile | null>
+  /** `scripts`: a SQL DDL script (a database dump) may be picked too, read as the model it creates. */
+  openModelFile(path?: string, defaultDir?: string, options?: { scripts?: boolean }): Promise<OpenedModelFile | null>
   /** Saves a .dbml model; asks where when `path` is omitted. Returns the path, or null if cancelled. */
   /**
    * Saves a model. With `path` it must be a .dbml file; without, the user picks the file and its format: DBML, or

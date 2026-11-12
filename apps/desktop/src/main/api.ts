@@ -467,16 +467,23 @@ export const api: MastermindApi = {
     await writeFile(result.filePath, content, 'utf8')
     return result.filePath
   },
-  async openModelFile(path, defaultDir) {
+  async openModelFile(path, defaultDir, request) {
+    const scripts = !!request?.scripts
     if (!path) {
       const window = BrowserWindow.getFocusedWindow()
-      const options = { title: 'Open model', defaultPath: defaultDir, properties: ['openFile' as const], filters: [{ name: 'Models (DBML, DeZign for Databases)', extensions: ['dbml', 'dez', 'dezproj'] }] }
+      const filters = [{ name: 'Models (DBML, DeZign for Databases)', extensions: ['dbml', 'dez', 'dezproj'] }, ...(scripts ? [{ name: 'SQL DDL script (e.g. pg_dump, mysqldump, SSMS)', extensions: ['sql', 'ddl'] }] : [])]
+      const options = { title: scripts ? 'Compare with' : 'Open model', defaultPath: defaultDir, properties: ['openFile' as const], filters: scripts ? [{ name: 'Models and SQL scripts', extensions: ['dbml', 'dez', 'dezproj', 'sql', 'ddl'] }, ...filters] : filters }
       const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
       if (r.canceled || !r.filePaths[0]) return null
       path = r.filePaths[0]
     }
     const ext = extname(path).toLowerCase()
     if (ext === '.dez' || ext === '.dezproj') return openDezignModel(path)
+    if (scripts && (ext === '.sql' || ext === '.ddl')) {
+      // As the database the script creates: the types, keys and comments it declares.
+      const { tables, skipped } = await tablesFromDdl(await readFile(path, 'utf8'))
+      return { path, text: toDbml(tables), skipped: skipped.length }
+    }
     if (ext !== '.dbml') throw new Error('Models are .dbml files, or DeZign for Databases models (.dez, .dezproj)')
     return { path, text: await readFile(path, 'utf8') }
   },
@@ -518,7 +525,10 @@ export const api: MastermindApi = {
       return { path: r.filePaths[0], dbml: toDbml(prisma.tables, { enums: prisma.enums }), skipped: prisma.errors.map((e) => ({ sql: '', error: e.message })) }
     }
     const { tables, skipped } = await tablesFromDdl(source)
-    return { path: r.filePaths[0], dbml: toDbml(tables, { defaultSchema: 'main' }), skipped }
+    // The default schemas of the script's database (public, dbo) become the model's default one.
+    const own = (schema: string | undefined) => (schema && /^(public|dbo|main)$/i.test(schema) ? undefined : schema)
+    const placed = tables.map((t) => ({ ...t, schema: own(t.schema), foreignKeys: t.foreignKeys.map((f) => ({ ...f, refSchema: own(f.refSchema) })) }))
+    return { path: r.filePaths[0], dbml: toDbml(placed), skipped }
   },
   async saveModelFile(text, path, defaultDir, layout) {
     if (!path) {
