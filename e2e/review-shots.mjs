@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const out = process.argv[2] ?? tmpdir()
-const looks = (process.env.LOOKS ?? 'violet,violet-dark,halloween,retro2001').split(',')
+const looks = (process.env.LOOKS ?? 'violet,violet-dark,violet-hc,blue-dark-hc-compact,halloween,retro2001,christmas,medieval,fantasy,terminal').split(',')
 const dir = mkdtempSync(join(tmpdir(), 'dbm-review-'))
 const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, HOME: join(dir, 'h'), DBM_USER_DATA: join(dir, 'd'), DBM_NO_UPDATE_CHECK: '1', DBM_LANGUAGE: process.env.DBM_LANGUAGE ?? 'cs', DBM_E2E_BACKGROUND: '1' } })
 const win = await app.firstWindow()
@@ -60,11 +60,14 @@ try {
 
   for (const name of looks) {
     n = 0
-    const [id, mode] = name.split('-')
+    // <look>[-dark][-hc][-compact]
+    const [id, ...mods] = name.split('-')
     await settings(/^(Appearance|Vzhled)$/)
     await win.locator(`[role=dialog] [data-look="${id}"]`).click()
-    if (mode) await win.locator('[role=dialog]').getByRole('button', { name: /^(Dark|Tmavý)$/ }).click().catch(() => {})
-    else if (id === 'violet') await win.locator('[role=dialog]').getByRole('button', { name: /^(Light|Světlý)$/ }).click().catch(() => {})
+    const option = async (re) => win.locator('[role=dialog]').getByRole('button', { name: re }).click({ timeout: 2000 }).catch(() => {})
+    await option(mods.includes('dark') ? /^(Dark|Tmavý)$/ : /^(Light|Světlý)$/)
+    await option(mods.includes('hc') ? /^(High|Vysoký)$/ : /^(Normal|Normální)$/)
+    await option(mods.includes('compact') ? /^(Compact|Kompaktní)$/ : /^(Comfortable|Běžná)$/)
     await win.waitForTimeout(300)
     await shot(name) // 01 Settings → Appearance
     await win.locator('[role=dialog] nav button').filter({ hasText: /^(General|Obecné)$/ }).click()
