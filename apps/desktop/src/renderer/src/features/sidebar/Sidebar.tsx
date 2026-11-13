@@ -284,7 +284,7 @@ function ConnectionHeader({ connection }: { connection: StoredConnection }) {
   const list = useConnections((s) => s.list)
   const info = useConnections((s) => s.runtime[connection.id]?.serverInfo)
   return (
-    <div className="px-2 pb-1.5">
+    <div className="px-2 pt-2 pb-1.5">
       <button
         type="button"
         className="flex h-9 w-full items-center gap-2 rounded-md border border-line bg-bg px-2 text-left hover:border-line-strong"
@@ -340,7 +340,8 @@ function ConnectionList() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="px-2 pb-1.5">
+      {/* Space under the title bar: a look can color it, and nothing should stick to it. */}
+      <div className="px-2 pt-2 pb-1.5">
         <Input inputSize="sm" placeholder={t('Search connections…')} value={filter} onChange={(e) => setFilter(e.target.value)} leading={<Search size={12} />} />
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-1 pb-2">

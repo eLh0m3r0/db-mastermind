@@ -370,6 +370,10 @@ textarea,
 :root.look-medieval .drag-region { --text-muted: #f4ead2; --text-faint: #e6d9b8; }
 :root.look-retro2001 .drag-region { --text-muted: #eef3ff; --text-faint: #d4e1ff; }
 :root.look-christmas .drag-region { --text-muted: #eef8f0; --text-faint: #cfe8d6; }
+/* The selected tab sits on the page's own background: the page's own text colors. */
+:root.look-retro2001 .drag-region [role='tab'][aria-selected='true'] { --text-muted: #3d3d3d; --text-faint: #6f6f6f; }
+:root.look-christmas .drag-region [role='tab'][aria-selected='true'] { --text-muted: #6b5847; --text-faint: #9c8a77; }
+:root.look-medieval .drag-region [role='tab'][aria-selected='true'] { --text-muted: #6b5434; --text-faint: #957b55; }
 
 /* The terminal look's prompt blinks like a cursor. */
 @keyframes look-blink { 50% { opacity: 0; } }
