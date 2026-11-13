@@ -349,10 +349,13 @@ export class MssqlDriver implements DatabaseDriver {
     }
   }
 
-  async transaction(statements: BuiltQuery[]): Promise<number[]> {
+  async transaction(statements: BuiltQuery[], options: { lockTimeoutMs?: number } = {}): Promise<number[]> {
     const tx = new this.sql.Transaction(this.activePool)
     await tx.begin()
+    // SET LOCK_TIMEOUT is session-wide (not undone by ROLLBACK): set back before the connection goes to the pool.
+    const resetLockTimeout = () => (options.lockTimeoutMs ? new this.sql.Request(tx).batch('SET LOCK_TIMEOUT -1').catch(() => {}) : undefined)
     try {
+      if (options.lockTimeoutMs) await new this.sql.Request(tx).batch(`SET LOCK_TIMEOUT ${Math.round(options.lockTimeoutMs)}`)
       const affected: number[] = []
       for (const s of statements) {
         const request = new this.sql.Request(tx)
@@ -360,9 +363,11 @@ export class MssqlDriver implements DatabaseDriver {
         const r = await request.query(s.sql)
         affected.push(r.rowsAffected.reduce((a, b) => a + b, 0))
       }
+      await resetLockTimeout()
       await tx.commit()
       return affected
     } catch (err) {
+      await resetLockTimeout()
       await tx.rollback().catch(() => {})
       throw err
     }

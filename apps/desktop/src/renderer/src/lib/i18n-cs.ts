@@ -1593,4 +1593,13 @@ export const cs: Record<string, string> = {
   'Go to the tab': 'Přejít na záložku',
   'Holds its locks until somebody commits or rolls back': 'Drží zámky, dokud ji někdo nepotvrdí nebo nevrátí zpět',
   'open transaction': 'otevřená transakce',
+  'The rows are locked by the open transaction in “{tab}”. Commit or roll it back there, then save again.': 'Řádky zamyká otevřená transakce v „{tab}“. Potvrďte ji nebo vraťte zpět a pak uložte znovu.',
+  'Not saved: the rows are locked': 'Neuloženo: řádky jsou zamčené',
+  'The rows are locked by an open transaction in a query tab. Commit or roll it back there, then save again.': 'Řádky zamyká otevřená transakce v záložce dotazu. Potvrďte ji tam nebo vraťte zpět a pak uložte znovu.',
+  'The rows are locked by another session’s open transaction. Save again once it ends (Server activity shows who holds them).': 'Řádky zamyká otevřená transakce jiné session. Uložte znovu, až skončí (kdo je drží, ukáže Aktivita serveru).',
+  'Open for {n} min: until Commit or Roll back it holds its locks, and other sessions changing the same rows wait.': 'Otevřená {n} min: dokud ji nepotvrdíte nebo nevrátíte, drží zámky a ostatní, kdo mění stejné řádky, čekají.',
+  '{n} min': '{n} min',
+  '{n} h': '{n} h',
+  'Changes from the SQL editor could also wait for your Commit.': 'Změny z SQL editoru můžou také čekat na vaše potvrzení.',
+  'Commit manually': 'Potvrzovat ručně',
 }

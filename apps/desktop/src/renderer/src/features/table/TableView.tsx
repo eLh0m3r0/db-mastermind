@@ -53,6 +53,7 @@ import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { toast } from '@/store/ui'
 import { setUnsavedEdits, useWorkspace, type TableTab } from '@/store/workspace'
+import { useTransactions } from '@/store/transactions'
 import { copyRowsAs, EXPORT_FORMATS } from '../results/copy'
 import { FilterBuilder, newCondition } from './FilterBuilder'
 import { ImportModal } from './ImportModal'
@@ -479,6 +480,16 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
       void load()
       void count()
     } catch (err) {
+      // Rows a query tab changed and hasn't committed yet: name the tab and offer to go there.
+      if ((err as { code?: string }).code === 'ROW_LOCKED') {
+        const holders = Object.entries(useTransactions.getState()).filter(([, tx]) => tx.connectionId === tab.connectionId)
+        const ws = useWorkspace.getState()
+        const holder = ws.tabs.find((x) => x.id === holders[0]?.[0])
+        const message = holder ? t('The rows are locked by the open transaction in “{tab}”. Commit or roll it back there, then save again.', { tab: holder.title }) : t(errorMessage(err))
+        if (preview !== null) setApplyError(message)
+        toast({ kind: 'warning', message: t('Not saved: the rows are locked'), detail: message, action: holder ? { label: t('Go to the tab'), run: () => ws.activate(holder.id) } : undefined })
+        return
+      }
       // In the open review dialog the reason sits next to the SQL; otherwise a toast says it.
       if (preview !== null) setApplyError(errorMessage(err))
       else toast({ kind: 'error', message: t('Changes were rolled back'), detail: errorMessage(err) })

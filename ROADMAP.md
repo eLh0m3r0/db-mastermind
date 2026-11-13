@@ -679,6 +679,12 @@ whether a tab holds an open transaction. Kept small: one switch per connection, 
   idle in an open transaction
 - ✅ Integration tests per engine (PostgreSQL, MySQL, MariaDB, SQL Server, Oracle, SQLite, DuckDB:
   packages/core/test/transactions.integration.test.ts) and e2e/flow98
+- ✅ A grid save waits at most 5 s for rows another session locked (PostgreSQL `lock_timeout`, MySQL/MariaDB
+  `innodb_lock_wait_timeout`, SQL Server `LOCK_TIMEOUT`, set back afterwards) and names the query tab that holds
+  them, with "Go to the tab"; Oracle has no such limit for DML and still waits
+- ✅ The transaction label shows how long it has been open and turns solid after 10 minutes (probably forgotten)
+- ✅ Shortcuts ⌥⇧⌘↵ Commit, ⌥⇧⌘⌫ Roll back (menu Query); the toolbar gives way in narrow windows (labels → icons,
+  the label → the change count); production connections suggest manual commit; UI tour shows the transaction scene
 - ✅ Saving a connection reconnects only when host, user, TLS… changed (`needsReconnect`): a new name, color, AI
   permissions or commit mode keep open transactions
 

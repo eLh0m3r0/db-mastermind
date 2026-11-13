@@ -330,11 +330,12 @@ export class PostgresDriver implements DatabaseDriver {
     }
   }
 
-  async transaction(statements: BuiltQuery[]): Promise<number[]> {
+  async transaction(statements: BuiltQuery[], options: { lockTimeoutMs?: number } = {}): Promise<number[]> {
     const client = await this.checkout()
     let failure: unknown
     try {
       await client.query('BEGIN')
+      if (options.lockTimeoutMs) await client.query(`SET LOCAL lock_timeout = ${Math.round(options.lockTimeoutMs)}`)
       const affected: number[] = []
       for (const s of statements) {
         const r = await client.query(s.sql, s.params)

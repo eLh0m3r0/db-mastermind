@@ -4,7 +4,11 @@ import type { DriverId } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { tp, useT } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
+import { keys } from '@/lib/api'
 import { endTransaction, useTransactions } from '@/store/transactions'
+
+/** After this long an open transaction is shown as probably forgotten. */
+const STALE_MINUTES = 10
 
 /** Databases that commit an open transaction on their own before a schema change. */
 const DDL_COMMITS: DriverId[] = ['mysql', 'mariadb', 'oracle']
@@ -18,6 +22,13 @@ export function TransactionBar({ tabId, driver, manual }: { tabId: string; drive
   const tx = useTransactions((s) => s[tabId])
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!tx) return
+    setNow(Date.now())
+    const timer = setInterval(() => setNow(Date.now()), 15_000)
+    return () => clearInterval(timer)
+  }, [tx])
 
   useEffect(() => {
     if (!open) return
@@ -47,24 +58,38 @@ export function TransactionBar({ tabId, driver, manual }: { tabId: string; drive
 
   const failed = tx.state === 'failed'
   const changes = tx.steps.filter((s) => !s.failed).length
+  const minutes = Math.floor((now - tx.since) / 60_000)
+  // Open this long, it has most likely been forgotten while it keeps others waiting on its locks.
+  const stale = !failed && minutes >= STALE_MINUTES
   return (
     <div ref={box} className="relative flex items-center gap-1" data-testid="transaction-bar" data-state={tx.state}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        title={failed ? t('An error aborted the transaction: roll it back to go on.') : t('What runs in this transaction waits for Commit or Roll back.')}
+        title={
+          failed
+            ? t('An error aborted the transaction: roll it back to go on.')
+            : stale
+              ? t('Open for {n} min: until Commit or Roll back it holds its locks, and other sessions changing the same rows wait.', { n: minutes })
+              : t('What runs in this transaction waits for Commit or Roll back.')
+        }
         className={cn(
           'flex h-7 items-center gap-1.5 rounded-md border px-2 text-[12px] font-medium',
-          failed ? 'border-danger/40 bg-danger-soft text-danger' : 'border-warning/40 bg-warning-soft text-warning',
+          failed ? 'border-danger/40 bg-danger-soft text-danger' : stale ? 'border-warning bg-warning text-white' : 'border-warning/40 bg-warning-soft text-warning',
         )}
       >
         {failed ? <AlertTriangle size={13} /> : <GitCommitHorizontal size={14} />}
+        <span className="@max-[700px]:hidden">
         {failed
           ? t('Transaction failed')
           : changes
             ? t('Transaction · {changes}', { changes: tp(changes, { one: '{n} change', many: '{n} changes' }) })
             : t('Transaction open')}
+        </span>
+        {/* Narrow toolbar: the count says enough next to the icon. */}
+        {!failed && changes > 0 && <span className="hidden tabular-nums @max-[700px]:inline">{changes}</span>}
+        {!failed && minutes >= 1 && <span className={cn('tabular-nums', !stale && 'opacity-75')}>· {minutes < 60 ? t('{n} min', { n: minutes }) : t('{n} h', { n: Math.floor(minutes / 60) })}</span>}
         <ChevronDown size={12} className="opacity-70" />
       </button>
       {!failed && (
@@ -75,9 +100,10 @@ export function TransactionBar({ tabId, driver, manual }: { tabId: string; drive
           icon={<Check size={13} strokeWidth={2.5} />}
           loading={tx.ending}
           onClick={() => void endTransaction(tabId, 'commit')}
-          title={t('Save the changes of this transaction')}
+          data-testid="tx-commit"
+          title={`${t('Save the changes of this transaction')} (${keys('⌥⇧⌘↵')})`}
         >
-          {t('Commit')}
+          <span className="@max-[560px]:hidden">{t('Commit')}</span>
         </Button>
       )}
       <Button
@@ -87,9 +113,10 @@ export function TransactionBar({ tabId, driver, manual }: { tabId: string; drive
         loading={failed && tx.ending}
         disabled={tx.ending}
         onClick={() => void endTransaction(tabId, 'rollback')}
-        title={t('Undo the changes of this transaction')}
+        data-testid="tx-rollback"
+        title={`${t('Undo the changes of this transaction')} (${keys('⌥⇧⌘⌫')})`}
       >
-        {t('Roll back')}
+        <span className="@max-[560px]:hidden">{t('Roll back')}</span>
       </Button>
       {open && (
         <div className="absolute top-full right-0 z-30 mt-1 w-[420px] max-w-[80vw] rounded-lg border border-line bg-elevated p-2 shadow-lg">

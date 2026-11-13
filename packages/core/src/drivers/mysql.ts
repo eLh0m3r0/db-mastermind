@@ -412,9 +412,12 @@ export class MysqlDriver implements DatabaseDriver {
     }
   }
 
-  async transaction(statements: BuiltQuery[]): Promise<number[]> {
+  async transaction(statements: BuiltQuery[], options: { lockTimeoutMs?: number } = {}): Promise<number[]> {
     const conn = await this.activePool.getConnection()
+    // Session-wide in MySQL: set back before the connection returns to the pool.
+    const wait = options.lockTimeoutMs ? Math.max(1, Math.round(options.lockTimeoutMs / 1000)) : undefined
     try {
+      if (wait) await conn.query(`SET SESSION innodb_lock_wait_timeout = ${wait}`)
       await conn.beginTransaction()
       const affected: number[] = []
       for (const s of statements) {
@@ -427,6 +430,7 @@ export class MysqlDriver implements DatabaseDriver {
       await conn.rollback().catch(() => {})
       throw err
     } finally {
+      if (wait) await conn.query('SET SESSION innodb_lock_wait_timeout = DEFAULT').catch(() => conn.destroy())
       conn.release()
     }
   }

@@ -20,6 +20,8 @@ export interface TabTransaction {
   connectionId: string
   state: Exclude<TransactionState, 'none'>
   steps: TransactionStep[]
+  /** When the app first saw it open (ms): an old one holds its locks the whole time. */
+  since: number
   /** Commit / Roll back running. */
   ending?: boolean
 }
@@ -40,7 +42,9 @@ function stepsOf(outcomes: StatementOutcome[]): TransactionStep[] {
     .filter((o) => o.sql.trim() && !['read', 'transaction'].includes(classifyStatement(o.sql)) && !/^\s*(SET|USE|SHOW|PRINT)\b/i.test(o.sql))
     .map((o) => {
       const rows = o.results?.reduce<number | undefined>((n, r) => (r.affectedRows === undefined ? n : (n ?? 0) + r.affectedRows), undefined)
-      return { sql: o.sql.trim(), rows, ddl: classifyStatement(o.sql) === 'ddl' || undefined, failed: !!o.error || undefined }
+      const ddl = classifyStatement(o.sql) === 'ddl'
+      // DDL reports 0 rows: "schema" says more.
+      return { sql: o.sql.trim(), rows: ddl ? undefined : rows, ddl: ddl || undefined, failed: !!o.error || undefined }
     })
 }
 
@@ -62,7 +66,7 @@ export async function refreshTransaction(tabId: string, connectionId: string, ra
     const lastBegin = ran.map((o) => /^\s*(BEGIN|START\s+TRANSACTION|SET\s+TRANSACTION)\b/i.test(o.sql)).lastIndexOf(true)
     fresh = lastBegin >= 0 ? ran.slice(lastBegin + 1) : ran
   }
-  set(tabId, { connectionId, state, steps: [...(current?.steps ?? []), ...stepsOf(fresh)] })
+  set(tabId, { connectionId, state, steps: [...(current?.steps ?? []), ...stepsOf(fresh)], since: current?.since ?? Date.now() })
 }
 
 /** Commit or Roll back from the tab; resolves true when the transaction ended. */

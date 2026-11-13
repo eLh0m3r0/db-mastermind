@@ -18,8 +18,11 @@ export interface DatabaseDriver {
    * Rejects with the database error; aborting `signal` cancels the statement server-side.
    */
   execute(sql: string, options?: QueryOptions): Promise<QueryResult[]>
-  /** Runs statements atomically, returns affected rows per statement. */
-  transaction(statements: BuiltQuery[]): Promise<number[]>
+  /**
+   * Runs statements atomically, returns affected rows per statement. `lockTimeoutMs`: give up waiting for a row
+   * another session has locked (PostgreSQL, MySQL/MariaDB, SQL Server) instead of hanging.
+   */
+  transaction(statements: BuiltQuery[], options?: { lockTimeoutMs?: number }): Promise<number[]>
   /** Returns the session's sticky connection to the pool (rolling back anything uncommitted). */
   releaseSession(session: string): Promise<void>
   /**
@@ -178,6 +181,21 @@ export class SessionTransactions {
   released(session: string): void {
     this.open.delete(session)
     this.lost.delete(session)
+  }
+}
+
+/** The database gave up waiting for a lock another session holds (see `transaction`'s `lockTimeoutMs`). */
+export function isLockTimeout(err: unknown): boolean {
+  const e = err as { code?: string | number; errno?: number; number?: number; message?: string } | undefined
+  return e?.code === '55P03' || e?.errno === 1205 || e?.number === 1222 || /ORA-00054|ORA-30006|lock wait timeout exceeded|Lock request time out period exceeded/i.test(e?.message ?? '')
+}
+
+/** A grid save waited for rows a query tab's open transaction (or another session) has locked. */
+export class RowLockedError extends Error {
+  override name = 'RowLockedError'
+  readonly code = 'ROW_LOCKED'
+  constructor(message: string) {
+    super(message)
   }
 }
 

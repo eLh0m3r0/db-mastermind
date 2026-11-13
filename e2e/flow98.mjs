@@ -13,6 +13,9 @@ const pool = new pg.Pool({ host: '127.0.0.1', port: 54329, user: 'postgres', pas
 const count = async () => Number((await pool.query('SELECT count(*) AS n FROM tx_e2e')).rows[0].n)
 await pool.query('DROP TABLE IF EXISTS tx_e2e')
 await pool.query('CREATE TABLE tx_e2e (v int)')
+await pool.query('DROP TABLE IF EXISTS tx_lock')
+await pool.query('CREATE TABLE tx_lock (id int PRIMARY KEY, v int)')
+await pool.query('INSERT INTO tx_lock VALUES (1, 1)')
 
 const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, HOME: join(dir, 'home'), DBM_USER_DATA: join(dir, 'data'), DBM_NO_UPDATE_CHECK: '1', DBM_LANGUAGE: 'en', DBM_E2E_BACKGROUND: '1' } })
 const win = await app.firstWindow()
@@ -114,12 +117,37 @@ try {
   await run('INSERT INTO tx_e2e VALUES (7)')
   check('saving a color keeps the transaction', /2 changes/.test(await bar().innerText()))
 
+  // A grid save of a row this tab locked: a clear refusal within seconds, not a hang.
+  await run('UPDATE tx_lock SET v = 2 WHERE id = 1')
+  const started = Date.now()
+  const locked = await win.evaluate((id) => window.mastermind.call('applyChanges', [id, { name: 'tx_lock' }, [{ type: 'update', key: { id: '1' }, values: { v: '3' } }]]), saved.id)
+  check('a grid save of a locked row is refused within seconds', locked.ok === false && locked.error.code === 'ROW_LOCKED' && Date.now() - started < 12000)
+
+  // Narrow windows: labels give way, the transaction stays visible.
+  for (const width of [1000, 760]) {
+    await app.evaluate(({ BrowserWindow }, w) => BrowserWindow.getAllWindows()[0].setSize(w, 700), width)
+    await win.waitForTimeout(400)
+    const box = await bar().boundingBox()
+    const viewport = await win.evaluate(() => window.innerWidth)
+    check(`at ${width}px the transaction bar fits`, !!box && box.x + box.width <= viewport + 1)
+    await win.screenshot({ path: `${out}/r98-narrow-${width}.png` })
+  }
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1400, 900))
+
+  // Keyboard: Commit with ⌥⇧⌘↵ while typing in the editor.
+  await win.locator('.cm-content:visible').first().click()
+  await win.keyboard.press('ControlOrMeta+Alt+Shift+Enter')
+  await win.waitForTimeout(800)
+  check('the shortcut commits', (await bar().count()) === 0 && (await count()) === 4)
+  await run('INSERT INTO tx_e2e VALUES (8)')
+  await bar().waitFor({ timeout: 10000 })
+
   // Quitting with it open: the app asks (answered Commit here).
   await app.evaluate(({ dialog }) => {
     dialog.showMessageBox = async () => ({ response: 0, checkboxChecked: false })
   })
   await app.close()
-  check('quitting committed the open transaction', (await count()) === 4)
+  check('quitting committed the open transaction', (await count()) === 5)
   console.log('errors:', errors.length ? errors : 'none')
 } catch (err) {
   await win.screenshot({ path: `${out}/r98-failure.png` }).catch(() => {})

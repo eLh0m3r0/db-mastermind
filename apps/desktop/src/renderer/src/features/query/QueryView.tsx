@@ -255,7 +255,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-10 shrink-0 items-center gap-1.5 border-b border-line px-2">
+      <div className="@container flex h-10 shrink-0 items-center gap-1.5 border-b border-line px-2">
         {running ? (
           <Button size="sm" variant="danger" icon={<Square size={12} fill="currentColor" />} onClick={cancel}>
             {t('Cancel')}
@@ -266,14 +266,14 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
           </Button>
         )}
         <Button size="sm" variant="ghost" icon={<PlayCircle size={14} />} disabled={running} onClick={() => void run('all')} title={`${t('Run whole script')} (⇧${modKey}↵)`}>
-          {t('Run all')}
+          <span className="@max-[1050px]:hidden">{t('Run all')}</span>
         </Button>
         <div className="mx-1 h-5 w-px bg-line" />
         <Button size="sm" variant="ghost" icon={<Wand2 size={14} />} onClick={format} title={`${t('Format SQL')} (⇧${modKey}F)`}>
-          {t('Format')}
+          <span className="@max-[1050px]:hidden">{t('Format')}</span>
         </Button>
         <Button size="sm" variant="ghost" icon={<BookmarkPlus size={14} />} onClick={() => void save()} title={`${t('Save query')} (${modKey}S)`}>
-          {t('Save')}
+          <span className="@max-[1050px]:hidden">{t('Save')}</span>
         </Button>
         <Button
           size="sm"
@@ -290,10 +290,10 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
           }
           title={t('Show the execution plan of the statement under the cursor')}
         >
-          {t('Explain')}
+          <span className="@max-[1050px]:hidden">{t('Explain')}</span>
         </Button>
         <Button size="sm" variant="ghost" icon={<Sparkles size={14} />} onClick={openInline} title={`${t('Ask AI')} (${modKey}I)`}>
-          {t('Ask AI')}
+          <span className="@max-[1050px]:hidden">{t('Ask AI')}</span>
         </Button>
         <div className="flex-1" />
         <TransactionBar tabId={tab.id} driver={driver} manual={!!connection?.manualCommit && !connection.readOnly && supportsManualCommit(driver)} />

@@ -1,6 +1,6 @@
 import { checkCondition } from './ddl.js'
 import { qualify } from './dialect.js'
-import { ReadOnlyViolationError, type DatabaseDriver, type StreamBatch, type StreamOptions } from './driver.js'
+import { isLockTimeout, ReadOnlyViolationError, RowLockedError, type DatabaseDriver, type StreamBatch, type StreamOptions } from './driver.js'
 import { BigQueryDriver } from './drivers/bigquery.js'
 import { TrinoDriver } from './drivers/trino.js'
 import { ClickHouseDriver } from './drivers/clickhouse.js'
@@ -42,6 +42,9 @@ export function createDriver(config: ConnectionConfig): DatabaseDriver {
   }
 }
 
+
+/** How long a grid save waits for rows another session has locked. */
+const GRID_LOCK_TIMEOUT_MS = 5000
 
 export interface RunScriptOptions {
   session?: string
@@ -457,7 +460,28 @@ export class DatabaseService {
     const entry = this.get(id)
     if (entry.config.readOnly) throw new ReadOnlyViolationError()
     const statements = buildChangeStatements(table, changes, entry.driver.dialect)
-    return entry.driver.transaction(statements)
+    try {
+      // A row a query tab changed in its open transaction stays locked until Commit / Roll back: say so, don't hang.
+      return await entry.driver.transaction(statements, { lockTimeoutMs: GRID_LOCK_TIMEOUT_MS })
+    } catch (err) {
+      if (!isLockTimeout(err)) throw err
+      const tabs = await this.openEditorTransactions(id)
+      throw new RowLockedError(
+        tabs.length
+          ? 'The rows are locked by an open transaction in a query tab. Commit or roll it back there, then save again.'
+          : 'The rows are locked by another session’s open transaction. Save again once it ends (Server activity shows who holds them).',
+      )
+    }
+  }
+
+  /** Sessions (query tabs) of this connection with a transaction open. */
+  async openEditorTransactions(id: string): Promise<string[]> {
+    const out: string[] = []
+    for (const session of Object.keys(this.serverSessionIds(id))) {
+      const state = await this.transactionState(id, session).catch(() => undefined)
+      if (state === 'open' || state === 'failed') out.push(session)
+    }
+    return out
   }
 
   /** Runs prepared statements atomically (imports). Read-only connections refuse. */

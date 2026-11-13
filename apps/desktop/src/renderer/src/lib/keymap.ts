@@ -20,6 +20,9 @@ const KEYMAP: Record<string, string> = {
   'Mod+Enter': 'run-current',
   'Mod+Shift+Enter': 'run-all',
   'Mod+.': 'cancel-query',
+  // Three modifiers: neither is pressed by accident.
+  'Mod+Shift+Alt+Enter': 'commit-transaction',
+  'Mod+Shift+Alt+Backspace': 'rollback-transaction',
   'Mod+Shift+f': 'format-sql',
   'Mod+i': 'ask-ai',
   'Mod+y': 'history',

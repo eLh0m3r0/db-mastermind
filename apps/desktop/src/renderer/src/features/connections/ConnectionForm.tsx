@@ -470,6 +470,14 @@ export function ConnectionForm() {
                   {config.environment === 'production' && !config.readOnly && (
                     <div className="rounded-md bg-warning-soft px-2.5 py-1.5 text-[12px] text-warning">
                       {t('Production connections always ask before running DELETE / UPDATE without WHERE, DROP or TRUNCATE.')}
+                      {!config.manualCommit && supportsManualCommit(config.driver) && (
+                        <div className="mt-1 flex items-center gap-2">
+                          <span>{t('Changes from the SQL editor could also wait for your Commit.')}</span>
+                          <button type="button" className="font-medium underline underline-offset-2 hover:opacity-80" onClick={() => set({ manualCommit: true })} data-testid="suggest-manual-commit">
+                            {t('Commit manually')}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

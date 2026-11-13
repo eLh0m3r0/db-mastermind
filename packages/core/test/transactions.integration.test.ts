@@ -134,6 +134,28 @@ for (const c of cases) {
       })
     }
 
+    // Oracle waits for row locks without a timeout of its own; DuckDB and SQLite don't wait.
+    if (['postgres', 'mysql', 'mariadb', 'mssql'].includes(c.engine)) {
+      it("a grid save doesn't hang on a row a query tab locked", async () => {
+        const t = c.engine === 'mssql' ? 'dbo.tx_lock' : 'tx_lock'
+        await ok(id, c.engine === 'mssql' ? "IF OBJECT_ID('dbo.tx_lock') IS NOT NULL DROP TABLE dbo.tx_lock" : 'DROP TABLE IF EXISTS tx_lock')
+        await ok(id, `CREATE TABLE ${t} (id int PRIMARY KEY, v int)`)
+        await ok(id, `INSERT INTO ${t} (id, v) VALUES (1, 1)`)
+        const tab = 'lock-tab'
+        await ok(id, `UPDATE ${t} SET v = 2 WHERE id = 1`, tab)
+        const ref = c.engine === 'mssql' ? { schema: 'dbo', name: 'tx_lock' } : { name: 'tx_lock' }
+        const started = Date.now()
+        await expect(svc.applyChanges(id, ref, [{ type: 'update', key: { id: '1' }, values: { v: '3' } }])).rejects.toMatchObject({ code: 'ROW_LOCKED', message: expect.stringMatching(/query tab/) })
+        expect(Date.now() - started).toBeLessThan(15000)
+        await svc.endTransaction(id, tab, 'commit')
+        // The pool's connections wait as usual again (the timeout was set back), and the save goes through now.
+        await svc.applyChanges(id, ref, [{ type: 'update', key: { id: '1' }, values: { v: '4' } }])
+        const [o] = await ok(id, `SELECT v FROM ${t} WHERE id = 1`)
+        expect(Number(o!.results![0]!.rows[0]![0])).toBe(4)
+        await svc.releaseSession(id, tab)
+      }, 30000)
+    }
+
     // Oracle's v$ views need privileges the test user doesn't have.
     if (!['duckdb', 'sqlite', 'oracle'].includes(c.engine)) {
       it('server activity names the tab of a session and shows it idle in a transaction', async () => {

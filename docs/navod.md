@@ -66,6 +66,12 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   - MySQL, MariaDB a Oracle před a po `CREATE`, `ALTER` a `DROP` transakci samy potvrdí. Aplikace na to upozorní.
   - Při zavírání záložky, odpojení nebo ukončení aplikace se otevřená transakce nikdy neztratí potichu: aplikace se
     zeptá, jestli ji potvrdit, nebo vrátit zpět.
+  - Štítek ukazuje, jak dlouho je transakce otevřená. Po 10 minutách výrazně zoranžoví: otevřená transakce drží zámky
+    a ostatní, kdo mění stejné řádky, čekají.
+  - Když uložení v tabulce narazí na řádek zamčený otevřenou transakcí, po pár sekundách to řekne a nabídne přejít na
+    záložku, která ho drží (PostgreSQL, MySQL, MariaDB, SQL Server).
+  - Zkratky: ⌥⇧⌘↵ / Ctrl+Alt+Shift+Enter potvrdí, ⌥⇧⌘⌫ / Ctrl+Alt+Shift+Backspace vrátí zpět.
+  - U produkčního připojení formulář nabídne zapnout ruční potvrzování.
   - *Aktivita serveru* ukáže, která spojení patří kterým záložkám (*Jen DB Mastermind*), a zvýrazní spojení, která
     nic nedělají, ale drží otevřenou transakci.
 
@@ -221,6 +227,8 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
 | ⌘P / Ctrl+P | rychle otevřít tabulku |
 | ⌘T / Ctrl+T | nový dotaz |
 | ⌘↵ / Ctrl+Enter | spustit příkaz |
+| ⌥⇧⌘↵ / Ctrl+Alt+Shift+Enter | potvrdit transakci (commit) |
+| ⌥⇧⌘⌫ / Ctrl+Alt+Shift+Backspace | vrátit transakci zpět (rollback) |
 | ⌘I / Ctrl+I | napsat SQL pomocí AI |
 | ⌘J / Ctrl+J | AI asistent |
 | ⌘\ / Ctrl+\ | rozdělené zobrazení |
