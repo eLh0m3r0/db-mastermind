@@ -254,7 +254,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     if (!as && !tab.path && tab.source) return saveToSource(tab.source)
     try {
       // A model of its own keeps its diagrams' layout at the end of its file (a comment DBML skips).
-      const path = await api.saveModelFile(withModelLayout(text, { positions: tab.positions, colors: tab.colors, notes: tab.notes, boxes: tab.boxes, display: tab.display, diagrams: tab.diagrams, objects: tab.source ? undefined : tab.sqlObjects }), as ? undefined : tab.path, connection?.knowledgeBasePath, { positions: tab.positions, defaultSchema: liveSchema?.defaultSchema, driver: connection?.driver, name: fileName })
+      const path = await api.saveModelFile(withModelLayout(text, { positions: tab.positions, colors: tab.colors, notes: tab.notes, boxes: tab.boxes, display: tab.display, diagrams: tab.diagrams, objects: tab.sqlObjects }), as ? undefined : tab.path, connection?.knowledgeBasePath, { positions: tab.positions, defaultSchema: liveSchema?.defaultSchema, driver: connection?.driver, name: fileName })
       if (!path) return
       // Saved as a DeZign project: the tab now follows that file, as if it had been opened from it.
       if (/\.dez(proj)?$/i.test(path)) {
@@ -446,8 +446,8 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   const applyViews = (objects: DezignSqlObject[]) => {
     setViewsOpen(false)
     if (JSON.stringify(objects) === JSON.stringify(tab.sqlObjects ?? [])) return
-    // A model of its own keeps them in its file and knows them by ids of its own.
-    const kept = tab.source ? objects : objects.map((o) => (o.id ? o : { ...o, id: `local:${crypto.randomUUID()}` }))
+    // New ones get an id of the app's own, so they stay editable (a DeZign project gives them its own when saved).
+    const kept = objects.map((o) => (o.id ? o : { ...o, id: `local:${crypto.randomUUID()}` }))
     updateTab(tab.id, { sqlObjects: kept.length ? kept : undefined, dirty: true })
   }
 
@@ -890,6 +890,8 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           )}
           <div className={cn('min-h-0 flex-1', left === 'objects' && 'hidden')}>
             <DbmlEditor
+              // (Another file opened here gets an editor of its own: its undo never brings back the previous file.)
+              key={documentId}
               value={text}
               dark={dark}
               jumpTo={jumpTo}

@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { copyFile, mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative } from 'node:path'
 import { app } from 'electron'
@@ -44,6 +44,13 @@ function read(files: DezignFile[], project: boolean) {
 const paletteColors = (colors: Record<string, string>) => Object.fromEntries(Object.entries(colors).flatMap(([key, hex]) => (paletteIndex(hex) ? [[key, paletteIndex(hex)!]] : [])))
 
 const fingerprint = (dbml: string) => createHash('sha256').update(dbml).digest('hex')
+/** What the app reads from a project, all of it: a change on disk to any of it (not only to the tables) is caught. */
+const projectHash = (model: ReturnType<typeof readDezign>) =>
+  fingerprint(JSON.stringify([toDbml(model.tables), model.diagrams, model.sqlObjects, model.scripting, model.domains, model.userProperties, model.labels, model.targetDatabase]))
+/** (A tab opened by an older version holds the hash of the tables alone.) */
+const unchanged = (model: ReturnType<typeof readDezign>, hash: string) => hash === projectHash(model) || hash === fingerprint(toDbml(model.tables))
+/** A folder of its own for each backup: two saves in the same second never share one. */
+const backupFolder = (path: string) => dataPath('dezign-backups', `${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)} ${basename(path, extname(path))} ${randomUUID().slice(0, 8)}`)
 const viaDbml = (tables: TableInfo[]) => parseDbml(toDbml(tables)).tables
 
 /** A DeZign for Databases model (`.dez`, or the `.dezproj` of a folder project) as a DBML model. */
@@ -53,7 +60,6 @@ export async function openDezignModel(path: string): Promise<OpenedModelFile> {
 
 /** A model read from a DeZign project (or one of its archived versions) as a model tab takes it. */
 function opened(path: string, model: ReturnType<typeof readDezign>): OpenedModelFile {
-  const plain = toDbml(model.tables)
   // The project's domains are listed in the model as a note: a column follows one through its `domain` setting.
   const domains = model.domains.length ? [dezignDomainsNote(model.domains)] : []
   const text = toDbml(model.tables, { extras: domains })
@@ -75,8 +81,8 @@ function opened(path: string, model: ReturnType<typeof readDezign>): OpenedModel
       targetDatabase: model.targetDatabase,
       scripting: model.scripting,
       diagrams: model.diagrams.filter((d) => !d.main).map(({ id, name, tables, positions, colors, notes, boxes, display }) => ({ id, name, tables, positions, colors: paletteColors(colors), notes, boxes, display })),
-      // Of the tables alone: the note above is ours, not the project's.
-      hash: fingerprint(plain),
+      // Of what was read from the project (the domains note above is ours, not the project's).
+      hash: projectHash(model),
     },
   }
 }
@@ -93,7 +99,7 @@ export async function saveDezignModel(request: DezignSaveRequest): Promise<Dezig
   const files = await load(path)
   const { model, fallbackEncoding } = read(files, project)
   // Somebody else's changes (a colleague, Git, DeZign itself) must not be overwritten by a model opened before them.
-  if (fingerprint(toDbml(model.tables)) !== request.hash) {
+  if (!unchanged(model, request.hash)) {
     throw new Error('The DeZign file changed on disk since this model was opened. Open it again (Save as keeps your version as a .dbml file).')
   }
   const edited = parseDbml(request.text)
@@ -140,25 +146,47 @@ export async function saveDezignModel(request: DezignSaveRequest): Promise<Dezig
   if (request.dryRun || (!result.files.length && !result.deleted.length)) return outcome
 
   const dir = dirname(path)
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-  const backup = dataPath('dezign-backups', `${stamp} ${basename(path, extname(path))}`)
+  const backup = backupFolder(path)
   const existing = new Set(files.map((f) => f.path))
   for (const rel of [...result.files.map((f) => f.path), ...result.deleted]) {
     if (!existing.has(rel)) continue
     await mkdir(dirname(join(backup, rel)), { recursive: true })
     await copyFile(join(dir, rel), join(backup, rel))
   }
-  for (const file of result.files) {
-    const target = join(dir, file.path)
-    await mkdir(dirname(target), { recursive: true })
-    // Written next to the target and moved over it: a crash never leaves half a file.
-    const temp = `${target}.dbm-saving`
-    await writeFile(temp, file.text, 'latin1')
-    await rename(temp, target)
+  // Every new file is written next to its target first; only then are they moved over the old ones. A failure
+  // half way puts back what was there, so a folder project is never left half old and half new.
+  const touched: string[] = []
+  try {
+    for (const file of result.files) {
+      const target = join(dir, file.path)
+      await mkdir(dirname(target), { recursive: true })
+      await writeFile(`${target}.dbm-saving`, file.text, 'latin1')
+    }
+    for (const file of result.files) {
+      const target = join(dir, file.path)
+      await rename(`${target}.dbm-saving`, target)
+      touched.push(file.path)
+    }
+    for (const rel of result.deleted) {
+      await rm(join(dir, rel), { force: true })
+      touched.push(rel)
+    }
+  } catch (err) {
+    for (const file of result.files) await rm(join(dir, `${file.path}.dbm-saving`), { force: true }).catch(() => {})
+    const lost: string[] = []
+    for (const rel of touched) {
+      try {
+        if (existing.has(rel)) await copyFile(join(backup, rel), join(dir, rel))
+        else await rm(join(dir, rel), { force: true })
+      } catch {
+        lost.push(rel)
+      }
+    }
+    const why = err instanceof Error ? err.message : String(err)
+    throw new Error(lost.length ? `Saving failed (${why}) and ${lost.length} file(s) could not be put back: the previous files are in ${backup}` : `Saving failed (${why}); the project was left as it was.`)
   }
-  for (const rel of result.deleted) await rm(join(dir, rel), { force: true })
   const after = read(await load(path), project).model
-  return { ...outcome, backup, hash: fingerprint(toDbml(after.tables)) }
+  return { ...outcome, backup, hash: projectHash(after) }
 }
 
 /**
@@ -234,13 +262,12 @@ export async function archiveModelVersion(path: string, request: { label?: strin
   const files = await load(path)
   const { model, fallbackEncoding } = read(files, project)
   // A version is of the model the user has seen: not of one a colleague or DeZign changed in the meantime.
-  if (fingerprint(toDbml(model.tables)) !== request.hash) throw new Error('The DeZign file changed on disk since this model was opened or saved. Open it again before archiving a version.')
+  if (!unchanged(model, request.hash)) throw new Error('The DeZign file changed on disk since this model was opened or saved. Open it again before archiving a version.')
   const existing = project ? (await listModelVersions(path)).map((v) => Number(v.number)).filter((n) => Number.isFinite(n)) : []
   const result = archiveDezignVersion(files, { label: request.label, comments: request.comments, encoding: model.encoding, fallbackEncoding }, existing)
   const dir = dirname(path)
   if (!project) {
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-    const backup = dataPath('dezign-backups', `${stamp} ${basename(path, extname(path))}`)
+    const backup = backupFolder(path)
     await mkdir(backup, { recursive: true })
     await copyFile(path, join(backup, basename(path)))
   }

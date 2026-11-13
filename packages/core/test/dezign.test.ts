@@ -691,6 +691,9 @@ describe('saving back into a DeZign project', () => {
     const procs = readDezign(out).sqlObjects.filter((o) => o.kind === 'procedure')
     expect(procs.map((p) => p.sql)).toEqual(['CREATE PROCEDURE usp_close\nAS\nBEGIN\n  UPDATE shop.invoice SET total = 0 WHERE total &lt; 0;\nEND'.replace('&lt;', '<'), 'CREATE PROCEDURE usp_two'])
     expect(dezignObjectEdits([], [{ kind: 'procedure', name: 'p', code: 'x', sql: '' }]).procedures).toEqual([{ name: 'p', code: 'x' }])
+    // (An object added in the app keeps an id of its own until the project gives it one: still a new object.)
+    expect(dezignObjectEdits([], [{ id: 'local:1', kind: 'procedure', name: 'p', code: 'x', sql: '' }]).procedures).toEqual([{ name: 'p', code: 'x' }])
+    expect(dezignObjectEdits([], [{ id: 'local:2', kind: 'sequence', name: 's', sql: '', sequence: { start: '1' } }]).sequences).toEqual([{ name: 's', schema: undefined, start: '1' }])
   })
 
   it('tells what changed among triggers, procedures and sequences from the list as edited', () => {

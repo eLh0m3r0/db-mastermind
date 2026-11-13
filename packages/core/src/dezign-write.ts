@@ -198,7 +198,9 @@ export interface DezignObjectEdits {
  * What changed among a project's triggers, procedures and sequences: `after` is the list as edited (an object
  * keeps its `id`; a new one has none), `before` as the project has it.
  */
-export function dezignObjectEdits(before: DezignSqlObject[], after: DezignSqlObject[]): DezignObjectEdits {
+export function dezignObjectEdits(before: DezignSqlObject[], edited: DezignSqlObject[]): DezignObjectEdits {
+  // Objects added in the app carry an id of the app's own (`local:…`) until the project gives them one.
+  const after = edited.map((o) => (o.id?.startsWith('local:') ? { ...o, id: undefined } : o))
   const managed = (o: DezignSqlObject) => o.kind === 'trigger' || o.kind === 'procedure' || o.kind === 'sequence'
   const byId = new Map(before.filter((o) => managed(o) && o.id).map((o) => [o.id!, o]))
   const edits: Required<DezignObjectEdits> = { code: [], sequences: [], triggers: [], procedures: [], remove: [] }

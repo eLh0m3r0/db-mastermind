@@ -9,17 +9,20 @@ const LEFT_OUT: [keyof NonNullable<OpenedModelFile['imported']>['leftOut'], stri
   ['objectNotes', 'notes of relationships (kept in the file): {n}'],
 ]
 
+/** What the previous document of a tab may still have pending: never carried over to the one opened in it. */
+const NOTHING_PENDING = { targetDatabase: undefined, directives: undefined, domainRenames: undefined, domainRemovals: undefined, tableRenames: undefined }
+
 /**
  * What a model tab takes from an opened file. Another tool's model (DeZign for Databases) keeps its source and
  * layout: Save writes the changes back into that file, Save as makes a .dbml model of it.
  */
-export function modelTabFromFile(file: OpenedModelFile, defaultSchema?: string, options: { /** No notice about what was opened (the caller says its own). */ quiet?: boolean } = {}): Pick<ModelTab, 'text' | 'path' | 'source' | 'dirty' | 'title' | 'positions' | 'diagrams' | 'colors' | 'notes' | 'boxes' | 'display' | 'removedDiagrams' | 'sqlObjects' | 'userProperties' | 'labels' | 'sqlDatabase' | 'scripting'> {
+export function modelTabFromFile(file: OpenedModelFile, defaultSchema?: string, options: { /** No notice about what was opened (the caller says its own). */ quiet?: boolean } = {}): Pick<ModelTab, 'text' | 'path' | 'source' | 'dirty' | 'title' | 'positions' | 'diagrams' | 'colors' | 'notes' | 'boxes' | 'display' | 'removedDiagrams' | 'sqlObjects' | 'userProperties' | 'labels' | 'sqlDatabase' | 'scripting' | 'targetDatabase' | 'directives' | 'domainRenames' | 'domainRemovals' | 'tableRenames'> {
   const name = file.path.split(/[\\/]/).pop() ?? t('Model')
   if (!file.imported) {
     // A model of its own keeps its diagrams' layout in its file (see core/model-layout.ts).
     const { text, layout } = splitModelLayout(file.text)
     const l = (layout ?? {}) as Partial<Pick<ModelTab, 'positions' | 'diagrams' | 'colors' | 'notes' | 'boxes' | 'display'>> & { objects?: DezignSqlObject[] }
-    return { text, path: file.path, source: undefined, dirty: false, title: name, positions: l.positions, diagrams: l.diagrams?.length ? l.diagrams : undefined, colors: l.colors, notes: l.notes, boxes: l.boxes, display: l.display, removedDiagrams: undefined, sqlObjects: l.objects?.length ? l.objects : undefined, userProperties: undefined, labels: undefined, sqlDatabase: undefined, scripting: undefined }
+    return { ...NOTHING_PENDING, text, path: file.path, source: undefined, dirty: false, title: name, positions: l.positions, diagrams: l.diagrams?.length ? l.diagrams : undefined, colors: l.colors, notes: l.notes, boxes: l.boxes, display: l.display, removedDiagrams: undefined, sqlObjects: l.objects?.length ? l.objects : undefined, userProperties: undefined, labels: undefined, sqlDatabase: undefined, scripting: undefined }
   }
   // Tables without a schema land in the connection's default schema when the DBML is read.
   const keyed = (key: string) => (key.startsWith('.') ? `${defaultSchema ?? ''}${key}` : key)
@@ -35,7 +38,7 @@ export function modelTabFromFile(file: OpenedModelFile, defaultSchema?: string, 
     message: tp(file.imported.tables, { one: 'Opened a DeZign for Databases model: {n} table', many: 'Opened a DeZign for Databases model: {n} tables' }),
     detail: [leftOut.length ? `${t('Not in the model yet:')} ${leftOut.join(' · ')}.` : '', file.imported.sqlObjects?.length ? t('Views, sequences, procedures and triggers of the project ({n}) go into the SQL DDL script as the project has them.', { n: String(file.imported.sqlObjects.length) }) : '', t('Save writes your changes back into the DeZign file (a backup is kept); Save as makes a .dbml model.')].filter(Boolean).join('\n'),
   })
-  return { text: file.text, path: undefined, source: { kind: 'dezign', path: file.path, hash: file.imported.hash, layout: true }, dirty: false, title: name, display: display(file.imported.display), removedDiagrams: undefined, positions, diagrams: diagrams.length ? diagrams : undefined, colors: Object.keys(colors).length ? colors : undefined, notes: file.imported.notes.length ? file.imported.notes : undefined, boxes: file.imported.boxes?.length ? file.imported.boxes : undefined, sqlObjects: file.imported.sqlObjects?.length ? file.imported.sqlObjects : undefined, userProperties: file.imported.userProperties?.length ? file.imported.userProperties : undefined, labels: file.imported.labels?.length ? file.imported.labels : undefined, sqlDatabase: file.imported.targetDatabase, scripting: file.imported.scripting }
+  return { ...NOTHING_PENDING, text: file.text, path: undefined, source: { kind: 'dezign', path: file.path, hash: file.imported.hash, layout: true }, dirty: false, title: name, display: display(file.imported.display), removedDiagrams: undefined, positions, diagrams: diagrams.length ? diagrams : undefined, colors: Object.keys(colors).length ? colors : undefined, notes: file.imported.notes.length ? file.imported.notes : undefined, boxes: file.imported.boxes?.length ? file.imported.boxes : undefined, sqlObjects: file.imported.sqlObjects?.length ? file.imported.sqlObjects : undefined, userProperties: file.imported.userProperties?.length ? file.imported.userProperties : undefined, labels: file.imported.labels?.length ? file.imported.labels : undefined, sqlDatabase: file.imported.targetDatabase, scripting: file.imported.scripting }
 }
 
 const CHANGE_LABELS: Record<DezignChange['kind'], string> = {
