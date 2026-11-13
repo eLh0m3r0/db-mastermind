@@ -655,6 +655,11 @@ export interface MastermindApi {
   /** How the database would store each check's condition on its table (PostgreSQL), to tell a changed condition. */
   canonicalChecks(connectionId: string, items: { table: TableRef; check: CheckInfo }[]): Promise<CanonicalCheck[]>
   listDatabases(connectionId: string): Promise<string[]>
+  /**
+   * Another database on the same server, as a connection of its own (its own read-only, color, commit mode and AI
+   * permissions): the one that already exists for it, or a copy of this one with that database. Returns its id.
+   */
+  openDatabase(connectionId: string, database: string): Promise<string>
 
   runQuery(request: RunQueryRequest): Promise<StatementOutcome[]>
   cancelQuery(runId: string): Promise<void>
@@ -836,6 +841,7 @@ export const API_METHODS = [
   'getSchema',
   'canonicalChecks',
   'listDatabases',
+  'openDatabase',
   'runQuery',
   'cancelQuery',
   'explainQuery',

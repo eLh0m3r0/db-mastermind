@@ -1,3 +1,4 @@
+import { DatabasePicker } from '@/features/connections/DatabasePicker'
 import { PasswordPrompt } from './features/connections/PasswordPrompt'
 import { ConfirmDialog } from './components/ui/ConfirmDialog'
 import { useEffect, useRef, useState } from 'react'
@@ -229,7 +230,8 @@ export function App() {
               <Sidebar />
               <span aria-hidden className="pointer-events-none absolute top-[38px] right-0 bottom-0 w-px bg-line" />
             </div>
-            <Splitter direction="horizontal" size={sidebarWidth} onResize={(w) => set({ sidebarWidth: w })} min={200} max={560} />
+            {/* No width of its own: a 1 px gap would show the page through the title bar. */}
+            <Splitter direction="horizontal" size={sidebarWidth} onResize={(w) => set({ sidebarWidth: w })} min={200} max={560} className="w-[6px]" />
           </>
         )}
         <div className="flex min-w-0 flex-1 flex-col">
@@ -299,6 +301,7 @@ export function App() {
       <StatusBar />
       <ConnectionForm />
       <SettingsModal />
+      <DatabasePicker />
       <PasswordPrompt />
       <ConfirmDialog />
       <CommandPalette />

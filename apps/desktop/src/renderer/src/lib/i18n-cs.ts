@@ -1635,4 +1635,11 @@ export const cs: Record<string, string> = {
   'Look': 'Motiv',
   'Standard': 'Standardní',
   '“{look}” has its own colors, so light / dark mode and contrast don’t apply to it.': 'Motiv „{look}“ má vlastní barvy, světlý/tmavý režim a kontrast se u něj nepoužijí.',
+  'Open another database…': 'Otevřít jinou databázi…',
+  'Open another database': 'Otevřít jinou databázi',
+  'Each database opens as a connection of its own, with its own read-only, color, commit mode and AI permissions (copied from “{name}” the first time).': 'Každá databáze se otevře jako samostatné připojení s vlastním režimem jen pro čtení, barvou, potvrzováním a oprávněními AI (poprvé se převezmou z „{name}“).',
+  'Search databases…': 'Hledat databázi…',
+  'No database matches.': 'Žádná databáze neodpovídá.',
+  'this connection': 'toto připojení',
+  'new connection': 'nové připojení',
 }

@@ -16,3 +16,14 @@ export function needsReconnect(before: ConnectionConfig, after: ConnectionConfig
 export function supportsManualCommit(driver: ConnectionConfig['driver']): boolean {
   return !['clickhouse', 'bigquery', 'trino'].includes(driver)
 }
+
+/** Servers with several databases behind one login, where another database is just another connection. */
+export function supportsOtherDatabases(driver: ConnectionConfig['driver']): boolean {
+  return ['postgres', 'mysql', 'mariadb', 'mssql', 'clickhouse'].includes(driver)
+}
+
+/** The same server and login (what `database` aside makes a connection): a database's connection is found by it. */
+export function sameServer(a: ConnectionConfig, b: ConnectionConfig): boolean {
+  const key = (c: ConnectionConfig) => JSON.stringify([c.driver, c.host ?? '', c.port ?? '', c.user ?? '', c.ssh?.host ?? '', c.ssh?.port ?? '', c.ssh?.user ?? ''])
+  return key(a) === key(b)
+}

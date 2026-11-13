@@ -28,6 +28,9 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   DataGrip, pgAdmin, SSMS, Azure Data Studio, MySQL Workbench, HeidiSQL a další) nebo načte soubor od kolegy. Z Beekeeper
   Studia a DBeaveru převezme i uložená hesla; když heslo chybí, aplikace se na něj při připojení zeptá.
 - **Sdílení s kolegy:** pravé tlačítko na připojení → *Sdílet s kolegy (bez hesla)…*. Soubor neobsahuje hesla.
+- **Jiná databáze na stejném serveru:** v nabídce připojení (šipka u jeho názvu nebo pravé tlačítko) zvolte *Otevřít
+  jinou databázi…*. Každá databáze se otevře jako samostatné připojení s vlastní barvou, režimem jen pro čtení
+  a oprávněními, takže je vždy jasné, kde pracujete.
 - **Ochrana produkce:** připojení označte jako *Jen pro čtení* nebo jako produkční prostředí. Aplikace se pak ptá před
   každou nebezpečnou operací.
 

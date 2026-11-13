@@ -5,6 +5,7 @@ export type Modal =
   | { kind: 'settings'; section?: string }
   | { kind: 'shortcuts' }
   | { kind: 'about' }
+  | { kind: 'databases'; connectionId: string }
 
 export interface Toast {
   id: number

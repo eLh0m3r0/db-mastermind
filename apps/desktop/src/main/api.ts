@@ -7,6 +7,8 @@ import { app, BrowserWindow, dialog, shell } from 'electron'
 import {
   buildBatchInserts,
   needsReconnect,
+  sameServer,
+  supportsOtherDatabases,
   whoBlocks,
   buildChangeStatements,
   detectDelimiter,
@@ -50,7 +52,7 @@ import {
   describeError,
   PasswordRequiredError,
 } from '@dbmastermind/core'
-import type { ExportFormat, MastermindApi } from '@shared/api'
+import type { ExportFormat, MastermindApi, StoredConnection } from '@shared/api'
 import * as connections from './connections'
 import { createExportWriter, EXPORT_EXTENSIONS, exportResultSet } from './export'
 import { cancelChat, respondApproval, startChat } from './ai/assistant'
@@ -225,6 +227,12 @@ export const api: MastermindApi = {
     return db.test(config as ConnectionConfig)
   },
   async connect(id, password) {
+    // Already open (another database's connection opened with a typed password): nothing to ask again.
+    const open = !password && db.isOpen(id) ? db.serverInfo(id) : undefined
+    if (open) {
+      connections.touchConnection(id)
+      return { serverInfo: open }
+    }
     const stored = connections.getConnection(id)
     // No saved password for PostgreSQL: use ~/.pgpass (PGPASSFILE) like psql and pgAdmin do.
     const pgpass = !password && !stored.password && stored.driver === 'postgres' ? readPgpassPassword(stored) : undefined
@@ -392,6 +400,32 @@ export const api: MastermindApi = {
   async listDatabases(connectionId) {
     await ensureConnected(connectionId)
     return db.driver(connectionId).listDatabases()
+  },
+  async openDatabase(connectionId, database) {
+    const source = connections.getConnection(connectionId)
+    if (!supportsOtherDatabases(source.driver)) throw new Error('This database has no other databases to open')
+    if ((source.database ?? '') === database) return source.id
+    const existing = connections.listConnections().find((c) => c.id !== source.id && (c.database ?? '') === database && sameServer(c, source))
+    if (existing) return existing.id
+    // Named after the server's connection, without a database suffix it got the same way.
+    const base = source.database && source.name.endsWith(` / ${source.database}`) ? source.name.slice(0, -` / ${source.database}`.length) : source.name
+    const saved = connections.saveConnection({
+      ...source,
+      id: '',
+      name: `${base} / ${database}`,
+      database,
+      // Explorer choices and notes belong to the other database.
+      pinnedTables: undefined,
+      hiddenSchemas: undefined,
+      knowledgeBasePath: undefined,
+      managed: undefined,
+      team: undefined,
+      knowledgeBaseLocal: undefined,
+    } as StoredConnection)
+    // A password typed for this session (not saved) opens the new one too, without asking again.
+    const typed = !source.password && db.isOpen(source.id) ? db.config(source.id).password : undefined
+    if (typed) await db.connect({ ...connections.getConnection(saved.id), password: typed }).catch(() => undefined)
+    return saved.id
   },
 
   async runQuery(request) {

@@ -695,7 +695,13 @@ whether a tab holds an open transaction. Kept small: one switch per connection, 
 - ✅ Saving a connection reconnects only when host, user, TLS… changed (`needsReconnect`): a new name, color, AI
   permissions or commit mode keep open transactions
 
-Not planned: a shared session for all tabs, SQL formatting settings beyond what there is.
+- ✅ Another database on the same server: "Open another database…" (connection menu) lists the server's databases;
+  each opens as a connection of its own (made on the first pick with this one's settings, not its explorer choices),
+  so read-only, color, commit mode and AI permissions stay per database; a password typed for the session carries
+  over without being saved (PostgreSQL, MySQL/MariaDB, SQL Server, ClickHouse; e2e/flow100)
+
+Not planned: a shared session for all tabs, switching the database inside a connection (it would blur which
+database a tab's settings protect), SQL formatting settings beyond what there is.
 
 ### Appearance (changelog only: not on the website)
 
