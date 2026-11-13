@@ -302,7 +302,8 @@ try {
   console.log('to do:', /<NAME>customer<\/NAME>\s*<ID>10<\/ID>\s*<TODO>Split names<\/TODO>/.test(withTodo), /<NAME>email<\/NAME>\s*<ID>[^<]*<\/ID>\s*<TODO>Check the format<\/TODO>/.test(withTodo), listedTodos === 2)
 
   // The diagram drawn in IDEF1X (DeZign's notation per diagram): saved into the project.
-  await win.locator('[data-testid="diagram-notation"]:visible').selectOption('idef1x')
+  await win.locator('[data-testid="diagram-view"]:visible').click()
+  await win.getByRole('menuitemcheckbox', { name: 'IDEF1X' }).click()
   await win.waitForTimeout(600)
   const squareTables = await win.locator('.react-flow__node .rounded-none, .react-flow__node .rounded-2xl').count()
   await saveProject()

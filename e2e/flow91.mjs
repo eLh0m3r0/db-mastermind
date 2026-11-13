@@ -143,8 +143,10 @@ try {
   // A diagram's own display (as DeZign's Diagram → Entity display options), its name, and a diagram taken out.
   await win.getByTestId('model-area').selectOption({ label: 'Billing (2)' })
   await win.waitForTimeout(1200)
-  await win.getByTestId('diagram-columns').selectOption('primary')
-  await win.getByRole('checkbox', { name: 'Types' }).uncheck().catch(() => win.getByText('Types', { exact: true }).click())
+  await win.locator('[data-testid="diagram-view"]:visible').click()
+  await win.getByRole('menuitemcheckbox', { name: 'Primary keys' }).click()
+  await win.locator('[data-testid="diagram-view"]:visible').click()
+  await win.getByRole('menuitemcheckbox', { name: 'Column types' }).click()
   await win.waitForTimeout(800)
   const rows = await win.locator('.react-flow__node[data-id="shop.invoice"] .border-t').count()
   console.log('billing shows primary keys only:', rows === 1, 'no types:', (await win.locator('.react-flow__node[data-id="shop.invoice"]').innerText()).includes('bigint') === false)

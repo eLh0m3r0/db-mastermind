@@ -200,7 +200,7 @@ export function TableEditor({
           <label className="mb-2 flex flex-col gap-1">
             <span className="text-[11.5px] font-medium text-fg-muted">{tr('Comment')}</span>
             <Textarea
-              rows={2}
+              rows={1}
               className="resize-y text-[12px]"
               value={table.comment ?? ''}
               onChange={(e) => set({ comment: e.target.value || null })}
@@ -208,63 +208,6 @@ export function TableEditor({
               data-testid="table-comment"
             />
           </label>
-          {model && (
-            <label className="mb-4 flex flex-col gap-1">
-              <span
-                className="text-[11.5px] font-medium text-fg-muted"
-                title={tr('Notes kept with the model; never in a script')}
-              >
-                {tr('Notes')}
-              </span>
-              <Textarea
-                rows={2}
-                className="resize-y text-[12px]"
-                value={table.remarks ?? ''}
-                onChange={(e) => set({ remarks: e.target.value || undefined })}
-                data-testid="table-remarks"
-              />
-            </label>
-          )}
-          {model && labels.length > 0 && (
-            <div className="mb-3 flex flex-col gap-1">
-              <span className="text-[11.5px] font-medium text-fg-muted">{tr('Labels')}</span>
-              <LabelsPicker
-                labels={labels}
-                value={table.labels}
-                onChange={(l) => set({ labels: l })}
-                testId="table-labels"
-              />
-            </div>
-          )}
-          {model && userProperties.some((d) => d.objectTypes.some((x) => /^entity$/i.test(x))) && (
-            <div className="mb-3 flex flex-col gap-1">
-              <span className="text-[11.5px] font-medium text-fg-muted">{tr('Properties')}</span>
-              <PropertiesEditor
-                definitions={userProperties}
-                objectType="Entity"
-                values={table.properties}
-                onChange={(properties) => set({ properties })}
-                compact
-              />
-            </div>
-          )}
-          {model && (
-            <label className="mb-4 flex flex-col gap-1">
-              <span
-                className="text-[11.5px] font-medium text-fg-muted"
-                title={tr('What is still to be done; listed in the object browser')}
-              >
-                {tr('To do')}
-              </span>
-              <Textarea
-                rows={1}
-                className="resize-y text-[12px]"
-                value={table.todo ?? ''}
-                onChange={(e) => set({ todo: e.target.value || undefined })}
-                data-testid="table-todo"
-              />
-            </label>
-          )}
         </>
       )}
       {show('columns') && (
@@ -701,7 +644,7 @@ export function TableEditor({
                     )}
                   </div>
                 ))}
-                <div className="flex items-center gap-1.5 pl-1 text-[11px] text-fg-muted">
+                <div className="flex items-center gap-1.5 pl-1 text-[11px] whitespace-nowrap text-fg-muted">
                   <Button
                     size="xs"
                     variant="ghost"
@@ -733,7 +676,7 @@ export function TableEditor({
                     ))}
                   </Select>
                 </div>
-                <div className="flex items-center gap-1.5 pl-1 text-[11px] text-fg-muted">
+                <div className="flex items-center gap-1.5 pl-1 text-[11px] whitespace-nowrap text-fg-muted">
                   {model && (
                     <>
                       <span
@@ -745,7 +688,7 @@ export function TableEditor({
                       </span>
                       <Select
                         inputSize="sm"
-                        className="h-5 min-w-0 flex-1 text-[11px]"
+                        className="h-5 w-32 shrink-0 text-[11px]"
                         value={fk.cardinality ?? ''}
                         onChange={(e) =>
                           update({ cardinality: (e.target.value || undefined) as typeof fk.cardinality })
@@ -939,6 +882,68 @@ export function TableEditor({
             )
           })}
         </Section>
+      )}
+      {/* What is said about the table goes after its columns and keys: those are what the panel is opened for. */}
+      {show('details') && model && (
+        <div className="mt-1">
+          {model && (
+            <label className="mb-4 flex flex-col gap-1">
+              <span
+                className="text-[11.5px] font-medium text-fg-muted"
+                title={tr('Notes kept with the model; never in a script')}
+              >
+                {tr('Notes')}
+              </span>
+              <Textarea
+                rows={2}
+                className="resize-y text-[12px]"
+                value={table.remarks ?? ''}
+                onChange={(e) => set({ remarks: e.target.value || undefined })}
+                data-testid="table-remarks"
+              />
+            </label>
+          )}
+          {model && labels.length > 0 && (
+            <div className="mb-3 flex flex-col gap-1">
+              <span className="text-[11.5px] font-medium text-fg-muted">{tr('Labels')}</span>
+              <LabelsPicker
+                labels={labels}
+                value={table.labels}
+                onChange={(l) => set({ labels: l })}
+                testId="table-labels"
+              />
+            </div>
+          )}
+          {model && userProperties.some((d) => d.objectTypes.some((x) => /^entity$/i.test(x))) && (
+            <div className="mb-3 flex flex-col gap-1">
+              <span className="text-[11.5px] font-medium text-fg-muted">{tr('Properties')}</span>
+              <PropertiesEditor
+                definitions={userProperties}
+                objectType="Entity"
+                values={table.properties}
+                onChange={(properties) => set({ properties })}
+                compact
+              />
+            </div>
+          )}
+          {model && (
+            <label className="mb-4 flex flex-col gap-1">
+              <span
+                className="text-[11.5px] font-medium text-fg-muted"
+                title={tr('What is still to be done; listed in the object browser')}
+              >
+                {tr('To do')}
+              </span>
+              <Textarea
+                rows={1}
+                className="resize-y text-[12px]"
+                value={table.todo ?? ''}
+                onChange={(e) => set({ todo: e.target.value || undefined })}
+                data-testid="table-todo"
+              />
+            </label>
+          )}
+        </div>
       )}
       {model && !only && (
         <details className="mb-2">

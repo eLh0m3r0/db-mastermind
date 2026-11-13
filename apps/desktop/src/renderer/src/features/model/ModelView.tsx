@@ -696,33 +696,36 @@ export function ModelView({ tab }: { tab: ModelTab }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-2 py-1.5">
+      {/* (In a narrow window the less needed labels go first, so the bar stays one line: icons keep their titles.) */}
+      <div className="@container flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-2 py-1.5">
         <FileCode2 size={15} className="ml-1 text-accent" />
         <span className="mr-2 max-w-[260px] truncate text-[12.5px] font-medium" title={tab.path ?? tab.source?.path}>
           {(tab.path ?? tab.source?.path)?.split(/[\\/]/).pop() ?? t('Unsaved model')}
           {tab.dirty && ' •'}
         </span>
-        <Button size="sm" variant="ghost" icon={<FolderOpen size={13} />} onClick={() => void open()} title={t('Open a model or a DeZign project')} data-testid="model-open">
-          {t('Open…')}
+        <Button size="sm" variant="ghost" icon={<FolderOpen size={13} />} onClick={() => void open()} title={t('Open a model or a DeZign project')} aria-label={t('Open…')} data-testid="model-open">
+          <span className="@max-[1100px]:hidden">{t('Open…')}</span>
         </Button>
         <Button size="sm" variant="ghost" icon={<Save size={13} />} onClick={() => void save()} title={keys('⌘S')} data-testid="model-save">
           {t('Save')}
         </Button>
-        <Button size="sm" variant="ghost" icon={<SaveAll size={13} />} onClick={() => void save(true)} title={t('Save as a model (.dbml) or a DeZign project (.dez)')} data-testid="model-save-as">
-          {t('Save as…')}
+        <Button size="sm" variant="ghost" icon={<SaveAll size={13} />} onClick={() => void save(true)} title={t('Save as a model (.dbml) or a DeZign project (.dez)')} aria-label={t('Save as…')} data-testid="model-save-as">
+          <span className="@max-[1100px]:hidden">{t('Save as…')}</span>
         </Button>
-        <Button size="sm" variant="ghost" icon={<FileInput size={13} />} onClick={(e) => importMenu(e.currentTarget)} title={t('Tables from a SQL script or from the database')} data-testid="model-import">
-          {t('Import')}
+        <Button size="sm" variant="ghost" icon={<FileInput size={13} />} onClick={(e) => importMenu(e.currentTarget)} title={t('Tables from a SQL script or from the database')} aria-label={t('Import')} data-testid="model-import">
+          <span className="@max-[1300px]:hidden">{t('Import')}</span>
           <ChevronDown size={12} className="-mr-0.5 opacity-60" />
         </Button>
         <span className="mx-0.5 h-4 w-px bg-line" />
-        <Button size="sm" variant="ghost" icon={<TerminalSquare size={13} />} disabled={!model.tables.length} onClick={(e) => withCanvas('ddl', e.currentTarget)}>
-          {t('SQL DDL')}
+        <Button size="sm" variant="ghost" icon={<TerminalSquare size={13} />} disabled={!model.tables.length} onClick={(e) => withCanvas('ddl', e.currentTarget)} aria-label={t('SQL DDL')} title={t('SQL DDL')}>
+          <span className="@max-[1300px]:hidden">{t('SQL DDL')}</span>
         </Button>
         <Button
           size="sm"
           variant="ghost"
           icon={<Sparkles size={13} />}
+          aria-label={t('Design with AI')}
+          title={t('Design with AI')}
           onClick={(e) =>
             openMenu(e.currentTarget, [
               { label: t('Design or extend the model…'), onClick: designWithAi },
@@ -735,13 +738,13 @@ export function ModelView({ tab }: { tab: ModelTab }) {
             ])
           }
         >
-          {t('Design with AI')}
+          <span className="@max-[1380px]:hidden">{t('Design with AI')}</span>
         </Button>
         <div className="flex-1" />
         {model.tables.length > 0 && (
           <Select
             inputSize="sm"
-            className="w-44"
+            className="w-40"
             value={area}
             onChange={(e) => (e.target.value === '+' ? void newDiagram() : e.target.value === '~rename' ? void renameDiagram(area.slice(2)) : e.target.value === '~remove' ? void removeDiagram(area.slice(2)) : setArea(e.target.value))}
             title={t('Subject areas: the model’s TableGroups and the diagrams of the project it came from')} data-testid="model-area">
@@ -762,7 +765,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           </Select>
         )}
         <IssuesChip issues={issues} open={showIssues} onToggle={() => setShowIssues((v) => !v)} />
-        <span className="text-[11.5px] text-fg-faint">{tp(model.tables.length, { one: '{n} table', many: '{n} tables' })}</span>
+        <span className="text-[11.5px] text-fg-faint @max-[1380px]:hidden">{tp(model.tables.length, { one: '{n} table', many: '{n} tables' })}</span>
         {/* Compare with the linked database; the arrow picks another database or a version/file to compare with. */}
         <div className="flex">
           <Button
@@ -775,7 +778,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
             title={connection ? t('Compare the model with the database and generate the migration') : t('Pick the database to compare the model with')}
             data-testid="model-compare"
           >
-            {connection ? t('Compare with {name}', { name: connection.name }) : t('Compare with database')}
+            <span className="max-w-60 truncate @max-[1300px]:max-w-40">{connection ? t('Compare with {name}', { name: connection.name }) : t('Compare with database')}</span>
           </Button>
           <Button size="sm" variant="primary" className="rounded-l-none border-l border-white/25 px-1.5" icon={<ChevronDown size={13} />} onClick={(e) => compareTargetMenu(e.currentTarget.parentElement ?? e.currentTarget, false)} aria-label={t('Compare with…')} title={t('Compare with…')} data-testid="model-compare-menu" />
         </div>

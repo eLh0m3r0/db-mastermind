@@ -26,7 +26,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { toPng, toSvg } from 'html-to-image'
-import { AlignHorizontalJustifyStart, AlignVerticalJustifyStart, AlignHorizontalSpaceAround, AlignVerticalSpaceAround, Bookmark, Copy, Download, Trash2, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Pin, PinOff, Plus, Route, Search, Layers, Redo, Sparkles, SquareDashed, StickyNote, Table2, Undo, Undo2, Users, X } from 'lucide-react'
+import { AlignHorizontalJustifyStart, AlignVerticalJustifyStart, AlignHorizontalSpaceAround, AlignVerticalSpaceAround, Bookmark, Copy, Download, Trash2, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Pin, PinOff, Plus, Route, Search, Layers, Redo, Sparkles, SquareDashed, StickyNote, Table2, Undo, Undo2, Users, X, ChevronDown, SlidersHorizontal } from 'lucide-react'
 import {
   designId,
   designToTableInfo,
@@ -55,7 +55,7 @@ import {
 import { Button, IconButton } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { api, isMac, keys } from '@/lib/api'
-import { openMenu } from '@/components/ui/ContextMenu'
+import { openMenu, type MenuItem } from '@/components/ui/ContextMenu'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Checkbox, Input, Select } from '@/components/ui/Input'
 import { Spinner } from '@/components/ui/Spinner'
@@ -1576,11 +1576,25 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-2 py-1 whitespace-nowrap">
+      <div className="@container flex min-h-10 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-2 py-1 whitespace-nowrap">
+        {modelMode && (
+          // A model is always edited: what adds to it and the steps back and forth come first.
+          <div className="flex shrink-0 items-center gap-0.5 border-r border-line pr-2">
+            <Button size="sm" variant="ghost" icon={<Plus size={13} />} onClick={addTable}>
+              {tr('New table')}
+            </Button>
+            <IconButton label={`${tr('Undo')} (${keys('⌘Z')})`} disabled={!history.current.past.length && !modelHistory?.canUndo} onClick={undoDesign}>
+              <Undo size={14} />
+            </IconButton>
+            <IconButton label={`${tr('Redo')} (${keys('⇧⌘Z')})`} disabled={!history.current.future.length && !modelHistory?.canRedo} onClick={redoDesign}>
+              <Redo size={14} />
+            </IconButton>
+          </div>
+        )}
         <div className="relative shrink-0">
           <Input
             inputSize="sm"
-            className="w-56"
+            className="w-40"
             placeholder={tab.tables && !focusName ? tr('Add table…') : tr('Focus on table…')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -1654,7 +1668,7 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
           </>
         ) : (
           schema.schemas.length > 1 && (
-            <Select inputSize="sm" className="h-7 w-40" value={schemaFilter} onChange={(e) => setSchemaFilter(e.target.value)}>
+            <Select inputSize="sm" className="h-7 w-32" value={schemaFilter} onChange={(e) => setSchemaFilter(e.target.value)}>
               {schema.schemas.filter((s) => visibleSchemas.includes(s) || s === schemaFilter).map((s) => (
                 <option key={s} value={s}>
                   {s}
@@ -1664,26 +1678,36 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
             </Select>
           )
         )}
-        <Select
-          inputSize="sm"
-          className="h-7 w-auto text-[12px]"
-          value={shownAs.columns}
-          onChange={(e) => patchLayout({ display: { ...shownAs, columns: e.target.value as DezignColumnsShown } })}
-          title={tr('Which columns the tables show')}
-          data-testid="diagram-columns"
+        {/* What the tables show and how lines are drawn: one menu instead of three controls. */}
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<SlidersHorizontal size={13} />}
+          title={tr('What the tables show and how relationships are drawn')}
+          data-testid="diagram-view"
+          onClick={(e) => {
+            const columns: [DezignColumnsShown, string][] = [
+              ['all', tr('All columns')],
+              ['keys', tr('Keys only')],
+              ['primary', tr('Primary keys')],
+              ['first10', tr('First 10 columns')],
+              ['first20', tr('First 20 columns')],
+              ['none', tr('Table names only')],
+            ]
+            const notation = shownAs.notation ?? 'crow'
+            openMenu(e.currentTarget, [
+              ...columns.map(([value, label]): MenuItem => ({ label, checked: shownAs.columns === value, onClick: () => patchLayout({ display: { ...shownAs, columns: value } }) })),
+              'separator',
+              { label: tr('Column types'), checked: shownAs.types !== 'none', onClick: () => patchLayout({ display: { ...shownAs, types: shownAs.types === 'none' ? 'type' : 'none' } }) },
+              'separator',
+              { label: tr('Crow’s feet'), checked: notation === 'crow', onClick: () => patchLayout({ display: { ...shownAs, notation: 'crow' } }) },
+              { label: 'IDEF1X', checked: notation === 'idef1x', onClick: () => patchLayout({ display: { ...shownAs, notation: 'idef1x' } }) },
+            ])
+          }}
         >
-          <option value="all">{tr('All columns')}</option>
-          <option value="keys">{tr('Keys only')}</option>
-          <option value="primary">{tr('Primary keys')}</option>
-          <option value="first10">{tr('First 10 columns')}</option>
-          <option value="first20">{tr('First 20 columns')}</option>
-          <option value="none">{tr('Table names only')}</option>
-        </Select>
-        <Checkbox checked={shownAs.types !== 'none'} onChange={(on) => patchLayout({ display: { ...shownAs, types: on ? 'type' : 'none' } })} label={tr('Types')} />
-        <Select inputSize="sm" className="h-7 w-auto text-[12px]" value={shownAs.notation ?? 'crow'} onChange={(e) => patchLayout({ display: { ...shownAs, notation: e.target.value as 'crow' | 'idef1x' } })} title={tr('How relationships are drawn')} data-testid="diagram-notation">
-          <option value="crow">{tr('Crow’s feet')}</option>
-          <option value="idef1x">IDEF1X</option>
-        </Select>
+          {tr('View')}
+          <ChevronDown size={12} className="-mr-0.5 opacity-60" />
+        </Button>
         {!design && (
           <span className="shrink-0 text-[11.5px] text-fg-faint">
             {tp(tables.length, { one: '{n} table', many: '{n} tables' })} · {tp(edges.length, { one: '{n} relationship', many: '{n} relationships' })}
@@ -1712,8 +1736,8 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
         <IconButton label={tr('Add a frame')} onClick={() => void addBox()} data-testid="diagram-add-box">
           <SquareDashed size={14} />
         </IconButton>
-        <Button size="sm" variant="ghost" icon={<LayoutGrid size={13} />} onClick={resetLayout}>
-          {tr('Auto layout')}
+        <Button size="sm" variant="ghost" icon={<LayoutGrid size={13} />} onClick={resetLayout} aria-label={tr('Auto layout')} title={tr('Auto layout')}>
+          <span className="@max-[1100px]:hidden">{tr('Auto layout')}</span>
         </Button>
         {!model && (
         <Button
@@ -1792,8 +1816,10 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
                   ]),
             ])
           }
+          aria-label={tr('Export')}
+          title={tr('Export')}
         >
-          {tr('Export')}
+          <span className="@max-[1100px]:hidden">{tr('Export')}</span>
         </Button>
         </div>
       </div>
@@ -1803,21 +1829,6 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
           <Button size="xs" onClick={() => setDrafts({})}>
             {tr('Discard design')}
           </Button>
-        </div>
-      )}
-      {modelMode && (
-        // A model is always edited: a slim bar with what adds to it and the steps back and forth.
-        <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-line px-2 text-[12px]">
-          <Button size="sm" variant="ghost" icon={<Plus size={13} />} onClick={addTable}>
-            {tr('New table')}
-          </Button>
-          <IconButton label={`${tr('Undo')} (${keys('⌘Z')})`} disabled={!history.current.past.length && !modelHistory?.canUndo} onClick={undoDesign}>
-            <Undo size={14} />
-          </IconButton>
-          <IconButton label={`${tr('Redo')} (${keys('⇧⌘Z')})`} disabled={!history.current.future.length && !modelHistory?.canRedo} onClick={redoDesign}>
-            <Redo size={14} />
-          </IconButton>
-          <span className="min-w-0 flex-1 truncate text-fg-faint">{tr('Double-click a name or a type to change it, the rest of a table or a line for its details; drag from a column’s dot to another table to relate them.')}</span>
         </div>
       )}
       {design && !modelMode && (
@@ -2136,6 +2147,11 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--border-strong)" />
           <Controls showInteractive={false} />
           <ZoomLevel />
+          {modelMode && !selected && selectedCount < 2 && (
+            <Panel position="bottom-center" className="pointer-events-none !mb-2 max-w-[60%] truncate rounded bg-bg/80 px-2 py-0.5 text-[11px] text-fg-faint" data-testid="canvas-hint">
+              {tr('Double-click a name or a type to change it, the rest of a table or a line for its details; drag from a column’s dot to another table to relate them.')}
+            </Panel>
+          )}
           {selectedCount >= 2 && (
             // Several tables selected (Shift-drag a box, or ⌘-click): line them up or spread them evenly.
             <Panel position="top-center" className="flex items-center gap-0.5 rounded-lg border border-line bg-elevated px-1.5 py-1 shadow-md" data-testid="arrange-bar">
