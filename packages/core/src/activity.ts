@@ -139,3 +139,27 @@ export async function stopSession(db: DatabaseService, connectionId: string, id:
   const [o] = await db.runScript(connectionId, sql)
   if (o?.error) throw new Error(o.error.message)
 }
+
+/**
+ * Who a session (a query tab) waits for while its statement hangs on a lock: the server ids of the blocking sessions
+ * and, where they are this app's own, their session keys. Empty when it waits for nothing (or it can't be told).
+ */
+export async function whoBlocks(db: DatabaseService, connectionId: string, session: string): Promise<{ ids: string[]; sessions: string[] }> {
+  const own = db.serverSessionIds(connectionId)
+  const mine = own[session]
+  if (!mine) return { ids: [], sessions: [] }
+  const driver = db.config(connectionId).driver
+  let sql: string | undefined
+  if (isCockroach(db, connectionId)) sql = undefined
+  else if (driver === 'postgres' && /^\d+$/.test(mine)) sql = `SELECT unnest(pg_blocking_pids(${mine}))::text`
+  else if (driver === 'mssql' && /^\d+$/.test(mine)) sql = `SELECT CAST(blocking_session_id AS varchar(10)) FROM sys.dm_exec_requests WHERE session_id = ${mine} AND blocking_session_id <> 0`
+  else if (MYSQL_LIKE.has(driver) && /^\d+$/.test(mine)) sql = `SELECT blocking FROM (${MYSQL_LOCK_WAITS[driver]}) w WHERE waiting = ${mine}`
+  else if (driver === 'oracle' && /^\d+,\d+$/.test(mine)) {
+    sql = `SELECT b.sid || ',' || b.serial# FROM v$session s JOIN v$session b ON b.sid = s.blocking_session WHERE s.sid = ${mine.split(',')[0]}`
+  }
+  if (!sql) return { ids: [], sessions: [] }
+  const [o] = await db.runScript(connectionId, sql, { maxRows: 50 })
+  const ids = [...new Set((o?.results?.[0]?.rows ?? []).map((row) => cellToText(row[0] ?? null)).filter(Boolean))]
+  const byId = new Map(Object.entries(own).map(([key, id]) => [id, key]))
+  return { ids, sessions: ids.map((id) => byId.get(id)).filter((key): key is string => !!key) }
+}

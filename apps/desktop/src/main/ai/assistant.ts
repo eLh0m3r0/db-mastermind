@@ -8,6 +8,7 @@ import { db } from '../api'
 import { aiAccess } from '../ai-access'
 import { chatMcpEndpoint } from './chat-mcp'
 import { getConnection } from '../connections'
+import { trackEditorSession } from '../transactions'
 import { getSettings } from '../settings'
 import { activeProvider } from './complete'
 import { runCli } from './cli'
@@ -46,6 +47,9 @@ export function respondApproval(id: string, answer: boolean | 'always') {
   }
   pending.resolve(answer !== false)
 }
+
+/** The session a chat's confirmed writes run on with manual commit; the renderer uses the same name. */
+export const aiSession = (chatId: string) => `ai-${chatId}`
 
 export function cancelChat(chatId: string) {
   running.get(chatId)?.abort()
@@ -89,6 +93,8 @@ async function runChat(request: AiChatRequest): Promise<void> {
     allowKnowledgeWrites: access.knowledgeWrites,
     confirmWrite: access.access === 'write' ? (sql) => askApproval(chatId, 'sql', sql, signal) : undefined,
     maxRows: 50,
+    // Manual commit: what the user confirms waits in the chat's own transaction (the panel shows Commit / Roll back).
+    writeSession: config.manualCommit && !config.readOnly ? aiSession(chatId) : undefined,
     onExecuted: (o) =>
       addHistory({
         connectionId,
@@ -100,6 +106,8 @@ async function runChat(request: AiChatRequest): Promise<void> {
         source: 'ai',
       }),
   }
+
+  if (ctx.writeSession) trackEditorSession(connectionId, ctx.writeSession)
 
   /** Asks the user before a tool when needed; a returned message is the tool's answer instead. Both chat paths use it. */
   const gate = async (name: string, input: Record<string, unknown>): Promise<string | undefined> => {
@@ -138,6 +146,7 @@ async function runChat(request: AiChatRequest): Promise<void> {
               db,
               connections: [{ ...config, ai: { access: access.access, agents: true, agentWrites: false, knowledgeWrites: access.knowledgeWrites } }],
               confirmWrite: ctx.confirmWrite,
+              writeSession: ctx.writeSession,
               beforeTool: gate,
               version: app.getVersion(),
               onExecuted: (_id, o) => ctx.onExecuted?.(o),

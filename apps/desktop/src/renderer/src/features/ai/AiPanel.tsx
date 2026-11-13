@@ -18,7 +18,9 @@ import { useCurrentConnectionId } from '../sidebar/Sidebar'
 import { useAiAccess } from './AiPermissions'
 import { Markdown } from './Markdown'
 import { providerMeta } from './providers'
-import { formatDate, tp, useT } from '@/lib/i18n'
+import { refreshTransaction, settleTransactions } from '@/store/transactions'
+import { TransactionBar } from '@/features/query/TransactionBar'
+import { formatDate, t as translate, tp, useT } from '@/lib/i18n'
 
 type Part =
   | { type: 'text'; text: string }
@@ -99,12 +101,33 @@ const useChats = create<ChatStore>((set, get) => ({
   },
 }))
 
+/** The session the chat's confirmed writes run on with manual commit (main/ai/assistant.ts aiSession). */
+export const aiSession = (chatId: string) => `ai-${chatId}`
+
+/** Before leaving a chat: its open transaction is committed or rolled back, then its session closes. */
+async function leaveChat(connectionId: string): Promise<boolean> {
+  const old = useChats.getState().chats[connectionId]
+  if (!old) return true
+  const session = aiSession(old.id)
+  if (!(await settleTransactions([session], () => translate('AI assistant')))) return false
+  void api.releaseSession(connectionId, session).catch(() => {})
+  return true
+}
+
 // Route streamed events to the chat that owns them.
 bridge.on('ai:event', (event: AiEvent) => {
   const store = useChats.getState()
   const entry = Object.entries(store.chats).find(([, c]) => c.id === event.chatId)
   if (!entry) return
   const [connectionId] = entry
+  // A statement the assistant ran may have opened (or ended) the chat's transaction.
+  if (event.type === 'tool-end') {
+    const part = entry[1].messages.at(-1)?.parts.find((p) => p.type === 'tool' && p.id === event.id) as Extract<Part, { type: 'tool' }> | undefined
+    if (part && /run_query$/.test(part.name)) {
+      const sql = String((part.input as { sql?: unknown } | null)?.sql ?? '')
+      void refreshTransaction(aiSession(event.chatId), connectionId, sql ? [{ sql, start: 0, end: sql.length, durationMs: 0, ...(event.error ? { error: { message: String(event.error) } } : {}) }] : [])
+    }
+  }
   store.update(connectionId, (chat) => {
     const messages = [...chat.messages]
     let last = messages.at(-1)
@@ -300,8 +323,8 @@ export function AiPanel() {
         <IconButton
           label={t('New chat')}
           disabled={!connectionId}
-          onClick={() => {
-            if (!connectionId) return
+          onClick={async () => {
+            if (!connectionId || !(await leaveChat(connectionId))) return
             reset(connectionId)
             setShowHistory(false)
             requestAnimationFrame(() => inputRef.current?.focus())
@@ -341,7 +364,8 @@ export function AiPanel() {
         <ChatHistory
           connectionId={connectionId}
           currentId={chat?.id}
-          onOpen={(id) => {
+          onOpen={async (id) => {
+            if (!(await leaveChat(connectionId))) return
             void useChats.getState().open(connectionId, id)
             setShowHistory(false)
           }}
@@ -429,6 +453,11 @@ export function AiPanel() {
             )}
           </div>
           <div className="border-t border-line p-2">
+            {chat && connection && (
+              <div className="mb-1.5 flex justify-end empty:hidden">
+                <TransactionBar tabId={aiSession(chat.id)} driver={connection.driver} manual={false} />
+              </div>
+            )}
             <div data-focus-frame className="flex items-end gap-1.5 rounded-lg border border-line bg-bg p-1.5 focus-within:border-accent focus-within:ring-1 focus-within:ring-accent">
               <textarea
                 ref={inputRef}

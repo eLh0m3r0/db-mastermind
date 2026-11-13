@@ -5,7 +5,7 @@ import { api } from '@/lib/api'
 import { debounce, uid } from '@/lib/utils'
 import { t, tp } from '@/lib/i18n'
 import { confirmAction } from '@/components/ui/ConfirmDialog'
-import { settleTransactions } from './transactions'
+import { settleTransactions, useTransactions } from './transactions'
 
 interface BaseTab {
   id: string
@@ -210,15 +210,17 @@ export async function confirmCloseTabs(ids: string[]): Promise<boolean> {
   return settleTransactions(ids, tabTitle)
 }
 
-/** The tabs of a connection (before disconnecting it) with their transactions settled. */
+/** Open transactions of a connection (its tabs, the AI chat) settled before disconnecting it. */
 export function settleConnectionTransactions(connectionId: string): Promise<boolean> {
   return settleTransactions(
-    useWorkspace.getState().tabs.filter((tab) => tab.connectionId === connectionId).map((tab) => tab.id),
+    Object.entries(useTransactions.getState())
+      .filter(([, tx]) => tx.connectionId === connectionId)
+      .map(([session]) => session),
     tabTitle,
   )
 }
 
-const tabTitle = (id: string) => useWorkspace.getState().tabs.find((tab) => tab.id === id)?.title ?? id
+const tabTitle = (id: string) => useWorkspace.getState().tabs.find((tab) => tab.id === id)?.title ?? (id.startsWith('ai-') ? t('AI assistant') : id)
 
 const persist = debounce((tabs: Tab[], activeTabId?: string) => {
   void api.saveWorkspace({ tabs, activeTabId })
@@ -295,12 +297,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       // Closing one side of a split leaves the other side.
       if (split && (split.left === id || split.right === id)) active = split.left === id ? split.right : split.left
       else if (activeTabId === id) active = (next[index] ?? next[index - 1])?.id
-      if (tab.kind === 'query') void api.releaseSession(tab.connectionId, tab.id).catch(() => {})
+      // A table tab with manual commit has a session too (releasing one that never ran anything is a no-op).
+      if (tab.kind === 'query' || tab.kind === 'table') void api.releaseSession(tab.connectionId, tab.id).catch(() => {})
       commit(next, active, { closed: [tab, ...closed].slice(0, 20) })
     },
     closeOthers(id) {
       const { tabs } = get()
-      for (const t of tabs) if (t.id !== id && t.kind === 'query') void api.releaseSession(t.connectionId, t.id).catch(() => {})
+      for (const t of tabs) if (t.id !== id && (t.kind === 'query' || t.kind === 'table')) void api.releaseSession(t.connectionId, t.id).catch(() => {})
       commit(
         tabs.filter((t) => t.id === id),
         id,

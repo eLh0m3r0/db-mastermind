@@ -1,4 +1,5 @@
 /// <reference path="../oracledb.d.ts" />
+import { lockRowsFirst } from '../mutations.js'
 import oracledb, { type Connection, type Metadata, type Pool } from 'oracledb'
 import { oracleDialect } from '../dialect.js'
 import { classifyStatement } from '../sql-split.js'
@@ -250,11 +251,14 @@ export class OracleDriver implements DatabaseDriver {
     }
   }
 
-  async transaction(statements: BuiltQuery[]): Promise<number[]> {
+  async transaction(statements: BuiltQuery[], options: { lockTimeoutMs?: number } = {}): Promise<number[]> {
     const conn = await this.activePool.getConnection()
     try {
       const affected: number[] = []
       for (const s of statements) {
+        // Oracle has no lock timeout for DML: lock the rows first, waiting at most so long (ORA-30006 after that).
+        const lock = options.lockTimeoutMs ? lockRowsFirst(s, Math.max(1, Math.round(options.lockTimeoutMs / 1000))) : undefined
+        if (lock) await conn.execute(lock.sql, lock.params, { autoCommit: false })
         const r = await conn.execute(s.sql, s.params, { autoCommit: false })
         affected.push(r.rowsAffected ?? 0)
       }
@@ -426,3 +430,4 @@ export class OracleDriver implements DatabaseDriver {
 function isConnectionLost(err: unknown): boolean {
   return /NJS-500|NJS-521|ORA-00028|ORA-02396|ORA-03113|ORA-03114|ORA-03135|DPI-1010|DPI-1080/.test((err as { message?: string })?.message ?? '')
 }
+

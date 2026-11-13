@@ -685,6 +685,13 @@ whether a tab holds an open transaction. Kept small: one switch per connection, 
 - ✅ The transaction label shows how long it has been open and turns solid after 10 minutes (probably forgotten)
 - ✅ Shortcuts ⌥⇧⌘↵ Commit, ⌥⇧⌘⌫ Roll back (menu Query); the toolbar gives way in narrow windows (labels → icons,
   the label → the change count); production connections suggest manual commit; UI tour shows the transaction scene
+- ✅ The AI assistant's confirmed writes on a manual-commit connection wait in the chat's own transaction (Commit /
+  Roll back in the AI panel; the model is told its reads don't see them yet)
+- ✅ A query waiting for a lock says which tab (or other session) holds it, with "Go to the tab" (PostgreSQL, MySQL,
+  MariaDB, SQL Server, Oracle with v$ access)
+- ✅ Oracle grid saves no longer hang on locked rows either (`SELECT … FOR UPDATE WAIT` first)
+- ✅ With manual commit the grid joins in: Save writes into the table tab's own transaction (one save stays all or
+  nothing through a savepoint), the tab reads its own uncommitted rows, Commit / Roll back in its toolbar
 - ✅ Saving a connection reconnects only when host, user, TLS… changed (`needsReconnect`): a new name, color, AI
   permissions or commit mode keep open transactions
 

@@ -386,6 +386,8 @@ export interface FetchTableRequest {
   limit: number
   offset: number
   runId?: string
+  /** The table tab's id: with manual commit, reads and saves use its own transaction. */
+  session?: string
 }
 
 export interface ConnectResult {
@@ -656,6 +658,8 @@ export interface MastermindApi {
   releaseSession(connectionId: string, session: string): Promise<void>
   /** A query tab's transaction as the database sees it; null when not connected or the database has none to manage. */
   transactionState(connectionId: string, session: string): Promise<TransactionState | null>
+  /** While a tab's statement runs: the sessions it waits for on a lock (server ids; this app's own as session keys). */
+  whoBlocks(connectionId: string, session: string): Promise<{ ids: string[]; sessions: string[] }>
   /** Commit / Roll back of a query tab's open transaction; resolves with the state after it. */
   endTransaction(connectionId: string, session: string, action: 'commit' | 'rollback'): Promise<TransactionState>
   listActivity(connectionId: string): Promise<SessionActivity[]>
@@ -705,7 +709,7 @@ export interface MastermindApi {
   importPreview(path: string, delimiter?: string): Promise<ImportPreview>
   importFile(request: ImportRequest): Promise<number>
   previewChanges(connectionId: string, table: TableRef, changes: RowChange[]): Promise<string[]>
-  applyChanges(connectionId: string, table: TableRef, changes: RowChange[]): Promise<number[]>
+  applyChanges(connectionId: string, table: TableRef, changes: RowChange[], session?: string): Promise<number[]>
 
   listHistory(connectionId?: string, search?: string, limit?: number): Promise<HistoryEntry[]>
   clearHistory(connectionId?: string): Promise<void>
@@ -834,6 +838,7 @@ export const API_METHODS = [
   'releaseSession',
   'transactionState',
   'endTransaction',
+  'whoBlocks',
   'listActivity',
   'listPrincipals',
   'listGrants',

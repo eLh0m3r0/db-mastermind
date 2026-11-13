@@ -72,6 +72,9 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
     záložku, která ho drží (PostgreSQL, MySQL, MariaDB, SQL Server).
   - Zkratky: ⌥⇧⌘↵ / Ctrl+Alt+Shift+Enter potvrdí, ⌥⇧⌘⌫ / Ctrl+Alt+Shift+Backspace vrátí zpět.
   - U produkčního připojení formulář nabídne zapnout ruční potvrzování.
+  - V ručním režimu platí totéž pro úpravy v tabulce: *Uložit* zapíše změny do transakce záložky tabulky a natrvalo je
+    uloží až *Potvrdit* v její liště. Stejně tak zápisy, které potvrdíte AI asistentovi, čekají na *Potvrdit* v AI panelu.
+  - Když dotaz čeká na zámek, editor po chvíli ukáže, která záložka ho drží, a nabídne na ni přejít.
   - *Aktivita serveru* ukáže, která spojení patří kterým záložkám (*Jen DB Mastermind*), a zvýrazní spojení, která
     nic nedělají, ale drží otevřenou transakci.
 

@@ -26,6 +26,11 @@ export interface ToolContext {
   maxRows?: number
   /** Called for every statement the model ran (audit log). */
   onExecuted?: (outcome: StatementOutcome) => void
+  /**
+   * Confirmed writes run on this session (the app's chat on a connection with manual commit): they open a transaction
+   * that waits for Commit / Roll back like a query tab's.
+   */
+  writeSession?: string
 }
 
 export interface JsonSchema {
@@ -166,8 +171,14 @@ async function runSql(ctx: ToolContext, sql: string, maxRows: number): Promise<s
     return 'Refused: the user only shares the schema with the assistant, not table contents. Write the SQL for the user to run instead.'
   }
   // Statements nobody confirmed run in a read-only transaction: a SELECT can still call a function that writes.
-  const outcomes = await ctx.db.runScript(ctx.connectionId, sql, { maxRows: Math.max(maxRows, 1), readOnly: !writes })
+  const session = writes ? ctx.writeSession : undefined
+  const outcomes = await ctx.db.runScript(ctx.connectionId, sql, { maxRows: Math.max(maxRows, 1), readOnly: !writes, ...(session ? { session, editor: true } : {}) })
   for (const o of outcomes) ctx.onExecuted?.(o)
+  const state = session ? await ctx.db.transactionState(ctx.connectionId, session).catch(() => undefined) : undefined
+  const pending = state === 'open' || state === 'failed'
+  const note = pending
+    ? "\n\nThe change waits in an open transaction: the user commits or rolls it back in the app. Until then your read queries (which run separately) don't see it; don't run it again."
+    : ''
   return outcomes
     .map((o, i) => {
       const head = outcomes.length > 1 ? `Statement ${i + 1}: ` : ''
@@ -176,7 +187,7 @@ async function runSql(ctx: ToolContext, sql: string, maxRows: number): Promise<s
       if (!ctx.allowData) return head + ((o.results ?? []).map(summaryWithoutData).join('\n') || 'Done.')
       return head + (o.results ?? []).map((r) => formatResultForModel(r, maxRows)).join('\n\n')
     })
-    .join('\n\n')
+    .join('\n\n') + note
 }
 
 export const DIALECT_NAMES: Record<DriverId, string> = {

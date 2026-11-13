@@ -38,6 +38,8 @@ export interface McpServerOptions {
    * a confirmation). External agents can't be asked, so without this they need agentWrites.
    */
   confirmWrite?: (sql: string) => Promise<boolean>
+  /** Session for writes confirmed through `confirmWrite` (see ToolContext.writeSession). */
+  writeSession?: string
   /**
    * Runs before a database tool; a returned message is the tool's answer instead (the app's assistant asks the user
    * before saving a knowledge base file or, when set so, before a read query).
@@ -87,6 +89,7 @@ export function createMcpServer(options: McpServerOptions): Server {
             : undefined,
       maxRows: 100,
       onExecuted: options.onExecuted ? (o) => options.onExecuted!(config.id, o) : undefined,
+      writeSession: options.confirmWrite && config.ai?.access === 'write' ? options.writeSession : undefined,
     }
   }
 

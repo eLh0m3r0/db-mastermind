@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { join } from 'node:path'
-import { DatabaseService, listActivity, type ConnectionConfig, type DriverId } from '../src/index.js'
+import { DatabaseService, DB_TOOLS, listActivity, whoBlocks, type ConnectionConfig, type DriverId } from '../src/index.js'
 import { engines, skip, tmp } from './fixtures.js'
 
 /**
@@ -119,6 +119,35 @@ for (const c of cases) {
       expect(await count(c, id)).toBe(4)
     })
 
+    it('with manual commit, grid saves wait in the table tab’s transaction; a failed save drops only itself', async () => {
+      const ora = c.engine === 'oracle'
+      const t = c.engine === 'mssql' ? 'dbo.tx_grid' : 'tx_grid'
+      await ok(id, c.engine === 'mssql' ? "IF OBJECT_ID('dbo.tx_grid') IS NOT NULL DROP TABLE dbo.tx_grid" : ora ? "BEGIN EXECUTE IMMEDIATE 'DROP TABLE tx_grid'; EXCEPTION WHEN OTHERS THEN NULL; END;" : 'DROP TABLE IF EXISTS tx_grid')
+      await ok(id, `CREATE TABLE ${t} (id int PRIMARY KEY, v int)`)
+      const ref = c.engine === 'mssql' ? { schema: 'dbo', name: 'tx_grid' } : { name: ora ? 'TX_GRID' : 'tx_grid' }
+      const row = (n: string) => ({ type: 'insert' as const, values: { [ora ? 'ID' : 'id']: n, [ora ? 'V' : 'v']: n } })
+      const tab = 'table-tab'
+      const rows = async (session?: string) => (await svc.fetchTable(id, { table: ref, limit: 100, session })).result.rows.length
+      await svc.applyChanges(id, ref, [row('1')], { session: tab })
+      expect(await svc.transactionState(id, tab)).toBe('open')
+      expect(await rows(tab)).toBe(1)
+      // (SQL Server's READ COMMITTED would wait for the tab's uncommitted row: its count skips locked rows.)
+      if (c.isolated) expect(c.engine === 'mssql' ? Number((await ok(id, 'SELECT count(*) FROM dbo.tx_grid WITH (READPAST)'))[0]!.results![0]!.rows[0]![0]) : await rows()).toBe(0)
+      // A duplicate key fails: that save is undone, the first row stays in the transaction (DuckDB aborts it all).
+      await expect(svc.applyChanges(id, ref, [row('2'), row('1')], { session: tab })).rejects.toThrow()
+      if (c.engine === 'duckdb') {
+        expect(await svc.transactionState(id, tab)).toBe('failed')
+        await svc.endTransaction(id, tab, 'rollback')
+        await svc.applyChanges(id, ref, [row('1')], { session: tab })
+      } else {
+        expect(await svc.transactionState(id, tab)).toBe('open')
+        expect(await rows(tab)).toBe(1)
+      }
+      expect(await svc.endTransaction(id, tab, 'commit')).toBe('none')
+      expect(await rows()).toBe(1)
+      await svc.releaseSession(id, tab)
+    })
+
     if (c.implicitCommit) {
       it('says when DDL committed the open transaction', async () => {
         const tab = 'ddl-tab'
@@ -134,8 +163,8 @@ for (const c of cases) {
       })
     }
 
-    // Oracle waits for row locks without a timeout of its own; DuckDB and SQLite don't wait.
-    if (['postgres', 'mysql', 'mariadb', 'mssql'].includes(c.engine)) {
+    // DuckDB and SQLite don't wait for row locks.
+    if (['postgres', 'mysql', 'mariadb', 'mssql', 'oracle'].includes(c.engine)) {
       it("a grid save doesn't hang on a row a query tab locked", async () => {
         const t = c.engine === 'mssql' ? 'dbo.tx_lock' : 'tx_lock'
         await ok(id, c.engine === 'mssql' ? "IF OBJECT_ID('dbo.tx_lock') IS NOT NULL DROP TABLE dbo.tx_lock" : 'DROP TABLE IF EXISTS tx_lock')
@@ -143,16 +172,39 @@ for (const c of cases) {
         await ok(id, `INSERT INTO ${t} (id, v) VALUES (1, 1)`)
         const tab = 'lock-tab'
         await ok(id, `UPDATE ${t} SET v = 2 WHERE id = 1`, tab)
-        const ref = c.engine === 'mssql' ? { schema: 'dbo', name: 'tx_lock' } : { name: 'tx_lock' }
+        // (Oracle folds unquoted names to upper case.)
+        const ora = c.engine === 'oracle'
+        const ref = c.engine === 'mssql' ? { schema: 'dbo', name: 'tx_lock' } : { name: ora ? 'TX_LOCK' : 'tx_lock' }
+        const change = (v: string) => [{ type: 'update' as const, key: { [ora ? 'ID' : 'id']: '1' }, values: { [ora ? 'V' : 'v']: v } }]
         const started = Date.now()
-        await expect(svc.applyChanges(id, ref, [{ type: 'update', key: { id: '1' }, values: { v: '3' } }])).rejects.toMatchObject({ code: 'ROW_LOCKED', message: expect.stringMatching(/query tab/) })
+        await expect(svc.applyChanges(id, ref, change('3'))).rejects.toMatchObject({ code: 'ROW_LOCKED', message: expect.stringMatching(/query tab/) })
         expect(Date.now() - started).toBeLessThan(15000)
         await svc.endTransaction(id, tab, 'commit')
         // The pool's connections wait as usual again (the timeout was set back), and the save goes through now.
-        await svc.applyChanges(id, ref, [{ type: 'update', key: { id: '1' }, values: { v: '4' } }])
+        await svc.applyChanges(id, ref, change('4'))
         const [o] = await ok(id, `SELECT v FROM ${t} WHERE id = 1`)
         expect(Number(o!.results![0]!.rows[0]![0])).toBe(4)
         await svc.releaseSession(id, tab)
+      }, 30000)
+
+      // (Oracle's v$session needs privileges the test user doesn't have.)
+      it.skipIf(c.engine === 'oracle')('tells which tab a waiting query waits for', async () => {
+        const t = c.engine === 'mssql' ? 'dbo.tx_lock' : 'tx_lock'
+        await ok(id, `UPDATE ${t} SET v = 5 WHERE id = 1`, 'holder-tab')
+        await ok(id, 'SELECT 1', 'waiter-tab')
+        const waiting = svc.runScript(id, `UPDATE ${t} SET v = 6 WHERE id = 1`, { session: 'waiter-tab', editor: true })
+        await new Promise((r) => setTimeout(r, 1500))
+        const blocked = await whoBlocks(svc, id, 'waiter-tab')
+        expect(blocked.sessions).toEqual(['holder-tab'])
+        await svc.endTransaction(id, 'holder-tab', 'rollback')
+        const [o] = await waiting
+        expect(o!.error).toBeUndefined()
+        await svc.endTransaction(id, 'waiter-tab', 'rollback')
+        // InnoDB's lock tables lag up to 0.1 s.
+        await new Promise((r) => setTimeout(r, 300))
+        expect(await whoBlocks(svc, id, 'waiter-tab')).toEqual({ ids: [], sessions: [] })
+        await svc.releaseSession(id, 'holder-tab')
+        await svc.releaseSession(id, 'waiter-tab')
       }, 30000)
     }
 
@@ -161,6 +213,7 @@ for (const c of cases) {
       it('server activity names the tab of a session and shows it idle in a transaction', async () => {
         const tab = 'activity-tab'
         await ok(id, insert(c, 20), tab)
+        await new Promise((r) => setTimeout(r, 300))
         const sessions = await listActivity(svc, id)
         const mine = sessions.find((s) => s.session === tab)
         expect(mine, JSON.stringify(sessions.map((s) => [s.id, s.state]))).toBeTruthy()
@@ -190,6 +243,21 @@ for (const c of cases) {
     }
 
     if (c.engine === 'postgres') {
+      it("the assistant's confirmed writes wait in the chat's transaction", async () => {
+        const runQuery = DB_TOOLS.find((tool) => tool.name === 'run_query')!
+        const session = 'ai-chat1'
+        const ctx = { db: svc, connectionId: id, allowData: true, confirmWrite: async () => true, writeSession: session }
+        const answer = await runQuery.run(ctx, { sql: insert(c, 30) })
+        expect(answer).toMatch(/open transaction/)
+        expect(await svc.transactionState(id, session)).toBe('open')
+        expect(await count(c, id)).toBe(4)
+        expect(await svc.endTransaction(id, session, 'rollback')).toBe('none')
+        expect(await count(c, id)).toBe(4)
+        // Reads still run on their own, read-only.
+        expect(await runQuery.run(ctx, { sql: c.count })).toMatch(/4/)
+        await svc.releaseSession(id, session)
+      })
+
       it('runs statements that refuse a transaction block outside one', async () => {
         const tab = 'vacuum-tab'
         await ok(id, 'VACUUM tx_t', tab)

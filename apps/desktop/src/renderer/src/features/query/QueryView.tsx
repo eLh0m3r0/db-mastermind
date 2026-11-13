@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { closeCompletion } from '@codemirror/autocomplete'
 import { format as formatSql, type SqlLanguage } from 'sql-formatter'
-import { Activity, BookmarkPlus, Play, PlayCircle, Sparkles, Square, Wand2 } from 'lucide-react'
+import { Activity, BookmarkPlus, Hourglass, Play, PlayCircle, Sparkles, Square, Wand2 } from 'lucide-react'
 import { changesSchema, extractParameters, supportsManualCommit, isDangerousStatement, splitStatements, type DriverId, type ExplainResult, type QueryParameter, type StatementOutcome } from '@dbmastermind/core/browser'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { Button } from '@/components/ui/Button'
@@ -12,7 +12,7 @@ import { api, modKey } from '@/lib/api'
 import { debounce, errorMessage, uid } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
-import { askAi, toast } from '@/store/ui'
+import { askAi, toast, useUi } from '@/store/ui'
 import { useWorkspace, type QueryTab } from '@/store/workspace'
 import { onCommand } from '@/lib/commands'
 import { ParamsModal, type ParamValues } from './ParamsModal'
@@ -66,6 +66,32 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
   useEffect(() => {
     if (active && !schema) void loadSchema(tab.connectionId)
   }, [active, schema, loadSchema, tab.connectionId])
+
+  // A statement that runs for a while may be waiting for a lock another tab (or session) holds: say whose.
+  const [blocked, setBlocked] = useState<{ ids: string[]; sessions: string[] } | null>(null)
+  useEffect(() => {
+    if (!running) {
+      setBlocked(null)
+      return
+    }
+    let stopped = false
+    let timer: ReturnType<typeof setInterval> | undefined
+    const check = async () => {
+      const r = await api.whoBlocks(tab.connectionId, tab.id).catch(() => null)
+      if (!stopped) setBlocked(r?.ids.length ? r : null)
+    }
+    const first = setTimeout(() => {
+      void check()
+      timer = setInterval(() => void check(), 2000)
+    }, 1500)
+    return () => {
+      stopped = true
+      clearTimeout(first)
+      clearInterval(timer)
+    }
+  }, [running, tab.connectionId, tab.id])
+  const tabs = useWorkspace((s) => s.tabs)
+  const blocker = blocked?.sessions.map((id) => tabs.find((x) => x.id === id) ?? (id.startsWith('ai-') ? { id, title: t('AI assistant') } : undefined)).find(Boolean)
 
   // A transaction may already be open in this tab's session (the window was reopened, or the app reconnected).
   useEffect(() => {
@@ -299,6 +325,29 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
         <TransactionBar tabId={tab.id} driver={driver} manual={!!connection?.manualCommit && !connection.readOnly && supportsManualCommit(driver)} />
         {connection?.readOnly && <span className="text-[11.5px] text-fg-faint">{t('read-only')}</span>}
       </div>
+      {blocked && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-line bg-warning-soft px-3 py-1.5 text-[12px] text-warning" data-testid="lock-wait">
+          <Hourglass size={13} className="shrink-0" />
+          <span className="min-w-0 flex-1">
+            {blocker
+              ? t('Waiting for a lock held by “{tab}”: commit or roll back there, or cancel this query.', { tab: blocker.title })
+              : t('Waiting for a lock held by session {id} (not this app). Server activity shows what it runs.', { id: blocked.ids.join(', ') })}
+          </span>
+          {blocker && tabs.some((x) => x.id === blocker.id) ? (
+            <Button size="xs" onClick={() => useWorkspace.getState().activate(blocker.id)}>
+              {t('Go to the tab')}
+            </Button>
+          ) : blocker ? (
+            <Button size="xs" onClick={() => useUi.getState().set({ aiPanelVisible: true })}>
+              {t('Show AI assistant')}
+            </Button>
+          ) : (
+            <Button size="xs" onClick={() => useWorkspace.getState().open({ kind: 'activity', connectionId: tab.connectionId, title: t('Server activity') })}>
+              {t('Server activity')}
+            </Button>
+          )}
+        </div>
+      )}
       {inline && (
         <form
           className="flex shrink-0 items-center gap-2 border-b border-line bg-accent-soft/40 px-3 py-1.5"

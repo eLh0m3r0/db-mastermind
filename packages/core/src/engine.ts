@@ -11,7 +11,7 @@ import { OracleDriver } from './drivers/oracle.js'
 import { PostgresDriver } from './drivers/postgres.js'
 import { SqliteDriver } from './drivers/sqlite.js'
 import { buildCount, buildSelect, type BuiltQuery, type FilterNode, type SortSpec } from './filters.js'
-import { buildChangeStatements, type RowChange } from './mutations.js'
+import { buildChangeStatements, lockRowsFirst, type RowChange } from './mutations.js'
 import { bindParameters, extractParameters } from './parameters.js'
 import { KnowledgeBase, relationToForeignKey } from './knowledge.js'
 import { findTable } from './schema-utils.js'
@@ -46,6 +46,14 @@ export function createDriver(config: ConnectionConfig): DatabaseDriver {
 /** How long a grid save waits for rows another session has locked. */
 const GRID_LOCK_TIMEOUT_MS = 5000
 
+/** Lock timeout for a grid save inside a session's transaction: set, and set back (session-wide settings). */
+const SESSION_LOCK_TIMEOUT: Partial<Record<ConnectionConfig['driver'], [string, string?]>> = {
+  postgres: [`SET LOCAL lock_timeout = ${GRID_LOCK_TIMEOUT_MS}`],
+  mysql: [`SET SESSION innodb_lock_wait_timeout = ${GRID_LOCK_TIMEOUT_MS / 1000}`, 'SET SESSION innodb_lock_wait_timeout = DEFAULT'],
+  mariadb: [`SET SESSION innodb_lock_wait_timeout = ${GRID_LOCK_TIMEOUT_MS / 1000}`, 'SET SESSION innodb_lock_wait_timeout = DEFAULT'],
+  mssql: [`SET LOCK_TIMEOUT ${GRID_LOCK_TIMEOUT_MS}`, 'SET LOCK_TIMEOUT -1'],
+}
+
 export interface RunScriptOptions {
   session?: string
   maxRows?: number
@@ -75,6 +83,8 @@ export interface FetchTableOptions {
   limit: number
   offset?: number
   signal?: AbortSignal
+  /** The table tab's session: with manual commit it reads there, so its own uncommitted changes show. */
+  session?: string
 }
 
 /** Describes an error from any driver in a uniform, serializable way. */
@@ -97,6 +107,8 @@ export function describeError(err: unknown): { message: string; code?: string; p
 interface OpenConnection {
   config: ConnectionConfig
   driver: DatabaseDriver
+  /** Sessions that ran editor statements (query tabs, the AI chat's writes): what may hold a transaction open. */
+  editorSessions?: Set<string>
   schema?: SchemaSnapshot
   schemaPromise?: Promise<SchemaSnapshot>
   serverInfo?: ServerInfo
@@ -306,6 +318,7 @@ export class DatabaseService {
     const outcomes: StatementOutcome[] = []
     let inTransaction = false
     const editorSession = options.editor && options.session && entry.driver.transactionState ? options.session : undefined
+    if (editorSession) (entry.editorSessions ??= new Set()).add(editorSession)
     const manual = !!editorSession && !!entry.config.manualCommit && !entry.config.readOnly && !!entry.driver.dialect.begin
     // A multi-statement script runs on one connection (BEGIN … COMMIT must not hop between pooled connections).
     const temporary = !options.session && statements.filter((s) => s.text).length > 1 ? `script-${Date.now()}-${Math.random().toString(36).slice(2)}` : undefined
@@ -417,6 +430,7 @@ export class DatabaseService {
   }
 
   async releaseSession(id: string, session: string): Promise<void> {
+    this.open.get(id)?.editorSessions?.delete(session)
     await this.open.get(id)?.driver.releaseSession(session)
   }
 
@@ -439,12 +453,17 @@ export class DatabaseService {
       },
       entry.driver.dialect,
     )
-    const [result] = await entry.driver.execute(built.sql, { params: built.params, signal: options.signal })
+    const [result] = await entry.driver.execute(built.sql, { params: built.params, signal: options.signal, session: this.readSession(entry, options.session) })
     if (!result) throw new Error('Query returned no result')
     return { result, sql: built.sql }
   }
 
-  async countTable(id: string, options: Pick<FetchTableOptions, 'table' | 'filter' | 'signal'>): Promise<number> {
+  /** A table tab reads on its own session only while that session holds a transaction (manual commit). */
+  private readSession(entry: OpenConnection, session: string | undefined): string | undefined {
+    return session && entry.config.manualCommit && entry.editorSessions?.has(session) ? session : undefined
+  }
+
+  async countTable(id: string, options: Pick<FetchTableOptions, 'table' | 'filter' | 'signal' | 'session'>): Promise<number> {
     const entry = this.get(id)
     this.assertFilterReads(entry, options.filter)
     const table = await this.findTable(id, options.table)
@@ -452,14 +471,21 @@ export class DatabaseService {
       { table: options.table, filter: options.filter, knownColumns: table?.columns.map((c) => c.name), columnTypes: table && Object.fromEntries(table.columns.map((c) => [c.name, c.dataType])) },
       entry.driver.dialect,
     )
-    const [result] = await entry.driver.execute(built.sql, { params: built.params, signal: options.signal })
+    const [result] = await entry.driver.execute(built.sql, { params: built.params, signal: options.signal, session: this.readSession(entry, options.session) })
     return Number(result?.rows[0]?.[0] ?? 0)
   }
 
-  async applyChanges(id: string, table: TableRef, changes: RowChange[]): Promise<number[]> {
+  /**
+   * Saves grid edits. With manual commit and the table tab's `session`, they go into that tab's transaction (opened if
+   * needed) and wait for Commit / Roll back; otherwise they commit at once, all or nothing.
+   */
+  async applyChanges(id: string, table: TableRef, changes: RowChange[], options: { session?: string } = {}): Promise<number[]> {
     const entry = this.get(id)
     if (entry.config.readOnly) throw new ReadOnlyViolationError()
     const statements = buildChangeStatements(table, changes, entry.driver.dialect)
+    if (options.session && entry.config.manualCommit && entry.driver.transactionState && entry.driver.dialect.begin) {
+      return this.applyInTransaction(id, entry, options.session, statements)
+    }
     try {
       // A row a query tab changed in its open transaction stays locked until Commit / Roll back: say so, don't hang.
       return await entry.driver.transaction(statements, { lockTimeoutMs: GRID_LOCK_TIMEOUT_MS })
@@ -474,10 +500,45 @@ export class DatabaseService {
     }
   }
 
+  private async applyInTransaction(id: string, entry: OpenConnection, session: string, statements: BuiltQuery[]): Promise<number[]> {
+    ;(entry.editorSessions ??= new Set()).add(session)
+    const driver = entry.config.driver
+    const exec = (sql: string, params?: unknown[]) => entry.driver.execute(sql, { session, params })
+    const state = await this.transactionState(id, session)
+    if (state === 'failed') throw new Error('The tab’s transaction failed: roll it back first.')
+    if (state === 'none') await exec(entry.driver.dialect.begin)
+    // One save stays all or nothing inside the longer transaction (DuckDB has no savepoints; an error aborts it anyway).
+    const savepoint = driver === 'duckdb' ? undefined : driver === 'mssql' ? ['SAVE TRANSACTION dbm_grid', 'ROLLBACK TRANSACTION dbm_grid'] : ['SAVEPOINT dbm_grid', 'ROLLBACK TO SAVEPOINT dbm_grid']
+    const lock = SESSION_LOCK_TIMEOUT[driver]
+    if (savepoint) await exec(savepoint[0]!)
+    if (lock) await exec(lock[0]).catch(() => {})
+    try {
+      const affected: number[] = []
+      for (const s of statements) {
+        const rows = driver === 'oracle' ? lockRowsFirst(s, GRID_LOCK_TIMEOUT_MS / 1000) : undefined
+        if (rows) await exec(rows.sql, rows.params)
+        const [r] = await exec(s.sql, s.params)
+        affected.push(r?.affectedRows ?? r?.rowCount ?? 0)
+      }
+      return affected
+    } catch (err) {
+      if (savepoint) await exec(savepoint[1]!).catch(() => {})
+      if (!isLockTimeout(err)) throw err
+      const others = (await this.openEditorTransactions(id)).filter((s) => s !== session)
+      throw new RowLockedError(
+        others.length
+          ? 'The rows are locked by an open transaction in a query tab. Commit or roll it back there, then save again.'
+          : 'The rows are locked by another session’s open transaction. Save again once it ends (Server activity shows who holds them).',
+      )
+    } finally {
+      if (lock?.[1]) await exec(lock[1]).catch(() => {})
+    }
+  }
+
   /** Sessions (query tabs) of this connection with a transaction open. */
   async openEditorTransactions(id: string): Promise<string[]> {
     const out: string[] = []
-    for (const session of Object.keys(this.serverSessionIds(id))) {
+    for (const session of this.open.get(id)?.editorSessions ?? []) {
       const state = await this.transactionState(id, session).catch(() => undefined)
       if (state === 'open' || state === 'failed') out.push(session)
     }

@@ -80,3 +80,16 @@ export function inlineParams(query: BuiltQuery, dialect: Dialect): string {
   const pattern = dialect.id === 'mssql' || dialect.id === 'bigquery' ? /@p(\d+)/g : dialect.id === 'oracle' ? /:(\d+)/g : dialect.id === 'clickhouse' || dialect.id === 'trino' ? /\{__p(\d+)\}/g : /\$(\d+)/g
   return query.sql.replace(pattern, (_, n: string) => literal(query.params[Number(n) - 1]))
 }
+
+/**
+ * For a grid UPDATE / DELETE (`… WHERE <key>`, built by buildChangeStatements): a SELECT … FOR UPDATE WAIT of the
+ * same rows. The key's placeholders come last; Oracle binds by position, so they take the last parameters.
+ */
+export function lockRowsFirst(statement: BuiltQuery, seconds: number): BuiltQuery | undefined {
+  const m = /^(?:UPDATE\s+(.+?)\s+SET\s|DELETE\s+FROM\s+(.+?)\s+WHERE\s)/s.exec(statement.sql)
+  const at = statement.sql.lastIndexOf(' WHERE ')
+  if (!m || at < 0) return undefined
+  const condition = statement.sql.slice(at + 7)
+  const used = condition.match(/:\d+/g)?.length ?? 0
+  return { sql: `SELECT 1 FROM ${m[1] ?? m[2]} WHERE ${condition} FOR UPDATE WAIT ${seconds}`, params: used ? statement.params.slice(-used) : [] }
+}

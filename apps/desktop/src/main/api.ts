@@ -7,6 +7,7 @@ import { app, BrowserWindow, dialog, shell } from 'electron'
 import {
   buildBatchInserts,
   needsReconnect,
+  whoBlocks,
   buildChangeStatements,
   detectDelimiter,
   explainQuery,
@@ -616,6 +617,10 @@ export const api: MastermindApi = {
     if (!db.isOpen(connectionId)) return null
     return (await db.transactionState(connectionId, session)) ?? null
   },
+  async whoBlocks(connectionId, session) {
+    if (!db.isOpen(connectionId)) return { ids: [], sessions: [] }
+    return whoBlocks(db, connectionId, session).catch(() => ({ ids: [], sessions: [] }))
+  },
   async endTransaction(connectionId, session, action) {
     // Never reconnect for this: a new connection has no transaction to end.
     if (!db.isOpen(connectionId)) return 'none'
@@ -632,13 +637,14 @@ export const api: MastermindApi = {
         limit: request.limit,
         offset: request.offset,
         signal,
+        session: request.session,
       }),
     )
   },
   async countTable(request) {
     await ensureConnected(request.connectionId)
     return track(request.runId, (signal) =>
-      db.countTable(request.connectionId, { table: request.table, filter: request.filter, signal }),
+      db.countTable(request.connectionId, { table: request.table, filter: request.filter, signal, session: request.session }),
     )
   },
   async importPreview(path, delimiter) {
@@ -675,9 +681,10 @@ export const api: MastermindApi = {
     const dialect = getDialect(connections.getConnection(connectionId).driver)
     return buildChangeStatements(table, changes, dialect).map((q) => inlineParams(q, dialect))
   },
-  async applyChanges(connectionId, table, changes) {
+  async applyChanges(connectionId, table, changes, session) {
     await ensureConnected(connectionId)
-    const affected = await db.applyChanges(connectionId, table, changes)
+    if (session && db.config(connectionId).manualCommit) trackEditorSession(connectionId, session)
+    const affected = await db.applyChanges(connectionId, table, changes, { session })
     const dialect = getDialect(connections.getConnection(connectionId).driver)
     for (const q of buildChangeStatements(table, changes, dialect)) {
       library.addHistory({

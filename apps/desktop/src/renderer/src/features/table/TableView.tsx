@@ -31,6 +31,7 @@ import {
   incomingReferences,
   newFilterId,
   referencedTable,
+  supportsManualCommit,
   type CellValue,
   type FilterGroup,
   type QueryResult,
@@ -53,7 +54,8 @@ import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { toast } from '@/store/ui'
 import { setUnsavedEdits, useWorkspace, type TableTab } from '@/store/workspace'
-import { useTransactions } from '@/store/transactions'
+import { refreshTransaction, useTransactions } from '@/store/transactions'
+import { TransactionBar } from '@/features/query/TransactionBar'
 import { copyRowsAs, EXPORT_FORMATS } from '../results/copy'
 import { FilterBuilder, newCondition } from './FilterBuilder'
 import { ImportModal } from './ImportModal'
@@ -112,6 +114,10 @@ function rootGroup(filter: TableTab['filter']): FilterGroup {
 export function TableView({ tab, active, focused = active }: { tab: TableTab; active: boolean; focused?: boolean }) {
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const connection = useConnections((s) => s.list.find((c) => c.id === tab.connectionId))
+  // Manual commit: saves go into this tab's own transaction (Commit / Roll back in the toolbar), and reads see it.
+  const manual = !!connection?.manualCommit && !connection.readOnly && supportsManualCommit(connection.driver)
+  const session = manual ? tab.id : undefined
+  const inTransaction = useTransactions((s) => !!s[tab.id])
   const loadSchema = useConnections((s) => s.loadSchema)
   const settings = useSettings((s) => s.settings)
   const updateTab = useWorkspace((s) => s.update)
@@ -203,6 +209,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
         limit,
         offset,
         runId: id,
+        session,
       })
       if (runId.current !== id) return
       setResult(page.result)
@@ -218,18 +225,18 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
         setLoading(false)
       }
     }
-  }, [tab.connectionId, tab.table, appliedFilter, sort, limit, offset])
+  }, [tab.connectionId, tab.table, appliedFilter, sort, limit, offset, session])
 
   const count = useCallback(async () => {
     setCounting(true)
     try {
-      setTotal(await api.countTable({ connectionId: tab.connectionId, table: tab.table, filter: appliedFilter }))
+      setTotal(await api.countTable({ connectionId: tab.connectionId, table: tab.table, filter: appliedFilter, session }))
     } catch {
       setTotal(null)
     } finally {
       setCounting(false)
     }
-  }, [tab.connectionId, tab.table, appliedFilter])
+  }, [tab.connectionId, tab.table, appliedFilter, session])
 
   // Load when the tab first becomes visible and whenever the query changes.
   const loadedKey = useRef<string | null>(null)
@@ -248,6 +255,16 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
     setTotal(null)
     void count()
   }, [active, countKey, count])
+
+  // Commit / Roll back ended the tab's transaction: show the rows as they are now.
+  const hadTransaction = useRef(inTransaction)
+  useEffect(() => {
+    if (hadTransaction.current && !inTransaction) {
+      void load()
+      void count()
+    }
+    hadTransaction.current = inTransaction
+  }, [inTransaction, load, count])
 
   const confirmDiscard = async () =>
     pendingCount === 0 ||
@@ -470,9 +487,18 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
   const applyChanges = async () => {
     setSaving(true)
     try {
-      const affected = await api.applyChanges(tab.connectionId, tab.table, buildChanges())
+      const changes = buildChanges()
+      const sqls = session ? await api.previewChanges(tab.connectionId, tab.table, changes) : []
+      const affected = await api.applyChanges(tab.connectionId, tab.table, changes, session)
       const n = affected.reduce((a, b) => a + b, 0)
-      toast({ kind: 'success', message: tp(n, { one: 'Saved · {n} row affected', many: 'Saved · {n} rows affected' }) })
+      if (session) {
+        await refreshTransaction(
+          tab.id,
+          tab.connectionId,
+          sqls.map((sql, i) => ({ sql, start: 0, end: sql.length, durationMs: 0, results: [{ fields: [], rows: [], rowCount: affected[i] ?? 0, affectedRows: affected[i] ?? 0, durationMs: 0 }] })),
+        )
+        toast({ kind: 'success', message: tp(n, { one: 'Written to the transaction · {n} row', many: 'Written to the transaction · {n} rows' }), detail: t('Commit to make it permanent, or roll it back.') })
+      } else toast({ kind: 'success', message: tp(n, { one: 'Saved · {n} row affected', many: 'Saved · {n} rows affected' }) })
       setPreview(null)
       setPending(emptyPending())
       loadedKey.current = null
@@ -492,7 +518,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
       }
       // In the open review dialog the reason sits next to the SQL; otherwise a toast says it.
       if (preview !== null) setApplyError(errorMessage(err))
-      else toast({ kind: 'error', message: t('Changes were rolled back'), detail: errorMessage(err) })
+      else toast({ kind: 'error', message: t('Changes were rolled back'), detail: t(errorMessage(err)) })
     } finally {
       setSaving(false)
     }
@@ -778,6 +804,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
           </div>
         )}
         <div className="flex-1" />
+        {manual && <TransactionBar tabId={tab.id} driver={connection!.driver} manual />}
         {aiReady && (
           <Input
             inputSize="sm"
@@ -987,7 +1014,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
         width={720}
         footer={
           <>
-            <span className="text-[12px] text-fg-muted">{t('Runs in a single transaction. If any statement fails, nothing is saved.')}</span>
+            <span className="text-[12px] text-fg-muted">{manual ? t('Written into this tab’s transaction: Commit makes it permanent. If any statement fails, none of these is written.') : t('Runs in a single transaction. If any statement fails, nothing is saved.')}</span>
             <div className="flex-1" />
             <Button onClick={() => void copyText((preview ?? []).join(';\n') + ';')}>{t('Copy SQL')}</Button>
             <Button variant="primary" loading={saving} onClick={() => void applyChanges()} data-autofocus>

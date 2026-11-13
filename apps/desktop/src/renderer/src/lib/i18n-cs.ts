@@ -1602,4 +1602,13 @@ export const cs: Record<string, string> = {
   '{n} h': '{n} h',
   'Changes from the SQL editor could also wait for your Commit.': 'Změny z SQL editoru můžou také čekat na vaše potvrzení.',
   'Commit manually': 'Potvrzovat ručně',
+  'Written to the transaction · {n} row': 'Zapsáno do transakce · {n} řádek',
+  'Written to the transaction · {n} rows': 'Zapsáno do transakce · {n} řádků',
+  'Written to the transaction · {n} rows|few': 'Zapsáno do transakce · {n} řádky',
+  'Commit to make it permanent, or roll it back.': 'Potvrďte, aby se uložilo natrvalo, nebo vraťte zpět.',
+  'Written into this tab’s transaction: Commit makes it permanent. If any statement fails, none of these is written.': 'Zapíše se do transakce této záložky, natrvalo ji uloží až Potvrdit. Když některý příkaz selže, nezapíše se nic z nich.',
+  'The tab’s transaction failed: roll it back first.': 'Transakce záložky selhala: nejdřív ji vraťte zpět.',
+  'Waiting for a lock held by “{tab}”: commit or roll back there, or cancel this query.': 'Čeká na zámek, který drží „{tab}“: potvrďte ji nebo vraťte zpět, případně tento dotaz zrušte.',
+  'Waiting for a lock held by session {id} (not this app). Server activity shows what it runs.': 'Čeká na zámek, který drží session {id} (mimo tuto aplikaci). Co dělá, ukáže Aktivita serveru.',
+  'Show AI assistant': 'Zobrazit AI asistenta',
 }
