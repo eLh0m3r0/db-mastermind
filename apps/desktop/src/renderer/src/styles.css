@@ -401,3 +401,8 @@ button.bg-success:focus-visible { outline-color: color-mix(in srgb, var(--succes
 
 /* A look's own font can be turned off (Settings → Appearance → Font): the usual one again. */
 :root.standard-font { --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', Inter, Roboto, 'Helvetica Neue', Arial, sans-serif; }
+
+/* Dividers between inactive tabs: faint, stronger with high contrast, light on a colored title bar. */
+.tab-divider { background: var(--border); }
+:root.high-contrast .tab-divider { background: var(--border-strong); }
+:root:is(.look-retro2001, .look-christmas, .look-medieval) .tab-divider { background: rgba(255, 255, 255, 0.3); }

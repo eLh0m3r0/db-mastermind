@@ -61,7 +61,7 @@ export function TabBar() {
       )}
       {/* The first tab keeps off the sidebar's border line. */}
       <div className="no-drag flex min-w-0 flex-1 items-end overflow-x-auto pl-1.5 [mask-image:linear-gradient(to_right,black_calc(100%-28px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {tabs.map((tab) => {
+        {tabs.map((tab, i) => {
           const Icon = ICONS[tab.kind]
           const conn = connections.find((c) => c.id === tab.connectionId)
           const active = tab.id === activeId
@@ -97,6 +97,8 @@ export function TabBar() {
                 dropTarget === tab.id && 'border-l-2 border-l-accent',
               )}
             >
+              {/* A faint divider between inactive tabs shows where one ends (not next to the selected one, nor on hover). */}
+              {!active && tabs[i + 1]?.id !== activeId && <span aria-hidden className="tab-divider absolute top-[9px] right-0 bottom-[9px] w-px group-hover:hidden" />}
               {/* The selected tab is marked with the accent, like every selection in the app. */}
               {active && <span className="absolute inset-x-2 top-0 h-[2px] rounded-b bg-accent" />}
               <Icon size={13} className={cn('shrink-0', active ? 'text-accent' : 'text-fg-faint')} />
