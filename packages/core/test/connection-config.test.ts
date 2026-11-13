@@ -14,7 +14,7 @@ describe('connection settings', () => {
     expect(sameServer(pg, { ...pg, id: 'b', name: 'x', database: 'crm' })).toBe(true)
     expect(sameServer(pg, { ...pg, user: 'admin' })).toBe(false)
     expect(sameServer(pg, { ...pg, port: 5433 })).toBe(false)
-    expect(sameServer(pg, { ...pg, ssh: { host: 'bastion', port: 22, user: 'me' } })).toBe(false)
+    expect(sameServer(pg, { ...pg, ssh: { enabled: true, authMethod: 'password', host: 'bastion', port: 22, user: 'me' } })).toBe(false)
   })
   it('offers other databases only where a server has several behind one login', () => {
     expect(['postgres', 'mysql', 'mariadb', 'mssql', 'clickhouse'].every((d) => supportsOtherDatabases(d as ConnectionConfig['driver']))).toBe(true)
