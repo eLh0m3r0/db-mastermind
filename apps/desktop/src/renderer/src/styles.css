@@ -323,8 +323,8 @@ textarea,
   --text: #f3e6d0; --text-muted: #c7b293; --text-faint: #8a7559;
   --accent: #ff7518; --accent-hover: #ff8c3f; --accent-soft: rgba(255, 117, 24, 0.16); --accent-fg: #140b02;
   --success: #8fd14f; --success-soft: rgba(143, 209, 79, 0.14); --info: #a77bff;
-  /* The open-transaction warning must not look like the orange accent: slime yellow-green. */
-  --warning: #cfe35a; --warning-soft: rgba(207, 227, 90, 0.14); --grid-edited: rgba(207, 227, 90, 0.26);
+  /* The open-transaction warning must look like neither the orange accent nor the green Commit: acid yellow. */
+  --warning: #f2d43c; --warning-soft: rgba(242, 212, 60, 0.14); --grid-edited: rgba(242, 212, 60, 0.24);
   --grid-header: #1d1610; --grid-row-alt: #181209; --grid-selected: rgba(255, 117, 24, 0.22); --null: #6f5d45;
 }
 
@@ -373,6 +373,10 @@ textarea,
 /* Colored title bars: light icons and inactive tabs (the active tab keeps the page's own colors). */
 :root.look-retro2001 .drag-region,
 :root.look-christmas .drag-region,
+/* Hover and pressed buttons lighten a colored bar instead of darkening it; icons and text in it are light. */
+:root:is(.look-retro2001, .look-christmas, .look-medieval) :is(.drag-region, .title-band) {
+  --bg-hover: rgba(255, 255, 255, 0.14); --bg-active: rgba(255, 255, 255, 0.24); --text: #ffffff;
+}
 :root.look-medieval :is(.drag-region, .title-band) { --text-muted: #f4ead2; --text-faint: #e6d9b8; }
 :root.look-retro2001 :is(.drag-region, .title-band) { --text-muted: #eef3ff; --text-faint: #d4e1ff; }
 :root.look-christmas :is(.drag-region, .title-band) { --text-muted: #eef8f0; --text-faint: #cfe8d6; }
@@ -391,3 +395,6 @@ textarea,
 
 /* On a colored title bar, accent-colored icons (the AI sparkle) take the bar's text color. */
 :root:is(.look-retro2001, .look-christmas, .look-medieval) :is(.drag-region, .title-band) .text-accent:not([role='tab'][aria-selected='true'] *) { color: inherit; }
+
+/* The Commit button's focus ring in its own green, not the accent around it. */
+button.bg-success:focus-visible { outline-color: color-mix(in srgb, var(--success) 60%, transparent); outline-offset: 2px; }

@@ -243,7 +243,7 @@ const TableNode = memo(function TableNode({ id, data, selected }: NodeProps<Node
         {data.status !== 'live' ? (
           <span className="ml-auto rounded bg-white/25 px-1 text-[9.5px] font-bold uppercase">{t(data.status)}</span>
         ) : (
-          table.schema && <span className="ml-auto truncate text-[10px] font-normal opacity-75">{table.schema}</span>
+          table.schema && <span className="ml-auto truncate text-[10px] font-normal opacity-90">{table.schema}</span>
         )}
         {/* Dragged to another table: this table gets the key column and the foreign key (as drawing a relationship does in DeZign). */}
         {/* (Always there, as the library measures a node's handles once: shown and live only while designing.) */}
