@@ -16,6 +16,8 @@ export interface ConfirmOptions {
   confirmLabel: string
   /** Destructive: red button and a warning icon. */
   danger?: boolean
+  /** The confirm button is the app's Commit green. */
+  success?: boolean
   /** An extra warning line (e.g. a production connection). */
   warning?: string
 }
@@ -105,7 +107,7 @@ export function ConfirmDialog() {
               {ask.secondary.label}
             </Button>
           )}
-          <Button variant={ask?.danger ? 'danger' : 'primary'} onClick={() => finish(true)} disabled={empty} data-autofocus={ask?.danger || ask?.text ? undefined : true}>
+          <Button variant={ask?.danger ? 'danger' : ask?.success ? 'success' : 'primary'} onClick={() => finish(true)} disabled={empty} data-autofocus={ask?.danger || ask?.text ? undefined : true}>
             {ask?.confirmLabel}
           </Button>
         </>

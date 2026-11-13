@@ -8,7 +8,7 @@ import { api, modKey } from '@/lib/api'
 import { forgetRecentModel, queryFile, openModel, recentModels } from '@/lib/files'
 import { useConnections } from '@/store/connections'
 import { useUi } from '@/store/ui'
-import { DriverIcon } from '../connections/drivers'
+import { connectionDetail, DriverIcon } from '../connections/drivers'
 import { connectAndSelect, openImportMenu, StatusDot } from '../sidebar/Sidebar'
 import { useT } from '@/lib/i18n'
 import { LookDecoration } from '@/components/LookDecoration'
@@ -74,7 +74,7 @@ export function HomeScreen() {
                       {c.environment === 'production' && <span className="rounded bg-danger px-1 text-[9.5px] font-bold text-white">PROD</span>}
                     </>
                   }
-                  detail={isFileDriver(c.driver) ? c.filePath || t('in-memory') : `${c.host ?? ''}${c.database ? `/${c.database}` : ''}`}
+                  detail={connectionDetail(c)}
                   extra={<StatusDot id={c.id} />}
                   accent={c.color}
                 />

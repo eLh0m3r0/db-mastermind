@@ -79,7 +79,7 @@ export function TransactionBar({ tabId, driver, manual }: { tabId: string; drive
           failed ? 'border-danger/40 bg-danger-soft text-danger' : stale ? 'border-warning bg-warning text-white' : 'border-warning/40 bg-warning-soft text-warning',
         )}
       >
-        {failed ? <AlertTriangle size={13} /> : <GitCommitHorizontal size={14} />}
+        {failed ? <AlertTriangle size={13} /> : <GitCommitHorizontal size={14} className={cn(changes > 0 && '@max-[700px]:hidden')} />}
         <span className="@max-[700px]:hidden">
         {failed
           ? t('Transaction failed')
@@ -88,15 +88,14 @@ export function TransactionBar({ tabId, driver, manual }: { tabId: string; drive
             : t('Transaction open')}
         </span>
         {/* Narrow toolbar: the count says enough next to the icon. */}
-        {!failed && changes > 0 && <span className="hidden tabular-nums @max-[700px]:inline">{changes}</span>}
+        {!failed && changes > 0 && <span className="hidden tabular-nums @max-[700px]:inline">{tp(changes, { one: '{n} change', many: '{n} changes' })}</span>}
         {!failed && minutes >= 1 && <span className={cn('tabular-nums', !stale && 'opacity-75')}>· {minutes < 60 ? t('{n} min', { n: minutes }) : t('{n} h', { n: Math.floor(minutes / 60) })}</span>}
         <ChevronDown size={12} className="opacity-70" />
       </button>
       {!failed && (
         <Button
           size="sm"
-          variant="subtle"
-          className="bg-success text-white hover:bg-success hover:opacity-90"
+          variant="success"
           icon={<Check size={13} strokeWidth={2.5} />}
           loading={tx.ending}
           onClick={() => void endTransaction(tabId, 'commit')}

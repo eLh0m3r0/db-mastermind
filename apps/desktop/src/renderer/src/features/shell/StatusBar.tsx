@@ -33,9 +33,7 @@ export function StatusBar() {
           {runtime?.schema && <span>{tp(runtime.schema.tables.length, { one: '{n} table', many: '{n} tables' }, { n: formatCount(runtime.schema.tables.length) })}</span>}
           {tab?.kind === 'table' && <span className="truncate">{tab.table.schema ? `${tab.table.schema}.` : ''}{tab.table.name}</span>}
         </>
-      ) : (
-        <span>{t('Not connected')}</span>
-      )}
+      ) : null}
       <div className="flex-1" />
       <button type="button" className="flex items-center gap-1 hover:text-fg" onClick={() => setUi({ aiPanelVisible: !useUi.getState().aiPanelVisible })}>
         <Sparkles size={11} /> AI

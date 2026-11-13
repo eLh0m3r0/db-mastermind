@@ -44,7 +44,7 @@ export function SettingsModal() {
   return (
     <Modal open={open} onClose={() => setUi({ modal: undefined })} title={t('Settings')} width={760} bodyClassName="p-0">
       <div className="flex min-h-[460px]">
-        <nav className="w-[180px] shrink-0 border-r border-line bg-subtle p-2">
+        <nav className="w-[180px] shrink-0 rounded-bl-xl border-r border-line bg-subtle p-2">
           {/* Sticky: on long sections (MCP server) the list stays in view while the content scrolls. */}
           <div className="sticky top-2 flex flex-col gap-0.5">
           {SECTIONS.map(([id, label]) => (
@@ -210,10 +210,7 @@ function TeamFolderRow() {
     }
   }
   return (
-    <Row
-      label={t('Team folder')}
-      hint={t('A shared folder (network drive, OneDrive, Git) with connections.json, queries/*.sql and knowledge/: everyone gets the same connections, saved queries and notes.')}
-    >
+    <Row label={t('Team folder')}>
       <div className="flex flex-col gap-1 text-[12.5px]">
         <div className="flex items-center gap-2">
           {status?.folder ? <code className="truncate rounded bg-subtle px-1.5 py-0.5 text-[12px] select-text">{status.folder}</code> : <span className="text-fg-faint">{t('None')}</span>}
@@ -236,6 +233,9 @@ function TeamFolderRow() {
             {status.locked && ` · ${t('set by your organization')}`}
           </span>
         )}
+        <span className="text-[11.5px] leading-snug text-fg-faint">
+          {t('A shared folder (network drive, OneDrive, Git) with connections.json, queries/*.sql and knowledge/: everyone gets the same connections, saved queries and notes.')}
+        </span>
       </div>
     </Row>
   )

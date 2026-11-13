@@ -22,7 +22,7 @@ export const LOOKS: Look[] = [
   { id: 'blue', group: 'standard', name: 'Blue', swatch: ['#ffffff', '#f6f7f9', '#2563eb'] },
   { id: 'teal', group: 'standard', name: 'Teal', swatch: ['#ffffff', '#f6f7f9', '#0f8f8a'] },
   { id: 'green', group: 'standard', name: 'Green', swatch: ['#ffffff', '#f6f7f9', '#16803c'] },
-  { id: 'orange', group: 'standard', name: 'Orange', swatch: ['#ffffff', '#f6f7f9', '#d9590b'] },
+  { id: 'orange', group: 'standard', name: 'Orange', swatch: ['#ffffff', '#f6f7f9', '#c2410c'] },
   { id: 'rose', group: 'standard', name: 'Rose', swatch: ['#ffffff', '#f6f7f9', '#d6336c'] },
   { id: 'retro2001', group: 'retro', name: 'Retro 2001', swatch: ['#ece9d8', '#245edb', '#3c9b2f'], dark: false, emoji: '💾' },
   { id: 'terminal', group: 'retro', name: 'Green terminal', swatch: ['#000000', '#0a140c', '#33ff66'], dark: true, emoji: '▮' },

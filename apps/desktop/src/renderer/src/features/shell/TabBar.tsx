@@ -61,7 +61,7 @@ export function TabBar() {
         </IconButton>
       )}
       {/* The first tab keeps off the sidebar's border line. */}
-      <div className="no-drag flex min-w-0 flex-1 items-end overflow-x-auto pl-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="no-drag flex min-w-0 flex-1 items-end overflow-x-auto pl-1.5 [mask-image:linear-gradient(to_right,black_calc(100%-28px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {tabs.map((tab) => {
           const Icon = ICONS[tab.kind]
           const conn = connections.find((c) => c.id === tab.connectionId)

@@ -2,7 +2,7 @@ import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { Spinner } from './Spinner'
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'subtle'
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'subtle' | 'success'
 type Size = 'xs' | 'sm' | 'md'
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -18,6 +18,8 @@ const variants: Record<Variant, string> = {
   ghost: 'bg-transparent text-fg-muted border-transparent hover:bg-hover hover:text-fg',
   subtle: 'bg-muted text-fg border-transparent hover:bg-active',
   danger: 'bg-danger text-white border-transparent hover:opacity-90',
+  // Commit: the same green in the toolbar and in dialogs.
+  success: 'bg-success text-[color:var(--success-fg)] border-transparent shadow-sm hover:opacity-90',
 }
 
 const sizes: Record<Size, string> = {

@@ -1,4 +1,5 @@
-import type { DriverId } from '@dbmastermind/core/browser'
+import { isFileDriver, type DriverId } from '@dbmastermind/core/browser'
+import { t } from '@/lib/i18n'
 
 export const DRIVERS: { id: DriverId; label: string; color: string; mark: string }[] = [
   { id: 'postgres', label: 'PostgreSQL', color: '#336791', mark: 'Pg' },
@@ -29,4 +30,10 @@ export function DriverIcon({ driver, size = 16 }: { driver: DriverId; size?: num
       {d.mark}
     </span>
   )
+}
+
+/** A connection's second line: the file's name (the full path is a tooltip) or user@host/database. */
+export function connectionDetail(c: { driver: DriverId; filePath?: string; user?: string; host?: string; database?: string }, withUser = false): string {
+  if (isFileDriver(c.driver)) return c.filePath ? (c.filePath.split(/[\\/]/).pop() ?? c.filePath) : t('in-memory')
+  return `${withUser && c.user ? `${c.user}@` : ''}${c.host ?? ''}${c.database ? `/${c.database}` : ''}`
 }

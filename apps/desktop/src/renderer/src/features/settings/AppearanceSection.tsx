@@ -111,7 +111,12 @@ function LookCard({ look, dark, selected, onPick }: { look: Look; dark: boolean;
       onClick={onPick}
       className={cn('flex w-[78px] flex-col gap-1 rounded-lg p-1 text-left', selected ? 'bg-accent-soft ring-2 ring-accent' : 'hover:bg-hover')}
     >
-      <span className="flex h-9 w-full flex-col overflow-hidden rounded-md border border-line-strong" style={{ background: page }}>
+      <span className="relative flex h-9 w-full flex-col overflow-hidden rounded-md border border-line-strong" style={{ background: page }}>
+        {look.emoji && (
+          <span aria-hidden className="absolute top-[9px] left-1 text-[10px] leading-none">
+            {look.emoji}
+          </span>
+        )}
         <span className="h-2 shrink-0" style={{ background: bar }} />
         <span className="flex flex-1 items-end justify-between p-1">
           <span className="h-1 w-6 rounded-full opacity-40" style={{ background: standard ? (dark ? '#a1a8b5' : '#5b6372') : accent }} />
@@ -120,7 +125,6 @@ function LookCard({ look, dark, selected, onPick }: { look: Look; dark: boolean;
       </span>
       <span className="line-clamp-2 min-h-[2lh] px-0.5 text-[11px] leading-tight">
         {t(look.name)}
-        {look.emoji && <span aria-hidden className="ml-0.5">{look.emoji}</span>}
       </span>
     </button>
   )

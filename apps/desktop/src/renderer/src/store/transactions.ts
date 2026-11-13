@@ -126,6 +126,7 @@ export async function settleTransactions(tabIds: string[], titles: (tabId: strin
         }),
         items,
         confirmLabel: t('Commit'),
+        success: true,
         secondaryLabel: t('Roll back'),
       })
   if (!choice) return false

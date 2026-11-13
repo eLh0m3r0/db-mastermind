@@ -37,7 +37,7 @@ import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { dismissToast, toast, useUi } from '@/store/ui'
 import { useActiveTab, useWorkspace } from '@/store/workspace'
-import { DriverIcon, driverLabel } from '../connections/drivers'
+import { connectionDetail, DriverIcon, driverLabel } from '../connections/drivers'
 import { HistoryPanel, SavedQueriesPanel } from './LibraryPanels'
 import { SchemaTree } from './SchemaTree'
 import { t, tp, useT } from '@/lib/i18n'
@@ -315,7 +315,7 @@ function ConnectionHeader({ connection }: { connection: StoredConnection }) {
           </div>
           <div className="flex items-center gap-1.5 text-[11px] text-fg-faint">
             <StatusDot id={connection.id} />
-            <span className="truncate">{isFileDriver(connection.driver) ? connection.filePath || t('in-memory') : `${connection.user ? `${connection.user}@` : ''}${connection.host ?? ''}${connection.database ? `/${connection.database}` : ''}`}</span>
+            <span className="truncate" title={connection.filePath}>{connectionDetail(connection, true)}</span>
           </div>
         </div>
         <ChevronDown size={13} className="shrink-0 text-fg-faint" />
@@ -356,13 +356,13 @@ function ConnectionList() {
                 key={c.id}
                 type="button"
                 className="flex h-9 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-hover"
+                style={c.color ? { boxShadow: `inset 3px 0 0 ${c.color}` } : undefined}
                 onClick={() => void connectAndSelect(c.id)}
                 onContextMenu={(e) => openMenu(e, connectionMenu(c))}
               >
                 <DriverIcon driver={c.driver} size={18} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 truncate text-[12.5px] font-medium">
-                    {c.color && <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: c.color }} />}
                     <span className="truncate">{c.name}</span>
                     {c.team && !c.managed && (
                       <span title={t('Shared through the team folder')}>
@@ -375,7 +375,7 @@ function ConnectionList() {
                       </span>
                     )}
                   </div>
-                  <div className="truncate text-[11px] text-fg-faint">{isFileDriver(c.driver) ? c.filePath || t('in-memory') : `${c.host ?? ''}${c.database ? `/${c.database}` : ''}`}</div>
+                  <div className="truncate text-[11px] text-fg-faint" title={c.filePath}>{connectionDetail(c)}</div>
                 </div>
                 <StatusDot id={c.id} />
               </button>
