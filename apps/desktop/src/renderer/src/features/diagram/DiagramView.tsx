@@ -38,6 +38,7 @@ import {
   incomingReferences,
   joinPathSql,
   buildDataDictionary,
+  COMMON_TYPES,
   parseDbml,
   toDbml,
   toDesignTable,
@@ -91,6 +92,46 @@ interface TableNodeData extends Record<string, unknown> {
   referencedColumns: Set<string>
   /** Series palette index (1–8) for the header, when the user colored the table. */
   color?: number
+  /** A model's table is edited in place: its name, a column's name and type, a new column. */
+  edit?: NodeEdits
+}
+
+interface NodeEdits {
+  renameTable: (key: string, name: string) => void
+  renameColumn: (key: string, from: string, to: string) => void
+  retype: (key: string, column: string, type: string) => void
+  /** Adds a column and gives its name (to be typed over). */
+  addColumn: (key: string) => string | undefined
+  toggleNull: (key: string, column: string) => void
+}
+
+/** A name or a type typed over in place on the canvas: Enter or leaving it keeps it, Esc does not. */
+function InlineInput({ value, onDone, className, list }: { value: string; onDone: (value: string | undefined) => void; className?: string; list?: string }) {
+  const [text, setText] = useState(value)
+  const done = useRef(false)
+  const finish = (keep: boolean) => {
+    if (done.current) return
+    done.current = true
+    onDone(keep && text.trim() && text.trim() !== value ? text.trim() : undefined)
+  }
+  return (
+    <input
+      autoFocus
+      onFocus={(e) => e.currentTarget.select()}
+      value={text}
+      list={list}
+      onChange={(e) => setText(e.target.value)}
+      onKeyDown={(e) => {
+        e.stopPropagation()
+        if (e.key === 'Enter') finish(true)
+        if (e.key === 'Escape') finish(false)
+      }}
+      onBlur={() => finish(true)}
+      onDoubleClick={(e) => e.stopPropagation()}
+      className={cn('nodrag nopan min-w-0 rounded border border-accent bg-bg px-1 text-fg outline-none', className)}
+      data-testid="inline-edit"
+    />
+  )
 }
 
 type DezignColumnsShown = DiagramDisplay['columns']
@@ -131,8 +172,14 @@ function visibleColumns(t: TableInfo, shown: Shown, fkColumns: Set<string>, refe
 /** The "+ n more columns" line: where a level leaves columns out, not where the user hid some on purpose. */
 const showsMore = (shown: Shown) => shown.columns === 'keys' || shown.columns === 'first10' || shown.columns === 'first20'
 
-const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData>>) {
-  const { table, shown, fkColumns, referencedColumns } = data
+const TableNode = memo(function TableNode({ id, data, selected }: NodeProps<Node<TableNodeData>>) {
+  const { table, shown, fkColumns, referencedColumns, edit } = data
+  const [editing, setEditing] = useState<{ what: 'table' } | { what: 'name' | 'type'; column: string } | null>(null)
+  const startEdit = (e: React.MouseEvent, next: NonNullable<typeof editing>) => {
+    if (!edit) return
+    e.stopPropagation()
+    setEditing(next)
+  }
   const cols = visibleColumns(table, shown, fkColumns, referencedColumns)
   // IDEF1X: a dependent table (its key holds a parent's key) has rounded corners, an independent one square.
   const idef1x = shown.notation === 'idef1x'
@@ -162,7 +209,13 @@ const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData
         title={table.comment ?? undefined}
       >
         {table.type === 'table' ? <Table2 size={12} /> : <Eye size={12} />}
-        <span className="truncate">{table.name}</span>
+        {editing?.what === 'table' && edit ? (
+          <InlineInput value={table.name} className="h-5 flex-1 text-[12px] font-semibold" onDone={(v) => (setEditing(null), v && edit.renameTable(id, v))} />
+        ) : (
+          <span className="truncate" onDoubleClick={(e) => startEdit(e, { what: 'table' })} title={edit ? t('Double-click to rename') : undefined} data-testid={`node-name-${table.name}`}>
+            {table.name}
+          </span>
+        )}
         {data.status !== 'live' ? (
           <span className="ml-auto rounded bg-white/25 px-1 text-[9.5px] font-bold uppercase">{t(data.status)}</span>
         ) : (
@@ -195,9 +248,35 @@ const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData
           ) : (
             <span className="w-[10px] shrink-0" />
           )}
-          <span className={cn('truncate', c.isPrimaryKey && 'font-semibold')}>{c.name}</span>
-          {shown.types !== 'none' && <span className="ml-auto max-w-[45%] shrink-0 truncate font-mono text-[10px] text-fg-faint">{shown.types === 'domain' && c.domain ? c.domain : c.dataType}</span>}
-          {!c.nullable && !c.isPrimaryKey && <span className="text-[9px] text-fg-faint">NN</span>}
+          {editing?.what === 'name' && editing.column === c.name && edit ? (
+            <InlineInput value={c.name} className="h-[18px] flex-1 text-[11px]" onDone={(v) => (setEditing(null), v && edit.renameColumn(id, c.name, v))} />
+          ) : (
+            <span className={cn('truncate', c.isPrimaryKey && 'font-semibold')} onDoubleClick={(e) => startEdit(e, { what: 'name', column: c.name })} data-testid={`node-column-${table.name}-${c.name}`}>
+              {c.name}
+            </span>
+          )}
+          {editing?.what === 'type' && editing.column === c.name && edit ? (
+            <InlineInput value={c.dataType} list="dbm-canvas-types" className="ml-auto h-[18px] w-[45%] font-mono text-[10px]" onDone={(v) => (setEditing(null), v && edit.retype(id, c.name, v))} />
+          ) : (
+            shown.types !== 'none' && (
+              <span className="ml-auto max-w-[45%] shrink-0 truncate font-mono text-[10px] text-fg-faint" onDoubleClick={(e) => startEdit(e, { what: 'type', column: c.name })} data-testid={`node-type-${table.name}-${c.name}`}>
+                {shown.types === 'domain' && c.domain ? c.domain : c.dataType}
+              </span>
+            )
+          )}
+          {edit && selected && !c.isPrimaryKey ? (
+            <button
+              type="button"
+              className={cn('nodrag rounded px-0.5 text-[9px] hover:bg-hover', c.nullable ? 'text-fg-faint/50' : 'font-semibold text-fg-muted')}
+              title={c.nullable ? t('Allows empty values: click for NOT NULL') : t('NOT NULL: click to allow empty values')}
+              onClick={(e) => (e.stopPropagation(), edit.toggleNull(id, c.name))}
+              data-testid={`node-nn-${table.name}-${c.name}`}
+            >
+              NN
+            </button>
+          ) : (
+            !c.nullable && !c.isPrimaryKey && <span className="text-[9px] text-fg-faint">NN</span>
+          )}
           <Handle type="source" position={Position.Right} id={`s-${c.name}`} className={cn('!z-10 !h-1.5 !w-1.5 !min-w-0 !border-0', data.design ? '!h-2.5 !w-2.5 !bg-accent' : '!bg-transparent')} />
         </div>
       ))}
@@ -211,6 +290,22 @@ const TableNode = memo(function TableNode({ data }: NodeProps<Node<TableNodeData
         <div className="border-t border-line px-2.5 text-[10.5px] text-fg-faint" style={{ height: ROW, lineHeight: `${ROW}px` }}>
           + {table.columns.length - cols.length} more columns
         </div>
+      )}
+      {edit && selected && table.type === 'table' && (
+        <button
+          type="button"
+          className="nodrag flex w-full items-center gap-1 border-t border-line px-2.5 text-left text-[10.5px] text-fg-muted hover:bg-hover hover:text-fg"
+          style={{ height: ROW }}
+          onClick={(e) => {
+            e.stopPropagation()
+            const name = edit.addColumn(id)
+            if (name) setEditing({ what: 'name', column: name })
+          }}
+          data-testid={`node-add-column-${table.name}`}
+        >
+          <Plus size={10} />
+          {t('column')}
+        </button>
       )}
     </div>
   )
@@ -776,6 +871,18 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
 
   const latest = useRef({ display, columnSets, edges })
   latest.current = { display, columnSets, edges }
+  // In-place edits of a model's tables (stable for the nodes; the work is done by the functions of the latest render).
+  const editsRef = useRef<NodeEdits | null>(null)
+  const nodeEdits = useMemo<NodeEdits>(
+    () => ({
+      renameTable: (key, name) => editsRef.current?.renameTable(key, name),
+      renameColumn: (key, from, to) => editsRef.current?.renameColumn(key, from, to),
+      retype: (key, column, type) => editsRef.current?.retype(key, column, type),
+      addColumn: (key) => editsRef.current?.addColumn(key),
+      toggleNull: (key, column) => editsRef.current?.toggleNull(key, column),
+    }),
+    [],
+  )
   const nodeData = (d: (typeof display)[number]): TableNodeData => ({
     table: d.info,
     status: d.status,
@@ -787,6 +894,7 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
     fkColumns: columnSets.fk.get(d.info.name) ?? new Set(),
     referencedColumns: columnSets.ref.get(d.info.name) ?? new Set(),
     color: tab.colors?.[d.key],
+    edit: modelMode ? nodeEdits : undefined,
   })
   // Re-layout only when the set of tables changes, not on every edit.
   const structure = `${liveTables.map(keyOf).join('|')}#${shownAs.columns}#${shownAs.notation ?? ''}#${JSON.stringify(shownAs.hidden ?? {})}`
@@ -1011,7 +1119,34 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
     const live = liveTables.find((t) => keyOf(t) === key)
     return live ? toDesignTable(live) : undefined
   }
-  const updateDraft = (key: string, table: DesignTable) => {
+  const editTable = (key: string, change: (t: DesignTable) => DesignTable) => {
+    const draft = draftFor(key)
+    if (draft) updateDraft(key, change(draft), draft)
+  }
+  editsRef.current = {
+    renameTable: (key, name) => editTable(key, (t) => ({ ...t, name })),
+    renameColumn: (key, from, to) =>
+      editTable(key, (t) => {
+        if (t.columns.some((c) => c.name.toLowerCase() === to.toLowerCase() && c.name !== from)) return t
+        const rename = (n: string) => (n === from ? to : n)
+        // (A package decides its columns' names: a renamed one is the table's own.)
+        return { ...t, columns: t.columns.map((c) => (c.name === from ? { ...c, name: to, package: undefined } : c)), primaryKey: t.primaryKey.map(rename), foreignKeys: t.foreignKeys.map((f) => ({ ...f, columns: f.columns.map(rename) })), indexes: t.indexes.map((i) => ({ ...i, columns: i.columns.map(rename) })) }
+      }),
+    retype: (key, column, type) => editTable(key, (t) => ({ ...t, columns: t.columns.map((c) => (c.name === column ? { ...c, dataType: type, domain: undefined, package: undefined } : c)) })),
+    addColumn: (key) => {
+      const draft = draftFor(key)
+      if (!draft) return undefined
+      let n = draft.columns.length + 1
+      while (draft.columns.some((c) => c.name === `column_${n}`)) n++
+      const types = editorDriver ? COMMON_TYPES[editorDriver] : []
+      const type = types.find((x) => /char|text/i.test(x)) ?? types[0] ?? 'text'
+      updateDraft(key, { ...draft, columns: [...draft.columns, { id: designId('c'), name: `column_${n}`, dataType: type, nullable: true }] })
+      return `column_${n}`
+    },
+    toggleNull: (key, column) => editTable(key, (t) => ({ ...t, columns: t.columns.map((c) => (c.name === column ? { ...c, nullable: !c.nullable } : c)) })),
+  }
+  /** `prior`: the draft the change was made from (a draft made afresh from the live table gets new column ids). */
+  const updateDraft = (key: string, table: DesignTable, prior?: DesignTable) => {
     // Dropping a table that doesn't exist yet just discards it.
     if (table.dropped && !table.originalName) {
       const next = { ...drafts }
@@ -1023,7 +1158,29 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
     const next = { ...drafts, [key]: table }
     // In a model, a table renamed or moved to another schema takes the relationships that point at it along
     // (a database renames them by itself; a model is only text).
-    const before = draftFor(key)
+    const before = prior ?? draftFor(key)
+    // A renamed column (same id, another name) is followed by the keys that point at it.
+    const renamedCols = new Map<string, string>()
+    for (const c of before?.columns ?? []) {
+      const now = table.columns.find((x) => x.id === c.id)
+      if (now && now.name !== c.name) renamedCols.set(c.name, now.name)
+    }
+    if (model && before && renamedCols.size > 0) {
+      const pointsHere = (draft: DesignTable, f: DesignTable['foreignKeys'][number]) => f.refTable === before.name && (f.refSchema ?? draft.schema ?? '') === (before.schema ?? '')
+      const followCols = (draft: DesignTable) =>
+        draft.foreignKeys.some((f) => pointsHere(draft, f) && f.refColumns.some((c) => renamedCols.has(c)))
+          ? { ...draft, foreignKeys: draft.foreignKeys.map((f) => (pointsHere(draft, f) ? { ...f, refColumns: f.refColumns.map((c) => renamedCols.get(c) ?? c) } : f)) }
+          : draft
+      next[key] = followCols(next[key]!)
+      for (const d of display) {
+        if (d.key === key) continue
+        const draft = next[d.key] ?? draftFor(d.key)
+        if (!draft) continue
+        const followed = followCols(draft)
+        if (followed !== draft) next[d.key] = followed
+      }
+      table = next[key]!
+    }
     if (model && before && (before.name !== table.name || (before.schema ?? '') !== (table.schema ?? ''))) {
       const follow = (draft: DesignTable) => {
         let touched = false
@@ -1660,7 +1817,7 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
           <IconButton label={`${tr('Redo')} (${keys('⇧⌘Z')})`} disabled={!history.current.future.length && !modelHistory?.canRedo} onClick={redoDesign}>
             <Redo size={14} />
           </IconButton>
-          <span className="min-w-0 flex-1 truncate text-fg-faint">{tr('Double-click a table or a line to edit it; drag from a column’s dot to another table to relate them.')}</span>
+          <span className="min-w-0 flex-1 truncate text-fg-faint">{tr('Double-click a name or a type to change it, the rest of a table or a line for its details; drag from a column’s dot to another table to relate them.')}</span>
         </div>
       )}
       {design && !modelMode && (
@@ -1796,6 +1953,13 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
       )}
       <div ref={workArea} className="relative flex min-h-0 flex-1">
       <div ref={wrapper} className="min-h-0 min-w-0 flex-1">
+        {modelMode && editorDriver && (
+          <datalist id="dbm-canvas-types">
+            {COMMON_TYPES[editorDriver].map((x) => (
+              <option key={x} value={x} />
+            ))}
+          </datalist>
+        )}
         <svg width="0" height="0" className="absolute">
           <defs>
             {/* At the path start with auto-start-reverse, +x points into the source node: prongs spread at the node edge (x=15). */}
@@ -1836,6 +2000,8 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
           nodesConnectable={design}
           onNodeClick={(_, n) => {
             if (!design || isNote(n.id)) return
+            // A model's panel opens on a double-click; once open, it follows the table clicked.
+            if (modelMode && !selected) return
             setFocusFk(undefined)
             setSelected(n.id)
           }}
@@ -1883,7 +2049,7 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
           }}
           onNodeDoubleClick={(_, n) => {
             if (isNote(n.id)) return
-            // In a model, as in DeZign: the table's properties. In a database: its data.
+            // In a model: the table's details. In a database: its data.
             if (model && onApplyModel) {
               setFocusFk(undefined)
               setSelected(n.id)

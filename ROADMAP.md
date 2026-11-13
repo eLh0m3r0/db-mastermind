@@ -644,7 +644,10 @@ compatibility while the screens change).
   comment, domain, notes, labels, properties, to do, its package). A relationship's identifying / mandatory /
   subtype are in its row; the table's SQL is at the bottom. A model is always editable (no Design switch) and
   takes canvas changes as they are made (no "Write to DBML"): written once nothing is being typed, ⌘Z takes them back
-- ⬜ In place on the canvas: rename a table or a column, add a column (Enter), its type and NOT NULL
+- ✅ In place on the canvas: a double-click on a table's name, a column's name or its type types over it (Enter
+  keeps, Esc drops); a selected table offers "+ column" and NN toggles; keys pointing at a renamed column or
+  table follow it. A double-click elsewhere on a table (or on a line) opens the panel; once open, it follows the
+  table clicked. Each edit is a step of ⌘Z (e2e/flow97)
 
 ---
 

@@ -145,27 +145,26 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
 - **Export do DeZignu:** model vytvořený tady uložíte přes *Uložit jako…* i jako nový projekt DeZign for Databases
   pro kolegy, kteří pracují v DeZignu: jeden soubor `.dez`, nebo složkový projekt `.dezproj` (pro Git, soubor
   na každý objekt). Ověřeno v DeZignu 14.9.3: projekt otevře a uloží beze ztráty.
-- **Panel tabulky:** v režimu *Návrh* kliknutím na tabulku otevřete panel, kde upravíte sloupce (název, typ,
-  NOT NULL, výchozí hodnotu, komentář, pořadí, doménu), cizí klíče (i název a ON UPDATE), indexy a kontroly
-  CHECK. Funguje i u modelu bez připojené databáze; *Zapsat do DBML* přenese změny do textu modelu. Vazbu
-  nakreslíte tažením zelené tečky v záhlaví tabulky na jinou tabulku: sloupec klíče se vytvoří sám. Kliknutím na
-  čáru vazby otevřete její vlastnosti (kardinalita, ON DELETE/UPDATE, sloupce složeného klíče), dvojklikem na
-  tabulku její panel. V panelu je i víceřádkový komentář, poznámky (Notes), řazení (collation) a schéma, do kterého
-  tabulka patří. Pravým tlačítkem tabulku zduplikujete nebo smažete; klávesa Delete smaže vybrané tabulky (v panelu
-  je jde vrátit). Více tabulek vyberete tažením s klávesou Shift nebo klikáním s Shiftem a v liště nahoře je
-  zarovnáte nebo rovnoměrně rozmístíte; tabulky se při přesunu přichytávají k mřížce. ⌘Z / Ctrl+Z vrací i přesuny.
+- **Úpravy přímo na plátně:** model je vždy upravitelný a změny se do něj zapisují hned, jak je děláte (žádné
+  *Zapsat do DBML*); ⌘Z / Ctrl+Z je vrací po krocích. Dvojklikem na název tabulky, název sloupce nebo jeho typ ho
+  přepíšete na místě (Enter potvrdí, Esc zruší); u vybrané tabulky přidá *+ sloupec* nový sloupec a kliknutím na
+  *NN* přepnete NOT NULL. Přejmenovaný sloupec nebo tabulku následují vazby, které na ně ukazují.
+- **Panel podrobností:** dvojklikem jinam na tabulku nebo na čáru vazby otevřete panel vpravo (v úzkém okně se
+  vysune přes diagram, špendlík ho nechá ukotvený, Esc ho zavře). Sloupce jsou po jednom řádku (klíč, název, typ,
+  NOT NULL); ten, na kterém pracujete, ukáže výchozí hodnotu, komentář, doménu, poznámky, štítky, vlastnosti,
+  úkol a balíček. Dál jsou tu cizí klíče (identifikující, povinný, podtyp, ON DELETE/UPDATE), indexy, kontroly
+  CHECK, víceřádkový komentář, poznámky, schéma a dole náhled SQL. Vazbu nakreslíte tažením zelené tečky
+  v záhlaví tabulky na jinou tabulku: sloupec klíče se vytvoří sám. Pravým tlačítkem tabulku zduplikujete nebo
+  smažete; klávesa Delete smaže vybrané tabulky. Více tabulek vyberete tažením s klávesou Shift nebo klikáním
+  s Shiftem a v liště nahoře je zarovnáte nebo rovnoměrně rozmístíte; tabulky se při přesunu přichytávají k mřížce.
   ⌘C / Ctrl+C zkopíruje vybrané tabulky (i s vazbami mezi nimi), ⌘V / Ctrl+V je vloží jako nové do téhož nebo
   jiného modelu.
   Na plátně modelu se tažením po prázdné ploše vybírají tabulky (jako v DeZignu), kolečkem nebo dvěma prsty se
   posouvá a s klávesou ⌘ (Ctrl) přibližuje; ⌘A / Ctrl+A vybere všechny tabulky, ukazatel vlevo dole vrátí přiblížení na 100 %.
 - **Objekty modelu:** vlevo od diagramu je přepínač *Objekty / Text*. Objekty (u projektu z DeZignu výchozí)
   ukazují tabulky, vazby, domény a pohledy s hledáním; kliknutím tabulku najdete v diagramu, dvojklikem otevřete
-  její dialog. Text modelu (DBML) je o jedno kliknutí dál pro ty, kdo ho rádi píší. U modelů vytvořených
+  její panel. Text modelu (DBML) je o jedno kliknutí dál pro ty, kdo ho rádi píší. U modelů vytvořených
   v aplikaci jsou v Objektech i výčty (enum) a skupiny tabulek, upravují se v dialozích.
-- **Dialogy jako v DeZignu:** dvojklikem na tabulku modelu otevřete její dialog: sloupce v mřížce (název, typ,
-  PK, NOT NULL, autoinkrement, výchozí hodnota, doména, komentář; pod mřížkou poznámky a řazení vybraného
-  sloupce), indexy a kontroly, cizí klíče, popis a náhled SQL. Dvojklikem na čáru vazby otevřete dialog vazby:
-  kardinalita, identifikující vazba, povinný rodič, ON DELETE/UPDATE a náhled čáry. Změny platí až po OK.
 - **Kontroly modelu:** počítadlo v liště modelu ukazuje, co stojí za pozornost (tabulky bez klíče, nesoulad typů
   cizího klíče, duplicitní indexy, cizí klíče bez indexu, názvy mimo styl, vazby, které nikdo nedeklaroval,
   názvy delší, než databáze dovolí – PostgreSQL je nad 63 bajtů potichu ořízne).

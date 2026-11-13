@@ -41,7 +41,7 @@ try {
   await win.mouse.up()
   await win.waitForTimeout(600)
   console.log('a key dropped anywhere on the other table:', await win.locator('.react-flow__edge').count(), 'relationship,', await win.getByText(/Foreign key invoice\.customer_id → customer\.id added/).count(), 'notice')
-  await win.locator('.react-flow__node[data-id="shop.customer"]').click()
+  await win.locator('.react-flow__node[data-id="shop.customer"]').dblclick({ position: { x: 180, y: 12 } })
   await win.getByText('Edit table').waitFor({ timeout: 10000 })
   console.log('table panel opens:', await win.getByText('Edit table').count() === 1)
   // A column shows its details when worked on (one at a time).
@@ -106,7 +106,7 @@ try {
     await win.getByTestId('domain-name-0').fill('money_t')
     await win.getByTestId('domain-type-0').fill('numeric(12,2)')
   })
-  await win.locator('.react-flow__node[data-id="shop.customer"]').click()
+  await win.locator('.react-flow__node[data-id="shop.customer"]').dblclick({ position: { x: 180, y: 12 } })
   await win.getByTestId('column-name-credit').click()
   await win.getByTitle('The named type (domain) the column follows').last().selectOption('money_t')
   await win.keyboard.press('Escape') // (the canvas writes into the model once nothing is being typed)

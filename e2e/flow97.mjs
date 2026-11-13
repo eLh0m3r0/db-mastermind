@@ -1,4 +1,4 @@
-// Modelling without typing DBML, as in DeZign: a relationship clicked on the canvas opens its properties
+// Modelling without typing DBML: a relationship clicked on the canvas opens its properties
 // (cardinality), a table's comment of several lines and its notes, a table moved to another schema with the
 // relationships that point at it, a table duplicated from its menu, several tables lined up, a table deleted with
 // the Delete key. Everything ends up in the model text without writing any.
@@ -49,7 +49,7 @@ try {
 
   // The customer moves to another schema: the invoice's relationship follows it.
   await designing()
-  await node('shop.customer').click()
+  await node('shop.customer').dblclick({ position: { x: 180, y: 12 } })
   await win.getByTestId('table-schema').fill('sales')
   await write()
   text = await modelText()
@@ -83,7 +83,7 @@ try {
 
   // A table's details (double-click): its columns one line each, the SQL it makes, in the panel next to the diagram.
   await win.keyboard.press('Escape')
-  await node('shop.invoice').dblclick({ position: { x: 40, y: 12 } })
+  await node('shop.invoice').dblclick({ position: { x: 180, y: 12 } })
   await win.getByTestId('table-panel').waitFor({ timeout: 10000 })
   await win.getByTestId('column-type-total').fill('numeric(14,2)')
   await win.getByTestId('table-add-column').click()
@@ -106,7 +106,48 @@ try {
   const lineTable = /Table shop\.line \{[\s\S]*?\n\}/.exec(text)?.[0] ?? ''
   console.log('relationship details:', /shop\.line\.invoice_id > shop\.invoice\.id \[[^\]]*delete: cascade[^\]]*cardinality: 'one or more'/i.test(text) || /cardinality: 'one or more'[^\]]*delete: cascade/i.test(text), /invoice_id bigint \[[^\]]*pk/.test(lineTable) || /\(id, invoice_id\) \[pk\]/.test(lineTable))
 
-  // The Delete key takes a selected table out of the model.
+  // In place on the canvas: the table's name, a column's name (the key pointing at it follows), its type, a new
+  // column and NOT NULL, without the panel.
+  await win.keyboard.press('Escape')
+  await designing()
+  await win.getByTestId('node-name-invoice').dblclick()
+  await win.getByTestId('inline-edit').fill('bill')
+  await win.keyboard.press('Enter')
+  await win.waitForTimeout(600)
+  await win.getByTestId('node-column-bill-id').dblclick()
+  await win.getByTestId('inline-edit').fill('bill_id')
+  await win.keyboard.press('Enter')
+  await win.waitForTimeout(600)
+  await win.getByTestId('node-type-bill-total').dblclick()
+  await win.getByTestId('inline-edit').fill('numeric(16,2)')
+  await win.keyboard.press('Enter')
+  await win.waitForTimeout(600)
+  await node('shop.bill').click({ position: { x: 180, y: 12 } })
+  await win.getByTestId('node-add-column-bill').click()
+  await win.getByTestId('inline-edit').fill('paid_at')
+  await win.keyboard.press('Enter')
+  await win.waitForTimeout(600)
+  await win.getByTestId('node-nn-bill-paid_at').click()
+  await win.waitForTimeout(600)
+  console.log('no panel for in-place edits:', await win.getByTestId('table-panel').count() === 0)
+  await win.keyboard.press('Escape') // (nothing selected, nothing typed: written)
+  await win.waitForTimeout(900)
+  text = await modelText()
+  const bill = /Table shop\.bill \{[\s\S]*?\n\}/.exec(text)?.[0] ?? ''
+  console.log('edited in place:', !/Table shop\.invoice /.test(text), /bill_id bigint \[[^\]]*pk/.test(bill), /total numeric\(16,2\)/.test(bill), /paid_at \S+ \[[^\]]*not null/.test(bill), 'keys follow:', /shop\.line\.invoice_id > shop\.bill\.bill_id/.test(text), !/> shop\.invoice/.test(text))
+  if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow97-inline.png') })
+  // Each edit is a step of its own: ⌘Z takes NOT NULL back first, four more the rest (back as it was for the steps below).
+  await win.keyboard.press('Meta+z')
+  await win.waitForTimeout(600)
+  text = await modelText()
+  const stepBack = /paid_at/.test(text) && !/paid_at \S+ \[[^\]]*not null/.test(text)
+  for (let i = 0; i < 4; i++) {
+    await win.keyboard.press('Meta+z')
+    await win.waitForTimeout(500)
+  }
+  text = await modelText()
+  console.log('undone step by step:', stepBack, /Table shop\.invoice /.test(text), !/shop\.bill|paid_at/.test(text))
+
   await win.keyboard.press('Escape')
   await node('shop.line_copy').click()
   await win.keyboard.press('Delete')
@@ -178,7 +219,7 @@ try {
 
   // A change made in a dialog goes into what the toolbar makes without "Write to DBML" first (as Save does).
   await designing()
-  await node('sales.customer').dblclick({ position: { x: 40, y: 12 } })
+  await node('sales.customer').dblclick({ position: { x: 180, y: 12 } })
   await win.getByTestId('table-panel').waitFor({ timeout: 10000 })
   await win.getByTestId('column-type-name').fill('varchar(77)')
   await win.keyboard.press('Escape')
@@ -257,7 +298,7 @@ try {
   console.log('generation directives:', /CREATE VIEW (\w+\.)?v_cond AS\s+SELECT id\s+FROM shop\.invoice;/.test(plain), /CREATE VIEW (\w+\.)?v_cond AS\s+SELECT id\s+, total\s+FROM shop\.invoice;/.test(full), !/IFDEF/.test(full + plain))
 
   // Changes are written into the model as they are made; ⌘Z takes them back there too.
-  await node('shop.line').dblclick({ position: { x: 40, y: 12 } })
+  await node('shop.line').dblclick({ position: { x: 180, y: 12 } })
   await win.getByTestId('table-panel').waitFor({ timeout: 10000 })
   await win.getByTestId('table-panel').getByRole('textbox').first().fill('line_item')
   await win.keyboard.press('Escape')
