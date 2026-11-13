@@ -702,8 +702,13 @@ Not planned: a shared session for all tabs, SQL formatting settings beyond what 
 - ✅ Settings → Appearance: theme and contrast (moved from General), density (compact rows in tables and the
   explorer), six accent colors
 - ✅ An easter egg for colleagues: playful looks in the same place, never advertised — Retro (Retro 2001, Green
-  terminal, Commander), Seasonal (Halloween, Christmas), Games (Medieval campaign, Fantasy hero); only in their
-  spirit, no names or logos of anything real; e2e/flow99
+  terminal), Seasonal (Halloween, Christmas), Games (Medieval campaign, Fantasy hero); only in their spirit, no names
+  or logos of anything real; each with a small drawn picture (tab bar, home screen); e2e/flow99
+- ✅ Appearance redone after the owner's review: the look first, all as the same small cards; mode and contrast only
+  for the standard looks (the others say they have their own colors); the selected tab is marked with the accent and
+  a connection's color is a dot; SQL highlighting follows the look (keywords in the accent); theme rules apply to
+  :root only (React Flow's own "dark" class reset the palette inside the ER diagram); every look reviewed on six
+  screens with e2e/look-tour.mjs
 
 ---
 

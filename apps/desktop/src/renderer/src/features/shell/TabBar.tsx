@@ -10,6 +10,7 @@ import { useConnections } from '@/store/connections'
 import { useUi } from '@/store/ui'
 import { confirmCloseTabs, useWorkspace, type Tab } from '@/store/workspace'
 import { useTransactions } from '@/store/transactions'
+import { LookDecoration } from '@/components/LookDecoration'
 import { useCurrentConnectionId } from '../sidebar/Sidebar'
 import { useT } from '@/lib/i18n'
 
@@ -96,8 +97,11 @@ export function TabBar() {
                 dropTarget === tab.id && 'border-l-2 border-l-accent',
               )}
             >
-              {conn?.color && <span className="absolute inset-x-2 top-0 h-[2px] rounded-b" style={{ background: conn.color }} />}
+              {/* The selected tab is marked with the accent, like every selection in the app. */}
+              {active && <span className="absolute inset-x-2 top-0 h-[2px] rounded-b bg-accent" />}
               <Icon size={13} className={cn('shrink-0', active ? 'text-accent' : 'text-fg-faint')} />
+              {/* The connection's own color (production in red…) stays visible, as a dot. */}
+              {conn?.color && <span className="-ml-0.5 h-2 w-2 shrink-0 rounded-full ring-1 ring-black/10" style={{ background: conn.color }} title={conn.name} data-testid="tab-connection-color" />}
               <span className="min-w-0 flex-1 truncate">
                 {tab.title}
                 {multipleConnections && conn && <span className="ml-1 text-[11px] text-fg-faint">· {conn.name}</span>}
@@ -133,6 +137,7 @@ export function TabBar() {
           </IconButton>
         )}
       </div>
+      <LookDecoration size={18} className="mb-2 mr-1 opacity-90" />
       <div className="no-drag mb-1.5 flex items-center gap-0.5 px-1.5">
         <IconButton label={`${t('AI assistant')} (${modKey}J)`} active={aiVisible} onClick={() => setUi({ aiPanelVisible: !aiVisible })}>
           <Sparkles size={14} />

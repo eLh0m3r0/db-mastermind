@@ -25,7 +25,8 @@ function applyTheme(settings: AppSettings | undefined): boolean {
   root.classList.add(`look-${look.id}`)
   root.classList.toggle('compact', settings?.density === 'compact')
   const contrast = settings?.contrast ?? 'system'
-  document.documentElement.classList.toggle('high-contrast', contrast === 'high' || (contrast === 'system' && moreContrast.matches))
+  // A look with its own palette ignores contrast (its colors are chosen together).
+  document.documentElement.classList.toggle('high-contrast', look.dark === undefined && (contrast === 'high' || (contrast === 'system' && moreContrast.matches)))
   document.documentElement.style.setProperty('--editor-font-size', `${settings?.editorFontSize ?? 13}px`)
   return dark
 }

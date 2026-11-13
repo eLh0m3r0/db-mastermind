@@ -11,6 +11,7 @@ import { useUi } from '@/store/ui'
 import { DriverIcon } from '../connections/drivers'
 import { connectAndSelect, openImportMenu, StatusDot } from '../sidebar/Sidebar'
 import { useT } from '@/lib/i18n'
+import { LookDecoration } from '@/components/LookDecoration'
 
 async function openDemo() {
   const id = await api.createSampleDatabase()
@@ -31,10 +32,11 @@ export function HomeScreen() {
       <div className="mx-auto flex max-w-[1040px] flex-col gap-6 px-6 py-8">
         <div className="flex items-center gap-3.5">
           <Logo size={40} />
-          <div>
+          <div className="flex-1">
             <h1 className="text-[20px] font-semibold tracking-tight">DB Mastermind</h1>
             <p className="text-[12.5px] text-fg-muted">{t('Work with your databases, or design a new one. Free & open source.')}</p>
           </div>
+          <LookDecoration size={36} />
         </div>
 
         {/* The two ways in: a database, or a model (a document of its own, no database needed). */}
@@ -209,8 +211,9 @@ export function Logo({ size = 32 }: { size?: number }) {
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden>
       <defs>
         <linearGradient id="dbm-g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#8b6dff" />
-          <stop offset="1" stopColor="#4f2fe0" />
+          {/* In the look's accent color. */}
+          <stop offset="0" style={{ stopColor: 'color-mix(in srgb, var(--accent) 80%, white)' }} />
+          <stop offset="1" style={{ stopColor: 'color-mix(in srgb, var(--accent) 85%, black)' }} />
         </linearGradient>
       </defs>
       <rect width="64" height="64" rx="15" fill="url(#dbm-g)" />
@@ -218,7 +221,7 @@ export function Logo({ size = 32 }: { size?: number }) {
       <path d="M17 19v26c0 3.3 6.7 6 15 6s15-2.7 15-6V19" fill="none" stroke="#fff" strokeWidth="3.2" />
       <path d="M17 32c0 3.3 6.7 6 15 6s15-2.7 15-6" fill="none" stroke="#fff" strokeWidth="3.2" strokeOpacity=".55" />
       <circle cx="44.5" cy="44.5" r="8.5" fill="#fff" />
-      <path d="M41 44.5l2.6 2.6 4.6-5" fill="none" stroke="#5b37f0" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M41 44.5l2.6 2.6 4.6-5" fill="none" style={{ stroke: 'var(--accent)' }} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

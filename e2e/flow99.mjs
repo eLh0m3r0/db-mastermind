@@ -1,5 +1,6 @@
-// Settings → Appearance: density, accent colors and the playful looks (an easter egg), each applied to the demo
-// database with a table and a query result on screen; the choice survives a restart of the window.
+// Settings → Appearance: the look first (accent colors and the playful looks as the same cards), then only what applies
+// to it (mode and contrast for the standard looks), density; colors really change (also inside the ER diagram, whose
+// library adds its own "dark" class); the choice survives a reload. Screens of every look: e2e/look-tour.mjs.
 import { _electron as electron } from '@playwright/test'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -43,28 +44,37 @@ try {
 
   await appearance()
   await win.screenshot({ path: `${out}/r99-settings.png` })
-  check('theme and contrast moved to Appearance', (await win.locator('[role=dialog]').getByText(/^(Contrast|Kontrast)$/).count()) === 1)
+  check('mode and contrast are offered for a standard look', (await win.locator('[role=dialog]').getByText(/^(Contrast|Kontrast)$/).count()) === 1)
   await win.locator('[role=dialog]').getByRole('button', { name: /^(Compact|Kompaktní)$/ }).click()
   await win.keyboard.press('Escape')
   await win.waitForTimeout(400)
   check('compact density applies', (await rootClasses()).includes('compact'))
   await win.screenshot({ path: `${out}/r99-compact.png` })
 
-  for (const id of ['blue', 'rose', 'retro2001', 'terminal', 'commander', 'halloween', 'christmas', 'medieval', 'fantasy']) {
+  const accent = () => win.evaluate(() => getComputedStyle(document.querySelector('.bg-accent') ?? document.body).backgroundColor)
+  for (const id of ['blue', 'rose', 'retro2001', 'terminal', 'halloween', 'christmas', 'medieval', 'fantasy']) {
+    const before = await accent()
     await pick(id)
-    check(`look ${id} applies`, (await rootClasses()).includes(`look-${id}`))
+    check(`look ${id} applies and changes the colors`, (await rootClasses()).includes(`look-${id}`) && (await accent()) !== before)
     await win.screenshot({ path: `${out}/r99-${id}.png` })
   }
+  await appearance()
+  check('a look with its own colors hides mode and contrast', (await win.getByTestId('own-palette').count()) === 1 && (await win.locator('[role=dialog]').getByText(/^(Contrast|Kontrast)$/).count()) === 0)
+  await win.keyboard.press('Escape')
+  check('a playful look shows its little picture', (await win.getByTestId('look-decoration').count()) > 0)
+  // Inside the diagram (React Flow sets its own "dark" class) the look's accent applies too.
+  await win.keyboard.press(`${mod}+k`)
+  await win.keyboard.type('ER diagram')
+  await win.keyboard.press('Enter')
+  await win.locator('.react-flow__node .bg-accent').first().waitFor({ timeout: 10000 })
+  const header = await win.locator('.react-flow__node .bg-accent').first().evaluate((e) => getComputedStyle(e).backgroundColor)
+  check('diagram headers take the look’s accent', header === (await win.evaluate(() => getComputedStyle(document.querySelector('[role=tab] .bg-accent') ?? document.body).backgroundColor)))
   check('a dark look forces the dark palette', (await rootClasses()).split(' ').includes('dark'))
   await win.reload()
   await win.waitForTimeout(1500)
   check('the look survives a reload', (await rootClasses()).includes('look-fantasy'))
-  // Clicking the chosen playful look again goes back to the usual one.
-  await appearance()
-  await win.locator('[role=dialog] [data-look="fantasy"]').click()
-  await win.keyboard.press('Escape')
-  await win.waitForTimeout(300)
-  check('clicking it again restores the usual look', (await rootClasses()).includes('look-violet'))
+  await pick('violet')
+  check('back to the usual look', (await rootClasses()).includes('look-violet') && (await win.getByTestId('look-decoration').count()) === 0)
   console.log('errors:', errors.length ? errors : 'none')
 } catch (err) {
   await win.screenshot({ path: `${out}/r99-failure.png` }).catch(() => {})

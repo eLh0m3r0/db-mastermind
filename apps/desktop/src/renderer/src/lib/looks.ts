@@ -9,7 +9,7 @@ export interface Look {
   group: LookGroup
   /** English name; translated in the UI. */
   name: string
-  /** Colors for the preview swatch: background, panel, accent. */
+  /** Preview colors: page, title bar, accent (standard looks show the accent on the current light / dark page). */
   swatch: [string, string, string]
   /** Forced light (false) or dark (true) palette; unset follows the Theme setting. */
   dark?: boolean
@@ -26,7 +26,6 @@ export const LOOKS: Look[] = [
   { id: 'rose', group: 'standard', name: 'Rose', swatch: ['#ffffff', '#f6f7f9', '#d6336c'] },
   { id: 'retro2001', group: 'retro', name: 'Retro 2001', swatch: ['#ece9d8', '#245edb', '#3c9b2f'], dark: false, emoji: '💾' },
   { id: 'terminal', group: 'retro', name: 'Green terminal', swatch: ['#000000', '#0a140c', '#33ff66'], dark: true, emoji: '▮' },
-  { id: 'commander', group: 'retro', name: 'Commander', swatch: ['#0000a8', '#000080', '#55ffff'], dark: true, emoji: '📁' },
   { id: 'halloween', group: 'seasonal', name: 'Halloween', swatch: ['#14100c', '#1d1610', '#ff7518'], dark: true, emoji: '🎃' },
   { id: 'christmas', group: 'seasonal', name: 'Christmas', swatch: ['#fbfaf7', '#1e7a3c', '#c0392b'], dark: false, emoji: '🎄' },
   { id: 'medieval', group: 'games', name: 'Medieval campaign', swatch: ['#f3e9d2', '#8b5a2b', '#b8860b'], dark: false, emoji: '⚔️' },

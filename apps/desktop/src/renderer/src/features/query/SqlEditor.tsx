@@ -68,26 +68,16 @@ interface Props {
   ref?: Ref<SqlEditorHandle>
 }
 
-export const lightHighlight = HighlightStyle.define([
-  { tag: t.keyword, color: '#7c3aed', fontWeight: '500' },
-  { tag: [t.string, t.special(t.string)], color: '#0f7b3f' },
-  { tag: [t.number, t.bool, t.null], color: '#b45309' },
-  { tag: t.comment, color: '#8b93a1', fontStyle: 'italic' },
-  { tag: [t.typeName, t.standard(t.name)], color: '#0369a1' },
-  { tag: t.operator, color: '#475569' },
-  { tag: [t.special(t.name), t.quote], color: '#be123c' },
-  { tag: t.punctuation, color: '#64748b' },
-])
-
-export const darkHighlight = HighlightStyle.define([
-  { tag: t.keyword, color: '#c4a7ff', fontWeight: '500' },
-  { tag: [t.string, t.special(t.string)], color: '#86d9a8' },
-  { tag: [t.number, t.bool, t.null], color: '#f5b86b' },
-  { tag: t.comment, color: '#6f7684', fontStyle: 'italic' },
-  { tag: [t.typeName, t.standard(t.name)], color: '#7cc4fa' },
-  { tag: t.operator, color: '#a1a8b5' },
-  { tag: [t.special(t.name), t.quote], color: '#fda4af' },
-  { tag: t.punctuation, color: '#8b93a1' },
+/** Colors come from the look (styles.css --syntax-*): keywords take the accent color. */
+export const sqlHighlight = HighlightStyle.define([
+  { tag: t.keyword, color: 'var(--syntax-keyword)', fontWeight: '500' },
+  { tag: [t.string, t.special(t.string)], color: 'var(--syntax-string)' },
+  { tag: [t.number, t.bool, t.null], color: 'var(--syntax-number)' },
+  { tag: t.comment, color: 'var(--syntax-comment)', fontStyle: 'italic' },
+  { tag: [t.typeName, t.standard(t.name)], color: 'var(--syntax-type)' },
+  { tag: t.operator, color: 'var(--syntax-operator)' },
+  { tag: [t.special(t.name), t.quote], color: 'var(--syntax-special)' },
+  { tag: t.punctuation, color: 'var(--syntax-operator)' },
 ])
 
 export function editorTheme(dark: boolean): Extension {
@@ -101,9 +91,9 @@ export function editorTheme(dark: boolean): Extension {
         '.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--text)' },
         '.cm-activeLine': { backgroundColor: dark ? 'rgba(255,255,255,0.025)' : 'rgba(15,23,42,0.025)' },
         '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
-          backgroundColor: dark ? 'rgba(139,109,255,0.3) !important' : 'rgba(109,74,255,0.18) !important',
+          backgroundColor: 'color-mix(in srgb, var(--accent) 24%, transparent) !important',
         },
-        '.cm-current-statement': { backgroundColor: dark ? 'rgba(139,109,255,0.07)' : 'rgba(109,74,255,0.05)' },
+        '.cm-current-statement': { backgroundColor: 'color-mix(in srgb, var(--accent) 6%, transparent)' },
         '.cm-error-mark': { textDecoration: 'underline wavy var(--danger)', backgroundColor: 'var(--danger-soft)' },
         '.cm-matchingBracket': { backgroundColor: 'var(--accent-soft)', outline: 'none' },
         '.cm-selectionMatch': { backgroundColor: dark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.07)' },
@@ -117,7 +107,7 @@ export function editorTheme(dark: boolean): Extension {
       },
       { dark },
     ),
-    syntaxHighlighting(dark ? darkHighlight : lightHighlight),
+    syntaxHighlighting(sqlHighlight),
   ]
 }
 

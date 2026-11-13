@@ -1632,4 +1632,7 @@ export const cs: Record<string, string> = {
   'Christmas': 'Vánoce',
   'Medieval campaign': 'Středověké tažení',
   'Fantasy hero': 'Fantasy hrdina',
+  'Look': 'Motiv',
+  'Standard': 'Standardní',
+  '“{look}” has its own colors, so light / dark mode and contrast don’t apply to it.': 'Motiv „{look}“ má vlastní barvy, světlý/tmavý režim a kontrast se u něj nepoužijí.',
 }
