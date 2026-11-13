@@ -79,29 +79,29 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
 - **Diagramy projektu DeZignu:** v liště modelu přepínáte mezi celým modelem a jeho diagramy. *Nový diagram…*
   založí další, ve stejném výběru diagram přejmenujete nebo odeberete; tabulku do diagramu přidáte hledáním nad
   plátnem a odeberete z její nabídky (v modelu zůstane). Diagram zobrazuje tabulky jako v DeZignu: všechny
-  sloupce, jen klíče, jen primární klíče, prvních 10/20, nebo jen názvy, s typy i bez (lišta diagramu);
+  sloupce, jen klíče, jen primární klíče, prvních 10/20, nebo jen názvy, s typy i bez (menu *Zobrazení* nad diagramem, tam je i notace vztahů);
   jednotlivé sloupce skryjete v nabídce tabulky (*Zobrazené sloupce*). Rámečky (group boxes) přidáte tlačítkem,
   přesunete za titulek, velikost změníte v rohu, přejmenujete a odeberete z jejich nabídky.
 - **Aktualizace modelu z databáze:** *Importovat → Z databáze → Aktualizovat model* doplní do modelu, co v databázi přibylo
   nebo se změnilo; komentáře, domény a rozložení modelu zůstanou.
 - **Porovnání s archivovanou verzí:** u modelu z DeZignu nabídne *Porovnat s verzí…* verze uložené v projektu;
-  uvidíte změny od té doby a ALTER skript pro databázi modelu. *Archivovat verzi…* uloží aktuální stav projektu
+  uvidíte změny od té doby a ALTER skript pro databázi modelu. *Další → Projekt DeZign → Archivovat verzi…* uloží aktuální stav projektu
   jako novou verzi, stejně jako v DeZignu (File → Versions); DeZign ji pak vidí mezi svými. Databázi k tomu
   připojovat nemusíte: skript je pro databázi projektu a uložíte ho do souboru (*Uložit skript…*). Tlačítkem
   *Otevřít tuto verzi* si verzi prohlédnete i s diagramy na vlastní záložce; do projektu se z ní nic nezapíše.
 - **Porovnání se SQL skriptem:** *Porovnat se souborem…* (u projektu DeZign v nabídce *Porovnat s verzí… → Jiný
   soubor…*) přijme i `.sql`, třeba výpis produkční databáze z pg_dump nebo mysqldump. Uvidíte rozdíly a ALTER skript,
   který databázi ze skriptu dorovná na model.
-- **Skripty projektu:** *Skripty projektu…* u modelu z DeZignu upraví SQL, které projekt přidává před a za skript
+- **Skripty projektu:** *Další → Projekt DeZign → Skripty projektu…* u modelu z DeZignu upraví SQL, které projekt přidává před a za skript
   CREATE a ALTER (v DeZignu nastavení projektu). Uloží se do projektu a použije se v dalších skriptech.
-- **Pohledy, triggery, procedury a sekvence:** *Pohledy a kód…* u modelu z DeZignu ukáže SQL objekty projektu tak,
+- **Pohledy, triggery, procedury a sekvence:** *Další → Pohledy a kód…* u modelu z DeZignu ukáže SQL objekty projektu tak,
   jak je drží DeZign (`%viewname%`, `%triggername%` a `%table%` zastupují názvy). Kód pohledů, triggerů a procedur
   se upravuje přímo, sekvence přes své nastavení (přírůstek, začátek, minimum, maximum, cyklení); nový trigger
   tabulky, novou proceduru a novou sekvenci přidá **+**, triggery, procedury a sekvence lze odebrat. Prohlížeč objektů je ukáže
-  ve vlastních skupinách (dvojklik otevře dialog). Při uložení se zapíší do projektu a jdou do DDL skriptu.
+  ve vlastních skupinách (dvojklik nebo Enter je otevře). Při uložení se zapíší do projektu a jdou do DDL skriptu.
 - **Týmová práce v Gitu:** u složkového projektu (`.dezproj`) uložení změní jen soubory upravených objektů, takže
   dva kolegové, kteří upravují různé tabulky ve svých větvích, je sloučí bez konfliktu.
-- **Domény:** *Domény…* u modelu z DeZignu ukáže pojmenované typy projektu. Změna typu domény se propíše do všech
+- **Domény:** *Další → Projekt DeZign → Domény…* u modelu z DeZignu ukáže pojmenované typy projektu. Změna typu domény se propíše do všech
   sloupců, které se jí řídí; nová doména se nabídne v panelu tabulky. Doménu lze přejmenovat (sloupce ji následují)
   a smazat, pokud ji žádný sloupec nepoužívá.
 - **Balíčky atributů:** sloupce, které projekt DeZignu vkládá do mnoha tabulek najednou (např. auditní sloupce),
@@ -126,14 +126,14 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
 - **Podtypy:** v dialogu vztahu zaškrtněte *Podtyp*: tabulka je pak druhem nadřazené tabulky (v DeZignu podtyp ve
   shluku nadtypu). Vztah se nastaví jako identifikující a povinný a na plátně má popisek „podtyp“.
 - **Vlastní vlastnosti:** pokud projekt DeZignu definuje vlastní vlastnosti (User defined properties, např.
-  „Odpovědná osoba“), vyplníte je v dialogu tabulky na záložce *Vlastnosti* a u vybraného sloupce pod mřížkou.
+  „Odpovědná osoba“), vyplníte je v panelu tabulky (u tabulky dole, u sloupce v jeho podrobnostech).
   Uloží se do projektu; samotné vlastnosti se definují v DeZignu.
 - **Vlastní model (.dbml):** rozložení diagramu (pozice, barvy, poznámky, rámečky) i pojmenované diagramy se ukládají
   na konec souboru jako jeden komentářový řádek, který ostatní nástroje pro DBML přeskočí; po otevření se vrátí.
   *Pohledy a kód…* přidá i do vlastního modelu pohledy, triggery, procedury a sekvence (DBML je nemá).
-- **Uložení:** *Uložit* (⌘S) vezme i změny z plátna a dialogů, které ještě nejsou v textu modelu; stejně tak SQL DDL,
+- **Uložení:** *Uložit* (⌘S) vezme i změny z plátna, které ještě nejsou v textu modelu; stejně tak SQL DDL,
   porovnání, *Přejmenovat…* a *Domény…*.
-- **Hromadné přejmenování:** *Přejmenovat…* u modelu nahradí text nebo regulární výraz v názvech tabulek, sloupců
+- **Hromadné přejmenování:** *Další → Přejmenovat…* u modelu nahradí text nebo regulární výraz v názvech tabulek, sloupců
   nebo obojího (třeba předponu `tbl_` za nic). Než se cokoli změní, ukáže každé přejmenování; název, který by byl
   prázdný nebo už existuje, vynechá. Klíče, indexy, vazby a kontroly názvy následují a do projektu DeZign se uloží
   jako přejmenování (tabulky a sloupce zůstanou tytéž).

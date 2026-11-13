@@ -29,7 +29,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 
 **Short description:**
 
-> Free, open-source database client for PostgreSQL, SQL Server, Oracle, MySQL, SQLite and more. Browse and filter data without limits, write SQL, draw ER diagrams, design schema changes with generated migrations, and ask an AI that knows your database.
+> Free, open-source database client and data modeler for PostgreSQL, SQL Server, Oracle, MySQL, SQLite and more. Browse and filter data, write SQL, model new databases (DeZign projects open too), design changes with migrations, and ask an AI.
 
 **Description:**
 
@@ -41,7 +41,9 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 > • SQL editor with schema-aware autocomplete that writes whole JOINs from foreign keys, snippets, history, saved queries and execution plans.
 > • Export everything to CSV, Excel, JSON or SQL, and query CSV, Parquet, JSON and Excel files with SQL.
 >
-> UNDERSTAND AND REDESIGN THE MODEL
+> MODEL, UNDERSTAND AND REDESIGN
+> • Model a new database without one: draw tables and relationships, rename and retype right on the diagram; models are DBML text files you can keep in Git, with SQL for any supported database.
+> • Opens and saves DeZign for Databases projects (.dez, .dezproj) with their diagrams, domains, subtypes, triggers and versions; no DeZign license needed.
 > • Interactive ER diagrams with automatic layout, saved diagrams and the join path between any two tables.
 > • Design tables, columns, keys and indexes right on the diagram; DB Mastermind writes the migration, checks your data first and gives you the rollback.
 > • Compare schemas and data between databases.
@@ -75,8 +77,9 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 10. Query CSV, Parquet, JSON and Excel files with SQL
 11. SSH tunnels, SSL and SQL Server Windows authentication
 12. No telemetry, no account, no feature limits
+13. Data modeler that opens and saves DeZign for Databases projects
 
-**Search terms** (7): `database client` · `SQL editor` · `PostgreSQL` · `SQL Server` · `MySQL` · `ER diagram` · `database AI`
+**Search terms** (7): `database client` · `SQL editor` · `PostgreSQL` · `SQL Server` · `data modeling` · `ER diagram` · `database AI`
 
 **What's new in this version:** Data modeling without a database: start a model on the home page, rename tables and columns and change types right on the diagram, everything else in one panel next to it; changes are kept as you make them, with undo. Models are DBML text files: generate SQL for any supported database or compare a model with a database for the migration. Opens and saves DeZign for Databases projects (.dez, .dezproj), including diagrams, domains, subtypes, labels, triggers, procedures, sequences and archived versions.
 
@@ -91,11 +94,12 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 1. `table-filters.png` — Browse and filter data without limits
 2. `query.png` — SQL editor with schema-aware autocomplete
 3. `diagram.png` — Interactive ER diagrams
-4. `designer.png` — Design changes right on the diagram
-5. `migration.png` — Reviewed migration with a rollback script
-6. `ai.png` — AI assistant that knows your database
-7. `query-file.png` — Query CSV and Excel files with SQL
-8. `chart.png` — Chart any result in one click
+4. `modeler.png` — Model a new database right on the diagram
+5. `designer.png` — Design changes right on the diagram
+6. `migration.png` — Reviewed migration with a rollback script
+7. `ai.png` — AI assistant that knows your database
+8. `query-file.png` — Query CSV and Excel files with SQL
+9. `chart.png` — Chart any result in one click
 
 ## Store listing — Czech (cs-cz)
 
@@ -103,7 +107,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 
 **Short description:**
 
-> Bezplatný open-source databázový klient pro PostgreSQL, SQL Server, Oracle, MySQL, SQLite a další. Prohlížení a filtrování dat bez omezení, SQL editor, ER diagramy, návrh změn schématu s vygenerovanou migrací a AI, která zná vaši databázi.
+> Bezplatný open-source databázový klient a datový modelář pro PostgreSQL, SQL Server, Oracle, MySQL, SQLite a další. Filtrování dat, SQL editor, modelování nových databází (otevře i projekty DeZign), návrh změn s migrací a AI.
 
 **Description:**
 
@@ -116,6 +120,8 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 > • Export do CSV, Excelu, JSON nebo SQL a dotazy SQL přímo nad soubory CSV, Parquet, JSON a Excel.
 >
 > DATOVÝ MODEL
+> • Model nové databáze bez databáze: tabulky a vztahy kreslíte, přejmenujete a měníte typy přímo v diagramu; modely jsou textové soubory DBML vhodné pro Git, s SQL pro kteroukoli podporovanou databázi.
+> • Otevírá a ukládá projekty DeZign for Databases (.dez, .dezproj) včetně diagramů, domén, podtypů, triggerů a verzí; licence DeZignu není potřeba.
 > • Interaktivní ER diagramy s automatickým rozložením, uloženými pohledy a cestou JOIN mezi libovolnými tabulkami.
 > • Návrh tabulek, sloupců, klíčů a indexů přímo v diagramu; DB Mastermind napíše migraci, předem zkontroluje data a připraví i vrácení změn.
 > • Porovnání schémat i dat mezi databázemi.
@@ -149,8 +155,9 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 10. SQL dotazy nad soubory CSV, Parquet, JSON a Excel
 11. SSH tunely, SSL a přihlášení do SQL Serveru přes Windows
 12. Žádná telemetrie, žádný účet, žádná omezení funkcí
+13. Datový modelář, který otevírá a ukládá projekty DeZign for Databases
 
-**Search terms:** `databázový klient` · `SQL editor` · `PostgreSQL` · `SQL Server` · `MySQL` · `ER diagram` · `databáze AI`
+**Search terms:** `databázový klient` · `SQL editor` · `PostgreSQL` · `SQL Server` · `datové modelování` · `ER diagram` · `databáze AI`
 
 **What's new in this version:** Datové modelování bez databáze: model založíte na úvodní stránce, tabulky a sloupce přejmenujete a typy změníte přímo v diagramu, vše ostatní je v jednom panelu vedle něj; změny se ukládají průběžně a jdou vrátit. Modely jsou textové soubory DBML: vygenerujete z nich SQL pro kteroukoli podporovanou databázi nebo je porovnáte s databází a dostanete migraci. Otevírá a ukládá projekty DeZign for Databases (.dez, .dezproj) včetně diagramů, domén, podtypů, štítků, triggerů, procedur, sekvencí a archivovaných verzí.
 
@@ -159,8 +166,9 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 1. Prohlížení a filtrování dat bez omezení
 2. SQL editor s našeptávačem podle schématu
 3. Interaktivní ER diagramy
-4. Návrh změn přímo v diagramu
-5. Migrace ke kontrole i se skriptem pro vrácení
-6. AI asistent, který zná vaši databázi
-7. SQL dotazy nad soubory CSV a Excel
-8. Graf z výsledku jedním kliknutím
+4. Model nové databáze přímo v diagramu
+5. Návrh změn přímo v diagramu
+6. Migrace ke kontrole i se skriptem pro vrácení
+7. AI asistent, který zná vaši databázi
+8. SQL dotazy nad soubory CSV a Excel
+9. Graf z výsledku jedním kliknutím
