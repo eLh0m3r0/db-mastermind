@@ -53,6 +53,12 @@ export function forgetRecentModel(path: string): void {
   }
 }
 
+/** The connection a new or opened model links to: the current one, but never the scratch DuckDB of "Query a file". */
+export function modelConnection(id: string | null | undefined): string {
+  const c = id ? useConnections.getState().list.find((x) => x.id === id) : undefined
+  return c && !(c.driver === 'duckdb' && !c.filePath && c.group === 'Files') ? c.id : ''
+}
+
 /**
  * Opens a model file (.dbml, or a DeZign for Databases .dez / .dezproj) in a model tab. A model needs no database:
  * it is linked to the one it was last used with, else to the current connection, else to none.
@@ -65,7 +71,7 @@ export async function openModel(path?: string): Promise<void> {
     const file = await api.openModelFile(path, connections.list.find((c) => c.id === current)?.knowledgeBasePath)
     if (!file) return
     const remembered = links()[file.path]
-    const connectionId = remembered && connections.list.some((c) => c.id === remembered) ? remembered : current
+    const connectionId = remembered && connections.list.some((c) => c.id === remembered) ? remembered : modelConnection(current)
     ws.open({ kind: 'model', connectionId, ...modelTabFromFile(file, connections.runtime[connectionId]?.schema?.defaultSchema) }, { reuse: false })
     rememberRecentModel(file.path)
   } catch (err) {

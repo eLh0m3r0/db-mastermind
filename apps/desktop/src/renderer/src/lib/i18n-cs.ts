@@ -928,6 +928,7 @@ export const cs: Record<string, string> = {
   'can grant': 'může udělovat',
   'Unsaved model': 'Neuložený model',
   'Open…': 'Otevřít…',
+  'Fit view': 'Zobrazit vše',
   'Double-click to change the type': 'Dvojklikem změníte typ',
   '{table} per {parent}': '{table} na {parent}',
   '{db} (the model’s database)': '{db} (databáze modelu)',

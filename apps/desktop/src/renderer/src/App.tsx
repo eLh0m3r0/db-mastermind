@@ -7,7 +7,7 @@ import { ContextMenuHost } from '@/components/ui/ContextMenu'
 import { Splitter } from '@/components/ui/Splitter'
 import { Toasts } from '@/components/ui/Toasts'
 import { bridge } from '@/lib/api'
-import { MODEL_FILE, openFile, openModel, QUERYABLE_FILE } from '@/lib/files'
+import { MODEL_FILE, modelConnection, openFile, openModel, QUERYABLE_FILE } from '@/lib/files'
 import { onCommand, runCommand } from '@/lib/commands'
 import { t } from '@/lib/i18n'
 import { installKeymap } from '@/lib/keymap'
@@ -65,7 +65,7 @@ function useGlobalCommands() {
             void openModel()
             break
           case 'new-model':
-            ws.open({ kind: 'model', connectionId: connId ?? '', title: t('Model'), text: '' }, { reuse: false })
+            ws.open({ kind: 'model', connectionId: modelConnection(connId), title: t('Model'), text: '' }, { reuse: false })
             break
           case 'check-updates':
             void window.mastermind.api.checkForUpdatesNow().then((r) => {

@@ -57,17 +57,21 @@ PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB · Cl
 - **Data compare** between two tables or environments, with the sync script
 - **Schema compare** between two connections or schemas (dev → prod) with the migration for the target
 - **Data dictionary**: one self-contained HTML page (or Markdown) documenting every table, with your notes
-- **Models as text (DBML)**: edit a model with a live diagram, import it from the database or a SQL script, compare it
-  with the database for the migration, or write it as DDL for any supported database (types translated)
-- **Opens DeZign for Databases models** (`.dez` and `.dezproj` folder projects, DeZign 4 to 14) with their diagram
-  layout: generate DDL or the ALTER script against a live database without a DeZign license. The edited model
-  is saved back into the DeZign project, and a model made here can be saved as a new DeZign project (changes are
-  listed first, a backup is kept; checked in DeZign 14.9.3, which opens the saved files and saves them again
-  with nothing lost)
+- **Data modeling without a database**: start a model from the home page and draw it on the canvas: rename a
+  table or a column and change a type right where it is, add columns and relationships by dragging, everything
+  else in one detail panel (docked in a wide window, sliding in on a laptop). Changes are kept as you make them,
+  with undo. The model is a plain DBML text file (reads well in Git); generate DDL for any supported database
+  (types translated) or compare it with a database for the migration
+- **Works with DeZign for Databases projects** (`.dez` and `.dezproj` folder projects, DeZign 4 to 14): open them
+  with their diagrams, edit and save back into the project, or save a model made here as a new DeZign project.
+  Domains, attribute packages, subtypes, labels, custom properties, to-dos, triggers, procedures, sequences,
+  archived versions, reports and switching the target database are kept (changes are listed first, a backup is
+  kept; checked in DeZign 14.9.3, which opens the saved files and saves them again with nothing lost)
 - **Schema designer on the live database**: edit tables, columns, keys and indexes right on the diagram. DB
   Mastermind generates the migration for your database (including SQLite table rebuilds and dependent views),
   checks the existing data first (NULLs, duplicates, orphans) and writes a rollback script
 
+![A model edited on the canvas with the detail panel](docs/screenshots/modeler.png)
 ![Join path between two tables](docs/screenshots/join-path.png)
 ![Schema designer](docs/screenshots/designer.png)
 ![Generated migration with impact checks](docs/screenshots/migration.png)

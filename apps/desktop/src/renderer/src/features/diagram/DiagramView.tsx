@@ -3,6 +3,7 @@ import {
   Background,
   BackgroundVariant,
   BaseEdge,
+  ControlButton,
   Controls,
   getSmoothStepPath,
   getViewportForBounds,
@@ -26,7 +27,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { toPng, toSvg } from 'html-to-image'
-import { AlignHorizontalJustifyStart, AlignVerticalJustifyStart, AlignHorizontalSpaceAround, AlignVerticalSpaceAround, Bookmark, Copy, Download, Trash2, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Pin, PinOff, Plus, Route, Search, Layers, Redo, Sparkles, SquareDashed, StickyNote, Table2, Undo, Undo2, Users, X, ChevronDown, SlidersHorizontal } from 'lucide-react'
+import { AlignHorizontalJustifyStart, AlignVerticalJustifyStart, AlignHorizontalSpaceAround, AlignVerticalSpaceAround, Bookmark, Copy, Download, Trash2, Eye, FileCode2, KeyRound, LayoutGrid, Link2, Network, PencilRuler, Pin, PinOff, Plus, Route, Search, Layers, Redo, Sparkles, SquareDashed, StickyNote, Table2, Undo, Undo2, Users, X, ChevronDown, Maximize, SlidersHorizontal } from 'lucide-react'
 import {
   designId,
   designToTableInfo,
@@ -592,6 +593,13 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
     }
   }
   const overlay = narrow && !pinned
+  const fitInSight = () => {
+    const pane = workArea.current
+    const nodes = flow.getNodes()
+    if (!pane || !nodes.length || !(overlay && selected) || nodes.length > 80) return void flow.fitView({ padding: 0.15, duration: 300, maxZoom: 1 })
+    const panel = Math.min(420, pane.clientWidth * 0.92)
+    void flow.setViewport(getViewportForBounds(flow.getNodesBounds(nodes), pane.clientWidth - panel, pane.clientHeight, 0.05, 1, 0.1), { duration: 300 })
+  }
   // The table whose details open stays in sight: moved out from under the panel (and in from past the edge).
   useEffect(() => {
     if (!selected || !model || !onApplyModel) return
@@ -2215,7 +2223,12 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
           defaultEdgeOptions={{ markerEnd: { type: MarkerType.Arrow } }}
         >
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--border-strong)" />
-          <Controls showInteractive={false} />
+          <Controls showInteractive={false} showFitView={false}>
+            {/* Fits into what is in sight: with the panel sliding over the canvas, the part left of it. */}
+            <ControlButton className="react-flow__controls-fitview" onClick={fitInSight} title={tr('Fit view')} aria-label={tr('Fit view')}>
+              <Maximize />
+            </ControlButton>
+          </Controls>
           <ZoomLevel />
           {modelMode && !selected && selectedCount < 2 && (
             <Panel position="bottom-center" className="pointer-events-none !mb-2 max-w-[60%] truncate rounded bg-bg/80 px-2 py-0.5 text-[11px] text-fg-faint" data-testid="canvas-hint">

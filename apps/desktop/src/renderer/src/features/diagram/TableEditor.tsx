@@ -678,10 +678,12 @@ export function TableEditor({
                     ))}
                   </Select>
                 </div>
-                <div className="flex items-center gap-1.5 pl-1 text-[11px] whitespace-nowrap text-fg-muted">
-                  {model && (
+                {/* (Its own line: the sentence names both tables.) */}
+                {model && (
+                  <div className="flex items-center gap-1.5 pl-1 text-[11px] whitespace-nowrap text-fg-muted">
                     <>
-                      <span className="min-w-0 truncate"
+                      <span
+                        className="min-w-0 flex-1 truncate"
                         title={tr(
                           'How many rows of this table one row of the other table has (drawn at this end of the line)',
                         )}
@@ -704,7 +706,9 @@ export function TableEditor({
                         ))}
                       </Select>
                     </>
-                  )}
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5 pl-1 text-[11px] whitespace-nowrap text-fg-muted">
                   <div className="flex-1" />
                   {tr('on update')}
                   <Select

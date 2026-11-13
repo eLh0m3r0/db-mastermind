@@ -6,7 +6,7 @@ import { Kbd } from '@/components/ui/Input'
 import { api, modKey } from '@/lib/api'
 import { runCommand } from '@/lib/commands'
 import { exportDataDictionary } from '@/lib/dictionary'
-import { openModel, queryFile } from '@/lib/files'
+import { modelConnection, openModel, queryFile } from '@/lib/files'
 import { openDashboard } from '@/lib/dashboards'
 import { newTable } from '@/lib/newTable'
 import { fuzzyScore } from '@/lib/utils'
@@ -53,7 +53,7 @@ export function CommandPalette() {
     { id: 'dictionary-md', label: t('Export data dictionary (Markdown)…'), icon: <FileText size={14} />, run: () => connectionId && void exportDataDictionary(connectionId, 'markdown'), needsConnection: true },
     { id: 'datacompare', label: t('Compare table data…'), icon: <Rows3 size={14} />, run: () => connectionId && openTab({ kind: 'datacompare', connectionId, sourceId: connectionId, title: t('Data compare') }, { reuse: false }), needsConnection: true },
     { id: 'roles', label: t('Users & roles'), icon: <ShieldCheck size={14} />, run: () => connectionId && openTab({ kind: 'roles', connectionId, title: t('Users & roles') }), needsConnection: true },
-    { id: 'model-new', label: t('New model (DBML)'), icon: <FileCode2 size={14} />, run: () => openTab({ kind: 'model', connectionId: connectionId ?? '', title: t('Model'), text: '' }, { reuse: false }) },
+    { id: 'model-new', label: t('New model (DBML)'), icon: <FileCode2 size={14} />, run: () => openTab({ kind: 'model', connectionId: modelConnection(connectionId), title: t('Model'), text: '' }, { reuse: false }) },
     {
       id: 'model-open',
       label: t('Open model (DBML, DeZign)…'),
