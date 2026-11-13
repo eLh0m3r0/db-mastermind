@@ -162,7 +162,7 @@ function Item({ value, onSelect, icon, label, hint, shortcut }: { value: string;
     <Command.Item
       value={value}
       onSelect={onSelect}
-      className="flex h-8 cursor-default items-center gap-2.5 rounded-md px-2 text-[13px] data-[selected=true]:bg-accent data-[selected=true]:text-accent-fg [&[data-selected=true]_*]:text-accent-fg"
+      className="flex h-8 cursor-default items-center gap-2.5 rounded-md px-2 text-[13px] data-[selected=true]:bg-accent data-[selected=true]:text-accent-fg [&[data-selected=true]_*]:text-accent-fg [&[data-selected=true]_kbd]:border-white/30 [&[data-selected=true]_kbd]:bg-white/15"
     >
       <span className="flex w-4 justify-center text-fg-muted">{icon}</span>
       <span className="flex-1 truncate">{label}</span>
