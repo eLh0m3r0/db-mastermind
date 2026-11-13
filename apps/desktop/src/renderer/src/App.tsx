@@ -224,8 +224,10 @@ export function App() {
       <div className="flex min-h-0 flex-1">
         {sidebarVisible && (
           <>
-            <div style={{ width: sidebarWidth }} className="shrink-0 border-r border-line">
+            {/* The border starts under the title bar: the bar runs across the whole window. */}
+            <div style={{ width: sidebarWidth }} className="relative shrink-0">
               <Sidebar />
+              <span aria-hidden className="pointer-events-none absolute top-[38px] right-0 bottom-0 w-px bg-line" />
             </div>
             <Splitter direction="horizontal" size={sidebarWidth} onResize={(w) => set({ sidebarWidth: w })} min={200} max={560} />
           </>
