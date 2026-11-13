@@ -364,7 +364,8 @@ export const api: MastermindApi = {
       filePath: file,
       knowledgeBasePath: kbDir,
       color: '#0f9f6e',
-      group: 'Examples',
+      // (A group is the user's own text from then on: named once, in the app's language.)
+      group: existing?.group ?? (getSettings().language === 'cs' ? 'Ukázky' : 'Examples'),
     })
     return saved.id
   },

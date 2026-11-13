@@ -688,7 +688,7 @@ export function TableEditor({
                       </span>
                       <Select
                         inputSize="sm"
-                        className="h-5 w-32 shrink-0 text-[11px]"
+                        className="h-5 w-36 shrink-0 text-[11px]"
                         value={fk.cardinality ?? ''}
                         onChange={(e) =>
                           update({ cardinality: (e.target.value || undefined) as typeof fk.cardinality })

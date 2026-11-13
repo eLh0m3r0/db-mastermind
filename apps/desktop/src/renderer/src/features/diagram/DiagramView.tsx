@@ -1668,7 +1668,7 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
           </>
         ) : (
           schema.schemas.length > 1 && (
-            <Select inputSize="sm" className="h-7 w-32" value={schemaFilter} onChange={(e) => setSchemaFilter(e.target.value)}>
+            <Select inputSize="sm" className="h-7 w-36" value={schemaFilter} onChange={(e) => setSchemaFilter(e.target.value)}>
               {schema.schemas.filter((s) => visibleSchemas.includes(s) || s === schemaFilter).map((s) => (
                 <option key={s} value={s}>
                   {s}
