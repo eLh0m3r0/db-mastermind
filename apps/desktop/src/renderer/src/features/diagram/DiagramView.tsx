@@ -16,6 +16,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useConnection,
+  useInternalNode,
   useNodesState,
   useReactFlow,
   useViewport,
@@ -507,6 +508,16 @@ function roundedPath(points: Point[], radius = 6): string {
  */
 const RoutedEdge = memo(function RoutedEdge(props: EdgeProps<Edge<{ route?: Point[] }>>) {
   const { sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, markerStart, markerEnd, style, label, labelStyle, labelBgStyle } = props
+  const self = useInternalNode(props.source)
+  if (props.source === props.target && self) {
+    // A table's key to itself: a loop below the table with room to breathe, never along its border.
+    const gap = 18
+    const bottom = self.internals.positionAbsolute.y + (self.measured.height ?? 0) + gap
+    const out = { x: sourceX + (sourcePosition === Position.Left ? -gap : gap), y: sourceY }
+    const back = { x: targetX + (targetPosition === Position.Left ? -gap : gap), y: targetY }
+    const points = [{ x: sourceX, y: sourceY }, out, { x: out.x, y: bottom }, { x: back.x, y: bottom }, back, { x: targetX, y: targetY }]
+    return <BaseEdge className="dbm-routed" path={roundedPath(points, 8)} markerStart={markerStart} markerEnd={markerEnd} style={style} label={label} labelX={(out.x + back.x) / 2} labelY={bottom} labelStyle={labelStyle} labelBgStyle={labelBgStyle} />
+  }
   const route = data?.route
   const fits = !!route && route.length >= 2 && Math.abs(route[0]!.x - sourceX) < 6 && Math.abs(route[0]!.y - sourceY) < 6 && Math.abs(route.at(-1)!.x - targetX) < 6 && Math.abs(route.at(-1)!.y - targetY) < 6
   if (fits) {
