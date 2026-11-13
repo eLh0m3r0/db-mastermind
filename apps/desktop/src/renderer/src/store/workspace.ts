@@ -5,6 +5,7 @@ import { api } from '@/lib/api'
 import { debounce, uid } from '@/lib/utils'
 import { t, tp } from '@/lib/i18n'
 import { confirmAction } from '@/components/ui/ConfirmDialog'
+import { settleTransactions } from './transactions'
 
 interface BaseTab {
   id: string
@@ -199,11 +200,25 @@ export function setUnsavedEdits(tabId: string, count: number): void {
   else unsavedEdits.delete(tabId)
 }
 
-/** True when the tabs can close: none has unsaved grid edits, or the user agrees to discard them. */
+/**
+ * True when the tabs can close: none has unsaved grid edits (or the user agrees to discard them), and open
+ * transactions in query tabs are committed or rolled back as the user says.
+ */
 export async function confirmCloseTabs(ids: string[]): Promise<boolean> {
   const n = ids.reduce((sum, id) => sum + (unsavedEdits.get(id) ?? 0), 0)
-  return n === 0 || confirmAction({ title: tp(n, { one: 'Discard {n} pending change?', many: 'Discard {n} pending changes?' }), confirmLabel: t('Discard'), danger: true })
+  if (n > 0 && !(await confirmAction({ title: tp(n, { one: 'Discard {n} pending change?', many: 'Discard {n} pending changes?' }), confirmLabel: t('Discard'), danger: true }))) return false
+  return settleTransactions(ids, tabTitle)
 }
+
+/** The tabs of a connection (before disconnecting it) with their transactions settled. */
+export function settleConnectionTransactions(connectionId: string): Promise<boolean> {
+  return settleTransactions(
+    useWorkspace.getState().tabs.filter((tab) => tab.connectionId === connectionId).map((tab) => tab.id),
+    tabTitle,
+  )
+}
+
+const tabTitle = (id: string) => useWorkspace.getState().tabs.find((tab) => tab.id === id)?.title ?? id
 
 const persist = debounce((tabs: Tab[], activeTabId?: string) => {
   void api.saveWorkspace({ tabs, activeTabId })

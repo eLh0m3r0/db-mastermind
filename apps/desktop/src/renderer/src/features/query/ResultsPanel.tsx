@@ -390,7 +390,7 @@ export function ResultsPanel({
                   </button>
                   <span className="shrink-0 text-fg-faint">{formatDuration(o.durationMs)}</span>
                 </div>
-                {o.note && <div className="mt-1 pl-5 text-fg-muted">{o.note}</div>}
+                {o.note && <div className="mt-1 pl-5 text-fg-muted">{tr(o.note)}</div>}
                 {cancelled(o) ? (
                   <div className="mt-1.5 pl-5 text-fg-muted">{tr('Cancelled')}</div>
                 ) : o.error ? (

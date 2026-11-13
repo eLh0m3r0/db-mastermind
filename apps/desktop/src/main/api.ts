@@ -6,6 +6,7 @@ import { basename, extname, join } from 'node:path'
 import { app, BrowserWindow, dialog, shell } from 'electron'
 import {
   buildBatchInserts,
+  needsReconnect,
   buildChangeStatements,
   detectDelimiter,
   explainQuery,
@@ -69,6 +70,7 @@ import { removeTeamConnection, writeTeamConnection } from './team-folder'
 import { addToMcpClient, mcpClientStatuses, type McpLaunch } from './mcp-clients'
 import { applyMcpHttp, mcpHttpStatus } from './mcp-http'
 import { buildMenu } from './menu'
+import { forgetEditorSession, forgetEditorSessionsOf, trackEditorSession } from './transactions'
 import * as library from './library'
 import { getSettings, updateSettings } from './settings'
 
@@ -192,9 +194,16 @@ export const api: MastermindApi = {
     return connections.listConnections().map((c) => (turnedOffCentrally(c.id) ? { ...c, aiLockedOff: true } : c))
   },
   async saveConnection(config) {
+    const before = db.isOpen(config.id) ? connections.getConnection(config.id) : undefined
     const saved = connections.saveConnection(config)
-    // Reconnect with new settings next time it's used.
-    if (db.isOpen(saved.id)) await db.disconnect(saved.id)
+    if (before && !needsReconnect(before, connections.getConnection(saved.id))) {
+      // A name, color, AI permissions or commit mode: no new connection, so open transactions stay open.
+      db.reconfigure(connections.getConnection(saved.id))
+    } else if (db.isOpen(saved.id)) {
+      // Reconnect with new settings next time it's used.
+      forgetEditorSessionsOf(saved.id)
+      await db.disconnect(saved.id)
+    }
     return saved
   },
   async setExplorerPrefs(id, prefs) {
@@ -232,6 +241,7 @@ export const api: MastermindApi = {
     return { serverInfo }
   },
   async disconnect(id) {
+    forgetEditorSessionsOf(id)
     await db.disconnect(id)
   },
   async isConnected(id) {
@@ -385,9 +395,11 @@ export const api: MastermindApi = {
 
   async runQuery(request) {
     await ensureConnected(request.connectionId)
+    if (request.session) trackEditorSession(request.connectionId, request.session)
     const outcomes = await track(request.runId, (signal) =>
       db.runScript(request.connectionId, request.sql, {
         session: request.session,
+        editor: !!request.session,
         maxRows: request.maxRows ?? getSettings().maxResultRows,
         continueOnError: request.continueOnError,
         parameterValues: request.parameterValues,
@@ -597,7 +609,17 @@ export const api: MastermindApi = {
     running.get(runId)?.abort()
   },
   async releaseSession(connectionId, session) {
+    forgetEditorSession(connectionId, session)
     await db.releaseSession(connectionId, session)
+  },
+  async transactionState(connectionId, session) {
+    if (!db.isOpen(connectionId)) return null
+    return (await db.transactionState(connectionId, session)) ?? null
+  },
+  async endTransaction(connectionId, session, action) {
+    // Never reconnect for this: a new connection has no transaction to end.
+    if (!db.isOpen(connectionId)) return 'none'
+    return (await db.endTransaction(connectionId, session, action)) ?? 'none'
   },
 
   async fetchTable(request) {

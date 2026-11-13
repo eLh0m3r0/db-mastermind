@@ -29,3 +29,4 @@ export { dezignDomainsOfModel, dezignDriver, dezignMigrationOptions, dezignViewS
 export type { DezignChange, DezignChangeKind } from './dezign-write.js'
 export * from './ai-permissions.js'
 export * from './network-errors.js'
+export * from './connection-config.js'

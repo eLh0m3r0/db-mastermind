@@ -658,6 +658,32 @@ compatibility while the screens change).
   when a write fails, keep a backup folder per save and stop on any change made on disk meanwhile
   (apps/desktop/test/dezign-file.test.ts)
 
+## Milestone 10 — Transactions you can see (1.2.0)
+
+From the pilot (a colleague used to DataGrip): changes made in the SQL editor commit at once, and nothing shows
+whether a tab holds an open transaction. Kept small: one switch per connection, no session modes.
+
+- ✅ Transaction state asked of the database, not guessed from the SQL text (PostgreSQL's protocol status, MySQL's
+  server status, SQL Server `@@TRANCOUNT`/`XACT_STATE()`, SQLite's worker, Oracle and DuckDB from their own
+  sessions): DDL that commits on its own (MySQL, Oracle) and a failed PostgreSQL transaction show as they are
+- ✅ "Commit changes manually" per connection (off by default; not offered where the database has no transactions:
+  ClickHouse, BigQuery, Trino). The first statement that changes something opens a transaction in the tab
+- ✅ The query toolbar shows an open transaction (also one started with `BEGIN` on an automatic connection) with
+  **Commit** and **Roll back**, and what ran in it (each statement and the rows it changed); a failed transaction
+  offers only Roll back; a statement that committed it implicitly says so
+- ✅ Each query tab keeps its own session (no shared-session mode); on SQLite, which has one connection, a tab
+  can't write into the transaction another tab opened
+- ✅ Nothing open is lost silently: closing a tab, disconnecting and quitting ask Commit / Roll back / Cancel;
+  a tab with an open transaction is marked in the tab bar
+- ✅ Server activity marks the sessions of this app (which tab), offers "Only DB Mastermind" and highlights sessions
+  idle in an open transaction
+- ✅ Integration tests per engine (PostgreSQL, MySQL, MariaDB, SQL Server, Oracle, SQLite, DuckDB:
+  packages/core/test/transactions.integration.test.ts) and e2e/flow98
+- ✅ Saving a connection reconnects only when host, user, TLS… changed (`needsReconnect`): a new name, color, AI
+  permissions or commit mode keep open transactions
+
+Not planned: a shared session for all tabs, SQL formatting settings beyond what there is.
+
 ---
 
 ## Comparison target

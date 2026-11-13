@@ -25,6 +25,9 @@ export interface SshConfig {
   passphrase?: string
 }
 
+/** none: autocommit · open: changes wait for COMMIT / ROLLBACK · failed: only ROLLBACK can end it. */
+export type TransactionState = 'none' | 'open' | 'failed'
+
 export type Environment = 'development' | 'test' | 'staging' | 'production'
 
 export interface ConnectionConfig {
@@ -43,6 +46,11 @@ export interface ConnectionConfig {
   /** SQL Server: domain for NTLM auth, instance name, trustServerCertificate… */
   options?: Record<string, string | number | boolean>
   readOnly?: boolean
+  /**
+   * SQL editor tabs open a transaction with the first statement that changes something and keep it until Commit or
+   * Roll back (otherwise each statement commits on its own).
+   */
+  manualCommit?: boolean
   environment?: Environment
   color?: string
   group?: string

@@ -110,8 +110,7 @@ function useGlobalCommands() {
             break
           case 'disconnect':
             if (connId) {
-              void useConnections.getState().disconnect(connId)
-              ui.set({ selectedConnectionId: undefined })
+              void useConnections.getState().disconnect(connId).then((done) => done && ui.set({ selectedConnectionId: undefined }))
             }
             break
           case 'history':

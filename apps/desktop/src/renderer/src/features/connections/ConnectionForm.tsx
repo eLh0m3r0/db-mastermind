@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Building2, CheckCircle2, ClipboardPaste, FolderOpen, XCircle } from 'lucide-react'
-import { isFileDriver, type ConnectionConfig, type DriverId, type Environment, type SslMode } from '@dbmastermind/core/browser'
+import { isFileDriver, supportsManualCommit, type ConnectionConfig, type DriverId, type Environment, type SslMode } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { Checkbox, Field, Input, Segmented, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -459,6 +459,14 @@ export function ConnectionForm() {
                     label={t('Read-only')}
                     hint={t('Only SELECT-like statements are allowed. Enforced by the database where supported.')}
                   />
+                  {!config.readOnly && supportsManualCommit(config.driver) && (
+                    <Checkbox
+                      checked={!!config.manualCommit}
+                      onChange={(manualCommit) => set({ manualCommit: manualCommit || undefined })}
+                      label={t('Commit changes manually')}
+                      hint={t('Changes in the SQL editor wait for Commit or Roll back. Each query tab has its own transaction.')}
+                    />
+                  )}
                   {config.environment === 'production' && !config.readOnly && (
                     <div className="rounded-md bg-warning-soft px-2.5 py-1.5 text-[12px] text-warning">
                       {t('Production connections always ask before running DELETE / UPDATE without WHERE, DROP or TRUNCATE.')}

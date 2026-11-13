@@ -5,6 +5,7 @@ import {
   isDangerousStatement,
   isReadOnlyCondition,
   isReadOnlyScript,
+  opensTransaction,
   splitStatements,
   statementAtOffset,
 } from '../src/index.js'
@@ -167,5 +168,32 @@ describe('changesSchema', () => {
     expect(changesSchema("SELECT 'drop table x' AS s")).toBe(false)
     expect(changesSchema('SELECT 1 -- create later')).toBe(false)
     expect(changesSchema('UPDATE t SET a = 1 WHERE id = 2')).toBe(false)
+  })
+})
+
+describe('opensTransaction (manual commit)', () => {
+  it('opens one for changes, not for reads, transaction control or session settings', () => {
+    for (const sql of ['UPDATE t SET a = 1', 'insert into t values (1)', 'DELETE FROM t', 'CREATE TABLE x (a int)', 'WITH x AS (DELETE FROM t RETURNING *) SELECT * FROM x', 'LOCK TABLE t', 'CALL p()', '-- note\nTRUNCATE t']) {
+      expect(opensTransaction(sql, 'postgres'), sql).toBe(true)
+    }
+    for (const sql of ['SELECT 1', 'BEGIN', 'COMMIT', 'ROLLBACK', 'SAVEPOINT a', 'SET search_path = x', 'SHOW timezone', 'EXPLAIN SELECT 1', '']) {
+      expect(opensTransaction(sql, 'postgres'), sql).toBe(false)
+    }
+  })
+  it('leaves statements a database refuses inside a transaction alone', () => {
+    for (const sql of ['VACUUM t', 'CREATE DATABASE d', 'CREATE INDEX CONCURRENTLY i ON t (a)', 'ALTER SYSTEM SET work_mem = 1', 'REINDEX TABLE CONCURRENTLY t']) {
+      expect(opensTransaction(sql, 'postgres'), sql).toBe(false)
+    }
+    expect(opensTransaction('CREATE INDEX i ON t (a)', 'postgres')).toBe(true)
+    expect(opensTransaction('VACUUM', 'sqlite')).toBe(false)
+    expect(opensTransaction('CHECKPOINT', 'duckdb')).toBe(false)
+    expect(opensTransaction('BACKUP DATABASE d TO DISK = 1', 'mssql')).toBe(false)
+  })
+  it('reads T-SQL batches as a whole', () => {
+    expect(opensTransaction('SET NOCOUNT ON\nUPDATE t SET a = 1', 'mssql')).toBe(true)
+    expect(opensTransaction('SET NOCOUNT ON; SET XACT_ABORT ON', 'mssql')).toBe(false)
+    expect(opensTransaction('BEGIN TRAN; UPDATE t SET a = 1; COMMIT', 'mssql')).toBe(false)
+    expect(opensTransaction("SELECT 'UPDATE' AS a", 'mssql')).toBe(false)
+    expect(opensTransaction('EXEC dbo.p', 'mssql')).toBe(true)
   })
 })

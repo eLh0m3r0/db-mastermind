@@ -1,8 +1,10 @@
 import { create } from 'zustand'
-import { isUnreachableError, type ConnectionConfig, type SchemaSnapshot, type ServerInfo } from '@dbmastermind/core/browser'
+import { isUnreachableError, needsReconnect, type ConnectionConfig, type SchemaSnapshot, type ServerInfo } from '@dbmastermind/core/browser'
 import type { StoredConnection } from '@shared/api'
 import { api } from '@/lib/api'
 import { errorMessage } from '@/lib/utils'
+import { t } from '@/lib/i18n'
+import { forgetTransactionsOf } from './transactions'
 import { askPassword, type PasswordAnswer } from '@/features/connections/PasswordPrompt'
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
@@ -29,7 +31,8 @@ interface ConnectionsState {
   setHiddenSchemas(id: string, schemas: string[]): void
   duplicate(id: string): Promise<StoredConnection>
   connect(id: string): Promise<boolean>
-  disconnect(id: string): Promise<void>
+  /** False when the user kept an open transaction (Cancel). */
+  disconnect(id: string): Promise<boolean>
   loadSchema(id: string, refresh?: boolean): Promise<SchemaSnapshot | undefined>
   get(id: string | undefined): StoredConnection | undefined
   /** Main opened the connection itself (a query ran after the network came back). */
@@ -93,10 +96,20 @@ export const useConnections = create<ConnectionsState>((set, get) => {
       set({ list: await api.listConnections(), loaded: true })
     },
     async save(config) {
+      const before = get().list.find((c) => c.id === config.id)
+      // Host, user, TLS… need a new connection, which ends the open transactions of its query tabs.
+      const reconnects = !!before && get().runtime[config.id]?.status === 'connected' && needsReconnect(before, config)
+      if (reconnects) {
+        const { settleConnectionTransactions } = await import('./workspace')
+        if (!(await settleConnectionTransactions(config.id))) throw new Error(t('Not saved: the open transaction is still waiting for Commit or Roll back.'))
+      }
       const saved = await api.saveConnection(config)
       await get().load()
       // Saving disconnects so the new settings apply.
-      if (get().runtime[saved.id]?.status === 'connected') patch(saved.id, { status: 'disconnected', schema: undefined })
+      if (reconnects) {
+        forgetTransactionsOf(saved.id)
+        patch(saved.id, { status: 'disconnected', schema: undefined })
+      }
       return saved
     },
     togglePin(id, table) {
@@ -112,6 +125,8 @@ export const useConnections = create<ConnectionsState>((set, get) => {
       void api.setExplorerPrefs(id, { hiddenSchemas: schemas })
     },
     async remove(id) {
+      const { settleConnectionTransactions } = await import('./workspace')
+      if (!(await settleConnectionTransactions(id))) return
       stopRetry(id)
       await api.deleteConnection(id)
       set((s) => {
@@ -161,9 +176,13 @@ export const useConnections = create<ConnectionsState>((set, get) => {
       }
     },
     async disconnect(id) {
+      const { settleConnectionTransactions } = await import('./workspace')
+      if (!(await settleConnectionTransactions(id))) return false
       stopRetry(id)
       await api.disconnect(id)
+      forgetTransactionsOf(id)
       patch(id, { status: 'disconnected', schema: undefined, serverInfo: undefined })
+      return true
     },
     async loadSchema(id, refresh = false) {
       const rt = get().runtime[id]

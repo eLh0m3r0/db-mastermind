@@ -20,6 +20,9 @@ export function ActivityView({ tab }: { tab: ActivityTab }) {
   const t = useT()
   const connection = useConnections((s) => s.list.find((c) => c.id === tab.connectionId))
   const newQuery = useWorkspace((s) => s.newQuery)
+  const tabs = useWorkspace((s) => s.tabs)
+  const activate = useWorkspace((s) => s.activate)
+  const [onlyApp, setOnlyApp] = useState(false)
   const [sessions, setSessions] = useState<SessionActivity[] | null>(null)
   const [error, setError] = useState<string>()
   const [busy, setBusy] = useState(false)
@@ -57,11 +60,12 @@ export function ActivityView({ tab }: { tab: ActivityTab }) {
     const q = search.trim().toLowerCase()
     return (sessions ?? []).filter(
       (s) =>
-        // An idle session holding locks others wait for is exactly what you're looking for.
-        (showIdle || s.own || !IDLE.test(s.state ?? '') || blocking.has(s.id)) &&
+        // An idle session holding locks others wait for (or a transaction nobody ends) is exactly what you're looking for.
+        (showIdle || s.own || !!s.session || s.idleInTransaction || !IDLE.test(s.state ?? '') || blocking.has(s.id)) &&
+        (!onlyApp || s.own || !!s.session || /DB Mastermind/i.test(s.application ?? '')) &&
         (!q || [s.id, s.user, s.database, s.client, s.application, s.query].some((v) => v?.toLowerCase().includes(q))),
     )
-  }, [sessions, showIdle, search, blocking])
+  }, [sessions, showIdle, onlyApp, search, blocking])
 
   const stop = async (s: SessionActivity, mode: 'cancel' | 'terminate') => {
     if (mode === 'terminate' && !(await confirmAction({ title: t('End session {id}?', { id: s.id }), message: t('Its open transaction is rolled back.'), confirmLabel: t('End session'), danger: true }))) return
@@ -84,6 +88,7 @@ export function ActivityView({ tab }: { tab: ActivityTab }) {
         {sessions && <span className="text-[11.5px] text-fg-faint">{tp(visible.length, { one: '{n} session', many: '{n} sessions' })}</span>}
         <div className="flex-1" />
         <Input inputSize="sm" className="w-56" placeholder={t('Search sessions…')} value={search} onChange={(e) => setSearch(e.target.value)} />
+        <Checkbox checked={onlyApp} onChange={setOnlyApp} label={t('Only DB Mastermind')} />
         <Checkbox checked={showIdle} onChange={setShowIdle} label={t('Show idle')} />
         <Checkbox checked={auto} onChange={setAuto} label={t('Auto-refresh')} />
         <IconButton label={t('Refresh')} onClick={() => void load()}>
@@ -119,6 +124,11 @@ export function ActivityView({ tab }: { tab: ActivityTab }) {
                           {t('this app')}
                         </Badge>
                       )}
+                      {s.session && (
+                        <button type="button" className="ml-1.5" title={t('Go to the tab')} onClick={() => tabs.some((x) => x.id === s.session) && activate(s.session!)}>
+                          <Badge tone="accent">{tabs.find((x) => x.id === s.session)?.title ?? t('this app')}</Badge>
+                        </button>
+                      )}
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap">{s.user}</td>
                     <td className="px-2 py-1.5 whitespace-nowrap">{s.database}</td>
@@ -127,6 +137,11 @@ export function ActivityView({ tab }: { tab: ActivityTab }) {
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap">
                       {s.state}
+                      {s.idleInTransaction && (
+                        <span className="ml-1.5" title={t('Holds its locks until somebody commits or rolls back')}>
+                          <Badge tone="warning">{t('open transaction')}</Badge>
+                        </span>
+                      )}
                       {!!s.blockedBy?.length && (
                         <Badge tone="danger" className="ml-1.5">
                           {t('waits for {id}', { id: s.blockedBy.join(', ') })}

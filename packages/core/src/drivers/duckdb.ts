@@ -2,7 +2,7 @@ import type { DuckDBConnection, DuckDBInstance, DuckDBResultReader } from '@duck
 import { duckdbDialect } from '../dialect.js'
 import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
-import type { CellValue, ConnectionConfig, QueryOptions, QueryResult, SchemaSnapshot, ServerInfo, TableInfo } from '../types.js'
+import type { CellValue, ConnectionConfig, QueryOptions, QueryResult, SchemaSnapshot, ServerInfo, TableInfo, TransactionState } from '../types.js'
 import { normalizeValue } from '../values.js'
 
 type DuckDBModule = typeof import('@duckdb/node-api')
@@ -74,6 +74,21 @@ export class DuckDBDriver implements DatabaseDriver {
       this.sessions.set(session, conn)
     }
     return { conn, release: () => {} }
+  }
+
+  /**
+   * Outside a transaction every statement gets a new id; inside one the id stays. Any error inside a DuckDB
+   * transaction aborts it (even a second BEGIN, so that can't be the probe).
+   */
+  async transactionState(session: string): Promise<TransactionState> {
+    const conn = this.sessions.get(session)
+    if (!conn) return 'none'
+    try {
+      const id = async () => String((await conn.runAndReadAll('SELECT txid_current()')).getRows()[0]?.[0])
+      return (await id()) === (await id()) ? 'open' : 'none'
+    } catch (err) {
+      return /transaction is aborted/i.test(String((err as Error).message)) ? 'failed' : 'none'
+    }
   }
 
   async releaseSession(session: string): Promise<void> {

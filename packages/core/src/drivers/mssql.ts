@@ -6,7 +6,7 @@ import { batchesFromEvents, ConnectionLostError, elapsed, QueryCancelledError, S
 import type { BuiltQuery } from '../filters.js'
 import { isReadOnlyScript } from '../sql-split.js'
 import { openSshTunnel, type SshTunnel } from '../ssh.js'
-import type { ConnectionConfig, QueryOptions, QueryResult, ResultField, SchemaSnapshot, ServerInfo, TableInfo } from '../types.js'
+import type { ConnectionConfig, QueryOptions, QueryResult, ResultField, SchemaSnapshot, ServerInfo, TableInfo, TransactionState } from '../types.js'
 import { normalizeValue } from '../values.js'
 
 type RawRow = Record<string, unknown>
@@ -154,11 +154,33 @@ export class MssqlDriver implements DatabaseDriver {
       pool.on('error', () => this.transactions.dropped(session))
       await pool.connect()
       this.sessions.set(session, pool)
+      const spid = await pool.request().query<{ id: number }>('SELECT @@SPID AS id').catch(() => undefined)
+      if (spid?.recordset[0]) this.spids.set(session, String(spid.recordset[0].id))
     }
     return pool
   }
 
+  /** XACT_STATE() -1: an error (XACT_ABORT, a severe one) left the transaction uncommittable; only ROLLBACK ends it. */
+  async transactionState(session: string): Promise<TransactionState> {
+    const pool = this.sessions.get(session)
+    if (!pool) return 'none'
+    const r = await pool.request().query<{ n: number; s: number }>('SELECT @@TRANCOUNT AS n, XACT_STATE() AS s').catch(() => undefined)
+    const row = r?.recordset[0]
+    if (!row) return 'none'
+    // An error that rolled the transaction back (XACT_ABORT) must not later read as a lost connection.
+    this.transactions.set(session, Number(row.n) > 0)
+    return Number(row.s) === -1 ? 'failed' : Number(row.n) > 0 ? 'open' : 'none'
+  }
+
+  /** Asked once per session connection: asking later would wait behind a running statement (one connection). */
+  private spids = new Map<string, string>()
+
+  serverSessionIds(): Record<string, string> {
+    return Object.fromEntries([...this.spids].filter(([session]) => this.sessions.has(session)))
+  }
+
   async releaseSession(session: string): Promise<void> {
+    this.spids.delete(session)
     this.transactions.released(session)
     const pool = this.sessions.get(session)
     this.sessions.delete(session)

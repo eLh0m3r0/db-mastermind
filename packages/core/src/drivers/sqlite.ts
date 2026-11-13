@@ -2,8 +2,12 @@ import { Worker } from 'node:worker_threads'
 import { sqliteDialect } from '../dialect.js'
 import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
-import type { ConnectionConfig, QueryOptions, QueryResult, ResultField, SchemaSnapshot, ServerInfo, TableInfo } from '../types.js'
+import type { ConnectionConfig, QueryOptions, QueryResult, ResultField, SchemaSnapshot, ServerInfo, TableInfo, TransactionState } from '../types.js'
+import { isReadOnlyScript } from '../sql-split.js'
 import { normalizeValue } from '../values.js'
+
+const OTHER_TAB_TRANSACTION =
+  'A query tab has an open transaction on this SQLite database. SQLite has one connection, so this change would become part of it: commit or roll back that transaction first.'
 
 /**
  * SQLite runs in a worker thread (node:sqlite is synchronous) so long queries never block the
@@ -230,8 +234,18 @@ export class SqliteDriver implements DatabaseDriver {
     await this.send({ type: 'exec', sql: 'ROLLBACK', params: [] }, session).catch(() => {})
   }
 
+  async transactionState(session: string): Promise<TransactionState> {
+    if (this.starting) await this.starting.catch(() => {})
+    return this.txOwner === session ? 'open' : 'none'
+  }
+
   async execute(sql: string, options: QueryOptions = {}): Promise<QueryResult[]> {
     if (options.signal?.aborted) throw new QueryCancelledError()
+    // One connection: a change from another tab (or script) would silently become part of this transaction, and be
+    // committed or rolled back with it.
+    if (this.txOwner !== undefined && this.txOwner !== (options.session ?? '') && !isReadOnlyScript(sql, 'sqlite')) {
+      throw new Error(OTHER_TAB_TRANSACTION)
+    }
     const start = process.hrtime.bigint()
     let cancelled = false
     const onAbort = async () => {
@@ -281,6 +295,7 @@ export class SqliteDriver implements DatabaseDriver {
   }
 
   async transaction(statements: BuiltQuery[]): Promise<number[]> {
+    if (this.txOwner !== undefined) throw new Error(OTHER_TAB_TRANSACTION)
     return (await this.send({ type: 'tx', statements })) as number[]
   }
 

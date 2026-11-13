@@ -15,8 +15,8 @@ import { buildChangeStatements, type RowChange } from './mutations.js'
 import { bindParameters, extractParameters } from './parameters.js'
 import { KnowledgeBase, relationToForeignKey } from './knowledge.js'
 import { findTable } from './schema-utils.js'
-import { classifyStatement, fitsReadOnlyTransaction, isReadOnlyCondition, isReadOnlyScript, splitStatements } from './sql-split.js'
-import type { CheckInfo, ConnectionConfig, SchemaSnapshot, ServerInfo, StatementOutcome, TableInfo, TablePage, TableRef } from './types.js'
+import { classifyStatement, fitsReadOnlyTransaction, isReadOnlyCondition, isReadOnlyScript, opensTransaction, splitStatements, stripLiterals } from './sql-split.js'
+import type { CheckInfo, ConnectionConfig, SchemaSnapshot, ServerInfo, StatementOutcome, TableInfo, TablePage, TableRef, TransactionState } from './types.js'
 
 export function createDriver(config: ConnectionConfig): DatabaseDriver {
   switch (config.driver) {
@@ -57,6 +57,11 @@ export interface RunScriptOptions {
    * transaction that is always rolled back (unconfirmed AI queries; a SELECT may call a function that writes).
    */
   readOnly?: boolean
+  /**
+   * A SQL editor tab's run: follows the connection's commit mode (`manualCommit` opens a transaction before the
+   * first statement that changes something) and notes a statement that committed an open transaction on its own.
+   */
+  editor?: boolean
 }
 
 
@@ -131,6 +136,12 @@ export class DatabaseService {
     } finally {
       await driver.close().catch(() => {})
     }
+  }
+
+  /** Settings that need no new connection (see `needsReconnect`) take effect at once. */
+  reconfigure(config: ConnectionConfig): void {
+    const entry = this.open.get(config.id)
+    if (entry) entry.config = { ...config, password: entry.config.password }
   }
 
   async disconnect(id: string): Promise<void> {
@@ -291,6 +302,8 @@ export class DatabaseService {
     const statements = splitStatements(script, entry.config.driver, { batchesOnly: entry.config.driver === 'mssql' })
     const outcomes: StatementOutcome[] = []
     let inTransaction = false
+    const editorSession = options.editor && options.session && entry.driver.transactionState ? options.session : undefined
+    const manual = !!editorSession && !!entry.config.manualCommit && !entry.config.readOnly && !!entry.driver.dialect.begin
     // A multi-statement script runs on one connection (BEGIN … COMMIT must not hop between pooled connections).
     const temporary = !options.session && statements.filter((s) => s.text).length > 1 ? `script-${Date.now()}-${Math.random().toString(36).slice(2)}` : undefined
     if (temporary) options = { ...options, session: temporary }
@@ -307,13 +320,26 @@ export class DatabaseService {
             text = bound.sql
             params = bound.params
           }
+          // MySQL, MariaDB and Oracle commit an open transaction before DDL: worth saying, the user expected to decide.
+          const watch = editorSession && ['ddl', 'other'].includes(classifyStatement(statement.text)) && !/\b(COMMIT|ROLLBACK)\b/i.test(stripLiterals(statement.text)) ? await this.transactionState(id, editorSession) : undefined
+          if (manual && opensTransaction(statement.text, entry.config.driver) && (watch ?? (await this.transactionState(id, editorSession!))) === 'none') {
+            await entry.driver.execute(entry.driver.dialect.begin, { session: editorSession })
+          }
           const results = await entry.driver.execute(text, {
             session: options.session,
             maxRows: options.maxRows,
             signal: options.signal,
             params,
           })
-          outcomes.push({ sql: statement.text, start: statement.start, end: statement.end, results, durationMs: Date.now() - started })
+          const committed = watch === 'open' && (await this.transactionState(id, editorSession!)) === 'none'
+          outcomes.push({
+            sql: statement.text,
+            start: statement.start,
+            end: statement.end,
+            results,
+            durationMs: Date.now() - started,
+            ...(committed ? { note: 'This statement committed the open transaction: the database commits before and after a schema change.' } : {}),
+          })
           if (classifyStatement(statement.text) === 'transaction') inTransaction = /^\s*(BEGIN|START)\b/i.test(statement.text)
           // T-SQL batches contain BEGIN TRAN … COMMIT inside one statement.
           if (entry.config.driver === 'mssql' && /\bBEGIN\s+TRAN/i.test(statement.text)) inTransaction = !/\b(COMMIT|ROLLBACK)\b/i.test(statement.text.slice(statement.text.search(/\bBEGIN\s+TRAN/i)))
@@ -326,8 +352,9 @@ export class DatabaseService {
             durationMs: Date.now() - started,
           })
           if (!options.continueOnError || options.signal?.aborted) {
-            // A failed script must not leave its transaction open (PostgreSQL would reject everything after).
-            if (inTransaction && options.session) {
+            // A failed script must not leave its transaction open (PostgreSQL would reject everything after). With
+            // manual commit, the user decides (the tab shows a failed transaction and offers Roll back).
+            if (inTransaction && options.session && !manual) {
               await entry.driver.execute(entry.driver.dialect.rollback, { session: options.session }).catch(() => {})
               outcomes.push({ sql: entry.driver.dialect.rollback, start: statement.end, end: statement.end, results: [], durationMs: 0, note: 'The transaction was rolled back: no changes were saved.' })
             }
@@ -358,6 +385,32 @@ export class DatabaseService {
     }
     const [r] = await entry.driver.execute(sql, { params: options.params, signal: options.signal })
     if (r?.fields.length) yield { fields: r.fields, rows: r.rows }
+  }
+
+  /** The session's transaction as the database sees it; undefined where the database has no transactions to manage. */
+  async transactionState(id: string, session: string): Promise<TransactionState | undefined> {
+    const driver = this.open.get(id)?.driver
+    if (!driver?.transactionState) return undefined
+    return driver.transactionState(session)
+  }
+
+  /** Server session ids of this app's open sessions (query tabs), by session key. */
+  serverSessionIds(id: string): Record<string, string> {
+    return this.open.get(id)?.driver.serverSessionIds?.() ?? {}
+  }
+
+  /** Commits or rolls back the session's open transaction (the editor's Commit / Roll back buttons). */
+  async endTransaction(id: string, session: string, action: 'commit' | 'rollback'): Promise<TransactionState | undefined> {
+    const entry = this.get(id)
+    const sql = action === 'commit' ? entry.driver.dialect.commit : entry.driver.dialect.rollback
+    if (!sql) return undefined
+    try {
+      await entry.driver.execute(sql, { session })
+    } finally {
+      // DDL inside the transaction may have been undone (or made permanent): the explorer reloads lazily.
+      entry.schema = undefined
+    }
+    return this.transactionState(id, session)
   }
 
   async releaseSession(id: string, session: string): Promise<void> {

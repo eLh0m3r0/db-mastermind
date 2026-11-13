@@ -371,3 +371,34 @@ export function nextTransactionState(open: boolean, sql: string, implicitDml = f
   }
   return open
 }
+
+/** Session and maintenance commands: they change no data, so they never open a transaction of their own. */
+const SESSION_WORDS = new Set('SET RESET USE SHOW LISTEN UNLISTEN LOAD INSTALL ATTACH DETACH DISCARD DEALLOCATE PREPARE CHECKPOINT ANALYZE OPTIMIZE PRINT DECLARE'.split(' '))
+
+/** Statements the database refuses inside a transaction block. */
+const OUTSIDE_TRANSACTION: Partial<Record<DriverId, RegExp>> = {
+  postgres: /^\s*(VACUUM|(CREATE|DROP)\s+(DATABASE|TABLESPACE|SUBSCRIPTION)|ALTER\s+(SYSTEM|SUBSCRIPTION)|(CREATE\s+(UNIQUE\s+)?|DROP\s+)INDEX\s+CONCURRENTLY|REINDEX\b[^;]*\bCONCURRENTLY|DETACH\s+PARTITION\b[^;]*\bCONCURRENTLY)\b/i,
+  mssql: /\b((CREATE|ALTER|DROP)\s+(DATABASE|FULLTEXT\s+(CATALOG|INDEX))|BACKUP|RESTORE|RECONFIGURE)\b/i,
+  sqlite: /^\s*VACUUM\b/i,
+  duckdb: /^\s*(VACUUM|CHECKPOINT|FORCE\s+CHECKPOINT|ATTACH|DETACH)\b/i,
+}
+
+/**
+ * True when, with manual commit, this statement should first open a transaction: it may change data or the schema
+ * and the database can run it inside one. Reads, transaction control and session settings run as they are.
+ */
+export function opensTransaction(sql: string, driver: DriverId): boolean {
+  const body = stripLiterals(sql).replace(/--[^\n]*/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ')
+  if (!body.trim() || isReadOnlyScript(sql, driver)) return false
+  if (OUTSIDE_TRANSACTION[driver]?.test(body)) return false
+  if (driver === 'mssql') {
+    // A batch with its own BEGIN TRAN / COMMIT manages its transaction itself. Only SET / USE / PRINT / DECLARE
+    // lines change nothing.
+    if (/\b(BEGIN\s+TRAN\w*|SAVE\s+TRAN\w*|COMMIT|ROLLBACK)\b/i.test(body)) return false
+    return body.split(/[;\n]/).some((line) => line.trim() && !/^\s*(SET|USE|PRINT|DECLARE|GO)\b/i.test(line))
+  }
+  const kind = classifyStatement(sql)
+  if (kind === 'transaction') return false
+  const [first = ''] = firstKeywords(sql, 1)
+  return !SESSION_WORDS.has(first)
+}

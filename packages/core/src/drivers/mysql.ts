@@ -26,6 +26,7 @@ import type {
   SchemaSnapshot,
   ServerInfo,
   TableInfo,
+  TransactionState,
 } from '../types.js'
 import { normalizeValue } from '../values.js'
 
@@ -177,7 +178,23 @@ export class MysqlDriver implements DatabaseDriver {
     return { conn, release: () => {} }
   }
 
+  /**
+   * SERVER_STATUS_IN_TRANS from the server's last OK packet per session: it follows implicit commits (DDL, LOCK
+   * TABLES) and deadlock rollbacks, which parsing the SQL would miss. Reads don't change it.
+   */
+  private serverInTransaction = new Map<string, boolean>()
+
+  serverSessionIds(): Record<string, string> {
+    return Object.fromEntries([...this.sessions].map(([session, conn]) => [session, String(conn.threadId)]))
+  }
+
+  async transactionState(session: string): Promise<TransactionState> {
+    if (!this.sessions.has(session)) return 'none'
+    return (this.serverInTransaction.get(session) ?? this.transactions.isOpen(session)) ? 'open' : 'none'
+  }
+
   async releaseSession(session: string): Promise<void> {
+    this.serverInTransaction.delete(session)
     this.transactions.released(session)
     const conn = this.sessions.get(session)
     this.sessions.delete(session)
@@ -204,15 +221,26 @@ export class MysqlDriver implements DatabaseDriver {
     const session = options.session
     try {
       const results = await this.executeOnce(sql, options)
-      if (session) this.transactions.ran(session, sql)
+      if (session) {
+        this.transactions.ran(session, sql)
+        const open = this.serverInTransaction.get(session)
+        if (open !== undefined) this.transactions.set(session, open)
+      }
       return results
     } catch (err) {
       if (!session) throw err
+      // A deadlock rolls back the whole transaction (ER_LOCK_DEADLOCK).
+      if ((err as { errno?: number }).errno === 1213) {
+        this.serverInTransaction.set(session, false)
+        this.transactions.set(session, false)
+        throw err
+      }
       // The connection died under the statement: its transaction is gone; don't let the next one autocommit unnoticed.
       if ((err as { fatal?: boolean }).fatal) {
         const conn = this.sessions.get(session)
         this.sessions.delete(session)
         conn?.destroy()
+        this.serverInTransaction.delete(session)
         const open = this.transactions.isOpen(session)
         this.transactions.released(session)
         if (open) throw new ConnectionLostError()
@@ -285,6 +313,7 @@ export class MysqlDriver implements DatabaseDriver {
             return
           }
           const header = row as ResultSetHeader
+          if (options.session && typeof header.serverStatus === 'number') this.serverInTransaction.set(options.session, (header.serverStatus & 1) !== 0)
           current = undefined
           // CALL returns a trailing OK packet after its result sets; don't show it as a separate result.
           if (results.length > 0 && results.at(-1)!.fields.length > 0 && /^\s*call\b/i.test(sql)) return

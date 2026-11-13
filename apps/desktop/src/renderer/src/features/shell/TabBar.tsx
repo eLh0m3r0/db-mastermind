@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useUi } from '@/store/ui'
 import { confirmCloseTabs, useWorkspace, type Tab } from '@/store/workspace'
+import { useTransactions } from '@/store/transactions'
 import { useCurrentConnectionId } from '../sidebar/Sidebar'
 import { useT } from '@/lib/i18n'
 
@@ -28,6 +29,7 @@ export function TabBar() {
   const [dropTarget, setDropTarget] = useState<string | null>(null)
   const t = useT()
   const multipleConnections = new Set(tabs.map((t) => t.connectionId)).size > 1
+  const transactions = useTransactions()
 
   const closeTab = (id: string) => void confirmCloseTabs([id]).then((ok) => ok && close(id))
   const menu = (e: React.MouseEvent, tab: Tab) =>
@@ -104,6 +106,13 @@ export function TabBar() {
                 <span title={split.left === tab.id ? t('Left pane') : t('Right pane')}>
                   <Columns2 size={11} className={cn('shrink-0', active ? 'text-accent' : 'text-fg-faint')} />
                 </span>
+              )}
+              {transactions[tab.id] && (
+                <span
+                  className={cn('h-2 w-2 shrink-0 rounded-full', transactions[tab.id]!.state === 'failed' ? 'bg-danger' : 'bg-warning')}
+                  title={transactions[tab.id]!.state === 'failed' ? t('Transaction failed: roll it back') : t('Open transaction: not committed yet')}
+                  data-testid="tab-transaction"
+                />
               )}
               {dirty && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-fg-muted group-hover:hidden" />}
               <button

@@ -27,6 +27,7 @@ import type {
   SchemaSnapshot,
   ServerInfo,
   TableInfo,
+  TransactionState,
 } from '../types.js'
 import { normalizeValue } from '../values.js'
 
@@ -163,6 +164,27 @@ export class PostgresDriver implements DatabaseDriver {
     }
   }
 
+  /** The protocol reports it with every reply (ReadyForQuery): idle, in a transaction, or in a failed one. */
+  async transactionState(session: string): Promise<TransactionState> {
+    const client = this.sessions.get(session) as { getTransactionStatus?: () => string | null; readyForQuery?: boolean } | undefined
+    // A failed query rejects on the ErrorResponse, a moment before ReadyForQuery brings the new status.
+    for (let i = 0; client && client.readyForQuery === false && i < 200; i++) await new Promise((r) => setTimeout(r, 5))
+    const status = client?.getTransactionStatus?.()
+    return status === 'T' ? 'open' : status === 'E' ? 'failed' : 'none'
+  }
+
+  serverSessionIds(): Record<string, string> {
+    return Object.fromEntries([...this.sessions].map(([session, client]) => [session, String((client as unknown as { processID: number }).processID)]))
+  }
+
+  /** The server's word beats parsing the SQL (a function that commits, a failed transaction). */
+  private syncTransaction(session: string | undefined, sql: string) {
+    if (!session) return
+    this.transactions.ran(session, sql)
+    const status = (this.sessions.get(session) as { getTransactionStatus?: () => string | null } | undefined)?.getTransactionStatus?.()
+    if (status) this.transactions.set(session, status !== 'I')
+  }
+
   async releaseSession(session: string): Promise<void> {
     this.transactions.released(session)
     const client = this.sessions.get(session)
@@ -183,11 +205,11 @@ export class PostgresDriver implements DatabaseDriver {
   private async executeTracked(sql: string, options: QueryOptions = {}): Promise<QueryResult[]> {
     try {
       const results = await this.executeOnce(sql, options)
-      if (options.session) this.transactions.ran(options.session, sql)
+      this.syncTransaction(options.session, sql)
       return results
     } catch (err) {
       if (!isConnectionLost(err) || !safeToRetry(err, sql) || options.signal?.aborted) {
-        if (options.session) this.transactions.ran(options.session, sql)
+        this.syncTransaction(options.session, sql)
         throw err
       }
       // A connection the server dropped while idle fails before the statement runs: retry once on a fresh one,
@@ -198,7 +220,7 @@ export class PostgresDriver implements DatabaseDriver {
         if (open) throw new ConnectionLostError()
       }
       const results = await this.executeOnce(sql, options)
-      if (options.session) this.transactions.ran(options.session, sql)
+      this.syncTransaction(options.session, sql)
       return results
     }
   }

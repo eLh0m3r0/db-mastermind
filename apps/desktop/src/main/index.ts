@@ -14,10 +14,21 @@ import { isMcpMode, runMcpMode } from './mcp-mode'
 import { configureDataDir, dataPath, readJson, writeJson } from './storage'
 import { swapMacUpdateBeforeKill } from './mac-update'
 import { startUpdateChecks } from './updates'
+import { hasEditorSessions, settleTransactionsBeforeQuit } from './transactions'
 
 configureDataDir()
 
 let mainWindow: BrowserWindow | null = null
+let quitting = false
+/** Open transactions in query tabs are settled (committed / rolled back as the user chose) once before quitting. */
+let settled = false
+let asking: Promise<boolean> | undefined
+const settleTransactions = (): Promise<boolean> =>
+  (asking ??= settleTransactionsBeforeQuit(db, mainWindow).then((ok) => {
+    settled = ok
+    if (!ok) asking = undefined
+    return ok
+  }))
 
 interface WindowState {
   width: number
@@ -65,8 +76,14 @@ function createWindow() {
   if (state.maximized) mainWindow.maximize()
 
   mainWindow.once('ready-to-show', () => (e2eBackground ? mainWindow?.showInactive() : mainWindow?.show()))
-  mainWindow.on('close', () => {
+  mainWindow.on('close', (event) => {
     if (!mainWindow) return
+    // Closing the last window quits on Windows and Linux: ask while the window is still there.
+    if (process.platform !== 'darwin' && !quitting && !settled && hasEditorSessions()) {
+      event.preventDefault()
+      void settleTransactions().then((ok) => ok && mainWindow?.close())
+      return
+    }
     const bounds = mainWindow.getNormalBounds()
     writeJson('window.json', { ...bounds, maximized: mainWindow.isMaximized() } satisfies WindowState)
   })
@@ -153,12 +170,17 @@ function startApp() {
     })
   })
 
-  let quitting = false
   app.on('before-quit', (event) => {
     flushHistory()
     if (quitting) return
-    quitting = true
     event.preventDefault()
+    void settleTransactions().then((ok) => {
+      if (!ok || quitting) return
+      quitting = true
+      shutDown()
+    })
+  })
+  const shutDown = () => {
     // Close database connections cleanly (rolls back open sessions) before exiting.
     void Promise.race([db.disconnectAll(), new Promise((r) => setTimeout(r, 3000))])
       .then(() => flushConnections())
@@ -170,7 +192,7 @@ function startApp() {
         }
         app.quit()
       })
-  })
+  }
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit()

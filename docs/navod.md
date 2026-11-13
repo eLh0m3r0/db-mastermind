@@ -56,6 +56,18 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
 - **Výpadek VPN nebo sítě:** když server není dostupný, aplikace to na pozadí sama zkouší znovu a průzkumník tabulek
   se připojí, jakmile server zase odpovídá.
 - **Rozdělené zobrazení:** ⌘\ / Ctrl+\ zobrazí dvě karty vedle sebe, třeba dotaz a tabulku.
+- **Transakce:** každá záložka dotazu má vlastní spojení a vlastní transakci. Když je v záložce otevřená transakce
+  (třeba po `BEGIN`), lišta editoru to ukáže i se seznamem provedených změn a nabídne *Potvrdit* (commit) a *Vrátit
+  zpět* (rollback). Záložka je označená tečkou.
+  - Chcete-li, aby se změny z editoru neukládaly hned, zapněte u připojení *Potvrzovat změny ručně*. První příkaz, který
+    něco mění, pak otevře transakci a změny čekají na vaše rozhodnutí. Čtení transakci neotevírá.
+  - Když příkaz skončí chybou, PostgreSQL a DuckDB celou transakci zablokují. Lišta ji pak ukáže červeně a nabídne jen
+    *Vrátit zpět*.
+  - MySQL, MariaDB a Oracle před a po `CREATE`, `ALTER` a `DROP` transakci samy potvrdí. Aplikace na to upozorní.
+  - Při zavírání záložky, odpojení nebo ukončení aplikace se otevřená transakce nikdy neztratí potichu: aplikace se
+    zeptá, jestli ji potvrdit, nebo vrátit zpět.
+  - *Aktivita serveru* ukáže, která spojení patří kterým záložkám (*Jen DB Mastermind*), a zvýrazní spojení, která
+    nic nedělají, ale drží otevřenou transakci.
 
 ## 5. Diagramy a návrh schématu
 

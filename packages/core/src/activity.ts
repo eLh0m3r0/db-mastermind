@@ -15,19 +15,24 @@ export interface SessionActivity {
   own?: boolean
   /** Sessions holding locks this one waits for. */
   blockedBy?: string[]
+  /** Idle with a transaction open: holds its locks and row versions until somebody commits or rolls back. */
+  idleInTransaction?: boolean
+  /** The app's own session key (a query tab's id) when this is one of this app's tab sessions. */
+  session?: string
 }
 
 const QUERIES: Record<string, string | undefined> = {
   postgres: `SELECT pid::text AS id, usename AS "user", datname AS database, client_addr::text AS client, application_name AS application,
        state, EXTRACT(EPOCH FROM (now() - query_start)) * 1000 AS duration_ms, query, pid = pg_backend_pid() AS own,
-       array_to_string(pg_blocking_pids(pid), ',') AS blocked_by
+       array_to_string(pg_blocking_pids(pid), ',') AS blocked_by, state LIKE 'idle in transaction%' AS idle_tx
   FROM pg_stat_activity WHERE backend_type = 'client backend' ORDER BY query_start NULLS LAST`,
   mysql: `SELECT ID AS id, USER AS user, DB AS \`database\`, HOST AS client, NULL AS application, COMMAND AS state, TIME * 1000 AS duration_ms,
        CAST(INFO AS CHAR) AS query, ID = CONNECTION_ID() AS own
   FROM information_schema.PROCESSLIST WHERE COMMAND <> 'Daemon' ORDER BY TIME DESC`,
   mssql: `SELECT CAST(s.session_id AS varchar(10)) AS id, s.login_name AS [user], DB_NAME(s.database_id) AS [database], s.host_name AS client,
        s.program_name AS application, COALESCE(r.status, s.status) AS state, r.total_elapsed_time AS duration_ms, t.text AS query,
-       CASE WHEN s.session_id = @@SPID THEN 1 ELSE 0 END AS own, CAST(NULLIF(r.blocking_session_id, 0) AS varchar(10)) AS blocked_by
+       CASE WHEN s.session_id = @@SPID THEN 1 ELSE 0 END AS own, CAST(NULLIF(r.blocking_session_id, 0) AS varchar(10)) AS blocked_by,
+       CASE WHEN r.session_id IS NULL AND s.open_transaction_count > 0 THEN 1 ELSE 0 END AS idle_tx
   FROM sys.dm_exec_sessions s
   LEFT JOIN sys.dm_exec_requests r ON r.session_id = s.session_id
   OUTER APPLY sys.dm_exec_sql_text(r.sql_handle) t
@@ -36,7 +41,8 @@ const QUERIES: Record<string, string | undefined> = {
   oracle: `SELECT s.sid || ',' || s.serial# AS "id", s.username AS "user", s.schemaname AS "database", s.machine AS "client", s.program AS "application",
        s.status AS "state", s.last_call_et * 1000 AS "duration_ms", q.sql_text AS "query",
        CASE WHEN s.sid = SYS_CONTEXT('USERENV', 'SID') THEN 1 ELSE 0 END AS "own",
-       (SELECT b.sid || ',' || b.serial# FROM v$session b WHERE b.sid = s.blocking_session) AS "blocked_by"
+       (SELECT b.sid || ',' || b.serial# FROM v$session b WHERE b.sid = s.blocking_session) AS "blocked_by",
+       CASE WHEN s.status = 'INACTIVE' AND s.taddr IS NOT NULL THEN 1 ELSE 0 END AS "idle_tx"
   FROM v$session s LEFT JOIN v$sql q ON q.sql_id = s.sql_id AND q.child_number = 0
  WHERE s.type = 'USER' ORDER BY s.last_call_et DESC`,
 }
@@ -53,6 +59,9 @@ const MYSQL_LOCK_WAITS: Record<string, string> = {
   JOIN information_schema.INNODB_TRX r ON r.trx_id = w.requesting_trx_id
   JOIN information_schema.INNODB_TRX b ON b.trx_id = w.blocking_trx_id`,
 }
+
+/** Sessions with an open InnoDB transaction (needs PROCESS, so failures are ignored). */
+const MYSQL_OPEN_TRANSACTIONS = 'SELECT trx_mysql_thread_id FROM information_schema.INNODB_TRX'
 
 /** Sessions on the server, longest-running first. Needs the usual monitoring privileges. */
 /** CockroachDB has no pg_blocking_pids; sessions and their running queries come from crdb_internal. */
@@ -87,7 +96,18 @@ export async function listActivity(db: DatabaseService, connectionId: string): P
     query: get(row, 'query'),
     own: ['true', '1'].includes(String(get(row, 'own'))),
     blockedBy: get(row, 'blocked_by')?.split(',').filter(Boolean),
+    idleInTransaction: ['true', '1'].includes(String(get(row, 'idle_tx'))) || undefined,
   }))
+  const tabs = new Map(Object.entries(db.serverSessionIds(connectionId)).map(([session, id]) => [id, session]))
+  for (const s of sessions) {
+    const session = tabs.get(s.id)
+    if (session) s.session = session
+  }
+  if (MYSQL_LIKE.has(driver)) {
+    const [t] = await db.runScript(connectionId, MYSQL_OPEN_TRANSACTIONS, { maxRows: 2000 })
+    const open = new Set((t?.results?.[0]?.rows ?? []).map((row) => cellToText(row[0] ?? null)))
+    for (const s of sessions) if (open.has(s.id) && /^sleep$/i.test(s.state ?? '')) s.idleInTransaction = true
+  }
   const waits = MYSQL_LOCK_WAITS[driver]
   if (waits) {
     const [w] = await db.runScript(connectionId, waits, { maxRows: 2000 })

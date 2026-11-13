@@ -26,6 +26,7 @@ import type {
   StatementOutcome,
   TablePage,
   TableRef,
+  TransactionState,
 } from '@dbmastermind/core'
 
 export type ThemePreference = 'system' | 'light' | 'dark'
@@ -653,6 +654,10 @@ export interface MastermindApi {
   cancelQuery(runId: string): Promise<void>
   explainQuery(connectionId: string, sql: string, analyze?: boolean): Promise<ExplainResult>
   releaseSession(connectionId: string, session: string): Promise<void>
+  /** A query tab's transaction as the database sees it; null when not connected or the database has none to manage. */
+  transactionState(connectionId: string, session: string): Promise<TransactionState | null>
+  /** Commit / Roll back of a query tab's open transaction; resolves with the state after it. */
+  endTransaction(connectionId: string, session: string, action: 'commit' | 'rollback'): Promise<TransactionState>
   listActivity(connectionId: string): Promise<SessionActivity[]>
   listPrincipals(connectionId: string): Promise<Principal[]>
   listGrants(connectionId: string, principal: string): Promise<Grant[]>
@@ -827,6 +832,8 @@ export const API_METHODS = [
   'cancelQuery',
   'explainQuery',
   'releaseSession',
+  'transactionState',
+  'endTransaction',
   'listActivity',
   'listPrincipals',
   'listGrants',

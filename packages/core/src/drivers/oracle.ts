@@ -5,7 +5,7 @@ import { classifyStatement } from '../sql-split.js'
 import { ConnectionLostError, elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import { openSshTunnel, type SshTunnel } from '../ssh.js'
-import type { ConnectionConfig, QueryOptions, QueryResult, SchemaSnapshot, ServerInfo, TableInfo } from '../types.js'
+import type { ConnectionConfig, QueryOptions, QueryResult, SchemaSnapshot, ServerInfo, TableInfo, TransactionState } from '../types.js'
 import { normalizeValue } from '../values.js'
 
 type RawRow = Record<string, unknown>
@@ -115,14 +115,30 @@ export class OracleDriver implements DatabaseDriver {
     if (!conn) {
       conn = await this.activePool.getConnection()
       this.sessions.set(session, conn)
+      // Server activity names sessions "sid,serial#"; reading v$session needs the same privilege activity does.
+      const r = await conn.execute<[string]>(`SELECT sid || ',' || serial# FROM v$session WHERE sid = SYS_CONTEXT('USERENV', 'SID')`, [], { outFormat: oracledb.OUT_FORMAT_ARRAY }).catch(() => undefined)
+      const id = r?.rows?.[0]?.[0]
+      if (id) this.sids.set(session, String(id))
     }
     return { conn, release: async () => {} }
+  }
+
+  /** Statements of other sessions auto-commit, so only a transaction the user started can be open. */
+  private sids = new Map<string, string>()
+
+  serverSessionIds(): Record<string, string> {
+    return Object.fromEntries([...this.sids].filter(([session]) => this.sessions.has(session)))
+  }
+
+  async transactionState(session: string): Promise<TransactionState> {
+    return this.sessions.has(session) && this.manualTx.has(session) ? 'open' : 'none'
   }
 
   async releaseSession(session: string): Promise<void> {
     const conn = this.sessions.get(session)
     this.sessions.delete(session)
     this.manualTx.delete(session)
+    this.sids.delete(session)
     if (!conn) return
     await conn.rollback().catch(() => {})
     await conn.close().catch(() => {})
@@ -174,7 +190,8 @@ export class OracleDriver implements DatabaseDriver {
         autoCommit: !options.session || !this.manualTx.has(options.session),
         fetchTypeHandler,
       })
-      if (options.session && /^\s*(COMMIT|ROLLBACK)\b/i.test(sql)) this.manualTx.delete(options.session)
+      // Oracle commits before and after DDL; ROLLBACK TO SAVEPOINT keeps the transaction.
+      if (options.session && (/^\s*(COMMIT|ROLLBACK)\b(?!\s+(WORK\s+)?TO\b)/i.test(sql) || classifyStatement(sql) === 'ddl')) this.manualTx.delete(options.session)
       const durationMs = elapsed(start)
       if (r.metaData) {
         const rows = r.rows ?? []

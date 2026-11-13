@@ -1,7 +1,7 @@
 import type { BuiltQuery } from './filters.js'
 import type { Dialect } from './dialect.js'
 import { nextTransactionState } from './sql-split.js'
-import type { CellValue, ConnectionConfig, QueryOptions, QueryResult, ResultField, SchemaSnapshot, ServerInfo } from './types.js'
+import type { CellValue, ConnectionConfig, QueryOptions, QueryResult, ResultField, SchemaSnapshot, ServerInfo, TransactionState } from './types.js'
 
 export interface IntrospectOptions {
   /** Limit to these schemas; all non-system schemas when omitted. */
@@ -22,6 +22,13 @@ export interface DatabaseDriver {
   transaction(statements: BuiltQuery[]): Promise<number[]>
   /** Returns the session's sticky connection to the pool (rolling back anything uncommitted). */
   releaseSession(session: string): Promise<void>
+  /**
+   * Whether the session has a transaction open, as the database sees it (DDL that commits on its own, a failed
+   * PostgreSQL transaction). Absent where the database has no transactions to manage.
+   */
+  transactionState?(session: string): Promise<TransactionState>
+  /** The server's id of each open session (as server activity lists it), so the app can tell which tab it is. */
+  serverSessionIds?(): Record<string, string>
   serverInfo(): Promise<ServerInfo>
   listDatabases(): Promise<string[]>
   introspect(options?: IntrospectOptions): Promise<SchemaSnapshot>
@@ -158,6 +165,10 @@ export class SessionTransactions {
   }
   ran(session: string, sql: string): void {
     this.open.set(session, nextTransactionState(this.isOpen(session), sql, this.implicitDml))
+  }
+  /** What the server reported, which beats parsing (implicit commits, rollbacks on error). */
+  set(session: string, open: boolean): void {
+    this.open.set(session, open)
   }
   /** The connection went away while idle: the next statement reports it if a transaction was open. */
   dropped(session: string): void {

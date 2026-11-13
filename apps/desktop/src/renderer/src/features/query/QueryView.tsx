@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { closeCompletion } from '@codemirror/autocomplete'
 import { format as formatSql, type SqlLanguage } from 'sql-formatter'
 import { Activity, BookmarkPlus, Play, PlayCircle, Sparkles, Square, Wand2 } from 'lucide-react'
-import { changesSchema, extractParameters, isDangerousStatement, splitStatements, type DriverId, type ExplainResult, type QueryParameter, type StatementOutcome } from '@dbmastermind/core/browser'
+import { changesSchema, extractParameters, supportsManualCommit, isDangerousStatement, splitStatements, type DriverId, type ExplainResult, type QueryParameter, type StatementOutcome } from '@dbmastermind/core/browser'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -19,6 +19,8 @@ import { ParamsModal, type ParamValues } from './ParamsModal'
 import { PlanView } from './PlanView'
 import { ResultsPanel } from './ResultsPanel'
 import { SqlEditor, type SqlEditorHandle } from './SqlEditor'
+import { TransactionBar } from './TransactionBar'
+import { endTransaction, refreshTransaction } from '@/store/transactions'
 import { useT } from '@/lib/i18n'
 import { confirmAction } from '@/components/ui/ConfirmDialog'
 
@@ -41,6 +43,7 @@ const ALL_ROWS = 10_000_000
 export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
   const connection = useConnections((s) => s.list.find((c) => c.id === tab.connectionId))
   const schema = useConnections((s) => s.runtime[tab.connectionId]?.schema)
+  const connected = useConnections((s) => s.runtime[tab.connectionId]?.status === 'connected')
   const loadSchema = useConnections((s) => s.loadSchema)
   const dark = useSettings((s) => s.dark)
   const settings = useSettings((s) => s.settings)
@@ -63,6 +66,11 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
   useEffect(() => {
     if (active && !schema) void loadSchema(tab.connectionId)
   }, [active, schema, loadSchema, tab.connectionId])
+
+  // A transaction may already be open in this tab's session (the window was reopened, or the app reconnected).
+  useEffect(() => {
+    if (connected) void refreshTransaction(tab.id, tab.connectionId)
+  }, [connected, tab.id, tab.connectionId])
 
   // Persist text without re-rendering the tab list on every keystroke.
   const persistSql = useRef(debounce((id: string, sql: string) => updateTab(id, { sql }), 300)).current
@@ -110,6 +118,10 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       try {
         setPlan(null)
         const result = await api.runQuery({ connectionId: tab.connectionId, sql: target.sql, runId: id, session: tab.id, parameterValues, maxRows: again?.maxRows })
+        void refreshTransaction(tab.id, tab.connectionId, result)
+        if (result.some((o) => o.note?.startsWith('This statement committed the open transaction'))) {
+          toast({ kind: 'warning', message: t('The schema change committed the open transaction'), detail: t('The database commits before and after CREATE, ALTER and DROP.') })
+        }
         if (runId.current !== id) return
         setOutcomes(result)
         const failed = result.find((o) => o.error && o.error.code !== 'CANCELLED')
@@ -119,6 +131,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
         }
         if (result.some((o) => !o.error && changesSchema(o.sql))) void loadSchema(tab.connectionId, true)
       } catch (err) {
+        void refreshTransaction(tab.id, tab.connectionId)
         if (runId.current !== id) return
         setOutcomes([{ sql: target.sql, start: 0, end: target.sql.length, error: { message: errorMessage(err) }, durationMs: 0 }])
       } finally {
@@ -219,8 +232,10 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       else if (command === 'save-query') void save()
       else if (command === 'focus-editor') editor.current?.focus()
       else if (command === 'inline-ai') openInline()
+      else if (command === 'commit-transaction') void endTransaction(tab.id, 'commit')
+      else if (command === 'rollback-transaction') void endTransaction(tab.id, 'rollback')
     })
-  }, [active, run, cancel, format, save, openInline])
+  }, [active, run, cancel, format, save, openInline, tab.id])
 
   useEffect(() => {
     if (active) requestAnimationFrame(() => editor.current?.focus())
@@ -281,6 +296,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
           {t('Ask AI')}
         </Button>
         <div className="flex-1" />
+        <TransactionBar tabId={tab.id} driver={driver} manual={!!connection?.manualCommit && !connection.readOnly && supportsManualCommit(driver)} />
         {connection?.readOnly && <span className="text-[11.5px] text-fg-faint">{t('read-only')}</span>}
       </div>
       {inline && (
