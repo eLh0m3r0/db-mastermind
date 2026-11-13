@@ -43,7 +43,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 >
 > MODEL, UNDERSTAND AND REDESIGN
 > • Model a new database without one: draw tables and relationships, rename and retype right on the diagram; models are DBML text files you can keep in Git, with SQL for any supported database.
-> • Opens and saves DeZign for Databases projects (.dez, .dezproj) with their diagrams, domains, subtypes, triggers and versions; no DeZign license needed.
+> • Opens and saves DeZign for Databases projects (.dez, .dezproj) with their diagrams, domains, subtypes, triggers and versions, without DeZign installed.
 > • Interactive ER diagrams with automatic layout, saved diagrams and the join path between any two tables.
 > • Design tables, columns, keys and indexes right on the diagram; DB Mastermind writes the migration, checks your data first and gives you the rollback.
 > • Compare schemas and data between databases.
@@ -62,6 +62,8 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 > English and Czech. Light, dark and high-contrast themes.
 >
 > Open source under the MIT license: https://github.com/eLh0m3r0/db-mastermind
+>
+> DeZign for Databases is a trademark of Datanamic. DB Mastermind is not affiliated with or endorsed by Datanamic.
 
 **Product features** (one per field):
 
@@ -83,7 +85,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 
 **What's new in this version:** Data modeling without a database: start a model on the home page, rename tables and columns and change types right on the diagram, everything else in one panel next to it; changes are kept as you make them, with undo. Models are DBML text files: generate SQL for any supported database or compare a model with a database for the migration. Opens and saves DeZign for Databases projects (.dez, .dezproj), including diagrams, domains, subtypes, labels, triggers, procedures, sequences and archived versions.
 
-**Copyright and trademark info:** © 2026 Václav Mudra. MIT license.
+**Copyright and trademark info:** © 2026 Václav Mudra. MIT license. DeZign for Databases is a trademark of Datanamic; DB Mastermind is not affiliated with or endorsed by Datanamic.
 
 **Additional license terms:** Open source under the MIT license: https://github.com/eLh0m3r0/db-mastermind/blob/main/LICENSE
 
@@ -121,7 +123,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 >
 > DATOVÝ MODEL
 > • Model nové databáze bez databáze: tabulky a vztahy kreslíte, přejmenujete a měníte typy přímo v diagramu; modely jsou textové soubory DBML vhodné pro Git, s SQL pro kteroukoli podporovanou databázi.
-> • Otevírá a ukládá projekty DeZign for Databases (.dez, .dezproj) včetně diagramů, domén, podtypů, triggerů a verzí; licence DeZignu není potřeba.
+> • Otevírá a ukládá projekty DeZign for Databases (.dez, .dezproj) včetně diagramů, domén, podtypů, triggerů a verzí, i bez nainstalovaného DeZignu.
 > • Interaktivní ER diagramy s automatickým rozložením, uloženými pohledy a cestou JOIN mezi libovolnými tabulkami.
 > • Návrh tabulek, sloupců, klíčů a indexů přímo v diagramu; DB Mastermind napíše migraci, předem zkontroluje data a připraví i vrácení změn.
 > • Porovnání schémat i dat mezi databázemi.
@@ -140,6 +142,8 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 > Česky i anglicky. Světlý, tmavý a vysoce kontrastní motiv.
 >
 > Open source pod licencí MIT: https://github.com/eLh0m3r0/db-mastermind
+>
+> DeZign for Databases je ochranná známka společnosti Datanamic. DB Mastermind není s Datanamic nijak spojen ani jím schválen.
 
 **Product features:**
 

@@ -215,3 +215,5 @@ policy). AI providers receive data only after you set one up. Full privacy polic
 ## License
 
 [MIT](LICENSE). Free for personal and commercial use.
+
+DeZign for Databases is a trademark of Datanamic. DB Mastermind is not affiliated with or endorsed by Datanamic.

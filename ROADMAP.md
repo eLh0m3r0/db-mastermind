@@ -271,7 +271,7 @@ The dbdiagram / drawDB / DbSchema / "Design for Databases" experience, working *
 
 ---
 
-## Milestone 8 — Modeling without a license
+## Milestone 8 — Modeling without DeZign installed
 
 Teams that design databases in DeZign for Databases (and similar paid modelers) can open their models here,
 keep working, and get what those tools charge extra for (ALTER scripts against a live database) for free.

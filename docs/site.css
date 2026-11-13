@@ -50,6 +50,7 @@ section > p.lead { color: var(--muted); margin: 0 0 28px; max-width: 720px; }
 .kbd { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--subtle); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
 pre { background: var(--subtle); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow: auto; font-size: 13.5px; }
 footer { margin-top: 64px; padding: 28px 0 40px; border-top: 1px solid var(--line); color: var(--faint); font-size: 14px; display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; }
+footer .trademark { order: 3; flex-basis: 100%; font-size: 12.5px; }
 .mcp { border: 1px solid var(--line); border-radius: 12px; background: var(--card); padding: 14px 16px 6px; }
 .mcp-bar { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; }
 .tabs, .os { display: flex; flex-wrap: wrap; gap: 4px; }
