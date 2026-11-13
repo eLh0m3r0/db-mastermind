@@ -626,7 +626,7 @@ Not a clone: their features, rethought and connected to live databases, the know
 - A separate modeler application: the designer is its own module in the code and opens like a stand-alone
   tool, but one install and one update channel stay
 
-## Milestone 9 — A modeling tool of its own
+## Milestone 9 — A modeling tool of its own (1.1.0)
 
 What docs/STRATEGY.md ("Two ways in") asks for, without losing anything of Milestone 8 (the DeZign tests guard
 compatibility while the screens change).
@@ -635,9 +635,12 @@ compatibility while the screens change).
   recent models under them; fits a laptop screen without scrolling (recent models are remembered when opened)
 - ✅ A model tab hides the connections sidebar (⌘B or the button in the tab bar shows it; remembered apart from
   the databases' choice, and the sidebar has its own hide button); its left side is the model's objects
-- ✅ A lean model bar: Save, SQL, AI, Compare (its arrow picks the database or a version/file; with no database
-  linked, picking one compares at once), More (domains, project scripts, versions, rename,
-  views and code, directives…); texts name DeZign only for its files ("as in DeZign" is gone from the screens)
+- ✅ A lean model bar: Open, Save, Save as, Import (SQL script, from the database), SQL DDL (the model's own
+  database first), AI, Compare (its arrow picks the database or a version/file; with no database linked, picking
+  one compares at once), More (rename, views and code, directives; what only a DeZign project has — domains,
+  project scripts, archived versions — in a "DeZign project" submenu); texts name DeZign only for its files.
+  Both bars stay one line at any window width (labels give way to icons with tooltips; the diagram's columns,
+  types and notation are one View menu)
 - ✅ One detail panel for the selected table, column or relationship, docked right in a wide window and a drawer
   over the canvas in a narrow one (Esc closes it, a pin keeps it docked); the table and relationship dialogs are
   gone. Columns are one line each (key, name, type, NOT NULL); the one being worked on shows its details (default,
@@ -648,6 +651,12 @@ compatibility while the screens change).
   keeps, Esc drops); a selected table offers "+ column" and NN toggles; keys pointing at a renamed column or
   table follow it. A double-click elsewhere on a table (or on a line) opens the panel; once open, it follows the
   table clicked. Each edit is a step of ⌘Z (e2e/flow97)
+- ✅ Review before 1.1.0 (own pass with e2e/review-tour.mjs, then Codex on screenshots and code): editing on a
+  named diagram no longer duplicates the rest of the model; renames reach tables the canvas does not show; the
+  table whose details open is brought into view and Fit view fits what the drawer leaves; another file opened in
+  a tab starts its own undo and drops what the previous one had pending; DeZign saves put a folder project back
+  when a write fails, keep a backup folder per save and stop on any change made on disk meanwhile
+  (apps/desktop/test/dezign-file.test.ts)
 
 ---
 

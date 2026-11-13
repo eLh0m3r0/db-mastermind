@@ -78,7 +78,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 
 **Search terms** (7): `database client` · `SQL editor` · `PostgreSQL` · `SQL Server` · `MySQL` · `ER diagram` · `database AI`
 
-**What's new in this version:** Run all with several result sets: Copy all (TSV, JSON or Markdown, optionally with each statement) and Download all (one Excel workbook with a sheet per result, or a ZIP with a file per result). Copying a single result offers JSON and Markdown too. After a VPN or network drop, the table explorer reconnects by itself as soon as the server is reachable again.
+**What's new in this version:** Data modeling without a database: start a model on the home page, rename tables and columns and change types right on the diagram, everything else in one panel next to it; changes are kept as you make them, with undo. Models are DBML text files: generate SQL for any supported database or compare a model with a database for the migration. Opens and saves DeZign for Databases projects (.dez, .dezproj), including diagrams, domains, subtypes, labels, triggers, procedures, sequences and archived versions.
 
 **Copyright and trademark info:** © 2026 Václav Mudra. MIT license.
 
@@ -152,7 +152,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 
 **Search terms:** `databázový klient` · `SQL editor` · `PostgreSQL` · `SQL Server` · `MySQL` · `ER diagram` · `databáze AI`
 
-**What's new in this version:** Spuštění celého skriptu s více výsledky: Kopírovat vše (TSV, JSON nebo Markdown, volitelně i s SQL každého dotazu) a Stáhnout vše (jeden sešit Excelu s listem pro každý výsledek, nebo ZIP se souborem pro každý výsledek). Kopírování jednoho výsledku nabízí i JSON a Markdown. Po výpadku VPN nebo sítě se průzkumník tabulek sám znovu připojí, jakmile je server zase dostupný.
+**What's new in this version:** Datové modelování bez databáze: model založíte na úvodní stránce, tabulky a sloupce přejmenujete a typy změníte přímo v diagramu, vše ostatní je v jednom panelu vedle něj; změny se ukládají průběžně a jdou vrátit. Modely jsou textové soubory DBML: vygenerujete z nich SQL pro kteroukoli podporovanou databázi nebo je porovnáte s databází a dostanete migraci. Otevírá a ukládá projekty DeZign for Databases (.dez, .dezproj) včetně diagramů, domén, podtypů, štítků, triggerů, procedur, sekvencí a archivovaných verzí.
 
 **Screenshots:** the same files; captions:
 
