@@ -250,3 +250,115 @@ textarea,
   border-radius: 6px;
   overflow: hidden;
 }
+
+/* ── Looks (lib/looks.ts) ───────────────────────────────────────────────────────────────────────────────────── */
+
+/* Accent colors: light, then dark. */
+:root.look-blue { --accent: #2563eb; --accent-hover: #1d4fd0; --accent-soft: rgba(37, 99, 235, 0.1); --grid-selected: rgba(37, 99, 235, 0.12); }
+:root.dark.look-blue { --accent: #4f8cff; --accent-hover: #6b9fff; --accent-soft: rgba(79, 140, 255, 0.16); --grid-selected: rgba(79, 140, 255, 0.2); }
+:root.look-teal { --accent: #0f8f8a; --accent-hover: #0b7a76; --accent-soft: rgba(15, 143, 138, 0.1); --grid-selected: rgba(15, 143, 138, 0.13); }
+:root.dark.look-teal { --accent: #2bb5ae; --accent-hover: #44c7c0; --accent-soft: rgba(43, 181, 174, 0.16); --grid-selected: rgba(43, 181, 174, 0.2); }
+:root.look-green { --accent: #16803c; --accent-hover: #126b32; --accent-soft: rgba(22, 128, 60, 0.1); --grid-selected: rgba(22, 128, 60, 0.13); }
+:root.dark.look-green { --accent: #3fbf6a; --accent-hover: #58cd7f; --accent-soft: rgba(63, 191, 106, 0.16); --grid-selected: rgba(63, 191, 106, 0.2); }
+:root.look-orange { --accent: #d9590b; --accent-hover: #bf4d08; --accent-soft: rgba(217, 89, 11, 0.1); --grid-selected: rgba(217, 89, 11, 0.13); }
+:root.dark.look-orange { --accent: #ff8a3d; --accent-hover: #ff9d5c; --accent-soft: rgba(255, 138, 61, 0.16); --grid-selected: rgba(255, 138, 61, 0.2); --accent-fg: #1a0d03; }
+:root.look-rose { --accent: #d6336c; --accent-hover: #bd2a5d; --accent-soft: rgba(214, 51, 108, 0.1); --grid-selected: rgba(214, 51, 108, 0.12); }
+:root.dark.look-rose { --accent: #f06595; --accent-hover: #f47fa7; --accent-soft: rgba(240, 101, 149, 0.16); --grid-selected: rgba(240, 101, 149, 0.2); }
+
+/* Retro 2001: beige desktop, blue title bars, a green start button. */
+:root.look-retro2001 {
+  --bg: #ffffff; --bg-subtle: #ece9d8; --bg-muted: #e3dfca; --bg-elevated: #fdfcf6;
+  --bg-hover: rgba(49, 106, 197, 0.1); --bg-active: rgba(49, 106, 197, 0.18);
+  --border: #c4c0aa; --border-strong: #8f8b75;
+  --text: #000000; --text-muted: #3d3d3d; --text-faint: #6f6f6f;
+  --accent: #245edb; --accent-hover: #1c4fbf; --accent-soft: rgba(36, 94, 219, 0.14); --accent-fg: #ffffff;
+  --success: #3c9b2f; --success-soft: rgba(60, 155, 47, 0.14);
+  --grid-header: #ece9d8; --grid-row-alt: #f7f6ee; --grid-selected: rgba(49, 106, 197, 0.25); --null: #8a8a8a;
+  --font-sans: Tahoma, 'Segoe UI', Verdana, sans-serif;
+}
+:root.look-retro2001 .drag-region { background: linear-gradient(#3a80f3, #1f5fd6); color: #ffffff; }
+:root.look-retro2001 .drag-region [role='tab'][aria-selected='false'] { color: #e8efff; }
+
+/* Green phosphor terminal. */
+:root.look-terminal {
+  --bg: #000000; --bg-subtle: #050d07; --bg-muted: #0a170d; --bg-elevated: #06100a;
+  --bg-hover: rgba(51, 255, 102, 0.08); --bg-active: rgba(51, 255, 102, 0.16);
+  --border: #0f5f28; --border-strong: #1a8a3c;
+  --text: #33ff66; --text-muted: #26c24d; --text-faint: #198a36;
+  --accent: #33ff66; --accent-hover: #66ff8c; --accent-soft: rgba(51, 255, 102, 0.14); --accent-fg: #000000;
+  --danger: #ff5555; --danger-soft: rgba(255, 85, 85, 0.14); --warning: #ffd75f; --warning-soft: rgba(255, 215, 95, 0.14);
+  --success: #33ff66; --success-soft: rgba(51, 255, 102, 0.14); --info: #5fd7ff;
+  --grid-header: #050d07; --grid-row-alt: #020703; --grid-selected: rgba(51, 255, 102, 0.22); --null: #198a36;
+  --font-sans: var(--font-mono);
+}
+:root.look-terminal body { text-shadow: 0 0 4px rgba(51, 255, 102, 0.35); }
+
+/* Two blue panels and cyan text, as file managers had it. */
+:root.look-commander {
+  --bg: #0000a8; --bg-subtle: #000080; --bg-muted: #00006e; --bg-elevated: #0000a8;
+  --bg-hover: rgba(85, 255, 255, 0.12); --bg-active: rgba(85, 255, 255, 0.22);
+  --border: #55ffff; --border-strong: #aaffff;
+  --text: #55ffff; --text-muted: #c0c0c0; --text-faint: #8a8acf;
+  --accent: #00a8a8; --accent-hover: #00c4c4; --accent-soft: rgba(0, 168, 168, 0.3); --accent-fg: #000000;
+  --warning: #ffff55; --warning-soft: rgba(255, 255, 85, 0.16); --success: #55ff55; --success-soft: rgba(85, 255, 85, 0.16);
+  --danger: #ff5555; --danger-soft: rgba(255, 85, 85, 0.18); --info: #ffffff;
+  --grid-header: #000080; --grid-row-alt: #0000a8; --grid-selected: rgba(255, 255, 85, 0.22); --null: #8a8acf;
+  --font-sans: var(--font-mono);
+}
+
+/* Halloween: pumpkin on a dark night, slime green, a purple sky. */
+:root.look-halloween {
+  --bg: #14100c; --bg-subtle: #1d1610; --bg-muted: #271d14; --bg-elevated: #221a12;
+  --bg-hover: rgba(255, 117, 24, 0.08); --bg-active: rgba(255, 117, 24, 0.16);
+  --border: #3a2a1a; --border-strong: #55391f;
+  --text: #f3e6d0; --text-muted: #c7b293; --text-faint: #8a7559;
+  --accent: #ff7518; --accent-hover: #ff8c3f; --accent-soft: rgba(255, 117, 24, 0.16); --accent-fg: #140b02;
+  --success: #8fd14f; --success-soft: rgba(143, 209, 79, 0.14); --info: #a77bff; --warning: #ffb347;
+  --grid-header: #1d1610; --grid-row-alt: #181209; --grid-selected: rgba(255, 117, 24, 0.22); --null: #6f5d45;
+}
+
+/* Christmas: snow white, holly red and fir green. */
+:root.look-christmas {
+  --bg: #fffdf9; --bg-subtle: #f6f1e9; --bg-muted: #ece4d6; --bg-elevated: #ffffff;
+  --border: #e2d7c3; --border-strong: #cdbd9f;
+  --text: #2a1d14; --text-muted: #6b5847; --text-faint: #9c8a77;
+  --accent: #c0392b; --accent-hover: #a93226; --accent-soft: rgba(192, 57, 43, 0.1); --accent-fg: #ffffff;
+  --success: #1e7a3c; --success-soft: rgba(30, 122, 60, 0.12); --info: #b8860b;
+  --grid-header: #f6f1e9; --grid-row-alt: #fbf8f2; --grid-selected: rgba(30, 122, 60, 0.14);
+}
+:root.look-christmas .drag-region { background: #1e7a3c; color: #ffffff; }
+:root.look-christmas .drag-region [role='tab'][aria-selected='false'] { color: #e3f3e8; }
+
+/* A medieval campaign: parchment, wood and gold. */
+:root.look-medieval {
+  --bg: #f8f0dc; --bg-subtle: #efe2c3; --bg-muted: #e6d5ae; --bg-elevated: #fbf5e6;
+  --bg-hover: rgba(139, 90, 43, 0.09); --bg-active: rgba(139, 90, 43, 0.17);
+  --border: #cfb88a; --border-strong: #a8895a;
+  --text: #3b2a17; --text-muted: #6b5434; --text-faint: #957b55;
+  --accent: #8b5a2b; --accent-hover: #74481f; --accent-soft: rgba(139, 90, 43, 0.14); --accent-fg: #fff6e0;
+  --warning: #b8860b; --success: #4f7a28; --success-soft: rgba(79, 122, 40, 0.14); --danger: #a3261b;
+  --grid-header: #efe2c3; --grid-row-alt: #f4e9cf; --grid-selected: rgba(184, 134, 11, 0.22);
+  --font-sans: 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+}
+:root.look-medieval .drag-region { background: linear-gradient(#7a4f27, #5e3c1c); color: #f8e7c2; }
+:root.look-medieval .drag-region [role='tab'][aria-selected='false'] { color: #f1dcb0; }
+
+/* A fantasy hero: dark stone, gold trim, arcane purple. */
+:root.look-fantasy {
+  --bg: #0f0d14; --bg-subtle: #17141f; --bg-muted: #201b2b; --bg-elevated: #1c1826;
+  --bg-hover: rgba(201, 162, 39, 0.08); --bg-active: rgba(201, 162, 39, 0.16);
+  --border: #3a2f4a; --border-strong: #5a4a2a;
+  --text: #e8dcc0; --text-muted: #b3a58a; --text-faint: #7d7362;
+  --accent: #c9a227; --accent-hover: #ddb63a; --accent-soft: rgba(201, 162, 39, 0.16); --accent-fg: #1a1405;
+  --info: #8e6bff; --success: #4fc38a; --danger: #e5484d;
+  --grid-header: #17141f; --grid-row-alt: #13111a; --grid-selected: rgba(142, 107, 255, 0.24); --null: #6d6478;
+  --font-sans: 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+}
+:root.look-fantasy .drag-region { border-bottom-color: #c9a227; }
+
+/* Colored title bars: light icons and inactive tabs (the active tab keeps the page's own colors). */
+:root.look-retro2001 .drag-region,
+:root.look-christmas .drag-region,
+:root.look-medieval .drag-region { --text-muted: #f4ead2; --text-faint: #e6d9b8; }
+:root.look-retro2001 .drag-region { --text-muted: #eef3ff; --text-faint: #d4e1ff; }
+:root.look-christmas .drag-region { --text-muted: #eef8f0; --text-faint: #cfe8d6; }

@@ -1,3 +1,4 @@
+import { lookById } from '@/lib/looks'
 import { Database, Sparkles } from 'lucide-react'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
@@ -13,6 +14,7 @@ export function StatusBar() {
   const connection = useConnections((s) => s.list.find((c) => c.id === connectionId))
   const runtime = useConnections((s) => (connectionId ? s.runtime[connectionId] : undefined))
   const info = useSettings((s) => s.info)
+  const lookEmoji = useSettings((s) => lookById(s.settings?.look).emoji)
   const tab = useActiveTab()
   const setUi = useUi((s) => s.set)
   const t = useT()
@@ -39,7 +41,9 @@ export function StatusBar() {
         <Sparkles size={11} /> AI
       </button>
       {info?.portable && <span title={info.dataDir}>{t('Portable')}</span>}
-      <span className="text-fg-faint">v{info?.version}</span>
+      <span className="text-fg-faint">
+        {lookEmoji && <span className="mr-1" aria-hidden>{lookEmoji}</span>}v{info?.version}
+      </span>
     </div>
   )
 }

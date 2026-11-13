@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { AppInfo, AppSettings } from '@shared/api'
 import { api, bridge } from '@/lib/api'
+import { lookById } from '@/lib/looks'
 
 interface SettingsState {
   settings?: AppSettings
@@ -15,23 +16,39 @@ const moreContrast = window.matchMedia('(prefers-contrast: more)')
 
 function applyTheme(settings: AppSettings | undefined): boolean {
   const pref = settings?.theme ?? 'system'
-  const dark = pref === 'dark' || (pref === 'system' && media.matches)
-  document.documentElement.classList.toggle('dark', dark)
+  const look = lookById(settings?.look)
+  // A playful look brings its own light or dark palette.
+  const dark = look.dark ?? (pref === 'dark' || (pref === 'system' && media.matches))
+  const root = document.documentElement
+  root.classList.toggle('dark', dark)
+  for (const c of [...root.classList]) if (c.startsWith('look-')) root.classList.remove(c)
+  root.classList.add(`look-${look.id}`)
+  root.classList.toggle('compact', settings?.density === 'compact')
   const contrast = settings?.contrast ?? 'system'
   document.documentElement.classList.toggle('high-contrast', contrast === 'high' || (contrast === 'system' && moreContrast.matches))
   document.documentElement.style.setProperty('--editor-font-size', `${settings?.editorFontSize ?? 13}px`)
   return dark
 }
 
+/** Window chrome (title bar, scrollbars) follows a look's own light / dark palette, else the Theme setting. */
+function syncNativeTheme(settings: AppSettings) {
+  const look = lookById(settings.look)
+  bridge.setTheme(look.dark === undefined ? settings.theme : look.dark ? 'dark' : 'light')
+}
+
+/** Table and explorer row heights. */
+export const useCompact = () => useSettings((s) => s.settings?.density === 'compact')
+
 export const useSettings = create<SettingsState>((set, get) => ({
   dark: applyTheme(undefined),
   async load() {
     const [settings, info] = await Promise.all([api.getSettings(), api.getAppInfo()])
     set({ settings, info, dark: applyTheme(settings) })
+    syncNativeTheme(settings)
   },
   async update(patch) {
     const settings = await api.updateSettings(patch)
-    if (patch.theme) bridge.setTheme(patch.theme)
+    if (patch.theme || 'look' in patch) syncNativeTheme(settings)
     set({ settings, dark: applyTheme(settings) })
   },
 }))

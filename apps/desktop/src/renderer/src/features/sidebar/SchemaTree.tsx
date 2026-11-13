@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from 'react'
+import { useCompact } from '@/store/settings'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   ChevronRight,
@@ -46,7 +47,6 @@ type Node =
   | { kind: 'column'; key: string; table: TableInfo; column: TableInfo['columns'][number]; depth: number }
   | { kind: 'routine'; key: string; name: string; schema?: string; routineKind: string; depth: number }
 
-const ROW = 24
 
 export function generateSql(kind: 'select' | 'insert' | 'update' | 'delete' | 'count', table: TableInfo, connection: StoredConnection): string {
   const d = getDialect(connection.driver)
@@ -86,6 +86,7 @@ export const EXPLAIN_TABLE_PROMPT =
   'Explain the table {table}: what it stores, what its columns mean (look at a few sample rows to decode statuses and codes), how it relates to other tables, and two or three typical queries. Use the knowledge base if it documents this table.'
 
 export function SchemaTree({ connection, schema }: { connection: StoredConnection; schema?: SchemaSnapshot }) {
+  const ROW = useCompact() ? 21 : 24
   const runtime = useConnections((s) => s.runtime[connection.id])
   const loadSchema = useConnections((s) => s.loadSchema)
   const togglePin = useConnections((s) => s.togglePin)
@@ -196,6 +197,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
     estimateSize: () => ROW,
     overscan: 20,
   })
+  useEffect(() => virtualizer.measure(), [ROW, virtualizer])
 
   const openTable = (t: TableInfo) =>
     openTab({ kind: 'table', connectionId: connection.id, table: { schema: t.schema, name: t.name }, title: t.name })

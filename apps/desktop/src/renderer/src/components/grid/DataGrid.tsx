@@ -1,3 +1,4 @@
+import { useCompact } from '@/store/settings'
 import { memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ArrowDown, ArrowUp, ArrowUpRight, KeyRound, Link2 } from 'lucide-react'
@@ -5,7 +6,8 @@ import { cellToText, isBinaryValue, type CellValue, type ResultField, type SortS
 import { cn } from '@/lib/utils'
 import { t } from '@/lib/i18n'
 
-export const ROW_HEIGHT = 26
+/** Row height: comfortable / compact (Settings → Appearance → Density). */
+const rowHeight = (compact: boolean) => (compact ? 21 : 26)
 const HEADER_HEIGHT = 30
 const MIN_COL = 48
 const MAX_AUTO_COL = 360
@@ -214,6 +216,7 @@ export function DataGrid({
   className,
   ref,
 }: DataGridProps) {
+  const ROW_HEIGHT = rowHeight(useCompact())
   const scrollRef = useRef<HTMLDivElement>(null)
   const [selection, setSelectionState] = useState<GridSelection | null>(null)
   const [editing, setEditing] = useState<{ pos: CellPos; value: string } | null>(null)
@@ -274,6 +277,8 @@ export function DataGrid({
     overscan: 12,
     paddingStart: HEADER_HEIGHT,
   })
+  // Density changed: rows have a new height.
+  useEffect(() => rowVirtualizer.measure(), [ROW_HEIGHT, rowVirtualizer])
   const colVirtualizer = useVirtualizer({
     horizontal: true,
     count: fields.length,
@@ -749,6 +754,7 @@ function CellEditor({
   onCommit: (value: string | null, move?: 'down' | 'right' | 'left') => void
   onCancel: () => void
 }) {
+  const ROW_HEIGHT = rowHeight(useCompact())
   const [value, setValue] = useState(initial)
   const multiline = initial.includes('\n') || initial.length > 120
   const ref = useRef<HTMLTextAreaElement & HTMLInputElement>(null)

@@ -12,10 +12,12 @@ import { AiSettingsSection } from '../ai/AiSettings'
 import { McpSettingsSection } from '../ai/McpSettings'
 import { AiPermissionsSection } from '../ai/AiPermissions'
 import { SnippetsSection } from './SnippetsSection'
+import { AppearanceSection } from './AppearanceSection'
 import { useT } from '@/lib/i18n'
 
 const SECTIONS = [
   ['general', 'General'],
+  ['appearance', 'Appearance'],
   ['editor', 'Editor & data'],
   ['snippets', 'Snippets'],
   ['ai', 'AI assistant'],
@@ -64,28 +66,6 @@ export function SettingsModal() {
           {current === 'general' && (
             <>
               <TeamFolderRow />
-              <Row label={t('Theme')}>
-                <Segmented
-                  value={settings.theme}
-                  onChange={(theme) => set({ theme })}
-                  options={[
-                    { value: 'system', label: t('System') },
-                    { value: 'light', label: t('Light') },
-                    { value: 'dark', label: t('Dark') },
-                  ]}
-                />
-              </Row>
-              <Row label={t('Contrast')}>
-                <Segmented
-                  value={settings.contrast ?? 'system'}
-                  onChange={(contrast) => set({ contrast })}
-                  options={[
-                    { value: 'system', label: t('System') },
-                    { value: 'normal', label: t('Normal') },
-                    { value: 'high', label: t('High') },
-                  ]}
-                />
-              </Row>
               <Row label={t('Language')}>
                 <Select className="w-48" value={settings.language} onChange={(e) => set({ language: e.target.value as 'en' | 'cs' })}>
                   <option value="en">English</option>
@@ -110,6 +90,7 @@ export function SettingsModal() {
               </Row>
             </>
           )}
+          {current === 'appearance' && <AppearanceSection settings={settings} set={set} />}
           {current === 'snippets' && <SnippetsSection />}
           {current === 'editor' && (
             <>

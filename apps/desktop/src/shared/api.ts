@@ -138,6 +138,10 @@ export interface AppSettings {
   theme: ThemePreference
   /** Stronger text and border colors; 'system' follows the OS "increase contrast" setting. */
   contrast?: 'system' | 'normal' | 'high'
+  /** Accent color or one of the playful looks (renderer lib/looks.ts); violet when unset. */
+  look?: string
+  /** Compact: denser rows in tables and the explorer. */
+  density?: 'comfortable' | 'compact'
   language: 'en' | 'cs'
   pageSize: number
   maxResultRows: number

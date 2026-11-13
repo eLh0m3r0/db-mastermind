@@ -697,6 +697,14 @@ whether a tab holds an open transaction. Kept small: one switch per connection, 
 
 Not planned: a shared session for all tabs, SQL formatting settings beyond what there is.
 
+### Appearance (changelog only: not on the website)
+
+- ✅ Settings → Appearance: theme and contrast (moved from General), density (compact rows in tables and the
+  explorer), six accent colors
+- ✅ An easter egg for colleagues: playful looks in the same place, never advertised — Retro (Retro 2001, Green
+  terminal, Commander), Seasonal (Halloween, Christmas), Games (Medieval campaign, Fantasy hero); only in their
+  spirit, no names or logos of anything real; e2e/flow99
+
 ---
 
 ## Comparison target
