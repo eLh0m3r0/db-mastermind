@@ -106,7 +106,7 @@ interface NodeEdits {
 }
 
 /** A name or a type typed over in place on the canvas: Enter or leaving it keeps it, Esc does not. */
-function InlineInput({ value, onDone, className, list }: { value: string; onDone: (value: string | undefined) => void; className?: string; list?: string }) {
+function InlineInput({ value, onDone, className, list, label }: { value: string; onDone: (value: string | undefined) => void; className?: string; list?: string; label: string }) {
   const [text, setText] = useState(value)
   const done = useRef(false)
   const finish = (keep: boolean) => {
@@ -120,6 +120,7 @@ function InlineInput({ value, onDone, className, list }: { value: string; onDone
       onFocus={(e) => e.currentTarget.select()}
       value={text}
       list={list}
+      aria-label={label}
       onChange={(e) => setText(e.target.value)}
       onKeyDown={(e) => {
         e.stopPropagation()
@@ -210,7 +211,7 @@ const TableNode = memo(function TableNode({ id, data, selected }: NodeProps<Node
       >
         {table.type === 'table' ? <Table2 size={12} /> : <Eye size={12} />}
         {editing?.what === 'table' && edit ? (
-          <InlineInput value={table.name} className="h-5 flex-1 text-[12px] font-semibold" onDone={(v) => (setEditing(null), v && edit.renameTable(id, v))} />
+          <InlineInput value={table.name} label={t('Table name')} className="h-5 flex-1 text-[12px] font-semibold" onDone={(v) => (setEditing(null), v && edit.renameTable(id, v))} />
         ) : (
           <span className="truncate" onDoubleClick={(e) => startEdit(e, { what: 'table' })} title={edit ? t('Double-click to rename') : undefined} data-testid={`node-name-${table.name}`}>
             {table.name}
@@ -249,14 +250,14 @@ const TableNode = memo(function TableNode({ id, data, selected }: NodeProps<Node
             <span className="w-[10px] shrink-0" />
           )}
           {editing?.what === 'name' && editing.column === c.name && edit ? (
-            <InlineInput value={c.name} className="h-[18px] flex-1 text-[11px]" onDone={(v) => (setEditing(null), v && edit.renameColumn(id, c.name, v))} />
+            <InlineInput value={c.name} label={t('Column name')} className="h-[18px] flex-1 text-[11px]" onDone={(v) => (setEditing(null), v && edit.renameColumn(id, c.name, v))} />
           ) : (
             <span className={cn('truncate', c.isPrimaryKey && 'font-semibold')} onDoubleClick={(e) => startEdit(e, { what: 'name', column: c.name })} data-testid={`node-column-${table.name}-${c.name}`}>
               {c.name}
             </span>
           )}
           {editing?.what === 'type' && editing.column === c.name && edit ? (
-            <InlineInput value={c.dataType} list="dbm-canvas-types" className="ml-auto h-[18px] w-[45%] font-mono text-[10px]" onDone={(v) => (setEditing(null), v && edit.retype(id, c.name, v))} />
+            <InlineInput value={c.dataType} label={t('Type')} list="dbm-canvas-types" className="ml-auto h-[18px] w-[45%] font-mono text-[10px]" onDone={(v) => (setEditing(null), v && edit.retype(id, c.name, v))} />
           ) : (
             shown.types !== 'none' && (
               <span className="ml-auto max-w-[45%] shrink-0 truncate font-mono text-[10px] text-fg-faint" onDoubleClick={(e) => startEdit(e, { what: 'type', column: c.name })} data-testid={`node-type-${table.name}-${c.name}`}>
@@ -1124,10 +1125,19 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
     if (draft) updateDraft(key, change(draft), draft)
   }
   editsRef.current = {
-    renameTable: (key, name) => editTable(key, (t) => ({ ...t, name })),
+    renameTable: (key, name) =>
+      editTable(key, (t) => {
+        const taken = display.some((d) => d.key !== key && d.status !== 'dropped' && d.info.name.toLowerCase() === name.toLowerCase() && (d.info.schema ?? '') === (t.schema ?? ''))
+        if (!taken) return { ...t, name }
+        toast({ kind: 'warning', message: tr('A table named {name} already exists', { name }) })
+        return t
+      }),
     renameColumn: (key, from, to) =>
       editTable(key, (t) => {
-        if (t.columns.some((c) => c.name.toLowerCase() === to.toLowerCase() && c.name !== from)) return t
+        if (t.columns.some((c) => c.name.toLowerCase() === to.toLowerCase() && c.name !== from)) {
+          toast({ kind: 'warning', message: tr('The table already has a column {name}', { name: to }) })
+          return t
+        }
         const rename = (n: string) => (n === from ? to : n)
         // (A package decides its columns' names: a renamed one is the table's own.)
         return { ...t, columns: t.columns.map((c) => (c.name === from ? { ...c, name: to, package: undefined } : c)), primaryKey: t.primaryKey.map(rename), foreignKeys: t.foreignKeys.map((f) => ({ ...f, columns: f.columns.map(rename) })), indexes: t.indexes.map((i) => ({ ...i, columns: i.columns.map(rename) })) }

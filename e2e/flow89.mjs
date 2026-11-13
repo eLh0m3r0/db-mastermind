@@ -22,7 +22,7 @@ async function launch(language) {
   const win = await app.firstWindow()
   await app.evaluate(({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows()[0]
-    w.setBounds({ x: -4000, y: 0, width: 1280, height: 800 })
+    w.setSize(1280, 800) // (DBM_E2E_BACKGROUND keeps it on the main display, out of the way)
     w.blur()
   })
   win.on('pageerror', (e) => errors.push(e.message))

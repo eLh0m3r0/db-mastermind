@@ -10,18 +10,11 @@ const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
 const withAi = process.argv.includes('--ai')
 const userData = mkdtempSync(join(tmpdir(), 'dbm-shots-'))
 const home = mkdtempSync(join(tmpdir(), 'dbm-shots-home-'))
-const app = await electron.launch({ args: ['apps/desktop', ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-gpu'] : [])], env: { ...process.env, ...(process.env.CI ? {} : { HOME: home }), DBM_USER_DATA: userData, DBM_NO_UPDATE_CHECK: '1', DBM_LANGUAGE: process.env.DBM_LANGUAGE ?? 'en' } })
+const app = await electron.launch({ args: ['apps/desktop', ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-gpu'] : [])], env: { ...process.env, ...(process.env.CI ? {} : { HOME: home, DBM_E2E_BACKGROUND: '1' }), DBM_USER_DATA: userData, DBM_NO_UPDATE_CHECK: '1', DBM_LANGUAGE: process.env.DBM_LANGUAGE ?? 'en' } })
 const win = await app.firstWindow()
 win.on('dialog', (d) => d.accept())
-// Off-screen and in the background locally, so it never gets in the way.
-await app.evaluate(({ BrowserWindow }, local) => {
-  const w = BrowserWindow.getAllWindows()[0]
-  w.setSize(1440, 900)
-  if (local) {
-    w.setPosition(-4000, 0)
-    w.blur()
-  }
-}, !process.env.CI)
+// Locally the app runs in the background on the main display (DBM_E2E_BACKGROUND), so it never gets in the way.
+await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 900))
 const api = (fn, ...args) => win.evaluate(([fn, args]) => window.mastermind.api[fn](...args), [fn, args])
 const shot = async (name) => {
   await win.waitForTimeout(400)
@@ -125,6 +118,60 @@ await win.keyboard.insertText(`SELECT pobočka, produkt, sum(množství * cena) 
 await win.keyboard.press(`${mod}+Enter`)
 await win.waitForTimeout(1500)
 await shot('query-file')
+
+// A model: tables edited on the canvas, the panel docked next to it.
+const model = join(userData, 'shop.dbml')
+writeFileSync(
+  model,
+  `Table sales.customer {
+  id bigint [pk, increment]
+  email varchar(200) [not null, unique]
+  name varchar(100) [not null]
+  created_at timestamp [not null, default: \`now()\`]
+  Note: 'People who buy'
+}
+
+Table sales.invoice {
+  id bigint [pk, increment]
+  customer_id bigint [not null, ref: > sales.customer.id]
+  issued_on date [not null]
+  total numeric(12,2) [not null]
+  status varchar(20) [not null, default: 'draft']
+}
+
+Table sales.invoice_line {
+  invoice_id bigint [pk, ref: > sales.invoice.id]
+  line_no int [pk]
+  product_id bigint [not null, ref: > catalog.product.id]
+  quantity int [not null]
+  price numeric(12,2) [not null]
+}
+
+Table catalog.product {
+  id bigint [pk, increment]
+  code varchar(30) [not null, unique]
+  name varchar(200) [not null]
+  category_id int [ref: > catalog.category.id]
+}
+
+Table catalog.category {
+  id int [pk]
+  name varchar(100) [not null]
+  parent_id int [ref: > catalog.category.id]
+}
+`,
+)
+await app.evaluate(({ dialog }, path) => {
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] })
+}, model)
+await win.keyboard.press(`${mod}+o`)
+await win.locator('.react-flow__node[data-id="sales.invoice"]').waitFor({ timeout: 15000 })
+await win.waitForTimeout(1200)
+await win.getByRole('button', { name: 'Objects', exact: true }).last().click()
+await win.locator('.react-flow__node[data-id="sales.invoice"]').dblclick({ position: { x: 180, y: 12 } })
+await win.getByTestId('table-panel').waitFor({ timeout: 10000 })
+await shot('modeler')
+await win.keyboard.press('Escape')
 
 if (withAi) {
   await api('updateSettings', { ai: { activeProvider: 'claude-code', providers: [{ id: 'claude-code', enabled: true }], dataSharing: 'schema-and-samples', autoRunReadQueries: true } })
