@@ -91,7 +91,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 
 **Developed by:** Václav Mudra
 
-**Screenshots** (from `docs/screenshots/`, 1440×900; in this order, with captions):
+**Screenshots** (from `docs/screenshots/`, 2880×1800; in this order, with captions):
 
 1. `table-filters.png` — Browse and filter data without limits
 2. `query.png` — SQL editor with schema-aware autocomplete
