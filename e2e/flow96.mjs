@@ -161,7 +161,7 @@ try {
 
   // The project's begin and end scripts go around the DDL made for its own database.
   await win.getByRole('button', { name: /^SQL DDL/ }).click()
-  await win.getByText('PostgreSQL', { exact: true }).last().click()
+  await win.getByRole('menuitem', { name: /^PostgreSQL( \(|$)/ }).click()
   await win.getByText('Script saved').waitFor({ timeout: 10000 })
   const script = readFileSync(sql, 'utf8')
   console.log('ddl with the project scripts:', script.includes('SET search_path = shop;'), script.trimEnd().endsWith('ANALYZE;'), script.indexOf('SET search_path') < script.indexOf('CREATE TABLE'), /COMMENT ON COLUMN/.test(script))
@@ -177,7 +177,7 @@ try {
   await win.getByRole('button', { name: 'Write to the DeZign file' }).click()
   await win.getByText(/Saved to shop\.dez/).last().waitFor({ timeout: 10000 })
   await win.getByRole('button', { name: /^SQL DDL/ }).click()
-  await win.getByText('PostgreSQL', { exact: true }).last().click()
+  await win.getByRole('menuitem', { name: /^PostgreSQL( \(|$)/ }).click()
   await win.getByText('Script saved').last().waitFor({ timeout: 10000 })
   console.log('project scripts edited:', /project script/.test(listedScripts), /<ENDDATABASESCRIPT>ANALYZE;\r?\nVACUUM;<\/ENDDATABASESCRIPT>/.test(readFileSync(dez, 'latin1')), readFileSync(sql, 'utf8').trimEnd().endsWith('VACUUM;'))
   // The DROP script DeZign writes next to it: children before the tables they point at.

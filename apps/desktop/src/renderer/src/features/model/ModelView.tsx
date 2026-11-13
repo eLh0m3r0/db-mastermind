@@ -18,7 +18,7 @@ import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { askAi, toast, useUi } from '@/store/ui'
 import { useWorkspace, type DiagramTab, type ModelTab } from '@/store/workspace'
-import { DiagramView } from '../diagram/DiagramView'
+import { DiagramView, followRenames } from '../diagram/DiagramView'
 import { describeDezignChanges, modelTabFromFile, sqlObjectsScript } from './open-model'
 import { DomainsModal, domainsOfText, withDomains, type ModelDomainDef } from './domains'
 import { editableViews, ViewsModal } from './views'
@@ -172,6 +172,13 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   // Undo and redo of what the canvas wrote into the model (it writes as it goes): the text before each write.
   const steps = useRef<{ past: string[]; future: string[] }>({ past: [], future: [] })
   const [, setStepsVersion] = useState(0)
+  // Another file opened in this tab starts its own history (undo must never bring back the previous file's text).
+  const documentId = tab.path ?? tab.source?.path ?? ''
+  const historyOf = useRef(documentId)
+  if (historyOf.current !== documentId) {
+    historyOf.current = documentId
+    steps.current = { past: [], future: [] }
+  }
   const remember = () => {
     steps.current = { past: [...steps.current.past.slice(-99), text], future: [] }
     setStepsVersion((v) => v + 1)
@@ -477,11 +484,14 @@ export function ModelView({ tab }: { tab: ModelTab }) {
     const script = `-- ${t('Drops everything the model creates in {db}: run it only on a database you mean to empty.', { db: d.label })}\n${views.length ? `${views.join('\n')}\n\n` : ''}${dropScript(named, getDialect(d.id), dezignMigrationOptions(tab.scripting, d.id))}`
     deliver(script, `DROP · ${d.label}`, `${fileName.replace(/\.\w+$/, '') || 'model'}-drop-${d.id}.sql`)
   }
-  const ddlMenu = (anchor: HTMLElement) =>
-    openMenu(
+  const ddlMenu = (anchor: HTMLElement) => {
+    // The model's own database first, named as such; the others translate its types.
+    const own = dezignDriver(tab.targetDatabase ?? tab.sqlDatabase) ?? connection?.driver
+    const drivers = [...DRIVERS.filter((d) => d.id === own), ...DRIVERS.filter((d) => d.id !== own)]
+    return openMenu(
       anchor,
-      [...DRIVERS.map((d) => ({
-        label: d.label,
+      [...drivers.map((d) => ({
+        label: d.id === own ? t('{db} (the model’s database)', { db: d.label }) : d.label,
         onClick: () => {
           // A DeZign project's names are created as DeZign's own scripts create them: without quotes.
           // (Conditional generation: what the applied directives leave of checks, code and the project's scripts.)
@@ -505,6 +515,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
         ? (['separator', ...(['postgres', 'mssql', 'mysql'] as const).filter((d) => d !== dezignDriver(tab.targetDatabase ?? tab.sqlDatabase)).map((d) => ({ label: t('Switch the project to {db}…', { db: DRIVERS.find((x) => x.id === d)?.label ?? d }), onClick: () => void switchDatabase(d) }))] as const)
         : [])],
     )
+  }
 
   // Checks that run by themselves on a model that parses.
   // The limits of the database the model is for: the project's own, or the one it is compared with.
@@ -906,7 +917,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           {model.tables.length ? (
             <DiagramView
               tab={diagramTab}
-              key={area}
+              key={`${documentId}|${area}`}
               model={diagram ? snapshot : shown}
               modelDriver={dezignDriver(tab.sqlDatabase)}
               domains={domains}
@@ -918,12 +929,16 @@ export function ModelView({ tab }: { tab: ModelTab }) {
               onNewDiagram={(tables, positions) => void newDiagram({ tables, positions })}
               onLayout={(patch) => (diagram ? patchDiagram(diagram.id, () => ({ ...patch, ...('positions' in patch ? { positions: patch.positions ?? {} } : {}) })) : updateTab(tab.id, { ...patch, dirty: true }))}
               modelHistory={modelHistory}
-              onApplyModel={(tables) => {
+              onApplyModel={(tables, renames) => {
                 remember()
-                // Editing one area keeps the model's other tables; tables added there join the area.
-                const others = model.tables.filter((x) => !inArea(x))
+                // A group's canvas gets only the group's tables (the rest of the model is kept here); a named diagram's
+                // gets the whole model (its tables are picked by the canvas) and gives the whole model back. Tables
+                // added there join the area.
+                const others = diagram ? [] : followRenames(model.tables.filter((x) => !inArea(x)), renames)
+                const before = new Set(model.tables.map(keyOf))
+                const added = tables.filter((x) => !before.has(keyOf(x)))
                 const groups = group ? { ...model.groups, [area.slice(2)]: [...new Set([...group, ...tables.map((x) => x.name)])] } : model.groups
-                const diagrams = diagram ? tab.diagrams?.map((d) => (d.id === diagram.id ? { ...d, tables: [...new Set([...d.tables, ...tables.map(keyOf)])] } : d)) : tab.diagrams
+                const diagrams = diagram ? tab.diagrams?.map((d) => (d.id === diagram.id ? { ...d, tables: [...new Set([...d.tables, ...added.map(keyOf)])] } : d)) : tab.diagrams
                 replaceText(toDbml([...others, ...tables], { defaultSchema: snapshot.defaultSchema, enums: model.enums, groups, extras: model.extras }), { dirty: true, diagrams })
               }}
             />

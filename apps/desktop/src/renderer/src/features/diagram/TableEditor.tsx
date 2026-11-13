@@ -260,6 +260,7 @@ export function TableEditor({
                     className="h-6 min-w-0 flex-1 font-mono text-[12px]"
                     value={c.name}
                     onChange={(e) => setColumn(c.id, { name: e.target.value })}
+                    aria-label={`${tr('Column name')}: ${c.name}`}
                     data-testid={`column-name-${c.name}`}
                   />
                   {c.package && (
@@ -278,6 +279,7 @@ export function TableEditor({
                     list="dbm-types"
                     value={c.dataType}
                     onChange={(e) => setColumn(c.id, { dataType: e.target.value })}
+                    aria-label={`${tr('Type')}: ${c.name}`}
                     data-testid={`column-type-${c.name}`}
                   />
                   <button
@@ -679,12 +681,12 @@ export function TableEditor({
                 <div className="flex items-center gap-1.5 pl-1 text-[11px] whitespace-nowrap text-fg-muted">
                   {model && (
                     <>
-                      <span
+                      <span className="min-w-0 truncate"
                         title={tr(
                           'How many rows of this table one row of the other table has (drawn at this end of the line)',
                         )}
                       >
-                        {tr('rows here')}
+                        {tr('{table} per {parent}', { table: table.name, parent: fk.refTable || '…' })}
                       </span>
                       <Select
                         inputSize="sm"

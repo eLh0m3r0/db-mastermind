@@ -44,7 +44,7 @@ try {
 
   // DDL without a database goes to a file.
   await win.getByRole('button', { name: 'SQL DDL' }).click()
-  await win.getByText('PostgreSQL', { exact: true }).first().click()
+  await win.getByRole('menuitem', { name: /^PostgreSQL( \(|$)/ }).click()
   await win.getByText('Script saved').waitFor({ timeout: 10000 })
   const script = existsSync(sql) ? readFileSync(sql, 'utf8') : ''
   console.log('ddl file:', /CREATE TABLE/i.test(script), /dbm_clients/.test(script), /REFERENCES/i.test(script))

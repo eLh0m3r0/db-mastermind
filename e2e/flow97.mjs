@@ -229,7 +229,7 @@ try {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: path })
   }, firstDdl)
   await win.getByRole('button', { name: 'SQL DDL', exact: true }).click()
-  await win.getByRole('menuitem', { name: 'PostgreSQL', exact: true }).click()
+  await win.getByRole('menuitem', { name: /^PostgreSQL( \(|$)/ }).click()
   await win.getByText(/Script saved/).first().waitFor({ timeout: 10000 })
   const ddl = readFileSync(firstDdl, 'utf8')
   console.log('toolbar takes the canvas along:', /varchar\(77\)/i.test(ddl), (await win.getByRole('button', { name: /Write to DBML \(\d+\)/ }).count()) === 0)
@@ -260,7 +260,7 @@ try {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: path })
   }, ddlFile)
   await win.getByRole('button', { name: 'SQL DDL', exact: true }).click()
-  await win.getByRole('menuitem', { name: 'PostgreSQL', exact: true }).click()
+  await win.getByRole('menuitem', { name: /^PostgreSQL( \(|$)/ }).click()
   await win.getByText(/Script saved/).first().waitFor({ timeout: 10000 })
   const ownDdl = readFileSync(ddlFile, 'utf8')
   await app.evaluate(({ dialog }, path) => {
@@ -282,7 +282,7 @@ try {
       dialog.showSaveDialog = async () => ({ canceled: false, filePath: p })
     }, path)
     await win.getByRole('button', { name: 'SQL DDL', exact: true }).click()
-    await win.getByRole('menuitem', { name: 'PostgreSQL', exact: true }).click()
+    await win.getByRole('menuitem', { name: /^PostgreSQL( \(|$)/ }).click()
     await win.waitForTimeout(1500)
     return readFileSync(path, 'utf8')
   }

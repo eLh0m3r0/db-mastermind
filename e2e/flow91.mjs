@@ -150,6 +150,20 @@ try {
   await win.waitForTimeout(800)
   const rows = await win.locator('.react-flow__node[data-id="shop.invoice"] .border-t').count()
   console.log('billing shows primary keys only:', rows === 1, 'no types:', (await win.locator('.react-flow__node[data-id="shop.invoice"]').innerText()).includes('bigint') === false)
+  // Edited on a diagram that shows part of the model: the rest stays once, and payment (not on this diagram)
+  // follows the renamed invoice and its renamed key.
+  const tablesBefore = (await win.locator('.cm-content:visible').first().innerText()).match(/Table /g)?.length
+  await win.locator('.react-flow__node[data-id="shop.invoice"]').locator('[data-testid="node-name-invoice"]').dblclick()
+  await win.getByTestId('inline-edit').fill('bill')
+  await win.keyboard.press('Enter')
+  await win.waitForTimeout(900)
+  const onDiagram = await win.locator('.cm-content:visible').first().innerText()
+  console.log('edited on a diagram:', (onDiagram.match(/Table /g)?.length ?? 0) === tablesBefore, /Table (shop\.)?bill /.test(onDiagram), !/Table (shop\.)?invoice /.test(onDiagram), 'hidden table follows:', /payment\.invoice_id > (shop\.)?bill\./.test(onDiagram.replace(/"/g, '')) || /> (shop\.)?bill\.id/.test(onDiagram.replace(/"/g, '')))
+  await win.keyboard.press('Escape')
+  await win.locator('.react-flow__node[data-id="shop.bill"]').click({ position: { x: 180, y: 12 } })
+  await win.keyboard.press('Meta+z')
+  await win.waitForTimeout(900)
+  console.log('and back:', /Table (shop\.)?invoice /.test(await win.locator('.cm-content:visible').first().innerText()))
   await win.getByTestId('model-area').selectOption('~rename')
   await win.getByRole('textbox').last().fill('Fakturace')
   await win.getByRole('button', { name: 'Rename', exact: true }).click()
@@ -252,7 +266,7 @@ try {
 
   // The view the project holds as SQL is part of the generated script (PostgreSQL is the project's own database).
   await win.getByRole('button', { name: 'SQL DDL' }).click()
-  await win.getByText('PostgreSQL', { exact: true }).first().click()
+  await win.getByRole('menuitem', { name: /^PostgreSQL( \(|$)/ }).click()
   await win.waitForTimeout(1200)
   const ddlTop = await win.locator('.cm-content:visible').first().innerText()
   // The editor draws only the lines in view: go to the end for the rest.

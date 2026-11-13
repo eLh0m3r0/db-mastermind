@@ -97,6 +97,13 @@ export function ObjectBrowser({
         onClick()
       }}
       onDoubleClick={onDoubleClick}
+      // (Enter opens what a double-click opens; Space finds it on the diagram.)
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter' || !onDoubleClick) return
+        e.preventDefault()
+        setCurrent(id)
+        onDoubleClick()
+      }}
       title={hint}
       data-testid={testId}
     >

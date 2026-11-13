@@ -143,6 +143,27 @@ export interface Shown {
   hidden?: string[]
   notation?: 'crow' | 'idef1x'
 }
+/** A table the canvas renamed (or moved to another schema), with its renamed columns: keys in tables the canvas
+ * was not given (the rest of the model outside a group) follow it. */
+export interface ModelRename {
+  from: { schema?: string; name: string }
+  to: { schema?: string; name: string }
+  columns: Record<string, string>
+}
+/** Points the keys of `tables` that reference a renamed table (or its renamed columns) at the new names. */
+export function followRenames(tables: TableInfo[], renames: ModelRename[]): TableInfo[] {
+  if (!renames.length) return tables
+  return tables.map((t) => {
+    let touched = false
+    const foreignKeys = t.foreignKeys.map((f) => {
+      const r = renames.find((x) => x.from.name === f.refTable && (x.from.schema ?? '') === (f.refSchema ?? t.schema ?? ''))
+      if (!r) return f
+      touched = true
+      return { ...f, refTable: r.to.name, refSchema: r.to.schema, refColumns: f.refColumns.map((c) => r.columns[c] ?? c) }
+    })
+    return touched ? { ...t, foreignKeys } : t
+  })
+}
 /** A model's own undo and redo (of what the canvas wrote into it). */
 export interface ModelHistory {
   canUndo: boolean
@@ -213,7 +234,7 @@ const TableNode = memo(function TableNode({ id, data, selected }: NodeProps<Node
         {editing?.what === 'table' && edit ? (
           <InlineInput value={table.name} label={t('Table name')} className="h-5 flex-1 text-[12px] font-semibold" onDone={(v) => (setEditing(null), v && edit.renameTable(id, v))} />
         ) : (
-          <span className="truncate" onDoubleClick={(e) => startEdit(e, { what: 'table' })} title={edit ? t('Double-click to rename') : undefined} data-testid={`node-name-${table.name}`}>
+          <span className={cn('truncate', edit && 'cursor-text decoration-dotted underline-offset-2 hover:underline')} onDoubleClick={(e) => startEdit(e, { what: 'table' })} title={edit ? t('Double-click to rename') : undefined} data-testid={`node-name-${table.name}`}>
             {table.name}
           </span>
         )}
@@ -252,7 +273,7 @@ const TableNode = memo(function TableNode({ id, data, selected }: NodeProps<Node
           {editing?.what === 'name' && editing.column === c.name && edit ? (
             <InlineInput value={c.name} label={t('Column name')} className="h-[18px] flex-1 text-[11px]" onDone={(v) => (setEditing(null), v && edit.renameColumn(id, c.name, v))} />
           ) : (
-            <span className={cn('truncate', c.isPrimaryKey && 'font-semibold')} onDoubleClick={(e) => startEdit(e, { what: 'name', column: c.name })} data-testid={`node-column-${table.name}-${c.name}`}>
+            <span className={cn('truncate', c.isPrimaryKey && 'font-semibold', edit && 'cursor-text decoration-dotted underline-offset-2 hover:underline')} title={edit ? t('Double-click to rename') : undefined} onDoubleClick={(e) => startEdit(e, { what: 'name', column: c.name })} data-testid={`node-column-${table.name}-${c.name}`}>
               {c.name}
             </span>
           )}
@@ -260,7 +281,7 @@ const TableNode = memo(function TableNode({ id, data, selected }: NodeProps<Node
             <InlineInput value={c.dataType} label={t('Type')} list="dbm-canvas-types" className="ml-auto h-[18px] w-[45%] font-mono text-[10px]" onDone={(v) => (setEditing(null), v && edit.retype(id, c.name, v))} />
           ) : (
             shown.types !== 'none' && (
-              <span className="ml-auto max-w-[45%] shrink-0 truncate font-mono text-[10px] text-fg-faint" onDoubleClick={(e) => startEdit(e, { what: 'type', column: c.name })} data-testid={`node-type-${table.name}-${c.name}`}>
+              <span className={cn('ml-auto max-w-[45%] shrink-0 truncate font-mono text-[10px] text-fg-faint', edit && 'cursor-text decoration-dotted underline-offset-2 hover:underline')} title={edit ? t('Double-click to change the type') : undefined} onDoubleClick={(e) => startEdit(e, { what: 'type', column: c.name })} data-testid={`node-type-${table.name}-${c.name}`}>
                 {shown.types === 'domain' && c.domain ? c.domain : c.dataType}
               </span>
             )
@@ -512,7 +533,7 @@ function nodeHeight(t: TableInfo, shown: Shown, fk: Set<string>, ref: Set<string
   return HEADER + visible * ROW + (showsMore(shown) && visible < t.columns.length ? ROW : 0) + 2
 }
 
-function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout, flushRef, modelHistory }: { tab: DiagramTab; flushRef?: React.MutableRefObject<(() => boolean) | null>; userProperties?: DezignUserProperty[]; labels?: DezignLabel[]; modelHistory?: ModelHistory; model?: SchemaSnapshot; modelDriver?: DriverId; domains?: { name: string; dataType: string }[]; dashNonIdentifying?: boolean; request?: DiagramRequest; onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
+function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout, flushRef, modelHistory }: { tab: DiagramTab; flushRef?: React.MutableRefObject<(() => boolean) | null>; userProperties?: DezignUserProperty[]; labels?: DezignLabel[]; modelHistory?: ModelHistory; model?: SchemaSnapshot; modelDriver?: DriverId; domains?: { name: string; dataType: string }[]; dashNonIdentifying?: boolean; request?: DiagramRequest; onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[], renames: ModelRename[]) => void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
   const tr = useT()
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const loadSchema = useConnections((s) => s.loadSchema)
@@ -571,6 +592,27 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
     }
   }
   const overlay = narrow && !pinned
+  // The table whose details open stays in sight: moved out from under the panel (and in from past the edge).
+  useEffect(() => {
+    if (!selected || !model || !onApplyModel) return
+    const timer = setTimeout(() => {
+      const node = flow.getNode(selected)
+      const area = workArea.current
+      if (!node || !area) return
+      const { x, y, zoom } = flow.getViewport()
+      const panel = Math.min(420, area.clientWidth * 0.92)
+      const visible = { width: area.clientWidth - panel, height: area.clientHeight }
+      const w = (node.measured?.width ?? WIDTH) * zoom
+      const h = Math.min((node.measured?.height ?? 120) * zoom, visible.height)
+      const left = node.position.x * zoom + x
+      const top = node.position.y * zoom + y
+      if (left >= 0 && left + w <= visible.width && top >= 0 && top + Math.min(h, 120) <= visible.height) return
+      // setCenter centres in the whole pane: in a drawer the pane runs on under the panel, so aim left of centre.
+      const shift = overlay ? panel / 2 / zoom : 0
+      void flow.setCenter(node.position.x + (node.measured?.width ?? WIDTH) / 2 + shift, node.position.y + h / 2 / zoom, { zoom, duration: 250 })
+    }, 80)
+    return () => clearTimeout(timer)
+  }, [selected])
   // Esc closes the panel (not while a dialog or a menu is open).
   useEffect(() => {
     if (!selected) return
@@ -774,13 +816,22 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
     const whole: TableInfo[] = []
     for (const t of schema?.tables ?? []) {
       const d = shown.get(keyOf(t))
-      if (!d) whole.push(t)
+      // (A table off the canvas can have a draft too: a key in it followed a rename.)
+      const offCanvas = d ? undefined : drafts[keyOf(t)]
+      if (!d) whole.push(offCanvas && !offCanvas.dropped ? designToTableInfo(offCanvas) : t)
       else if (d.status !== 'dropped') whole.push(d.info)
     }
     for (const d of display) if (d.status === 'new') whole.push(d.info)
+    const renames: ModelRename[] = []
+    for (const t of schema?.tables ?? []) {
+      const draft = drafts[keyOf(t)]
+      if (!draft || draft.dropped) continue
+      const columns = Object.fromEntries(draft.columns.filter((c) => c.originalName && c.originalName !== c.name).map((c) => [c.originalName!, c.name]))
+      if (draft.name !== t.name || (draft.schema ?? '') !== (t.schema ?? '') || Object.keys(columns).length) renames.push({ from: { schema: t.schema, name: t.name }, to: { schema: draft.schema, name: draft.name }, columns })
+    }
     // The table being edited stays selected under its new name.
     const kept = selected ? display.find((d) => d.key === selected) : undefined
-    onApplyModel(whole)
+    onApplyModel(whole, renames)
     history.current = { past: [], future: [], at: 0 }
     setSelected(kept && kept.status !== 'dropped' ? keyOf(kept.info) : null)
     setDrafts({}, false)
@@ -1120,6 +1171,12 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
     const live = liveTables.find((t) => keyOf(t) === key)
     return live ? toDesignTable(live) : undefined
   }
+  /** A draft for any table of the schema, shown on the canvas or not. */
+  const draftAnywhere = (key: string): DesignTable | undefined => {
+    if (drafts[key]) return drafts[key]
+    const t = schema?.tables.find((x) => keyOf(x) === key)
+    return t ? toDesignTable(t) : undefined
+  }
   const editTable = (key: string, change: (t: DesignTable) => DesignTable) => {
     const draft = draftFor(key)
     if (draft) updateDraft(key, change(draft), draft)
@@ -1169,6 +1226,9 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
     // In a model, a table renamed or moved to another schema takes the relationships that point at it along
     // (a database renames them by itself; a model is only text).
     const before = prior ?? draftFor(key)
+    // In a model the keys pointing here are followed in every table, also those the canvas does not show now
+    // (another schema, a named diagram): writeToModel takes their drafts along.
+    const followKeys = [...new Set([...display.map((d) => d.key), ...(model ? (schema?.tables ?? []).map(keyOf) : [])])]
     // A renamed column (same id, another name) is followed by the keys that point at it.
     const renamedCols = new Map<string, string>()
     for (const c of before?.columns ?? []) {
@@ -1182,12 +1242,12 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
           ? { ...draft, foreignKeys: draft.foreignKeys.map((f) => (pointsHere(draft, f) ? { ...f, refColumns: f.refColumns.map((c) => renamedCols.get(c) ?? c) } : f)) }
           : draft
       next[key] = followCols(next[key]!)
-      for (const d of display) {
-        if (d.key === key) continue
-        const draft = next[d.key] ?? draftFor(d.key)
+      for (const other of followKeys) {
+        if (other === key) continue
+        const draft = next[other] ?? draftAnywhere(other)
         if (!draft) continue
         const followed = followCols(draft)
-        if (followed !== draft) next[d.key] = followed
+        if (followed !== draft) next[other] = followed
       }
       table = next[key]!
     }
@@ -1202,12 +1262,12 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
         return touched ? { ...draft, foreignKeys } : draft
       }
       next[key] = follow(table)
-      for (const d of display) {
-        if (d.key === key) continue
-        const draft = next[d.key] ?? draftFor(d.key)
+      for (const other of followKeys) {
+        if (other === key) continue
+        const draft = next[other] ?? draftAnywhere(other)
         if (!draft) continue
         const followed = follow(draft)
-        if (followed !== draft) next[d.key] = followed
+        if (followed !== draft) next[other] = followed
       }
     }
     setDrafts(next)
@@ -2229,7 +2289,7 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
               </IconButton>
             ) : undefined
           }
-          onChange={(t) => updateDraft(selected, t)}
+          onChange={(t) => updateDraft(selected, t, selectedDraft)}
           focusForeignKey={focusFk}
           onRevert={
             drafts[selected]?.originalName
@@ -2273,7 +2333,7 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
   )
 }
 
-export function DiagramView({ tab, model, modelDriver, domains, userProperties, labels, modelHistory, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout, flushRef }: { tab: DiagramTab; /** The custom properties the model's project defines: its tables' and columns' values are edited in the dialog. */ userProperties?: DezignUserProperty[]; /** The labels the model's project defines. */ labels?: DezignLabel[]; /** Undo and redo of what was written into the model (a model takes canvas changes as they are made). */ modelHistory?: ModelHistory; /** Set to a function that writes the canvas's pending changes into the model (true when there were any). */ flushRef?: React.MutableRefObject<(() => boolean) | null>; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; /** The project's domains, offered for columns. */ domains?: { name: string; dataType: string }[]; /** Lines of relationships whose key is not part of the child's primary key are dashed, as DeZign draws them. */ dashNonIdentifying?: boolean; /** From the model's object browser: show a table, or open a table's or a relationship's dialog. */ request?: DiagramRequest; /** A model's diagram of the selected tables (DeZign: subdiagram from selection). */ onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
+export function DiagramView({ tab, model, modelDriver, domains, userProperties, labels, modelHistory, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout, flushRef }: { tab: DiagramTab; /** The custom properties the model's project defines: its tables' and columns' values are edited in the dialog. */ userProperties?: DezignUserProperty[]; /** The labels the model's project defines. */ labels?: DezignLabel[]; /** Undo and redo of what was written into the model (a model takes canvas changes as they are made). */ modelHistory?: ModelHistory; /** Set to a function that writes the canvas's pending changes into the model (true when there were any). */ flushRef?: React.MutableRefObject<(() => boolean) | null>; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; /** The project's domains, offered for columns. */ domains?: { name: string; dataType: string }[]; /** Lines of relationships whose key is not part of the child's primary key are dashed, as DeZign draws them. */ dashNonIdentifying?: boolean; /** From the model's object browser: show a table, or open a table's or a relationship's dialog. */ request?: DiagramRequest; /** A model's diagram of the selected tables (DeZign: subdiagram from selection). */ onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[], renames: ModelRename[]) => void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
   return (
     <ReactFlowProvider>
       <DiagramInner tab={tab} model={model} modelDriver={modelDriver} domains={domains} dashNonIdentifying={dashNonIdentifying} request={request} onNewDiagram={onNewDiagram} onApplyModel={onApplyModel} onLayout={onLayout} flushRef={flushRef} userProperties={userProperties} labels={labels} modelHistory={modelHistory} />
