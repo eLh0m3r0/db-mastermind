@@ -23,7 +23,7 @@ try {
   await win.keyboard.type('New model')
   await win.keyboard.press('Enter')
   await win.waitForTimeout(800)
-  await win.locator('[data-testid="model-more"]:visible').click()
+  await win.locator('[data-testid="model-import"]:visible').click()
   await win.getByRole('menuitem', { name: 'From database' }).click()
   if (await win.getByRole('menuitem', { name: 'Start the model from the database' }).count()) await win.getByRole('menuitem', { name: 'Start the model from the database' }).click()
   await win.waitForTimeout(1000)

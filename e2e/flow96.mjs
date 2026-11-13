@@ -74,6 +74,7 @@ try {
 
   // A version of the project, as DeZign archives one: listed in the file, and a later save still works.
   await win.locator('[data-testid="model-more"]:visible').click()
+  await win.getByRole('menuitem', { name: 'DeZign project' }).click()
   await win.getByRole('menuitem', { name: 'Archive version…' }).click()
   await win.getByRole('button', { name: 'Archive', exact: true }).click()
   await win.getByText('Archived as version 1').waitFor({ timeout: 10000 })
@@ -96,7 +97,8 @@ try {
   // Domains: a new one, followed by a column, then a new type for it that goes to that column too.
   const domainsDialog = async (fill) => {
     await win.locator('[data-testid="model-more"]:visible').click()
-  await win.getByRole('menuitem', { name: 'Domains…' }).click()
+    await win.getByRole('menuitem', { name: 'DeZign project' }).click()
+    await win.getByRole('menuitem', { name: 'Domains…' }).click()
     await fill()
     await win.getByTestId('domain-apply').click()
     await win.waitForTimeout(800)
@@ -165,6 +167,7 @@ try {
   console.log('ddl with the project scripts:', script.includes('SET search_path = shop;'), script.trimEnd().endsWith('ANALYZE;'), script.indexOf('SET search_path') < script.indexOf('CREATE TABLE'), /COMMENT ON COLUMN/.test(script))
   // The scripts edited in the project's settings, as in DeZign: saved into the project and used by the next script.
   await win.locator('[data-testid="model-more"]:visible').click()
+  await win.getByRole('menuitem', { name: 'DeZign project' }).click()
   await win.getByRole('menuitem', { name: 'Project scripts…' }).click()
   await win.getByTestId('script-create-end').fill('ANALYZE;\nVACUUM;')
   await win.getByTestId('project-scripts-ok').click()

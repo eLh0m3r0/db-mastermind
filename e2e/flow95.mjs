@@ -175,7 +175,7 @@ try {
   await sql(team.id, 'ALTER TABLE sales.customer ADD COLUMN phone varchar(30); CREATE TABLE sales.note (id integer PRIMARY KEY, customer_id integer NOT NULL REFERENCES sales.customer (id), body text)')
   await win.getByText('team.dez', { exact: true }).first().click()
   const beforeUpdate = await win.locator('.cm-content:visible').first().innerText()
-  await win.locator('[data-testid="model-more"]:visible').click()
+  await win.locator('[data-testid="model-import"]:visible').click()
   await win.getByRole('menuitem', { name: 'From database' }).click()
   if (await win.getByRole('menuitem', { name: 'Start the model from the database' }).count()) await win.getByRole('menuitem', { name: 'Start the model from the database' }).click()
   await win.getByText('Update the model (keeps its comments, domains and layout)').click()

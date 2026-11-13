@@ -24,16 +24,14 @@ try {
   await win.waitForTimeout(900)
   const text = await win.locator('.cm-content:visible').first().innerText()
   console.log('second table from the designer:', (text.match(/^Table /gm) ?? []).length, 'tables in the model')
-  await win.locator('[data-testid="model-more"]:visible').click()
-  await win.getByRole('menuitem', { name: 'Save as…' }).click()
+  await win.locator('[data-testid="model-save-as"]:visible').click()
   await win.getByText('Saved as a DeZign for Databases project').waitFor({ timeout: 15000 })
   const saved = existsSync(dez) ? readFileSync(dez, 'latin1') : ''
   console.log('saved as a DeZign project:', (saved.match(/<ENT>/g) ?? []).length, 'tables,', (saved.match(/<ENTC>/g) ?? []).length, 'on the diagram')
   // The same as a folder project (for Git): a folder of its name, with one file per object, as DeZign makes it.
   const proj = join(dir, 'team-model.dezproj')
   await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }) }, proj)
-  await win.locator('[data-testid="model-more"]:visible').click()
-  await win.getByRole('menuitem', { name: 'Save as…' }).click()
+  await win.locator('[data-testid="model-save-as"]:visible').click()
   await win.getByText('Saved as a DeZign for Databases project').last().waitFor({ timeout: 15000 })
   const folder = join(dir, 'team-model')
   const entities = existsSync(join(folder, 'data dictionary', 'entities')) ? readdirSync(join(folder, 'data dictionary', 'entities')).length : 0

@@ -4,7 +4,7 @@ import { bracketMatching, StreamLanguage } from '@codemirror/language'
 import { Compartment, EditorState } from '@codemirror/state'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
-import { ChevronDown, Filter, AlertTriangle, Archive, Database, Eye, MoreHorizontal, Pencil, Shapes, FileCode2, FileInput, FolderOpen, GitCompare, Save, Sparkles, TerminalSquare, Plus } from 'lucide-react'
+import { ChevronDown, Filter, AlertTriangle, Archive, Database, Eye, MoreHorizontal, Pencil, Shapes, FileCode2, FileInput, FolderOpen, GitCompare, Save, SaveAll, Sparkles, TerminalSquare, Plus } from 'lucide-react'
 import { translateTables, translateType, applyGenerationDirectives, generationDirectivesIn, scriptingWithDirectives, tablesWithDirectives, withDezignSql, checkModel, withModelLayout, createScript, dezignDriver, dezignMigrationOptions, dezignWrapScript, dropScript, fixModelIssue, unquotedNames, getDialect, parseDbml, toDbml, updateModelFromDatabase, type DezignSqlObject, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { openMenu, type MenuItem } from '@/components/ui/ContextMenu'
@@ -608,19 +608,17 @@ export function ModelView({ tab }: { tab: ModelTab }) {
       'separator',
       { label: tab.source ? t('Compare with version…') : t('Compare with file…'), disabled: model.errors.length > 0, onClick: () => withCanvas('versions', anchor) },
     ])
-  /** What the bar keeps out of sight: files, imports, and the model's less frequent tools. */
+  /** Tables from elsewhere: a SQL script, or the linked database. */
+  const importMenu = (anchor: HTMLElement) =>
+    openMenu(anchor, [
+      { label: t('SQL script…'), icon: <FileInput size={13} />, onClick: () => void importDdl() },
+      { label: t('From database'), icon: <Database size={13} />, disabled: !connection, submenu: fromDatabaseItems() },
+    ])
+  /** The model's less frequent tools; what only a DeZign project has sits in its own submenu. */
   const moreMenu = (anchor: HTMLElement) =>
     openMenu(anchor, [
-      { label: t('Open…'), icon: <FolderOpen size={13} />, onClick: () => void open() },
-      { label: t('Save as…'), icon: <Save size={13} />, onClick: () => void save(true) },
-      'separator',
-      { label: t('From database'), icon: <Database size={13} />, disabled: !connection, submenu: fromDatabaseItems() },
-      { label: t('Import SQL…'), icon: <FileInput size={13} />, onClick: () => void importDdl() },
-      'separator',
       { label: t('Rename…'), icon: <Pencil size={13} />, disabled: model.errors.length > 0 || !model.tables.length, onClick: () => withCanvas('rename') },
-      ...(tab.source ? [{ label: t('Domains…'), icon: <Shapes size={13} />, onClick: () => withCanvas('domains') } as MenuItem] : []),
       { label: t('Views and code…'), icon: <Eye size={13} />, onClick: () => setViewsOpen({}) },
-      ...(tab.source ? [{ label: t('Project scripts…'), icon: <FileCode2 size={13} />, onClick: () => setScriptsOpen(true) } as MenuItem] : []),
       ...(availableDirectives.length
         ? [
             {
@@ -633,7 +631,20 @@ export function ModelView({ tab }: { tab: ModelTab }) {
             } as MenuItem,
           ]
         : []),
-      ...(tab.source ? (['separator', { label: t('Archive version…'), icon: <Archive size={13} />, onClick: () => void archiveVersion() }] as MenuItem[]) : []),
+      ...(tab.source
+        ? ([
+            'separator',
+            {
+              label: t('DeZign project'),
+              icon: <FileCode2 size={13} />,
+              submenu: [
+                { label: t('Domains…'), icon: <Shapes size={13} />, onClick: () => withCanvas('domains') },
+                { label: t('Project scripts…'), icon: <FileCode2 size={13} />, onClick: () => setScriptsOpen(true) },
+                { label: t('Archive version…'), icon: <Archive size={13} />, onClick: () => void archiveVersion() },
+              ],
+            },
+          ] as MenuItem[])
+        : []),
     ])
   latest.current.then = {
     ddl: (anchor) => anchor && ddlMenu(anchor),
@@ -691,9 +702,20 @@ export function ModelView({ tab }: { tab: ModelTab }) {
           {(tab.path ?? tab.source?.path)?.split(/[\\/]/).pop() ?? t('Unsaved model')}
           {tab.dirty && ' •'}
         </span>
+        <Button size="sm" variant="ghost" icon={<FolderOpen size={13} />} onClick={() => void open()} title={t('Open a model or a DeZign project')} data-testid="model-open">
+          {t('Open…')}
+        </Button>
         <Button size="sm" variant="ghost" icon={<Save size={13} />} onClick={() => void save()} title={keys('⌘S')} data-testid="model-save">
           {t('Save')}
         </Button>
+        <Button size="sm" variant="ghost" icon={<SaveAll size={13} />} onClick={() => void save(true)} title={t('Save as a model (.dbml) or a DeZign project (.dez)')} data-testid="model-save-as">
+          {t('Save as…')}
+        </Button>
+        <Button size="sm" variant="ghost" icon={<FileInput size={13} />} onClick={(e) => importMenu(e.currentTarget)} title={t('Tables from a SQL script or from the database')} data-testid="model-import">
+          {t('Import')}
+          <ChevronDown size={12} className="-mr-0.5 opacity-60" />
+        </Button>
+        <span className="mx-0.5 h-4 w-px bg-line" />
         <Button size="sm" variant="ghost" icon={<TerminalSquare size={13} />} disabled={!model.tables.length} onClick={(e) => withCanvas('ddl', e.currentTarget)}>
           {t('SQL DDL')}
         </Button>

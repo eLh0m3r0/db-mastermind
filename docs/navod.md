@@ -82,7 +82,7 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   sloupce, jen klíče, jen primární klíče, prvních 10/20, nebo jen názvy, s typy i bez (lišta diagramu);
   jednotlivé sloupce skryjete v nabídce tabulky (*Zobrazené sloupce*). Rámečky (group boxes) přidáte tlačítkem,
   přesunete za titulek, velikost změníte v rohu, přejmenujete a odeberete z jejich nabídky.
-- **Aktualizace modelu z databáze:** *Z databáze → Aktualizovat model* doplní do modelu, co v databázi přibylo
+- **Aktualizace modelu z databáze:** *Importovat → Z databáze → Aktualizovat model* doplní do modelu, co v databázi přibylo
   nebo se změnilo; komentáře, domény a rozložení modelu zůstanou.
 - **Porovnání s archivovanou verzí:** u modelu z DeZignu nabídne *Porovnat s verzí…* verze uložené v projektu;
   uvidíte změny od té doby a ALTER skript pro databázi modelu. *Archivovat verzi…* uloží aktuální stav projektu

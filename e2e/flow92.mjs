@@ -34,8 +34,7 @@ try {
   // Save as a DeZign project: the model made here becomes a .dez that reads back the same, and the tab follows it.
   const dezFile = join(dir, 'exported.dez')
   await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }) }, dezFile)
-  await win.locator('[data-testid="model-more"]:visible').click()
-  await win.getByRole('menuitem', { name: 'Save as…' }).click()
+  await win.locator('[data-testid="model-save-as"]:visible').click()
   await win.getByText('Saved as a DeZign for Databases project').waitFor({ timeout: 15000 })
   const exported = existsSync(dezFile) ? readFileSync(dezFile, 'latin1') : ''
   console.log('exported .dez:', exported.includes('<FILEFORMATVERSION>140</FILEFORMATVERSION>'), (exported.match(/<ENT>/g) ?? []).length, 'tables,', (exported.match(/<REL>/g) ?? []).length, 'relationships, tab follows it:', await win.getByText('exported.dez', { exact: true }).count() > 0)
@@ -70,7 +69,7 @@ try {
   console.log('compare with the linked database:', await win.getByText(/Create table/).count() >= 2)
   // The other way round: tables of the database come into the model, the model's own tables and notes stay.
   await win.getByText('exported.dez', { exact: true }).first().click()
-  await win.locator('[data-testid="model-more"]:visible').click()
+  await win.locator('[data-testid="model-import"]:visible').click()
   await win.getByRole('menuitem', { name: 'From database' }).click()
   if (await win.getByRole('menuitem', { name: 'Start the model from the database' }).count()) await win.getByRole('menuitem', { name: 'Start the model from the database' }).click()
   await win.getByText('Update the model (keeps its comments, domains and layout)').click()
