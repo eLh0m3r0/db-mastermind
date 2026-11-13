@@ -940,7 +940,7 @@ export const cs: Record<string, string> = {
   'Column types': 'Typy sloupců',
   'What the tables show and how relationships are drawn': 'Co tabulky ukazují a jak se kreslí vztahy',
   'Import': 'Importovat',
-  'SQL script…': 'Skript SQL…',
+  'SQL script or Prisma schema…': 'Skript SQL nebo schéma Prisma…',
   'DeZign project': 'Projekt DeZign',
   'Open a model or a DeZign project': 'Otevře model nebo projekt DeZign',
   'Save as a model (.dbml) or a DeZign project (.dez)': 'Uloží jako model (.dbml) nebo projekt DeZign (.dez)',

@@ -33,7 +33,7 @@ try {
   await shot('04-filter-builder')
   await win.keyboard.press(`${mod}+t`)
   await win.waitForTimeout(500)
-  await win.locator('.cm-content').click()
+  await win.locator('.cm-content:visible').last().click()
   await win.keyboard.type('select c.name, count(o.id) as orders, sum(o.total) as revenue\nfrom shop.customers c join shop.orders o on o.customer_id = c.id\ngroup by c.name order by revenue desc;')
   await win.keyboard.press(`${mod}+Enter`)
   await win.waitForTimeout(1500)

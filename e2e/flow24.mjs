@@ -26,7 +26,7 @@ try {
   await win.keyboard.press('Enter')
   await win.waitForTimeout(800)
   await win.locator('[data-testid="model-import"]:visible').click()
-  await win.getByRole('menuitem', { name: 'SQL script…' }).click()
+  await win.getByRole('menuitem', { name: 'SQL script or Prisma schema…' }).click()
   await win.waitForTimeout(2500)
   await win.screenshot({ path: `${out}/j0-model-import.png` })
   await win.getByRole('button', { name: 'SQL DDL' }).click()

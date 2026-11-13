@@ -622,7 +622,7 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   /** Tables from elsewhere: a SQL script, or the linked database. */
   const importMenu = (anchor: HTMLElement) =>
     openMenu(anchor, [
-      { label: t('SQL script…'), icon: <FileInput size={13} />, onClick: () => void importDdl() },
+      { label: t('SQL script or Prisma schema…'), icon: <FileInput size={13} />, onClick: () => void importDdl() },
       { label: t('From database'), icon: <Database size={13} />, disabled: !connection, submenu: fromDatabaseItems() },
     ])
   /** The model's less frequent tools; what only a DeZign project has sits in its own submenu. */
