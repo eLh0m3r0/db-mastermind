@@ -182,7 +182,8 @@ export function Sidebar() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-subtle">
-      <div className={cn('drag-region flex h-[38px] shrink-0 items-center gap-1 pr-1.5', isMac ? 'pl-[78px]' : 'pl-2.5')}>
+      {/* The title bar's bottom line runs across the whole window, under the sidebar too. */}
+      <div className={cn('drag-region flex h-[38px] shrink-0 items-center gap-1 border-b border-line pr-1.5', isMac ? 'pl-[78px]' : 'pl-2.5')}>
         {!isMac && <span className="text-[12px] font-semibold tracking-tight text-fg-muted">DB Mastermind</span>}
         <div className="flex-1" />
         <div className="no-drag flex items-center">

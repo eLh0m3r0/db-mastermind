@@ -140,6 +140,8 @@ export interface AppSettings {
   contrast?: 'system' | 'normal' | 'high'
   /** Accent color or one of the playful looks (renderer lib/looks.ts); violet when unset. */
   look?: string
+  /** For a look with a font of its own: 'standard' keeps the app's usual font. */
+  lookFont?: 'look' | 'standard'
   /** Compact: denser rows in tables and the explorer. */
   density?: 'comfortable' | 'compact'
   language: 'en' | 'cs'

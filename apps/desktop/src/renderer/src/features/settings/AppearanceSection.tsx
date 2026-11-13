@@ -71,6 +71,18 @@ export function AppearanceSection({ settings, set }: { settings: AppSettings; se
             </Setting>
           </>
         )}
+        {current.font && (
+          <Setting label={t('Font')}>
+            <Segmented
+              value={settings.lookFont ?? 'look'}
+              onChange={(lookFont) => set({ lookFont })}
+              options={[
+                { value: 'look', label: t('Look’s own') },
+                { value: 'standard', label: t('Standard') },
+              ]}
+            />
+          </Setting>
+        )}
         <Setting label={t('Density')} hint={t('Compact fits more rows in tables and the explorer.')}>
           <Segmented
             value={settings.density ?? 'comfortable'}

@@ -24,6 +24,7 @@ function applyTheme(settings: AppSettings | undefined): boolean {
   for (const c of [...root.classList]) if (c.startsWith('look-')) root.classList.remove(c)
   root.classList.add(`look-${look.id}`)
   root.classList.toggle('compact', settings?.density === 'compact')
+  root.classList.toggle('standard-font', !!look.font && settings?.lookFont === 'standard')
   const contrast = settings?.contrast ?? 'system'
   // A look with its own palette ignores contrast (its colors are chosen together).
   document.documentElement.classList.toggle('high-contrast', look.dark === undefined && (contrast === 'high' || (contrast === 'system' && moreContrast.matches)))

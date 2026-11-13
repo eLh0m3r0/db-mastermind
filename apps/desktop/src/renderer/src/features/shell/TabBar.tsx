@@ -10,7 +10,6 @@ import { useConnections } from '@/store/connections'
 import { useUi } from '@/store/ui'
 import { confirmCloseTabs, useWorkspace, type Tab } from '@/store/workspace'
 import { useTransactions } from '@/store/transactions'
-import { LookDecoration } from '@/components/LookDecoration'
 import { useCurrentConnectionId } from '../sidebar/Sidebar'
 import { useT } from '@/lib/i18n'
 
@@ -138,7 +137,6 @@ export function TabBar() {
           </IconButton>
         )}
       </div>
-      <LookDecoration size={18} className="mb-2 mr-1 opacity-90" />
       <div className="no-drag mb-1.5 flex items-center gap-0.5 px-1.5">
         <IconButton label={`${t('AI assistant')} (${modKey}J)`} active={aiVisible} onClick={() => setUi({ aiPanelVisible: !aiVisible })}>
           <Sparkles size={14} />

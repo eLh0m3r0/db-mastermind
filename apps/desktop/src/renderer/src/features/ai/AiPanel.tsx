@@ -306,7 +306,7 @@ export function AiPanel() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col border-l border-line bg-subtle">
+    <div className="flex h-full min-h-0 flex-col bg-subtle">
       {/* title-band: a look that colors the title bar colors this header too, so the bar runs on. */}
       <div className="title-band flex h-[38px] shrink-0 items-center gap-1.5 border-b border-line px-2.5">
         <Sparkles size={14} className="text-accent" />

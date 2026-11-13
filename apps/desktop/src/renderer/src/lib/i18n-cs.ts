@@ -1642,4 +1642,6 @@ export const cs: Record<string, string> = {
   'No database matches.': 'Žádná databáze neodpovídá.',
   'this connection': 'toto připojení',
   'new connection': 'nové připojení',
+  'Font': 'Písmo',
+  'Look’s own': 'Z motivu',
 }

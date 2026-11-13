@@ -291,9 +291,11 @@ export function App() {
         </div>
         {aiPanelVisible && (
           <>
-            <Splitter direction="horizontal" size={aiPanelWidth} onResize={(w) => set({ aiPanelWidth: w })} min={300} max={760} reverse />
-            <div style={{ width: aiPanelWidth }} className="shrink-0">
+            <Splitter direction="horizontal" size={aiPanelWidth} onResize={(w) => set({ aiPanelWidth: w })} min={300} max={760} reverse className="w-[6px]" />
+            {/* Like the sidebar: the border starts under the title bar's line. */}
+            <div style={{ width: aiPanelWidth }} className="relative shrink-0">
               <AiPanel />
+              <span aria-hidden className="pointer-events-none absolute top-[38px] bottom-0 left-0 w-px bg-line" />
             </div>
           </>
         )}
