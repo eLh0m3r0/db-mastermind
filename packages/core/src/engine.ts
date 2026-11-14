@@ -135,7 +135,13 @@ export class DatabaseService {
   async connect(config: ConnectionConfig): Promise<ServerInfo> {
     await this.disconnect(config.id)
     const driver = this.driverFactory(config)
-    await driver.connect()
+    try {
+      await driver.connect()
+    } catch (err) {
+      // A half-open driver (an SSH tunnel up, the login refused) must not stay behind.
+      await driver.close().catch(() => {})
+      throw err
+    }
     const entry: OpenConnection = { config, driver }
     this.open.set(config.id, entry)
     try {

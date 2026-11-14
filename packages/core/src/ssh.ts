@@ -194,7 +194,7 @@ export async function openSshTunnel(ssh: SshConfig, targetHost: string, targetPo
     if (client) return Promise.resolve(client)
     connecting ??= connectSsh(ssh, () => undefined)
       .then((c) => {
-        c.removeAllListeners('close')
+        // (The connection's own close listener stays: with a jump host it also ends the hop's connection.)
         c.on('close', gone(c))
         c.on('error', gone(c))
         if (closed) c.end()
@@ -242,10 +242,15 @@ export async function openSshTunnel(ssh: SshConfig, targetHost: string, targetPo
       .catch(() => socket.destroy())
   })
 
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => resolve())
-  })
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(0, '127.0.0.1', () => resolve())
+    })
+  } catch (err) {
+    client?.end()
+    throw err
+  }
   server.on('error', () => undefined)
   const address = server.address() as net.AddressInfo
 

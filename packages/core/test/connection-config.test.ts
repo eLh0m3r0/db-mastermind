@@ -7,6 +7,8 @@ describe('connection settings', () => {
   it('reconnects for what the connection was made with, not for its name, color or commit mode', () => {
     expect(needsReconnect(pg, { ...pg, name: 'Other', color: '#f00', manualCommit: true, ai: { access: 'read' } })).toBe(false)
     expect(needsReconnect(pg, { ...pg, database: 'crm' })).toBe(true)
+    // A new password command means new credentials (review finding).
+    expect(needsReconnect(pg, { ...pg, passwordCommand: 'op read op://x/y/password' })).toBe(true)
     expect(needsReconnect(pg, { ...pg, readOnly: true })).toBe(true)
     expect(needsReconnect({ ...pg, password: '' }, { ...pg, password: undefined })).toBe(false)
   })
