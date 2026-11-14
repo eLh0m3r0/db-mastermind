@@ -230,6 +230,8 @@ describe.skipIf(skip)('oracle', () => {
       expect(failed?.error?.message, sql).toBeUndefined()
     }
     expect(Number((await run('SELECT add_one(41) FROM dual')).results![0]!.rows[0]![0])).toBe(42)
+    // Without a schema the session's own is named (third review finding).
+    expect((await objectDefinition(svc, 'ora', { name: 'ADD_ONE', kind: 'function' })).sql).toContain('"SHOP"."ADD_ONE"')
     await run('DROP VIEW big_orders')
   })
 

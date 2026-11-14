@@ -264,11 +264,18 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       if (!now?.path || !now.file) return
       const mtime = await api.sqlFileTime(now.path).catch(() => null)
       if (stopped || mtime === null || Math.abs(mtime - now.file.mtimeMs) <= 1 || warnedAbout.current === mtime) return
-      /** `silent`: only when the text is still what it was before reading (typing meanwhile must not be lost). */
+      /**
+       * Takes the file's text, but only if the editor still holds what it held when reading began: an explicit Reload
+       * replaces the unsaved text the user agreed to drop, never what was typed while the file was being read.
+       */
       const reload = async (silent = false) => {
         const typed = editor.current?.getValue()
         const file = await api.openSqlFile(now.path).catch(() => null)
-        if (!file || (silent && (stopped || editor.current?.getValue() !== typed))) return
+        if (!file || (silent && stopped)) return
+        if (editor.current?.getValue() !== typed) {
+          if (!silent) toast({ kind: 'warning', message: t('“{name}” was not reloaded', { name: now.title }), detail: t('You typed in it while the file was being read. Reload again to take the file’s text.') })
+          return
+        }
         editor.current?.setValue(file.text)
         updateTab(tab.id, { sql: file.text, savedSql: file.text, file: { format: file.format, mtimeMs: file.mtimeMs } })
       }

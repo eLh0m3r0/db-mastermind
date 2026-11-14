@@ -26,8 +26,11 @@ const isExpression = (v: EditValue): v is { $sql: string } => typeof v === 'obje
  */
 export function checkCellExpression(expression: string, driver?: DriverId): string | null {
   if (!expression.trim()) return 'Type an expression, e.g. now()'
+  // One line: a line comment the check misread could otherwise end on the next line, with the rest as code.
+  if (/[\r\n\u2028\u2029]/.test(expression)) return 'An expression is one line'
   if (/\\/.test(expression)) return 'No backslashes in an expression'
-  if (/\$[A-Za-z_0-9]*\$/.test(expression) && (driver === undefined || driver === 'postgres' || driver === 'duckdb')) return 'No dollar-quoted text in an expression'
+  // $tag$…$tag$ quoting (PostgreSQL, DuckDB, ClickHouse).
+  if (/\$[A-Za-z_0-9]*\$/.test(expression)) return 'No dollar-quoted text in an expression'
   // Oracle q'…' / nq'…' (a name is never directly followed by a quote in valid SQL, so any q' is refused).
   if (/[qQ]'/.test(expression)) return "No q'…' quoting in an expression"
   // BigQuery '''…''' and """…""" strings.
@@ -38,7 +41,8 @@ export function checkCellExpression(expression: string, driver?: DriverId): stri
   const bare = expression.replace(quoted, '_')
   if (/['"`]/.test(bare) || (driver === 'mssql' && /[[\]]/.test(bare))) return 'A quote or bracket is not closed'
   if (/;/.test(bare)) return 'One expression only: no semicolons'
-  if (/--|\/\*|\*\//.test(bare) || ((driver === undefined || driver === 'mysql' || driver === 'mariadb') && /#/.test(bare))) return 'No comments in an expression'
+  // `#` starts a comment everywhere but PostgreSQL and DuckDB (operators there); `//` in ClickHouse.
+  if (/--|\/\*|\*\/|\/\//.test(bare) || (driver !== 'postgres' && driver !== 'duckdb' && /#/.test(bare))) return 'No comments in an expression'
   let depth = 0
   for (const ch of bare) {
     if (ch === '(') depth++

@@ -1809,4 +1809,7 @@ export const cs: Record<string, string> = {
   'No backslashes in an expression': 'Ve výrazu nesmí být zpětná lomítka',
   'No dollar-quoted text in an expression': 'Ve výrazu nesmí být text v $$',
   'No q\'…\' quoting in an expression': 'Ve výrazu nesmí být uvozování q\'…\'',
+  '“{name}” was not reloaded': '„{name}“ se znovu nenačetl',
+  'You typed in it while the file was being read. Reload again to take the file’s text.': 'Během čtení souboru jste do něj psali. Text souboru převezmete dalším načtením.',
+  'An expression is one line': 'Výraz musí být na jednom řádku',
 }

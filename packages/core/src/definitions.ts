@@ -63,7 +63,57 @@ export function withLeadingCreate(sql: string, replacement: string): string {
   return sql.slice(0, at) + replacement + sql.slice(at + m[0].length)
 }
 
-const ensureSemicolon = (sql: string) => (/;\s*$/.test(sql) ? sql.trimEnd() : `${sql.trimEnd()};`)
+/**
+ * Oracle source ("FUNCTION name (…) RETURN …" as ALL_SOURCE keeps it) with the routine's name replaced by
+ * `qualified`. Comments before and inside the header, quoted names, Unicode names and an existing owner are handled;
+ * a header it can't read throws rather than leave the name unqualified.
+ */
+export function qualifyOracleHeader(source: string, qualified: string): string {
+  let i = 0
+  const skip = () => {
+    for (;;) {
+      while (i < source.length && /\s/.test(source[i]!)) i++
+      if (source.startsWith('--', i)) {
+        const nl = source.indexOf('\n', i)
+        i = nl === -1 ? source.length : nl + 1
+      } else if (source.startsWith('/*', i)) {
+        const end = source.indexOf('*/', i + 2)
+        if (end === -1) throw new Error('Could not read the routine’s header')
+        i = end + 2
+      } else return
+    }
+  }
+  const identifier = (): boolean => {
+    if (source[i] === '"') {
+      const end = source.indexOf('"', i + 1)
+      if (end === -1) return false
+      i = end + 1
+      return true
+    }
+    const start = i
+    while (i < source.length && /[\p{L}\p{N}_$#]/u.test(source[i]!)) i++
+    return i > start
+  }
+  skip()
+  const keyword = /^(FUNCTION|PROCEDURE)\b/i.exec(source.slice(i))
+  if (!keyword) throw new Error('Could not read the routine’s header')
+  i += keyword[0].length
+  skip()
+  const nameStart = i
+  if (!identifier()) throw new Error('Could not read the routine’s header')
+  let nameEnd = i
+  const afterFirst = i
+  skip()
+  if (source[i] === '.') {
+    i++
+    skip()
+    if (!identifier()) throw new Error('Could not read the routine’s header')
+    nameEnd = i
+  } else i = afterFirst
+  return source.slice(0, nameStart) + qualified + source.slice(nameEnd)
+}
+
+const ensureSemicolon =(sql: string) => (/;\s*$/.test(sql) ? sql.trimEnd() : `${sql.trimEnd()};`)
 
 /**
  * The SQL that defines an object, as the database keeps it, in a form that changes the object when run.
@@ -131,11 +181,13 @@ export async function objectDefinition(db: DatabaseService, id: string, object: 
       return { sql: `${withLeadingCreate(def.trim(), 'CREATE OR ALTER')}\n` }
     }
     case 'oracle': {
-      const owner = object.schema ?? config.user?.toUpperCase() ?? ''
+      // The session's own schema when none is given (not the user name upper-cased: mixed-case users exist).
+      const owner = object.schema ?? text((await first(`SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AS "s" FROM dual`, []))?.s)
+      const ownName = qualify(dialect, { schema: owner, name: object.name })
       if (isView) {
         const row = await first(`SELECT text_vc AS "def" FROM all_views WHERE owner = :1 AND view_name = :2`, [owner, object.name])
         if (!row?.def) throw notFound()
-        return { sql: `CREATE OR REPLACE VIEW ${name} AS\n${ensureSemicolon(text(row.def))}\n` }
+        return { sql: `CREATE OR REPLACE VIEW ${ownName} AS\n${ensureSemicolon(text(row.def))}\n` }
       }
       const [r] = await driver.execute(`SELECT text AS "text" FROM all_source WHERE owner = :1 AND name = :2 AND type = :3 ORDER BY line`, {
         params: [owner, object.name, object.kind === 'procedure' ? 'PROCEDURE' : 'FUNCTION'],
@@ -144,8 +196,7 @@ export async function objectDefinition(db: DatabaseService, id: string, object: 
       if (!source.trim()) throw notFound()
       // ALL_SOURCE starts at "FUNCTION name": the CREATE is the caller's, and the name gets its owner (run as another
       // user, an unqualified name would create the routine in that user's own schema). "/" ends the block.
-      const qualified = source.replace(/^(\s*(?:FUNCTION|PROCEDURE)\s+)("[^"]+"|[A-Za-z][\w$#]*)(\s*\.\s*("[^"]+"|[A-Za-z][\w$#]*))?/i, (_m, head: string) => `${head}${name}`)
-      return { sql: `CREATE OR REPLACE ${qualified.trimEnd()}\n/\n` }
+      return { sql: `CREATE OR REPLACE ${qualifyOracleHeader(source, ownName).trimEnd()}\n/\n` }
     }
     case 'duckdb': {
       if (isView) {
