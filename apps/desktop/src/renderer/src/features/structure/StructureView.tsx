@@ -1,5 +1,8 @@
-import { ArrowLeft, ArrowRight, KeyRound, Link2, Table2 } from 'lucide-react'
-import { displayName, findTable, incomingReferences } from '@dbmastermind/core/browser'
+import { useEffect, useMemo, useState } from 'react'
+import { ArrowLeft, ArrowRight, BookOpen, Eye, KeyRound, Link2, Table2, TerminalSquare } from 'lucide-react'
+import { displayName, findTable, incomingReferences, mentionsTable } from '@dbmastermind/core/browser'
+import type { KnowledgeFileInfo, SavedQuery } from '@shared/api'
+import { api } from '@/lib/api'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge } from '@/components/ui/Input'
@@ -12,6 +15,31 @@ export function StructureView({ tab }: { tab: StructureTab }) {
   const openTab = useWorkspace((s) => s.open)
   const t = useT()
   const table = schema ? findTable(schema, tab.table) : undefined
+  const connection = useConnections((s) => s.list.find((c) => c.id === tab.connectionId))
+  // Where else the table is used: views, saved queries and knowledge base notes (loaded once per tab).
+  const [saved, setSaved] = useState<SavedQuery[]>([])
+  const [notes, setNotes] = useState<KnowledgeFileInfo[]>([])
+  useEffect(() => {
+    void api.listSavedQueries().then(setSaved, () => setSaved([]))
+    if (connection?.knowledgeBasePath) void api.kbList(tab.connectionId).then(setNotes, () => setNotes([]))
+  }, [tab.connectionId, connection?.knowledgeBasePath])
+  const usedBy = useMemo(() => {
+    if (!schema || !table || !connection) return { views: [], queries: [], notes: [] }
+    const driver = connection.driver
+    const mentions = (sql: string) => {
+      try {
+        return mentionsTable(sql, driver, schema, table)
+      } catch {
+        return false
+      }
+    }
+    const asQuery = (definition: string) => (/^\s*(SELECT|WITH|\()/i.test(definition) ? definition : definition.replace(/^[\s\S]*?\bAS\s+/i, ''))
+    return {
+      views: schema.tables.filter((v) => v.type !== 'table' && v !== table && v.definition && mentions(asQuery(v.definition))),
+      queries: saved.filter((q) => (!q.connectionId || q.connectionId === tab.connectionId) && mentions(q.sql)),
+      notes: notes.filter((n) => n.tables.some((x) => x.toLowerCase() === table.name.toLowerCase() || x.toLowerCase() === `${table.schema ?? ''}.${table.name}`.toLowerCase())),
+    }
+  }, [schema, table, connection, saved, notes, tab.connectionId])
   if (!schema) return <EmptyState title={t('Loading schema…')} />
   if (!table) return <EmptyState title={t('Table {name} was not found', { name: tab.table.name })} />
   const incoming = incomingReferences(schema, table)
@@ -154,6 +182,40 @@ export function StructureView({ tab }: { tab: StructureTab }) {
                 </button>
               ))}
               {table.foreignKeys.length + incoming.length === 0 && <div className="text-[12px] text-fg-faint">{t('No relationships')}</div>}
+            </div>
+          </section>
+          <section className="col-span-full" data-testid="used-by">
+            <h2 className="mb-2 text-[13px] font-semibold">{t('Used by')}</h2>
+            <div className="flex flex-col gap-1.5">
+              {usedBy.views.map((v) => (
+                <button
+                  type="button"
+                  key={`v:${v.schema}.${v.name}`}
+                  className="flex items-center gap-2 rounded-md border border-line px-3 py-2 text-left text-[12.5px] hover:bg-hover"
+                  onClick={() => openTab({ kind: 'structure', connectionId: tab.connectionId, table: { schema: v.schema, name: v.name }, title: t('{name} · structure', { name: v.name }) })}
+                >
+                  <Eye size={13} className="text-info" />
+                  <b>{v.name}</b> <span className="text-fg-muted">{t('view')}</span>
+                </button>
+              ))}
+              {usedBy.queries.map((q) => (
+                <button type="button" key={`q:${q.id}`} className="flex items-center gap-2 rounded-md border border-line px-3 py-2 text-left text-[12.5px] hover:bg-hover" onClick={() => openTab({ kind: 'query', connectionId: tab.connectionId, title: q.name, sql: q.sql, savedQueryId: q.id, savedSql: q.sql }, { reuse: false })}>
+                  <TerminalSquare size={13} className="text-accent" />
+                  <b>{q.name}</b> <span className="text-fg-muted">{t('saved query')}</span>
+                </button>
+              ))}
+              {usedBy.notes.map((n) => (
+                <button
+                  type="button"
+                  key={`n:${n.path}`}
+                  className="flex items-center gap-2 rounded-md border border-line px-3 py-2 text-left text-[12.5px] hover:bg-hover"
+                  onClick={() => openTab({ kind: 'knowledge', connectionId: tab.connectionId, title: t('Knowledge base'), file: n.path })}
+                >
+                  <BookOpen size={13} className="text-success" />
+                  <b>{n.title || n.path}</b> <span className="text-fg-muted">{t('knowledge base note')}</span>
+                </button>
+              ))}
+              {usedBy.views.length + usedBy.queries.length + usedBy.notes.length === 0 && <div className="text-[12px] text-fg-faint">{t('No views, saved queries or notes use this table')}</div>}
             </div>
           </section>
         </div>
