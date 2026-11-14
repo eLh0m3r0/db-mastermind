@@ -1796,4 +1796,13 @@ export const cs: Record<string, string> = {
   'The server collects these numbers in performance_schema, which is off. Set performance_schema = ON in the server’s configuration and restart it.': 'Server tato čísla sbírá v performance_schema, které je vypnuté. Nastavte performance_schema = ON v konfiguraci serveru a restartujte ho.',
   'This database does not keep statement statistics the app can read.': 'Tato databáze nevede statistiky příkazů, které by aplikace mohla přečíst.',
   'Largest first, as the database reports them; row counts are estimates.': 'Od největších, jak je hlásí databáze; počty řádků jsou odhady.',
+  '{agent} proposes a connection: {name}': '{agent} navrhuje připojení: {name}',
+  'An agent proposes a connection: {name}': 'Agent navrhuje připojení: {name}',
+  'Review…': 'Zkontrolovat…',
+  'Open in editor': 'Otevřít v editoru',
+  'Running…': 'Běží…',
+  'Failed': 'Selhalo',
+  'first rows only': 'jen první řádky',
+  'Done': 'Hotovo',
+  'A note runs reads only. Open it in the editor to run changes.': 'Poznámka spouští jen čtení. Změny spusťte v editoru.',
 }

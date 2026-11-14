@@ -1,3 +1,4 @@
+import { showConnectionProposals } from '@/lib/proposals'
 import { useEffect, useRef, useState } from 'react'
 import { Building2, CheckCircle2, ClipboardPaste, FolderOpen, XCircle } from 'lucide-react'
 import { isFileDriver, supportsManualCommit, type ConnectionConfig, type DriverId, type Environment, type SslMode } from '@dbmastermind/core/browser'
@@ -93,7 +94,12 @@ export function ConnectionForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editingId])
 
-  const close = () => setUi({ modal: undefined })
+  const close = () => {
+    const proposal = modal?.kind === 'connection' ? modal.proposal : undefined
+    setUi({ modal: undefined })
+    // A proposal reviewed but not saved waits again (saving removed it first).
+    if (proposal) void showConnectionProposals()
+  }
   const set = (patch: Partial<ConnectionConfig>) => {
     setConfig((c) => ({ ...c, ...patch }))
     setTest({ state: 'idle' })
@@ -133,6 +139,8 @@ export function ConnectionForm() {
     setBusy(true)
     try {
       const saved = await save(config)
+      // An agent's proposal, now reviewed and saved: it no longer waits.
+      if (modal?.kind === 'connection' && modal.proposal) await window.mastermind.api.dismissConnectionProposal(modal.proposal).catch(() => {})
       if (!andConnect) return close()
       setTest({ state: 'running' })
       const ok = await connect(saved.id)

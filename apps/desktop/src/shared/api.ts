@@ -1,5 +1,6 @@
 import type {
   ConnectionConfig,
+  ConnectionProposal,
   ColumnProfile,
   StorageReport,
   TopQueries,
@@ -396,6 +397,8 @@ export interface RunQueryRequest {
   continueOnError?: boolean
   /** Values for `:name` / `?` / `$1` parameters, keyed `name` or `$1`. */
   parameterValues?: Record<string, string | null>
+  /** Reads only, in a read-only transaction the database enforces and that is always rolled back (notebook blocks). */
+  readOnly?: boolean
 }
 
 export interface CompareDataRequest {
@@ -698,6 +701,9 @@ export interface MastermindApi {
   /** Commit / Roll back of a query tab's open transaction; resolves with the state after it. */
   endTransaction(connectionId: string, session: string, action: 'commit' | 'rollback'): Promise<TransactionState>
   listActivity(connectionId: string): Promise<SessionActivity[]>
+  /** Connections agents proposed (MCP propose_connection) that wait for the user. */
+  listConnectionProposals(): Promise<{ file: string; proposal: ConnectionProposal }[]>
+  dismissConnectionProposal(file: string): Promise<void>
   /** The statements that took the most time (pg_stat_statements, performance_schema, Query stats, v$sqlstats). */
   topQueries(connectionId: string): Promise<TopQueries>
   /** Table and index sizes and indexes nothing used since the statistics started. */
@@ -839,6 +845,8 @@ export interface MainEvents {
   'ai:event': AiEvent
   /** Files in the team folder changed: reload connections and saved queries. */
   'team:changed': undefined
+  /** An agent proposed a connection (or one was saved / dismissed): the window lists them again. */
+  'connection:proposals': undefined
   /** A file handed to the running app (double-click in the system, a second launch with a path). */
   'file:open': string
 }
@@ -972,6 +980,8 @@ export const API_METHODS = [
   'profileColumn',
   'topQueries',
   'storageReport',
+  'listConnectionProposals',
+  'dismissConnectionProposal',
 ] as const satisfies readonly (keyof MastermindApi)[]
 
 // Compile error if a method is added to MastermindApi but not to API_METHODS.

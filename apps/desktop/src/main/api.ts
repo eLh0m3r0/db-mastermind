@@ -80,6 +80,8 @@ import { forgetEditorSession, forgetEditorSessionsOf, openTransactions, trackEdi
 import * as library from './library'
 import { getSettings, updateSettings } from './settings'
 import { readSqlFile, sqlFileTime, writeSqlFile } from './sql-files'
+import { dismissProposal, listProposals } from './connection-proposals'
+import { notifyProposals, proposalsDir } from './proposals-watch'
 
 /** CSV separator: the user's choice, else semicolons in Czech (Excel there splits columns on them). */
 function csvDelimiter(): ',' | ';' {
@@ -444,6 +446,7 @@ export const api: MastermindApi = {
         maxRows: request.maxRows ?? getSettings().maxResultRows,
         continueOnError: request.continueOnError,
         parameterValues: request.parameterValues,
+        readOnly: request.readOnly || undefined,
         signal,
       }),
     )
@@ -470,6 +473,11 @@ export const api: MastermindApi = {
   async objectDefinition(connectionId, object) {
     await ensureConnected(connectionId)
     return (await objectDefinition(db, connectionId, object)).sql
+  },
+  listConnectionProposals: () => listProposals(proposalsDir()),
+  async dismissConnectionProposal(file) {
+    await dismissProposal(proposalsDir(), file)
+    notifyProposals()
   },
   async topQueries(connectionId) {
     await ensureConnected(connectionId)

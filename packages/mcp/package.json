@@ -5,7 +5,8 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "dbmastermind-mcp": "dist/cli.js"
+    "dbmastermind-mcp": "dist/cli.js",
+    "dbm": "dist/dbm.js"
   },
   "exports": {
     ".": "./src/server.ts"

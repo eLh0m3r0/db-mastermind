@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 export type Modal =
-  | { kind: 'connection'; connectionId?: string; draft?: Record<string, unknown> }
+  | { kind: 'connection'; connectionId?: string; draft?: Record<string, unknown>; /** An agent's proposal this form reviews: saving removes it. */ proposal?: string }
   | { kind: 'settings'; section?: string }
   | { kind: 'shortcuts' }
   | { kind: 'about' }
@@ -15,6 +15,8 @@ export interface Toast {
   action?: { label: string; run: () => void }
   /** Milliseconds on screen; 0 keeps it until dismissed (progress of a long task). */
   duration?: number
+  /** The user closed it with ✕ (not by its action, not by timing out). */
+  onDismiss?: () => void
 }
 
 interface UiState {

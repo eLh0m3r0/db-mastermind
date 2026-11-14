@@ -1,9 +1,9 @@
 import { build } from 'esbuild'
 
-// Bundle core into the CLI; database drivers stay regular npm dependencies.
-await build({
-  entryPoints: ['src/cli.ts'],
-  outfile: 'dist/cli.js',
+// Bundle core into the CLIs (the MCP server and dbm); database drivers stay regular npm dependencies.
+for (const [entry, outfile] of [['src/cli.ts', 'dist/cli.js'], ['src/dbm-cli.ts', 'dist/dbm.js']]) await build({
+  entryPoints: [entry],
+  outfile,
   bundle: true,
   platform: 'node',
   format: 'esm',
