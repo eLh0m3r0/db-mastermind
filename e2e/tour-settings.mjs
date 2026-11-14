@@ -33,7 +33,7 @@ try {
   await win.keyboard.press(`${mod}+w`)
   await win.getByRole('dialog').waitFor({ timeout: 10000 })
   await win.screenshot({ path: `${out}/cs-1-transaction-close.png` })
-  await win.getByRole('dialog').getByRole('button', { name: /^(Cancel|Zrušit)$/ }).click()
+  await win.getByRole('dialog').getByRole('button', { name: /^(Keep open|Nezavírat)$/ }).click()
   for (const width of [900, 700]) {
     await app.evaluate(({ BrowserWindow }, w) => BrowserWindow.getAllWindows()[0].setSize(w, 800), width)
     await win.waitForTimeout(400)
