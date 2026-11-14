@@ -66,6 +66,8 @@ export function mergeManagedConnections(
   const strip = <T extends object>(d: T): T => {
     const out = { ...d } as Record<string, unknown>
     for (const key of SECRET_KEYS) delete out[key]
+    // A command to run is never taken from a shared file.
+    delete out.passwordCommand
     if (out.ssh && typeof out.ssh === 'object') out.ssh = { ...(out.ssh as object), password: undefined, privateKey: undefined, passphrase: undefined }
     return out as T
   }

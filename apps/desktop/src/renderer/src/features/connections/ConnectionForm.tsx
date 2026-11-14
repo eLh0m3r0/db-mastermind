@@ -170,6 +170,8 @@ export function ConnectionForm() {
   const isDuck = config.driver === 'duckdb'
   const isBigQuery = config.driver === 'bigquery'
   const windowsAuth = config.driver === 'mssql' && config.options?.authentication === 'windows'
+  const entraAuth = config.driver === 'mssql' && String(config.options?.authentication ?? '').startsWith('entra')
+  const servicePrincipal = entraAuth && config.options?.authentication === 'entra-service-principal'
   const isWindows = bridge.platform === 'win32'
   const ssl = config.ssl ?? { mode: (config.driver === 'mssql' ? 'prefer' : 'disable') as SslMode }
   const ssh = config.ssh ?? { enabled: false, host: '', port: 22, user: '', authMethod: 'privateKey' as const }
@@ -384,16 +386,42 @@ export function ConnectionForm() {
                     {config.driver === 'mssql' && (
                       <Field label={t('Authentication')}>
                         <Segmented
-                          value={windowsAuth ? 'windows' : 'sql'}
-                          onChange={(v) => setOption('authentication', v === 'windows' ? 'windows' : undefined)}
+                          value={windowsAuth ? 'windows' : entraAuth ? 'entra' : 'sql'}
+                          onChange={(v) => setOption('authentication', v === 'sql' ? undefined : v)}
                           options={[
                             { value: 'sql', label: t('SQL Server login') },
                             { value: 'windows', label: t('Windows authentication') },
+                            { value: 'entra', label: t('Microsoft Entra ID') },
                           ]}
                         />
                       </Field>
                     )}
-                    {windowsAuth ? (
+                    {entraAuth ? (
+                      <div className="flex flex-col gap-2">
+                        <div className="rounded-md bg-subtle px-2.5 py-2 text-[12px] text-fg-muted">
+                          {servicePrincipal
+                            ? t('Signs in as an application (service principal) with its client secret.')
+                            : t('Signs in with your Azure account: Azure CLI (az login), Visual Studio Code, environment variables or the machine’s managed identity. For Azure SQL Database, Managed Instance and SQL Server with Azure Arc.')}
+                          {' '}
+                          <button type="button" className="text-accent hover:underline" onClick={() => setOption('authentication', servicePrincipal ? 'entra' : 'entra-service-principal')}>
+                            {servicePrincipal ? t('Use my Azure account instead') : t('Use a service principal…')}
+                          </button>
+                        </div>
+                        {servicePrincipal && (
+                          <div className="flex gap-2">
+                            <Field label={t('Tenant ID')} className="flex-1">
+                              <Input value={String(config.options?.tenantId ?? '')} onChange={(e) => setOption('tenantId', e.target.value.trim() || undefined)} spellCheck={false} />
+                            </Field>
+                            <Field label={t('Client ID')} className="flex-1">
+                              <Input value={config.user ?? ''} onChange={(e) => set({ user: e.target.value.trim() })} spellCheck={false} />
+                            </Field>
+                            <Field label={t('Client secret')} className="flex-1">
+                              <Input type="password" value={config.password ?? ''} onChange={(e) => set({ password: e.target.value })} autoComplete="new-password" />
+                            </Field>
+                          </div>
+                        )}
+                      </div>
+                    ) : windowsAuth ? (
                       <div className={cn('rounded-md px-2.5 py-2 text-[12px]', isWindows ? 'bg-subtle text-fg-muted' : 'bg-warning-soft text-warning')}>
                         {isWindows
                           ? t('Signs in as your Windows account, no password needed. Requires the Microsoft ODBC Driver 17 or 18 for SQL Server (installed with SSMS).')
@@ -404,9 +432,38 @@ export function ConnectionForm() {
                         <Field label={t('User')} className="flex-1">
                           <Input value={config.user ?? ''} onChange={(e) => set({ user: e.target.value })} autoComplete="off" />
                         </Field>
-                        <Field label={t('Password')} className="flex-1">
-                          <Input type="password" value={config.password ?? ''} onChange={(e) => set({ password: e.target.value })} autoComplete="new-password" />
-                        </Field>
+                        {config.passwordCommand !== undefined ? (
+                          <Field
+                            label={t('Password command')}
+                            className="flex-1"
+                            hint={
+                              <button type="button" className="text-accent hover:underline" onClick={() => set({ passwordCommand: undefined })}>
+                                {t('Type the password instead')}
+                              </button>
+                            }
+                          >
+                            <Input value={config.passwordCommand} onChange={(e) => set({ passwordCommand: e.target.value, password: '' })} placeholder='op read "op://Work/Shop DB/password"' spellCheck={false} data-testid="password-command" />
+                          </Field>
+                        ) : (
+                          <Field
+                            label={t('Password')}
+                            className="flex-1"
+                            hint={
+                              !existing?.team && !existing?.managed ? (
+                                <button type="button" className="text-accent hover:underline" onClick={() => set({ passwordCommand: '', password: '' })} data-testid="use-password-command">
+                                  {t('Use a password manager…')}
+                                </button>
+                              ) : undefined
+                            }
+                          >
+                            <Input type="password" value={config.password ?? ''} onChange={(e) => set({ password: e.target.value })} autoComplete="new-password" />
+                          </Field>
+                        )}
+                      </div>
+                    )}
+                    {config.passwordCommand !== undefined && !windowsAuth && !entraAuth && (
+                      <div className="text-[11.5px] text-fg-faint">
+                        {t('Runs on this computer when connecting; the first line it prints is the password, which is not saved. 1Password: op read "op://vault/item/password" · Bitwarden: bw get password item · Vault: vault kv get -field=password secret/db · pass: pass db/shop')}
                       </div>
                     )}
                     <Field
@@ -420,7 +477,7 @@ export function ConnectionForm() {
                         <Field label={t('Instance name (optional)')} className="flex-1">
                           <Input value={String(config.options?.instanceName ?? '')} onChange={(e) => setOption('instanceName', e.target.value || undefined)} placeholder="SQLEXPRESS" />
                         </Field>
-                        {!windowsAuth && (
+                        {!windowsAuth && !entraAuth && (
                           <Field label={t('Windows domain (NTLM, optional)')} className="flex-1">
                             <Input value={String(config.options?.domain ?? '')} onChange={(e) => setOption('domain', e.target.value || undefined)} placeholder="CORP" />
                           </Field>
@@ -581,6 +638,23 @@ export function ConnectionForm() {
                     </>
                   )}
                   {ssh.host.trim() && <SshHostKey host={ssh.host.trim()} port={ssh.port} />}
+                  {ssh.jump ? (
+                    <div className="flex gap-2">
+                      <Field label={t('Through jump host')} className="flex-1" hint={t('Reached first, signing in the same way (ssh -J).')}>
+                        <Input value={ssh.jump.host} onChange={(e) => set({ ssh: { ...ssh, jump: { ...ssh.jump!, host: e.target.value } } })} placeholder="jump.example.com" data-testid="ssh-jump-host" />
+                      </Field>
+                      <Field label={t('Port')} className="w-20">
+                        <Input value={ssh.jump.port ?? 22} onChange={(e) => set({ ssh: { ...ssh, jump: { ...ssh.jump!, port: Number(e.target.value.replace(/\D/g, '')) || 22 } } })} />
+                      </Field>
+                      <Field label={t('User (if other)')} className="w-32">
+                        <Input value={ssh.jump.user ?? ''} onChange={(e) => set({ ssh: { ...ssh, jump: { ...ssh.jump!, user: e.target.value || undefined } } })} placeholder={ssh.user} />
+                      </Field>
+                    </div>
+                  ) : (
+                    <button type="button" className="self-start text-[12px] text-accent hover:underline" onClick={() => set({ ssh: { ...ssh, jump: { host: '' } } })} data-testid="add-jump-host">
+                      {t('Through another server first (jump host)…')}
+                    </button>
+                  )}
                 </fieldset>
               </>
             )}

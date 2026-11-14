@@ -440,7 +440,7 @@ export async function exportConnections(ids?: string[]): Promise<string | null> 
   const r = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
   if (r.canceled || !r.filePath) return null
   const connections = chosen.map((c) => {
-    const { id: _id, password: _pw, createdAt: _c, updatedAt: _u, lastUsedAt: _l, pinnedTables: _p, hiddenSchemas: _h, ...rest } = c
+    const { id: _id, password: _pw, passwordCommand: _cmd, createdAt: _c, updatedAt: _u, lastUsedAt: _l, pinnedTables: _p, hiddenSchemas: _h, ...rest } = c
     return {
       ...rest,
       ssh: c.ssh ? { ...c.ssh, password: undefined, privateKey: undefined, passphrase: undefined } : undefined,
@@ -465,7 +465,8 @@ export async function importConnections(source: ImportSourceId | 'file'): Promis
   for (const item of items) {
     const same = existing.find((c) => c.name === item.name && c.driver === item.driver && c.host === item.host)
     if (!same) {
-      saveConnection({ ...item, id: '' })
+      // A file from someone else never brings a command to run on this computer.
+      saveConnection({ ...item, id: '', passwordCommand: undefined })
       added++
       continue
     }

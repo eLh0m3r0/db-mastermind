@@ -80,6 +80,7 @@ import { forgetEditorSession, forgetEditorSessionsOf, openTransactions, trackEdi
 import * as library from './library'
 import { getSettings, updateSettings } from './settings'
 import { readSqlFile, sqlFileTime, writeSqlFile } from './sql-files'
+import { withCommandPassword } from './password-command'
 import { dismissProposal, listProposals } from './connection-proposals'
 import { notifyProposals, proposalsDir } from './proposals-watch'
 
@@ -141,7 +142,7 @@ async function csvOptions(path: string): Promise<string> {
 
 export async function ensureConnected(id: string) {
   if (db.isOpen(id)) return
-  const serverInfo = await db.connect(connections.getConnection(id))
+  const serverInfo = await db.connect(await withCommandPassword(connections.getConnection(id)))
   // The window may still show the connection as failed (it was unreachable when it tried).
   for (const w of BrowserWindow.getAllWindows()) w.webContents.send('connection:opened', { connectionId: id, serverInfo })
 }
@@ -230,7 +231,8 @@ export const api: MastermindApi = {
     return connections.duplicateConnection(id)
   },
   async testConnection(config) {
-    return db.test(config as ConnectionConfig)
+    // The form's own command (the user typed it here); a team or managed connection's never runs.
+    return db.test(await withCommandPassword(config as ConnectionConfig))
   },
   async connect(id, password) {
     // Already open (another database's connection opened with a typed password): nothing to ask again.
@@ -242,13 +244,14 @@ export const api: MastermindApi = {
     const stored = connections.getConnection(id)
     // No saved password for PostgreSQL: use ~/.pgpass (PGPASSFILE) like psql and pgAdmin do.
     const pgpass = !password && !stored.password && stored.driver === 'postgres' ? readPgpassPassword(stored) : undefined
-    const config = password ? { ...stored, password: password.value } : pgpass ? { ...stored, password: pgpass } : stored
+    const config = password ? { ...stored, password: password.value } : pgpass ? { ...stored, password: pgpass } : await withCommandPassword(stored)
     let serverInfo
     try {
       serverInfo = await db.connect(config)
     } catch (err) {
       // No saved password (imports leave them out) or a wrong one: the window asks for it.
-      if (isPasswordProblem(err)) throw new PasswordRequiredError(describeError(err).message)
+      // (Entra ID with the signed-in account has no password to ask for: its error says what to do.)
+      if (isPasswordProblem(err) && stored.options?.authentication !== 'entra') throw new PasswordRequiredError(describeError(err).message)
       throw err
     }
     if (password?.save) connections.saveConnection({ ...connections.getConnection(id), password: password.value })

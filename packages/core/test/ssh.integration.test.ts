@@ -45,6 +45,16 @@ describe.skipIf(skip.has('ssh'))('ssh tunnel', () => {
     await expect(svc.connect({ ...base, id: 'ssh-bad', ssh: { ...ssh, authMethod: 'password', password: 'wrong' } } as ConnectionConfig)).rejects.toThrow(/authentication/i)
   })
 
+  it('connects through a jump host (the SSH server reaching itself), checking each host key, and says when the hop fails', async () => {
+    // From inside the container the SSH server is localhost:2222; the jump is the published 127.0.0.1:2222.
+    const jumped = { ...ssh, host: 'localhost', port: 2222, authMethod: 'password', password: 'sshsecret', jump: { host: '127.0.0.1', port: 2222 } }
+    await svc.connect({ ...base, id: 'ssh-jump', ssh: jumped } as ConnectionConfig)
+    expect(await value('ssh-jump')).toBe('1')
+    expect(trustedHostKey('localhost', 2222)).toMatch(/^SHA256:/)
+    await svc.disconnect('ssh-jump')
+    await expect(svc.connect({ ...base, id: 'ssh-jump-bad', ssh: { ...jumped, host: 'no-such-host.invalid' } } as ConnectionConfig)).rejects.toThrow(/jump host 127\.0\.0\.1 could not reach no-such-host\.invalid/)
+  })
+
   it("remembers the server's host key and refuses a different one", async () => {
     const trusted = trustedHostKey('127.0.0.1', 2222)
     expect(trusted).toMatch(/^SHA256:[A-Za-z0-9+/]{43}$/)
