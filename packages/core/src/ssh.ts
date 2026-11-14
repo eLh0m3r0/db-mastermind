@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import net from 'node:net'
+import type { Duplex } from 'node:stream'
 import { dirname } from 'node:path'
 import { Client, type ConnectConfig } from 'ssh2'
 import type { SshConfig } from './types.js'
@@ -128,8 +129,33 @@ function connectConfig(ssh: SshConfig, onRefused: (err: Error) => void): Connect
   return config
 }
 
-/** One SSH connection; resolves when it's ready. Later errors and the close are reported through `onGone`. */
-function connectSsh(ssh: SshConfig, onGone: () => void): Promise<Client> {
+/**
+ * One SSH connection; resolves when it's ready. Later errors and the close are reported through `onGone`. With a jump
+ * host, the connection runs through a forwarded channel of a first connection to it, which closes with it.
+ */
+async function connectSsh(ssh: SshConfig, onGone: () => void): Promise<Client> {
+  const jump = ssh.jump?.host?.trim() ? ssh.jump : undefined
+  if (!jump) return connectDirect(ssh, onGone)
+  const hop = await connectDirect({ ...ssh, host: jump.host.trim(), port: jump.port, user: jump.user?.trim() || ssh.user, jump: undefined }, onGone)
+  try {
+    const stream = await new Promise<Duplex>((resolve, reject) => {
+      try {
+        hop.forwardOut('127.0.0.1', 0, ssh.host, ssh.port ?? 22, (err, s) => (err ? reject(new Error(`The jump host ${jump.host} could not reach ${ssh.host}:${ssh.port ?? 22}: ${err.message}`)) : resolve(s)))
+      } catch (err) {
+        // forwardOut throws synchronously when the connection is gone.
+        reject(err as Error)
+      }
+    })
+    const client = await connectDirect(ssh, onGone, stream)
+    client.once('close', () => hop.end())
+    return client
+  } catch (err) {
+    hop.end()
+    throw err
+  }
+}
+
+function connectDirect(ssh: SshConfig, onGone: () => void, sock?: Duplex): Promise<Client> {
   return new Promise<Client>((resolve, reject) => {
     const client = new Client()
     let ready = false
@@ -148,7 +174,7 @@ function connectSsh(ssh: SshConfig, onGone: () => void): Promise<Client> {
       ready = true
       resolve(client)
     })
-    client.connect(config)
+    client.connect(sock ? { ...config, sock } : config)
   })
 }
 

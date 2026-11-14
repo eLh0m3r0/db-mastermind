@@ -52,6 +52,8 @@ export interface McpServerOptions {
    * Without it there is no propose_connection tool.
    */
   proposeConnection?: (proposal: ConnectionProposal) => Promise<void>
+  /** Completes a connection before it is opened (the desktop app: a password from the user's password command). */
+  prepareConnection?: (config: ConnectionConfig) => Promise<ConnectionConfig>
 }
 
 const INSTRUCTIONS = `DB Mastermind gives you safe access to the user's databases.
@@ -80,7 +82,7 @@ export function createMcpServer(options: McpServerOptions): Server {
   }
 
   const contextFor = async (config: ConnectionConfig): Promise<ToolContext> => {
-    if (!db.isOpen(config.id)) await db.connect(config)
+    if (!db.isOpen(config.id)) await db.connect(options.prepareConnection ? await options.prepareConnection(config) : config)
     return {
       db,
       connectionId: config.id,

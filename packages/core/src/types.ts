@@ -23,6 +23,11 @@ export interface SshConfig {
   password?: string
   privateKey?: string
   passphrase?: string
+  /**
+   * Reach `host` through this server first (OpenSSH's ProxyJump), signing in to both the same way. `user` defaults to
+   * the SSH user.
+   */
+  jump?: { host: string; port?: number; user?: string }
 }
 
 /** none: autocommit · open: changes wait for COMMIT / ROLLBACK · failed: only ROLLBACK can end it. */
@@ -39,6 +44,12 @@ export interface ConnectionConfig {
   database?: string
   user?: string
   password?: string
+  /**
+   * A command that prints the password (a password manager: `op read …`, `bw get password …`, `vault kv get …`),
+   * run on this computer when connecting. Only ever set by the user on this computer: never taken from a team folder,
+   * a managed configuration or an import, and left out when connections are shared.
+   */
+  passwordCommand?: string
   /** SQLite database file. */
   filePath?: string
   ssl?: SslConfig

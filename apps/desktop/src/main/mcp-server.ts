@@ -9,6 +9,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { DatabaseService, useKnownHostsFile, type ConnectionConfig } from '@dbmastermind/core'
 import { createMcpServer } from 'dbmastermind-mcp'
 import { writeProposal } from './connection-proposals'
+import { withCommandPassword } from './password-command'
 
 export interface McpChildConfig {
   connections: ConnectionConfig[]
@@ -34,6 +35,8 @@ process.once('message', (config: McpChildConfig) => {
       allowKnowledgeWrites: config.allowWrites,
       schemaOnly: config.schemaOnly,
       version: config.version,
+      // Passwords from the user's password manager, fetched when an agent first uses the connection.
+      prepareConnection: (c) => withCommandPassword(c),
       proposeConnection: config.proposalsDir ? async (p) => void (await writeProposal(config.proposalsDir!, p)) : undefined,
       onExecuted: config.historyFile
         ? (connectionId, o) => {

@@ -720,7 +720,7 @@ database a tab's settings protect), SQL formatting settings beyond what there is
 
 ## Milestone 11 — Workbench ✅ (unreleased)
 
-The owner picked A, B, E and F of the backlog below (2026-11-14); C waits until somebody can test company sign-ins,
+The owner picked A, B, E and F of the backlog below (2026-11-14), C at lower priority (it can't all be tested here),
 D is not needed now. The specification, with the UX rules every item follows (no new toolbar buttons, existing
 screens reused, nothing shown before it is relevant, no new settings): [docs/specs/workbench.md](docs/specs/workbench.md).
 
@@ -742,6 +742,12 @@ screens reused, nothing shown before it is relevant, no new settings): [docs/spe
 - ✅ E Server activity: Sessions · Top queries (pg_stat_statements, performance_schema, query stats, v$sqlstats;
   says how to enable them) · Storage (sizes, never-used and repeated indexes; DROP INDEX only opens in the editor) —
   health.integration.test.ts, e2e/flow105
+- ✅ C (at lower priority, the parts that can be verified here): passwords from a password manager (`passwordCommand`:
+  1Password `op read`, Bitwarden, Vault, `pass`; never taken from a team folder, a managed configuration or an import,
+  left out when sharing), SSH through a jump host (ProxyJump, each host key checked), SQL Server sign-in with
+  Microsoft Entra ID (the Azure account: az login / VS Code / environment / managed identity, or a service principal;
+  through the driver's own support, no new dependency). Entra ID is **not verified against Azure** (nobody here has a
+  tenant): only its configuration and its clear failure on a plain SQL Server are tested — e2e/flow107
 - ✅ F1 MCP `propose_connection` (reviewed in the app, never a password) and `get_definition` · F2 `dbm` command line
   (query, dictionary, check, diff) · F3 SQL blocks in knowledge base notes run in place, reads only — e2e/flow106
 
@@ -749,7 +755,7 @@ Reviewed by Codex in four passes (cell SQL expressions follow each database's qu
 one line; reloads never drop typed text; whole-day date search is half open; Oracle definitions name their owner;
 `dbm` waits for slow output; selection totals are exact decimals).
 
-Left for later: triggers in the explorer, routine bodies in *Used by*, a folder of scripts in the sidebar, SQL Server
+Left for later: Entra ID for PostgreSQL / MySQL in Azure and AWS / Google Cloud IAM tokens (new SDK dependencies and real cloud accounts to test with), SOCKS / HTTP proxies, Kerberos, triggers in the explorer, routine bodies in *Used by*, a folder of scripts in the sidebar, SQL Server
 Agent jobs, editing users and grants, Explain on normalized top queries.
 
 ## Backlog — what other tools have (review 2026-11-14) 💡

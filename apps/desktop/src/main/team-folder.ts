@@ -52,7 +52,8 @@ function readConnectionsFile(dir: string): TeamConnection[] {
       const candidate = [join(dir, TEAM_KNOWLEDGE, id), join(dir, TEAM_KNOWLEDGE, slug(c.name))].find((p) => existsSync(p))
       if (candidate) knowledgeBasePath = candidate
     }
-    return { ...c, id, name: c.name, driver: c.driver, knowledgeBasePath, password: undefined } as TeamConnection
+    // Never a password, nor a command to get one: anyone who can write to the shared folder could set it.
+    return { ...c, id, name: c.name, driver: c.driver, knowledgeBasePath, password: undefined, passwordCommand: undefined } as TeamConnection
   })
 }
 
@@ -183,7 +184,7 @@ export function writeTeamConnection(dir: string, connection: ConnectionConfig): 
   const file = join(dir, TEAM_CONNECTIONS)
   const raw = existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as unknown) : { format: 'db-mastermind-connections', version: 1, connections: [] }
   const list = (Array.isArray(raw) ? raw : ((raw as { connections?: TeamConnection[] }).connections ?? [])) as TeamConnection[]
-  const { password: _pw, ...rest } = connection as ConnectionConfig & Record<string, unknown>
+  const { password: _pw, passwordCommand: _cmd, ...rest } = connection as ConnectionConfig & Record<string, unknown>
   for (const key of ['createdAt', 'updatedAt', 'lastUsedAt', 'pinnedTables', 'hiddenSchemas', 'managed', 'team', 'knowledgeBaseLocal']) delete rest[key]
   if (rest.ssh) rest.ssh = { ...rest.ssh, password: undefined, privateKey: undefined, passphrase: undefined }
   if (rest.ssl) rest.ssl = { ...rest.ssl, key: undefined }

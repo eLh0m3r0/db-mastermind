@@ -9,6 +9,7 @@ import { listConnections } from './connections'
 import { addHistory } from './library'
 import { getSettings } from './settings'
 import { writeProposal } from './connection-proposals'
+import { withCommandPassword } from './password-command'
 import { notifyProposals, proposalsDir } from './proposals-watch'
 
 let server: Server | undefined
@@ -53,6 +54,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     allowKnowledgeWrites: mcp.allowWrites,
     schemaOnly: ai.dataSharing === 'schema',
     version: app.getVersion(),
+    prepareConnection: (c) => withCommandPassword(c),
     proposeConnection: async (p) => {
       await writeProposal(proposalsDir(), p)
       notifyProposals()

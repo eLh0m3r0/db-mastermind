@@ -43,6 +43,31 @@ export function formatMssqlType(type: string, maxLength: number, precision: numb
   return t
 }
 
+/**
+ * How a SQL Server connection signs in (tedious): a SQL login, NTLM with a domain, or Microsoft Entra ID — the
+ * signed-in account (Azure CLI `az login`, environment variables, Visual Studio Code, managed identity) or a service
+ * principal (`user` = client id, `password` = client secret, option `tenantId`).
+ */
+export function mssqlAuthentication(config: ConnectionConfig): Pick<sql.config, 'user' | 'password' | 'authentication'> {
+  const opts = config.options ?? {}
+  const text = (v: unknown) => (v === undefined || v === null || v === '' ? undefined : String(v))
+  switch (opts.authentication) {
+    case 'entra':
+      return { authentication: { type: 'azure-active-directory-default', options: { clientId: text(opts.clientId) } } as unknown as sql.config['authentication'] }
+    case 'entra-service-principal':
+      if (!config.user || !config.password || !text(opts.tenantId)) throw new Error('A service principal needs its tenant ID, client ID (user) and client secret (password)')
+      return {
+        authentication: {
+          type: 'azure-active-directory-service-principal-secret',
+          options: { clientId: config.user, clientSecret: config.password, tenantId: text(opts.tenantId)! },
+        } as unknown as sql.config['authentication'],
+      }
+  }
+  const domain = text(opts.domain)
+  if (domain) return { authentication: { type: 'ntlm', options: { domain, userName: config.user ?? '', password: config.password ?? '' } } }
+  return { user: config.user, password: config.password }
+}
+
 export class MssqlDriver implements DatabaseDriver {
   readonly dialect = mssqlDialect
   private pool?: sql.ConnectionPool
@@ -65,7 +90,6 @@ export class MssqlDriver implements DatabaseDriver {
       port = this.tunnel.localPort
     }
     const sslMode = this.config.ssl?.mode ?? 'prefer'
-    const domain = opts.domain ? String(opts.domain) : undefined
     if (opts.authentication === 'windows') {
       // Integrated security (the logged-in Windows account) is only available through ODBC.
       if (process.platform !== 'win32') throw new Error('Windows authentication is only available on Windows')
@@ -101,14 +125,7 @@ export class MssqlDriver implements DatabaseDriver {
       server,
       port,
       database: this.config.database || undefined,
-      ...(domain
-        ? {
-            authentication: {
-              type: 'ntlm',
-              options: { domain, userName: this.config.user ?? '', password: this.config.password ?? '' },
-            },
-          }
-        : { user: this.config.user, password: this.config.password }),
+      ...mssqlAuthentication(this.config),
       connectionTimeout: 15_000,
       requestTimeout: Number(opts.requestTimeout ?? 0),
       pool: { max: 6, min: 0, idleTimeoutMillis: 60_000 },
@@ -127,7 +144,15 @@ export class MssqlDriver implements DatabaseDriver {
     }
     this.pool = new this.sql.ConnectionPool(this.poolConfig)
     this.pool.on('error', () => {})
-    await this.pool.connect()
+    try {
+      await this.pool.connect()
+    } catch (err) {
+      // A server that doesn't ask for an Entra token (plain SQL Server) sees a login without a name.
+      if (String(opts.authentication ?? '').startsWith('entra') && /Login failed for user ''/.test((err as Error).message ?? '')) {
+        throw new Error('This server did not accept Microsoft Entra ID sign-in. It works with Azure SQL Database, Azure SQL Managed Instance and SQL Server 2022 with Azure Arc; use a SQL login for this server.')
+      }
+      throw err
+    }
   }
 
   async close(): Promise<void> {
