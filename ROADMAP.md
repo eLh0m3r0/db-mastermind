@@ -718,6 +718,91 @@ database a tab's settings protect), SQL formatting settings beyond what there is
 
 ---
 
+## Backlog — what other tools have (review 2026-11-14) 💡
+
+An independent pass over the app against DataGrip 2026.2, DBeaver 26.x, Beekeeper Studio 6, TablePlus, SSMS and
+the retired Azure Data Studio (Microsoft ended it in early 2026; its SQL Server users are looking for a new
+client). Nothing here is scheduled: it is the pool the next milestones are picked from, in rough priority order.
+Each item has to pass the usual test (obvious at first sight, no new settings page).
+
+**Where we are already ahead** (keep it that way): AI on your own key, a local model or an existing Claude Code /
+Codex subscription; the MCP server with the same permissions as the app; a knowledge base of the data model;
+modeling, model ↔ database diff and migrations for free (DataGrip has no modeler, DbSchema and DeZign charge);
+DeZign projects saved back in place; data compare and schema compare free (DBeaver: PRO only); a portable Windows
+build, the MSI and the managed config; transactions you can see in every tab.
+
+### A. The SQL editor as a workbench (what a DataGrip user misses first)
+- **Source of database objects**: open a view, function, procedure, trigger or sequence as its `CREATE OR REPLACE`
+  text, edit it and run it (errors at their line; Oracle compile errors from `USER_ERRORS`); "Show / Copy DDL" for
+  any object, tables included. Today functions and procedures are only listed in the explorer
+- **SQL files on disk**: open a `.sql` file in a tab and ⌘S writes it back (today scripts can only be saved);
+  a folder of scripts per connection (or the knowledge base's `queries/`) shown in the sidebar, Git friendly
+- **Inspections while typing**: unknown table or column underlined, ambiguous column, `UPDATE`/`DELETE` without
+  `WHERE` marked in the editor (today only a confirmation when it runs), a join on columns of different types;
+  quick fixes where the fix is obvious
+- **Navigation**: ⌘-click a table or column → its structure; "Where is it used" (views, routines, foreign keys,
+  saved queries, knowledge base notes); search in the source of all views and routines
+- Compare two query plans (before / after an index) in the EXPLAIN viewer
+
+### B. Data grid
+- Sum / average / count / min / max of the selected cells in the status bar
+- A cell set to an SQL expression (`now()`, `gen_random_uuid()`) besides NULL and DEFAULT (DataGrip 2026.2)
+- Transposed view of a result (one record as a column of fields) for wide tables
+- **Find a value anywhere**: search all tables (or chosen schemas) of a connection for a text or a number,
+  read-only, typed by column, cancellable, results grouped by table (DataGrip's full-text search; analysts ask for
+  it when they get only an order number)
+- Column profile without AI: nulls, distinct, top values, min/max and a small histogram; AI can explain it after
+- Compare two results side by side (the same query on two connections, or before / after a change)
+- Spatial values (PostGIS, SQL Server geography) on a map
+
+### C. Connections companies need
+- **Microsoft Entra ID** sign-in for Azure SQL / Fabric, Azure PostgreSQL and MySQL (interactive with MFA, then
+  managed identity / service principal): the SQL Server teams of the strategy's second group sign in this way, and
+  ADS / SSMS users expect it (Beekeeper added it in 5.6)
+- AWS RDS / Aurora IAM tokens and Google Cloud SQL IAM sign-in
+- Passwords from a password manager or a command (1Password, Bitwarden, HashiCorp Vault, `pass`): the secret is
+  fetched when connecting and never stored
+- SSH through a jump host (several hops), SOCKS / HTTP proxy, Kerberos for PostgreSQL / SQL Server on Linux and macOS
+- Snowflake and Redshift stay in "Later, when someone needs it" (Beekeeper 5.9 shipped Snowflake)
+
+### D. Moving data
+- **Copy tables between connections**: structure and data of chosen tables or a whole schema to another
+  connection, even another engine (types translated as in forward engineering), streamed, in foreign-key order,
+  resumable (DBeaver's data transfer, DataGrip's "Copy table to"); today only data compare's sync script moves rows
+  between connections, as one script
+- Import JSON / JSON Lines / Parquet into a table (DuckDB reads them already), not only CSV / Excel
+- Run one script on several connections (dev, test, prod or the 20 tenant databases), results per target, stop on
+  the first error or go on
+- Query across connections in one SQL statement through DuckDB's PostgreSQL / MySQL / SQLite scanners
+  (DBeaver 26.2 sells this as Multi-Source), read-only
+
+### E. Server health (what ADS and SSMS users looked at)
+- Top queries by time and calls (`pg_stat_statements`, SQL Server Query Store, MySQL `performance_schema`),
+  with "Open in editor" and "Explain"
+- Table and index sizes, unused and duplicate indexes, missing indexes the server suggests, PostgreSQL bloat
+- SQL Server Agent jobs and their history, read-only first
+- Users & roles: create a user, grant and revoke through reviewed SQL (the browser is read-only today)
+
+### F. Agents and automation
+- MCP tools to add and edit a connection without its password (DataGrip 2026.2 has `create_database_connection`);
+  the password is typed in the app
+- A command line (`dbm`): run a query or saved query to CSV / JSON, export, check a model, diff a model with a
+  database, write the data dictionary, for CI and scripts (DataGrip 2026.2 and DBeaver's dbvr added CLIs); merges
+  with "Command line for CI" in Milestone 8
+- SQL notebooks in the knowledge base: a Markdown note with runnable SQL blocks and their results / charts,
+  saved as plain `.md` (Azure Data Studio's notebooks had users; ours would live in Git with the rest of the notes)
+
+### G. Smaller things
+- Local history of a query tab (its text over time, not only what was run)
+- More UI languages (German, Polish, Slovak) once the i18n files can take community translations
+- Git status of models and knowledge base files (changed / new) in their trees; committing stays in the user's Git tool
+
+### Still not planned after this review
+- A stored procedure debugger, a JVM / JDBC driver bridge, a plugin marketplace, MongoDB / Redis / DynamoDB
+  (see Milestone 7 and 8); a cloud / web edition (CloudBeaver): the app is local-first
+
+---
+
 ## Comparison target
 
 What Beekeeper Studio's free edition limits or lacks, and what DB Mastermind ships for free:
