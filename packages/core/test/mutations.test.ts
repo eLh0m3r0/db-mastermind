@@ -78,6 +78,9 @@ describe('SQL expressions in cells', () => {
     expect(checkCellExpression("E'\\'' ) WHERE true --'", 'postgres')).toMatch(/backslash/)
     expect(checkCellExpression("$$'$$ ) WHERE true -- '", 'postgres')).toMatch(/dollar/)
     expect(checkCellExpression("(q'(')') WHERE 1=1 --'", 'oracle')).toMatch(/q'/)
+    // Second review: national q-quoting and BigQuery triple quotes.
+    expect(checkCellExpression("(nq'(')') WHERE 1=1 --'", 'oracle')).toMatch(/q'/)
+    expect(checkCellExpression(`'''a' "''' ) WHERE TRUE -- "`, 'bigquery')).toMatch(/triple/)
     // Brackets quote only in SQL Server; elsewhere what is inside them still counts.
     expect(checkCellExpression('x[) WHERE true --]', 'postgres')).toMatch(/comment|parenthes/)
     expect(checkCellExpression("[a)b]", 'mssql')).toBeNull()

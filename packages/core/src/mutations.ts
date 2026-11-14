@@ -28,7 +28,10 @@ export function checkCellExpression(expression: string, driver?: DriverId): stri
   if (!expression.trim()) return 'Type an expression, e.g. now()'
   if (/\\/.test(expression)) return 'No backslashes in an expression'
   if (/\$[A-Za-z_0-9]*\$/.test(expression) && (driver === undefined || driver === 'postgres' || driver === 'duckdb')) return 'No dollar-quoted text in an expression'
-  if (/(^|[^A-Za-z0-9_])[qQ]'/.test(expression)) return "No q'…' quoting in an expression"
+  // Oracle q'…' / nq'…' (a name is never directly followed by a quote in valid SQL, so any q' is refused).
+  if (/[qQ]'/.test(expression)) return "No q'…' quoting in an expression"
+  // BigQuery '''…''' and """…""" strings.
+  if ((driver === undefined || driver === 'bigquery') && /'''|"""/.test(expression)) return 'No triple-quoted text in an expression'
   // Quoted text and identifiers out: 'it''s' and "name" everywhere, [name] in SQL Server, `name` where it quotes.
   const backticks = driver === 'mysql' || driver === 'mariadb' || driver === 'sqlite' || driver === 'clickhouse' || driver === 'bigquery'
   const quoted = driver === 'mssql' ? /'(?:[^']|'')*'|"(?:[^"]|"")*"|\[[^\]]*\]/g : backticks ? /'(?:[^']|'')*'|"(?:[^"]|"")*"|`[^`]*`/g : /'(?:[^']|'')*'|"(?:[^"]|"")*"/g

@@ -45,6 +45,9 @@ describe('selectionStats', () => {
     expect(selectionStats(fields, rows, { r0: 2, r1: 99, c0: 0, c1: 0 })).toMatchObject({ cells: 2, sum: '7' })
     const huge = selectionStats(fields, Array.from({ length: MAX_STAT_CELLS / 2 + 1 }, () => [1, 2]), { r0: 0, r1: MAX_STAT_CELLS, c0: 0, c1: 1 })
     expect(huge.tooMany).toBe(true)
+    // Just under the limit: totalled without overflowing the stack (second review).
+    const many = selectionStats([{ name: 'x', dataType: 'int4' }], Array.from({ length: 900_000 }, () => [2]), { r0: 0, r1: 899_999, c0: 0, c1: 0 })
+    expect(many).toMatchObject({ count: 900_000, sum: '1800000', avg: '2' })
   })
 })
 

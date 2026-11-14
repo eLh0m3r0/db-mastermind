@@ -1805,4 +1805,8 @@ export const cs: Record<string, string> = {
   'first rows only': 'jen první řádky',
   'Done': 'Hotovo',
   'A note runs reads only. Open it in the editor to run changes.': 'Poznámka spouští jen čtení. Změny spusťte v editoru.',
+  'No triple-quoted text in an expression': 'Ve výrazu nesmí být text v trojitých uvozovkách',
+  'No backslashes in an expression': 'Ve výrazu nesmí být zpětná lomítka',
+  'No dollar-quoted text in an expression': 'Ve výrazu nesmí být text v $$',
+  'No q\'…\' quoting in an expression': 'Ve výrazu nesmí být uvozování q\'…\'',
 }
