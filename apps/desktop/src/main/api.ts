@@ -244,14 +244,16 @@ export const api: MastermindApi = {
     const stored = connections.getConnection(id)
     // No saved password for PostgreSQL: use ~/.pgpass (PGPASSFILE) like psql and pgAdmin do.
     const pgpass = !password && !stored.password && stored.driver === 'postgres' ? readPgpassPassword(stored) : undefined
-    const config = password ? { ...stored, password: password.value } : pgpass ? { ...stored, password: pgpass } : await withCommandPassword(stored)
+    // A typed password, then the connection's own password command, then ~/.pgpass (the same order everywhere).
+    const fromCommand = password ? stored : await withCommandPassword(stored)
+    const config = password ? { ...stored, password: password.value } : fromCommand.password ? fromCommand : pgpass ? { ...stored, password: pgpass } : stored
     let serverInfo
     try {
       serverInfo = await db.connect(config)
     } catch (err) {
       // No saved password (imports leave them out) or a wrong one: the window asks for it.
       // (Entra ID with the signed-in account has no password to ask for: its error says what to do.)
-      if (isPasswordProblem(err) && stored.options?.authentication !== 'entra') throw new PasswordRequiredError(describeError(err).message)
+      if (isPasswordProblem(err) && !String(stored.options?.authentication ?? '').startsWith('entra')) throw new PasswordRequiredError(describeError(err).message)
       throw err
     }
     if (password?.save) connections.saveConnection({ ...connections.getConnection(id), password: password.value })

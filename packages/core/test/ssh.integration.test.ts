@@ -48,10 +48,15 @@ describe.skipIf(skip.has('ssh'))('ssh tunnel', () => {
   it('connects through a jump host (the SSH server reaching itself), checking each host key, and says when the hop fails', async () => {
     // From inside the container the SSH server is localhost:2222; the jump is the published 127.0.0.1:2222.
     const jumped = { ...ssh, host: 'localhost', port: 2222, authMethod: 'password', password: 'sshsecret', jump: { host: '127.0.0.1', port: 2222 } }
+    const sessions = () => Number(execSync(`docker exec ${container} sh -c 'pgrep -f "sshd.*dbm" | wc -l'`).toString().trim())
+    const before = sessions()
     await svc.connect({ ...base, id: 'ssh-jump', ssh: jumped } as ConnectionConfig)
     expect(await value('ssh-jump')).toBe('1')
     expect(trustedHostKey('localhost', 2222)).toMatch(/^SHA256:/)
     await svc.disconnect('ssh-jump')
+    // Both SSH sessions end with the tunnel, the hop's too (review finding: it used to stay open).
+    for (let i = 0; i < 20 && sessions() > before; i++) await new Promise((r) => setTimeout(r, 250))
+    expect(sessions()).toBe(before)
     await expect(svc.connect({ ...base, id: 'ssh-jump-bad', ssh: { ...jumped, host: 'no-such-host.invalid' } } as ConnectionConfig)).rejects.toThrow(/jump host 127\.0\.0\.1 could not reach no-such-host\.invalid/)
   })
 
