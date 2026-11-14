@@ -36,7 +36,7 @@ import { copyText, cn, formatCount, fuzzyScore } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { newTable } from '@/lib/newTable'
 import { openDefinition } from '@/lib/definitions'
-import { askAi } from '@/store/ui'
+import { askAi, useUi } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
 import { tp, useT } from '@/lib/i18n'
 
@@ -215,6 +215,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
         ? [{ label: tr('Definition (SQL)'), icon: <FileCode2 size={13} />, onClick: () => void openDefinition(connection.id, { schema: t.schema, name: t.name, kind: t.type === 'foreign_table' ? 'table' : t.type }) }]
         : []),
       { label: tr('Show in diagram'), icon: <Network size={13} />, onClick: () => openTab({ kind: 'diagram', connectionId: connection.id, title: tr('Diagram: {name}', { name: t.name }), focus: t.name }) },
+      { label: tr('Copy to another connection…'), icon: <Copy size={13} />, onClick: () => useUi.getState().set({ modal: { kind: 'copy', connectionId: connection.id, tables: [{ schema: t.schema, name: t.name }] } }) },
       {
         label: tr('Compare data with…'),
         icon: <Rows3 size={13} />,
@@ -337,6 +338,11 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
                   style={style}
                   onContextMenu={(e) =>
                     openMenu(e, [
+                      {
+                        label: tr('Copy tables to another connection…'),
+                        icon: <Copy size={13} />,
+                        onClick: () => useUi.getState().set({ modal: { kind: 'copy', connectionId: connection.id, tables: (schema?.tables ?? []).filter((x) => x.type === 'table' && (x.schema ?? '') === node.name).map((x) => ({ schema: x.schema, name: x.name })) } }),
+                      },
                       { label: tr('Find a value in {schema}…', { schema: node.name }), icon: <Search size={13} />, onClick: () => openTab({ kind: 'search', connectionId: connection.id, title: tr('Find value'), schema: node.name }, { reuse: false }) },
                       'separator',
                       { label: tr('Hide schema'), icon: <EyeOff size={13} />, onClick: () => setHiddenSchemas(connection.id, [...(connection.hiddenSchemas ?? []), node.name]) },

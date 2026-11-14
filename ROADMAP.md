@@ -720,8 +720,8 @@ database a tab's settings protect), SQL formatting settings beyond what there is
 
 ## Milestone 11 — Workbench ✅ (unreleased)
 
-The owner picked A, B, E and F of the backlog below (2026-11-14), C at lower priority (it can't all be tested here),
-D is not needed now. The specification, with the UX rules every item follows (no new toolbar buttons, existing
+The owner picked A, B, E and F of the backlog below (2026-11-14), C at lower priority (it can't all be tested here)
+and D as optional; all five are in. The specification, with the UX rules every item follows (no new toolbar buttons, existing
 screens reused, nothing shown before it is relevant, no new settings): [docs/specs/workbench.md](docs/specs/workbench.md).
 
 - ✅ A1 Definitions: a click on a function or procedure in the explorer, or *Definition (SQL)* on a view, routine or
@@ -748,6 +748,12 @@ screens reused, nothing shown before it is relevant, no new settings): [docs/spe
   Microsoft Entra ID (the Azure account: az login / VS Code / environment / managed identity, or a service principal;
   through the driver's own support, no new dependency). Entra ID is **not verified against Azure** (nobody here has a
   tenant): only its configuration and its clear failure on a plain SQL Server are tested — e2e/flow107
+- ✅ D (not needed now, done anyway): *Copy to another connection…* on a table or schema copies structure and rows to any
+  other connection (types translated, parents first, keys kept, identity and sequences continued; tested PostgreSQL ↔
+  MySQL / SQL Server / SQLite, MariaDB → DuckDB, PostgreSQL → PostgreSQL); *Run on Several Connections…* (Query menu,
+  palette); JSON / JSON Lines / Parquet import. Not done: one query across connections through DuckDB's scanners
+  (DuckDB downloads those extensions from the internet, which the privacy policy and offline companies rule out) —
+  copy-tables.integration.test.ts, e2e/flow108
 - ✅ F1 MCP `propose_connection` (reviewed in the app, never a password) and `get_definition` · F2 `dbm` command line
   (query, dictionary, check, diff) · F3 SQL blocks in knowledge base notes run in place, reads only — e2e/flow106
 

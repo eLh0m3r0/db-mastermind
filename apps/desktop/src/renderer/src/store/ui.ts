@@ -6,6 +6,8 @@ export type Modal =
   | { kind: 'shortcuts' }
   | { kind: 'about' }
   | { kind: 'databases'; connectionId: string }
+  | { kind: 'copy'; connectionId: string; tables?: { schema?: string; name: string }[] }
+  | { kind: 'runMany'; connectionId: string; sql: string }
 
 export interface Toast {
   id: number

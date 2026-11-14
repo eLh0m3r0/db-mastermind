@@ -1,5 +1,7 @@
 import { seedTransactions } from '@/store/transactions'
 import { DatabasePicker } from '@/features/connections/DatabasePicker'
+import { CopyTablesModal } from '@/features/copy/CopyTablesModal'
+import { RunManyModal } from '@/features/query/RunManyModal'
 import { PasswordPrompt } from './features/connections/PasswordPrompt'
 import { ConfirmDialog } from './components/ui/ConfirmDialog'
 import { useEffect, useRef, useState } from 'react'
@@ -324,6 +326,8 @@ export function App() {
       <ConnectionForm />
       <SettingsModal />
       <DatabasePicker />
+      <CopyTablesModal />
+      <RunManyModal />
       <PasswordPrompt />
       <ConfirmDialog />
       <CommandPalette />

@@ -59,6 +59,8 @@ export function CommandPalette() {
     { id: 'new-connection', label: t('New connection…'), icon: <Plus size={14} />, run: () => setUi({ modal: { kind: 'connection' } }) },
     { id: 'diagram', label: t('Open ER diagram'), icon: <Network size={14} />, run: () => connectionId && openTab({ kind: 'diagram', connectionId, title: t('ER diagram') }), needsConnection: true },
     { id: 'compare', label: t('Compare schemas…'), icon: <GitCompare size={14} />, run: () => connectionId && openTab({ kind: 'compare', connectionId, title: t('Schema compare') }, { reuse: false }), needsConnection: true },
+    { id: 'run-many', label: t('Run the query on several connections…'), icon: <TerminalSquare size={14} />, run: () => runCommand('run-on-connections'), needsConnection: true },
+    { id: 'copy-tables', label: t('Copy tables to another connection…'), icon: <Rows3 size={14} />, run: () => connectionId && setUi({ modal: { kind: 'copy', connectionId } }), needsConnection: true },
     { id: 'find-value', label: t('Find a value in all tables…'), icon: <Search size={14} />, run: () => connectionId && openTab({ kind: 'search', connectionId, title: t('Find value') }, { reuse: false }), needsConnection: true },
     { id: 'top-queries', label: t('Top queries (server activity)'), icon: <Activity size={14} />, run: () => connectionId && openActivity(connectionId, 'queries'), needsConnection: true },
     { id: 'table-sizes', label: t('Table sizes and unused indexes (server activity)'), icon: <Activity size={14} />, run: () => connectionId && openActivity(connectionId, 'storage'), needsConnection: true },

@@ -352,6 +352,13 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       else if (command === 'save-query') void save()
       else if (command === 'focus-editor') editor.current?.focus()
       else if (command === 'inline-ai') openInline()
+      else if (command === 'run-on-connections') {
+        // The selection, else the whole script.
+        const view = editor.current?.view()
+        const sel = view?.state.selection.main
+        const sql = view && sel && !sel.empty ? view.state.sliceDoc(sel.from, sel.to) : (editor.current?.getValue() ?? '')
+        useUi.getState().set({ modal: { kind: 'runMany', connectionId: tab.connectionId, sql } })
+      }
       else if ((command === 'commit-transaction' || command === 'rollback-transaction') && !runId.current) void endTransaction(tab.id, command === 'commit-transaction' ? 'commit' : 'rollback')
     })
   }, [active, run, cancel, format, save, openInline, tab.id])
