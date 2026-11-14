@@ -87,6 +87,10 @@ describe('SQL expressions in cells', () => {
     expect(checkCellExpression("$x$'$x$ ) WHERE TRUE -- '", 'clickhouse')).toMatch(/dollar/)
     expect(checkCellExpression("1 // ' ) '", 'clickhouse')).toMatch(/comment/)
     expect(checkCellExpression("1 #! ' ) '", 'clickhouse')).toMatch(/comment/)
+    // Fourth review: non-ASCII dollar tags; DuckDB's // is division, not a comment.
+    expect(checkCellExpression("$é$'$é$ ) WHERE TRUE -- '", 'postgres')).toMatch(/dollar/)
+    expect(checkCellExpression('5 // 2', 'duckdb')).toBeNull()
+    expect(checkCellExpression('$1 + $2', 'postgres')).toBeNull()
     // Brackets quote only in SQL Server; elsewhere what is inside them still counts.
     expect(checkCellExpression('x[) WHERE true --]', 'postgres')).toMatch(/comment|parenthes/)
     expect(checkCellExpression("[a)b]", 'mssql')).toBeNull()
