@@ -195,5 +195,15 @@ describe('opensTransaction (manual commit)', () => {
     expect(opensTransaction('BEGIN TRAN; UPDATE t SET a = 1; COMMIT', 'mssql')).toBe(false)
     expect(opensTransaction("SELECT 'UPDATE' AS a", 'mssql')).toBe(false)
     expect(opensTransaction('EXEC dbo.p', 'mssql')).toBe(true)
+    // No separator needed in T-SQL.
+    expect(opensTransaction('SET NOCOUNT ON UPDATE t SET v = 1', 'mssql')).toBe(true)
+    expect(opensTransaction('DECLARE @x int = 1 DELETE FROM t WHERE id = @x', 'mssql')).toBe(true)
+  })
+  it('covers PL/SQL blocks, pragmas and statements that refuse a transaction block', () => {
+    expect(opensTransaction('BEGIN INSERT INTO t VALUES (1); END;', 'oracle')).toBe(true)
+    expect(opensTransaction('DECLARE n NUMBER; BEGIN UPDATE t SET v = 1; END;', 'oracle')).toBe(true)
+    expect(opensTransaction('PRAGMA foreign_keys = OFF', 'sqlite')).toBe(false)
+    expect(opensTransaction('ALTER TABLE parent DETACH PARTITION child CONCURRENTLY', 'postgres')).toBe(false)
+    expect(opensTransaction('ALTER TABLE parent DETACH PARTITION child', 'postgres')).toBe(true)
   })
 })

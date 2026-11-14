@@ -90,6 +90,7 @@ export function lockRowsFirst(statement: BuiltQuery, seconds: number): BuiltQuer
   const at = statement.sql.lastIndexOf(' WHERE ')
   if (!m || at < 0) return undefined
   const condition = statement.sql.slice(at + 7)
-  const used = condition.match(/:\d+/g)?.length ?? 0
+  // Placeholders outside quoted identifiers (a column may be named "K:9").
+  const used = condition.replace(/"(?:[^"]|"")*"/g, '').match(/:\d+/g)?.length ?? 0
   return { sql: `SELECT 1 FROM ${m[1] ?? m[2]} WHERE ${condition} FOR UPDATE WAIT ${seconds}`, params: used ? statement.params.slice(-used) : [] }
 }

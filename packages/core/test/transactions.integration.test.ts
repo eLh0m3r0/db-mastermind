@@ -148,6 +148,46 @@ for (const c of cases) {
       await svc.releaseSession(id, tab)
     })
 
+    if (c.engine === 'mysql' || c.engine === 'mariadb') {
+      it('a failed DDL that committed the open transaction is noticed (the next change opens a new one)', async () => {
+        const tab = 'failed-ddl-tab'
+        await ok(id, insert(c, 40), tab)
+        expect(await svc.transactionState(id, tab)).toBe('open')
+        // tx_t exists: CREATE fails, but MySQL commits before it runs.
+        await svc.runScript(id, 'CREATE TABLE tx_t (v int)', { session: tab, editor: true })
+        expect(await svc.transactionState(id, tab)).toBe('none')
+        await ok(id, insert(c, 41), tab)
+        expect(await svc.transactionState(id, tab)).toBe('open')
+        await svc.endTransaction(id, tab, 'rollback')
+        await ok(id, 'DELETE FROM tx_t WHERE v = 40')
+        await svc.releaseSession(id, tab)
+      })
+      it('a grid save gives the session its own lock timeout back', async () => {
+        const tab = 'timeout-tab'
+        await ok(id, 'SET SESSION innodb_lock_wait_timeout = 7', tab)
+        await svc.applyChanges(id, { name: 'tx_grid' }, [{ type: 'insert', values: { id: '90', v: '90' } }], { session: tab })
+        const [o] = await ok(id, 'SELECT @@SESSION.innodb_lock_wait_timeout', tab)
+        expect(Number(o!.results![0]!.rows[0]![0])).toBe(7)
+        await svc.endTransaction(id, tab, 'rollback')
+        await svc.releaseSession(id, tab)
+      })
+    }
+
+    if (c.engine === 'oracle') {
+      it('a PL/SQL block opens the transaction, and a COMMIT inside one ends it', async () => {
+        const tab = 'plsql-tab'
+        const before = await count(c, id)
+        await ok(id, `BEGIN INSERT INTO tx_t (v) VALUES (42); END;`, tab)
+        expect(await svc.transactionState(id, tab)).toBe('open')
+        expect(await count(c, id)).toBe(before)
+        await ok(id, `BEGIN COMMIT; END;`, tab)
+        expect(await svc.transactionState(id, tab)).toBe('none')
+        expect(await count(c, id)).toBe(before + 1)
+        await ok(id, 'DELETE FROM tx_t WHERE v = 42')
+        await svc.releaseSession(id, tab)
+      })
+    }
+
     if (c.implicitCommit) {
       it('says when DDL committed the open transaction', async () => {
         const tab = 'ddl-tab'
@@ -228,18 +268,59 @@ for (const c of cases) {
     }
 
     if (c.engine === 'postgres' || c.engine === 'duckdb') {
-      it('an error leaves a failed transaction that only Roll back ends', async () => {
+      it(c.engine === 'postgres' ? 'an error undoes only its own statement (savepoint); a failed transaction can only be rolled back' : 'an error leaves a failed transaction that only Roll back ends', async () => {
         const tab = 'failed-tab'
         await ok(id, insert(c, 8), tab)
         const outcomes = await svc.runScript(id, 'SELECT no_such_column FROM tx_t', { session: tab, editor: true })
         expect(outcomes[0]!.error).toBeTruthy()
+        if (c.engine === 'postgres') {
+          // Manual commit on PostgreSQL: the earlier change is still pending, the transaction still usable.
+          expect(outcomes[0]!.note).toMatch(/Only this statement was undone/)
+          expect(await svc.transactionState(id, tab)).toBe('open')
+          await ok(id, insert(c, 9), tab)
+          expect(await svc.endTransaction(id, tab, 'rollback')).toBe('none')
+          // A failed transaction (BEGIN typed on an automatic connection) is refused by Commit, never "saved".
+          svc.reconfigure({ ...c.config })
+          await ok(id, 'BEGIN', tab)
+          await ok(id, insert(c, 10), tab)
+          await svc.runScript(id, 'SELECT no_such_column FROM tx_t', { session: tab, editor: true })
+          expect(await svc.transactionState(id, tab)).toBe('failed')
+          await expect(svc.endTransaction(id, tab, 'commit')).rejects.toThrow(/can only be rolled back/)
+          expect(await svc.endTransaction(id, tab, 'rollback')).toBe('none')
+          svc.reconfigure(manual)
+          await svc.releaseSession(id, tab)
+          return
+        }
         // A binder error doesn't abort a DuckDB transaction; a failed statement that ran does.
         if (c.engine === 'duckdb') await svc.runScript(id, `INSERT INTO tx_t (v) VALUES ('x')`, { session: tab, editor: true })
         expect(await svc.transactionState(id, tab)).toBe('failed')
+        await expect(svc.endTransaction(id, tab, 'commit')).rejects.toThrow(/can only be rolled back/)
         expect(await svc.endTransaction(id, tab, 'rollback')).toBe('none')
         await ok(id, 'SELECT 1', tab)
         await svc.releaseSession(id, tab)
       })
+
+      if (c.engine === 'postgres') {
+        it('Commit waits for no running statement: it is refused while one runs', async () => {
+          const tab = 'running-tab'
+          await ok(id, insert(c, 11), tab)
+          const slow = svc.runScript(id, 'SELECT pg_sleep(1)', { session: tab, editor: true })
+          await new Promise((r) => setTimeout(r, 200))
+          await expect(svc.endTransaction(id, tab, 'commit')).rejects.toThrow(/still running/)
+          await slow
+          expect(await svc.endTransaction(id, tab, 'rollback')).toBe('none')
+          await svc.releaseSession(id, tab)
+        })
+        it('a failing read in a table tab keeps its pending changes', async () => {
+          const tab = 'table-read-tab'
+          await svc.applyChanges(id, { name: 'tx_grid' }, [{ type: 'insert', values: { id: '50', v: '50' } }], { session: tab })
+          await expect(svc.fetchTable(id, { table: { name: 'tx_grid' }, limit: 10, session: tab, filter: { kind: 'raw', id: 'f', sql: 'no_such_column = 1' } as never })).rejects.toThrow()
+          expect(await svc.transactionState(id, tab)).toBe('open')
+          expect((await svc.fetchTable(id, { table: { name: 'tx_grid' }, limit: 100, session: tab })).result.rows.some((r) => String(r[0]) === '50')).toBe(true)
+          expect(await svc.endTransaction(id, tab, 'rollback')).toBe('none')
+          await svc.releaseSession(id, tab)
+        })
+      }
     }
 
     if (c.engine === 'postgres') {
@@ -283,6 +364,18 @@ for (const c of cases) {
     }
 
     if (c.engine === 'sqlite') {
+      it('two tabs sending at once: the second tab still cannot write into the first tab’s transaction', async () => {
+        const [a, b] = await Promise.all([svc.runScript(id, 'BEGIN', { session: 'race-a', editor: true }), svc.runScript(id, insert(c, 77), { session: 'race-b', editor: true })])
+        expect(a[0]!.error).toBeUndefined()
+        // B either ran before A's BEGIN (autocommit) or was refused; it never joined A's transaction.
+        await svc.endTransaction(id, 'race-a', 'rollback')
+        const [o] = await ok(id, 'SELECT count(*) FROM tx_t WHERE v = 77')
+        expect(Number(o!.results![0]!.rows[0]![0])).toBe(b[0]!.error ? 0 : 1)
+        await ok(id, 'DELETE FROM tx_t WHERE v = 77')
+        await svc.releaseSession(id, 'race-a')
+        await svc.releaseSession(id, 'race-b')
+      })
+
       it("another tab can't write into the transaction a tab opened (one connection)", async () => {
         await ok(id, insert(c, 11), 'tab-a')
         expect(await svc.transactionState(id, 'tab-a')).toBe('open')

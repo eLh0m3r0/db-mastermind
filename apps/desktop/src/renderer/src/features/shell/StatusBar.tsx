@@ -30,7 +30,7 @@ export function StatusBar() {
             <Database size={11} />
             {runtime?.serverInfo ? `${runtime.serverInfo.product} ${runtime.serverInfo.version}` : driverLabel(connection.driver)}
           </span>
-          {runtime?.schema && <span>{tp(runtime.schema.tables.length, { one: '{n} table', many: '{n} tables' }, { n: formatCount(runtime.schema.tables.length) })}</span>}
+          {runtime?.schema && <span>{tp(runtime.schema.tables.filter((x) => x.type === 'table').length, { one: '{n} table', many: '{n} tables' }, { n: formatCount(runtime.schema.tables.filter((x) => x.type === 'table').length) })}</span>}
           {tab?.kind === 'table' && <span className="truncate">{tab.table.schema ? `${tab.table.schema}.` : ''}{tab.table.name}</span>}
         </>
       ) : null}

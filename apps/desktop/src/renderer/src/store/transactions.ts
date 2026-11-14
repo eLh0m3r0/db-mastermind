@@ -94,9 +94,15 @@ export async function endTransaction(tabId: string, action: 'commit' | 'rollback
   } catch (err) {
     set(tabId, { ...tx, ending: false })
     void refreshTransaction(tabId, tx.connectionId)
-    toast({ kind: 'error', message: action === 'commit' ? t('Could not commit') : t('Could not roll back'), detail: errorMessage(err) })
+    toast({ kind: 'error', message: action === 'commit' ? t('Could not commit') : t('Could not roll back'), detail: t(errorMessage(err)) })
     return false
   }
+}
+
+/** After the window was reopened or reloaded: what main still holds open (the database's own word). */
+export async function seedTransactions(): Promise<void> {
+  const open = await api.openTransactions().catch(() => [])
+  await Promise.all(open.map((tx) => refreshTransaction(tx.session, tx.connectionId)))
 }
 
 /** The connection went away (disconnect, reconnect with new settings): its transactions went with it. */
@@ -108,16 +114,29 @@ export function forgetTransactionsOf(connectionId: string): void {
  * Before something would end open transactions (closing tabs, disconnecting, quitting): Commit, Roll back or stay.
  * `titles` names the tabs. Resolves true when it's fine to go on.
  */
-export async function settleTransactions(tabIds: string[], titles: (tabId: string) => string): Promise<boolean> {
+export async function settleTransactions(tabIds: string[], titles: (tabId: string) => string, purpose?: 'close' | 'disconnect'): Promise<boolean> {
   const open = tabIds.filter((id) => useTransactions.getState()[id])
   if (!open.length) return true
   const txs = open.map((id) => useTransactions.getState()[id]!)
   const allFailed = txs.every((tx) => tx.state === 'failed')
   const changes = txs.reduce((n, tx) => n + tx.steps.filter((s) => !s.failed).length, 0)
-  const title = open.length === 1 ? t('“{tab}” has an open transaction', { tab: titles(open[0]!) }) : t('{n} tabs have open transactions', { n: open.length })
+  const one = open.length === 1
+  // Say what is about to happen, and name each way out by its outcome (Cancel alone reads as "discard").
+  const title =
+    purpose === 'close'
+      ? one ? t('Close “{tab}”? Its transaction is not committed', { tab: titles(open[0]!) }) : t('Close {n} tabs? Their transactions are not committed', { n: open.length })
+      : purpose === 'disconnect'
+        ? one ? t('Disconnect? “{tab}” has an open transaction', { tab: titles(open[0]!) }) : t('Disconnect? {n} tabs have open transactions', { n: open.length })
+        : one ? t('“{tab}” has an open transaction', { tab: titles(open[0]!) }) : t('{n} tabs have open transactions', { n: open.length })
+  const labels =
+    purpose === 'close'
+      ? { commit: t('Commit and close'), rollback: t('Roll back and close'), cancel: t('Keep open') }
+      : purpose === 'disconnect'
+        ? { commit: t('Commit and disconnect'), rollback: t('Roll back and disconnect'), cancel: t('Stay connected') }
+        : { commit: t('Commit'), rollback: t('Roll back'), cancel: undefined }
   const items = open.length > 1 ? open.map((id) => titles(id)) : txs[0]!.steps.slice(-8).map((s) => s.sql.replace(/\s+/g, ' ').slice(0, 160))
   const choice = allFailed
-    ? (await confirmAction({ title, message: t('The transaction failed and can only be rolled back.'), items, confirmLabel: t('Roll back') })) && 'secondary'
+    ? (await confirmAction({ title, message: t('The transaction failed and can only be rolled back.'), items, confirmLabel: labels.rollback, cancelLabel: labels.cancel, focusCancel: true })) && 'secondary'
     : await askChoice({
         title,
         message: tp(changes, {
@@ -125,9 +144,12 @@ export async function settleTransactions(tabIds: string[], titles: (tabId: strin
           many: '{n} changes are not committed yet. Commit them, or roll them back?',
         }),
         items,
-        confirmLabel: t('Commit'),
+        confirmLabel: labels.commit,
         success: true,
-        secondaryLabel: t('Roll back'),
+        secondaryLabel: labels.rollback,
+        cancelLabel: labels.cancel,
+        // Commit can't be undone: Enter keeps things as they are.
+        focusCancel: true,
       })
   if (!choice) return false
   for (const id of open) {

@@ -373,11 +373,11 @@ export function nextTransactionState(open: boolean, sql: string, implicitDml = f
 }
 
 /** Session and maintenance commands: they change no data, so they never open a transaction of their own. */
-const SESSION_WORDS = new Set('SET RESET USE SHOW LISTEN UNLISTEN LOAD INSTALL ATTACH DETACH DISCARD DEALLOCATE PREPARE CHECKPOINT ANALYZE OPTIMIZE PRINT DECLARE'.split(' '))
+const SESSION_WORDS = new Set('SET RESET USE SHOW LISTEN UNLISTEN LOAD INSTALL ATTACH DETACH DISCARD DEALLOCATE PREPARE CHECKPOINT ANALYZE OPTIMIZE PRINT DECLARE PRAGMA'.split(' '))
 
 /** Statements the database refuses inside a transaction block. */
 const OUTSIDE_TRANSACTION: Partial<Record<DriverId, RegExp>> = {
-  postgres: /^\s*(VACUUM|(CREATE|DROP)\s+(DATABASE|TABLESPACE|SUBSCRIPTION)|ALTER\s+(SYSTEM|SUBSCRIPTION)|(CREATE\s+(UNIQUE\s+)?|DROP\s+)INDEX\s+CONCURRENTLY|REINDEX\b[^;]*\bCONCURRENTLY|DETACH\s+PARTITION\b[^;]*\bCONCURRENTLY)\b/i,
+  postgres: /^\s*(VACUUM|(CREATE|DROP)\s+(DATABASE|TABLESPACE|SUBSCRIPTION)|ALTER\s+(SYSTEM|SUBSCRIPTION)|(CREATE\s+(UNIQUE\s+)?|DROP\s+)INDEX\s+CONCURRENTLY|REINDEX\b[^;]*\bCONCURRENTLY|ALTER\s+TABLE\b[^;]*\bDETACH\s+PARTITION\b[^;]*\bCONCURRENTLY)\b/i,
   mssql: /\b((CREATE|ALTER|DROP)\s+(DATABASE|FULLTEXT\s+(CATALOG|INDEX))|BACKUP|RESTORE|RECONFIGURE)\b/i,
   sqlite: /^\s*VACUUM\b/i,
   duckdb: /^\s*(VACUUM|CHECKPOINT|FORCE\s+CHECKPOINT|ATTACH|DETACH)\b/i,
@@ -389,14 +389,22 @@ const OUTSIDE_TRANSACTION: Partial<Record<DriverId, RegExp>> = {
  */
 export function opensTransaction(sql: string, driver: DriverId): boolean {
   const body = stripLiterals(sql).replace(/--[^\n]*/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ')
-  if (!body.trim() || isReadOnlyScript(sql, driver)) return false
+  if (!body.trim()) return false
+  // "Reads" that change something or hold locks until the transaction ends.
+  if (/\bFOR\s+(UPDATE|SHARE|NO\s+KEY\s+UPDATE|KEY\s+SHARE)\b|\b(nextval|setval)\s*\(/i.test(body) && !OUTSIDE_TRANSACTION[driver]?.test(body)) return true
+  // MariaDB's compound statement outside a routine.
+  if ((driver === 'mysql' || driver === 'mariadb') && /^\s*BEGIN\s+NOT\s+ATOMIC\b/i.test(body)) return true
+  if (isReadOnlyScript(sql, driver)) return false
   if (OUTSIDE_TRANSACTION[driver]?.test(body)) return false
   if (driver === 'mssql') {
     // A batch with its own BEGIN TRAN / COMMIT manages its transaction itself. Only SET / USE / PRINT / DECLARE
     // lines change nothing.
     if (/\b(BEGIN\s+TRAN\w*|SAVE\s+TRAN\w*|COMMIT|ROLLBACK)\b/i.test(body)) return false
-    return body.split(/[;\n]/).some((line) => line.trim() && !/^\s*(SET|USE|PRINT|DECLARE|GO)\b/i.test(line))
+    // T-SQL needs no separators (`SET NOCOUNT ON UPDATE t …` is one line): look for anything that writes, anywhere.
+    return TSQL_WRITES.test(body.replace(/\[[^\]]*\]/g, '[]')) || /\bEXEC(UTE)?\b/i.test(body)
   }
+  // An Oracle PL/SQL block (BEGIN … END; or DECLARE … BEGIN … END;) can change anything: it opens one too.
+  if (driver === 'oracle' && /^\s*(BEGIN|DECLARE)\b[\s\S]*\bEND\b/i.test(body)) return true
   const kind = classifyStatement(sql)
   if (kind === 'transaction') return false
   const [first = ''] = firstKeywords(sql, 1)

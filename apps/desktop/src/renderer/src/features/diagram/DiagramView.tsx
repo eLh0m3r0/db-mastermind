@@ -227,7 +227,7 @@ const TableNode = memo(function TableNode({ id, data, selected }: NodeProps<Node
       style={{ width: WIDTH }}
     >
       <div
-        className={cn('relative flex items-center gap-1.5 px-2.5 text-[12px] font-semibold', table.type === 'table' ? 'bg-accent text-accent-fg' : 'bg-info text-bg', data.color && 'text-white', data.design && table.type === 'table' && 'pr-6')}
+        className={cn('relative flex items-center gap-1.5 px-2.5 text-[12px] font-semibold', table.type === 'table' ? 'bg-accent text-accent-fg' : 'bg-fg-muted text-bg', data.color && 'text-white', data.design && table.type === 'table' && 'pr-6')}
         // Darkened series colors keep white text readable in both themes.
         style={{ height: HEADER, ...(data.color ? { background: `color-mix(in srgb, var(--series-${data.color}) 78%, black)` } : {}) }}
         title={table.comment ?? undefined}

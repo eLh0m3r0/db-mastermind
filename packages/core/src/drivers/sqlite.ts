@@ -57,6 +57,18 @@ const inTransaction = () => {
 }
 const post = (reply) => parentPort.postMessage({ ...reply, inTx: inTransaction() })
 
+// The session that opened the open transaction. Checked here, where statements run one after another: a check in the
+// main thread raced (two tabs' statements could both pass before the first reply arrived).
+let owner = null
+const OTHER_TAB = 'A query tab has an open transaction on this SQLite database. SQLite has one connection, so this change would become part of it: commit or roll it back there first.'
+const guard = (session, write) => {
+  if (write && inTransaction() && owner !== null && owner !== (session ?? '')) throw new Error(OTHER_TAB)
+}
+const track = (session) => {
+  if (!inTransaction()) owner = null
+  else if (owner === null) owner = session ?? ''
+}
+
 parentPort.on('message', (msg) => {
   try {
     if (msg.type === 'stream-open') {
@@ -91,8 +103,16 @@ parentPort.on('message', (msg) => {
       cursors.delete(msg.cursor)
       post({ id: msg.id, ok: true })
     } else if (msg.type === 'exec') {
-      post({ id: msg.id, ok: true, result: run(msg.sql, msg.params ?? [], msg.maxRows ?? Infinity) })
+      guard(msg.session, msg.write)
+      let result
+      try {
+        result = run(msg.sql, msg.params ?? [], msg.maxRows ?? Infinity)
+      } finally {
+        track(msg.session)
+      }
+      post({ id: msg.id, ok: true, result })
     } else if (msg.type === 'tx') {
+      if (inTransaction()) throw new Error(OTHER_TAB)
       db.exec('BEGIN')
       try {
         const affected = msg.statements.map((s) => Number(db.prepare(s.sql).run(...bind(s.params)).changes))
@@ -249,6 +269,9 @@ export class SqliteDriver implements DatabaseDriver {
     const start = process.hrtime.bigint()
     let cancelled = false
     const onAbort = async () => {
+      // Stopping SQLite means reopening the file, which would silently discard a tab's open transaction (its
+      // uncommitted changes): with one open, the statement runs to its end instead.
+      if (this.txOwner !== undefined) return
       cancelled = true
       const worker = this.worker
       this.worker = undefined
@@ -271,6 +294,8 @@ export class SqliteDriver implements DatabaseDriver {
           sql,
           params: options.params ?? [],
           maxRows: options.maxRows,
+          session: options.session,
+          write: !isReadOnlyScript(sql, 'sqlite'),
         },
         options.session,
       )) as RawResult

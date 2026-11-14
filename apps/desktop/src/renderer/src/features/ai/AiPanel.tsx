@@ -456,7 +456,7 @@ export function AiPanel() {
           <div className="border-t border-line p-2">
             {chat && connection && (
               <div className="mb-1.5 flex justify-end empty:hidden">
-                <TransactionBar tabId={aiSession(chat.id)} driver={connection.driver} manual={false} />
+                <TransactionBar tabId={aiSession(chat.id)} driver={connection.driver} manual={false} busy={chat.running} />
               </div>
             )}
             <div data-focus-frame className="flex items-end gap-1.5 rounded-lg border border-line bg-bg p-1.5 focus-within:border-accent focus-within:ring-1 focus-within:ring-accent">

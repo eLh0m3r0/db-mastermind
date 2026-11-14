@@ -24,6 +24,7 @@ export function supportsOtherDatabases(driver: ConnectionConfig['driver']): bool
 
 /** The same server and login (what `database` aside makes a connection): a database's connection is found by it. */
 export function sameServer(a: ConnectionConfig, b: ConnectionConfig): boolean {
-  const key = (c: ConnectionConfig) => JSON.stringify([c.driver, c.host ?? '', c.port ?? '', c.user ?? '', c.ssh?.host ?? '', c.ssh?.port ?? '', c.ssh?.user ?? ''])
+  const key = (c: ConnectionConfig) =>
+    JSON.stringify([c.driver, c.host ?? '', c.port ?? '', c.user ?? '', c.ssh?.host ?? '', c.ssh?.port ?? '', c.ssh?.user ?? '', c.options?.instanceName ?? '', c.options?.domain ?? ''])
   return key(a) === key(b)
 }

@@ -188,7 +188,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
   // The placeholder counts what the filter can find: hidden schemas are left out.
   const visibleTables = useMemo(() => {
     const hidden = new Set(connection.hiddenSchemas ?? [])
-    return schema ? schema.tables.filter((t) => !hidden.has(t.schema ?? '')).length : 0
+    return schema ? schema.tables.filter((t) => t.type === 'table' && !hidden.has(t.schema ?? '')).length : 0
   }, [schema, connection.hiddenSchemas])
 
   const virtualizer = useVirtualizer({

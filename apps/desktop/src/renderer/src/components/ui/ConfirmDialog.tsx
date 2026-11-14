@@ -18,6 +18,10 @@ export interface ConfirmOptions {
   danger?: boolean
   /** The confirm button is the app's Commit green. */
   success?: boolean
+  /** Name for the button that changes nothing (default Cancel). */
+  cancelLabel?: string
+  /** Start on that button (when the main action can't be undone). */
+  focusCancel?: boolean
   /** An extra warning line (e.g. a production connection). */
   warning?: string
 }
@@ -94,8 +98,8 @@ export function ConfirmDialog() {
         <>
           <div className="flex-1" />
           {/* Destructive actions start on Cancel, so a stray Enter doesn't delete anything. */}
-          <Button variant="ghost" onClick={() => finish(false)} data-autofocus={ask?.danger ? true : undefined}>
-            {t('Cancel')}
+          <Button variant="ghost" onClick={() => finish(false)} data-autofocus={ask?.danger || ask?.focusCancel ? true : undefined}>
+            {ask?.cancelLabel ?? t('Cancel')}
           </Button>
           {ask?.secondary && (
             <Button
@@ -107,7 +111,7 @@ export function ConfirmDialog() {
               {ask.secondary.label}
             </Button>
           )}
-          <Button variant={ask?.danger ? 'danger' : ask?.success ? 'success' : 'primary'} onClick={() => finish(true)} disabled={empty} data-autofocus={ask?.danger || ask?.text ? undefined : true}>
+          <Button variant={ask?.danger ? 'danger' : ask?.success ? 'success' : 'primary'} onClick={() => finish(true)} disabled={empty} data-autofocus={ask?.danger || ask?.text || ask?.focusCancel ? undefined : true}>
             {ask?.confirmLabel}
           </Button>
         </>

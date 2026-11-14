@@ -244,7 +244,16 @@ export class MysqlDriver implements DatabaseDriver {
         const open = this.transactions.isOpen(session)
         this.transactions.released(session)
         if (open) throw new ConnectionLostError()
-      } else this.transactions.ran(session, sql)
+      } else {
+        this.transactions.ran(session, sql)
+        // A failed statement can still have committed (DDL commits before it runs): ask the server again. `DO 0`'s
+        // OK packet carries the current SERVER_STATUS_IN_TRANS.
+        if (this.sessions.has(session)) {
+          await this.executeOnce('DO 0', { session }).catch(() => this.serverInTransaction.delete(session))
+          const open = this.serverInTransaction.get(session)
+          if (open !== undefined) this.transactions.set(session, open)
+        }
+      }
       throw err
     }
   }

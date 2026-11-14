@@ -5,7 +5,7 @@ import { api } from '@/lib/api'
 import { debounce, uid } from '@/lib/utils'
 import { t, tp } from '@/lib/i18n'
 import { confirmAction } from '@/components/ui/ConfirmDialog'
-import { settleTransactions, useTransactions } from './transactions'
+import { refreshTransaction, settleTransactions, useTransactions } from './transactions'
 
 interface BaseTab {
   id: string
@@ -207,16 +207,24 @@ export function setUnsavedEdits(tabId: string, count: number): void {
 export async function confirmCloseTabs(ids: string[]): Promise<boolean> {
   const n = ids.reduce((sum, id) => sum + (unsavedEdits.get(id) ?? 0), 0)
   if (n > 0 && !(await confirmAction({ title: tp(n, { one: 'Discard {n} pending change?', many: 'Discard {n} pending changes?' }), confirmLabel: t('Discard'), danger: true }))) return false
-  return settleTransactions(ids, tabTitle)
+  // Ask the database, not the window's memory (it may have missed a transaction, e.g. after a reload).
+  await refreshTabs(useWorkspace.getState().tabs.filter((tab) => ids.includes(tab.id)))
+  return settleTransactions(ids, tabTitle, 'close')
+}
+
+async function refreshTabs(tabs: Tab[]) {
+  await Promise.all(tabs.filter((tab) => tab.kind === 'query' || tab.kind === 'table').map((tab) => refreshTransaction(tab.id, tab.connectionId)))
 }
 
 /** Open transactions of a connection (its tabs, the AI chat) settled before disconnecting it. */
-export function settleConnectionTransactions(connectionId: string): Promise<boolean> {
+export async function settleConnectionTransactions(connectionId: string): Promise<boolean> {
+  await refreshTabs(useWorkspace.getState().tabs.filter((tab) => tab.connectionId === connectionId))
   return settleTransactions(
     Object.entries(useTransactions.getState())
       .filter(([, tx]) => tx.connectionId === connectionId)
       .map(([session]) => session),
     tabTitle,
+    'disconnect',
   )
 }
 

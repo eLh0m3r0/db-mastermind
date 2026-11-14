@@ -17,7 +17,7 @@ const DDL_COMMITS: DriverId[] = ['mysql', 'mariadb', 'oracle']
  * The query tab's open transaction: what ran in it, Commit and Roll back. With manual commit and nothing open,
  * a quiet label says changes will wait.
  */
-export function TransactionBar({ tabId, driver, manual }: { tabId: string; driver: DriverId; manual: boolean }) {
+export function TransactionBar({ tabId, driver, manual, busy = false }: { tabId: string; driver: DriverId; manual: boolean; busy?: boolean }) {
   const t = useT()
   const tx = useTransactions((s) => s[tabId])
   const [open, setOpen] = useState(false)
@@ -75,7 +75,7 @@ export function TransactionBar({ tabId, driver, manual }: { tabId: string; drive
               : t('What runs in this transaction waits for Commit or Roll back.')
         }
         className={cn(
-          'flex h-7 items-center gap-1.5 rounded-md border px-2 text-[12px] font-medium',
+          'flex h-7 items-center gap-1.5 rounded-md border px-2 text-[12px] font-medium whitespace-nowrap',
           failed ? 'border-danger/40 bg-danger-soft text-danger' : stale ? 'border-warning bg-warning text-white' : 'border-warning/40 bg-warning-soft text-warning',
         )}
       >
@@ -89,7 +89,7 @@ export function TransactionBar({ tabId, driver, manual }: { tabId: string; drive
         </span>
         {/* Narrow toolbar: the count says enough next to the icon. */}
         {!failed && changes > 0 && <span className="hidden tabular-nums @max-[700px]:inline">{tp(changes, { one: '{n} change', many: '{n} changes' })}</span>}
-        {!failed && minutes >= 1 && <span className={cn('tabular-nums', !stale && 'opacity-75')}>· {minutes < 60 ? t('{n} min', { n: minutes }) : t('{n} h', { n: Math.floor(minutes / 60) })}</span>}
+        {!failed && minutes >= 1 && <span className="tabular-nums @max-[900px]:hidden">· {minutes < 60 ? t('{n} min', { n: minutes }) : t('{n} h', { n: Math.floor(minutes / 60) })}</span>}
         <ChevronDown size={12} className="opacity-70" />
       </button>
       {!failed && (
@@ -98,6 +98,8 @@ export function TransactionBar({ tabId, driver, manual }: { tabId: string; drive
           variant="success"
           icon={<Check size={13} strokeWidth={2.5} />}
           loading={tx.ending}
+          // While a statement runs, Commit would commit it too: wait for it.
+          disabled={busy}
           onClick={() => void endTransaction(tabId, 'commit')}
           data-testid="tx-commit"
           title={`${t('Save the changes of this transaction')} (${keys('⌥⇧⌘↵')})`}
@@ -110,7 +112,7 @@ export function TransactionBar({ tabId, driver, manual }: { tabId: string; drive
         variant={failed ? 'danger' : 'secondary'}
         icon={<Undo2 size={13} />}
         loading={failed && tx.ending}
-        disabled={tx.ending}
+        disabled={tx.ending || busy}
         onClick={() => void endTransaction(tabId, 'rollback')}
         data-testid="tx-rollback"
         title={`${t('Undo the changes of this transaction')} (${keys('⌥⇧⌘⌫')})`}

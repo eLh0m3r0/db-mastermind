@@ -671,6 +671,8 @@ export interface MastermindApi {
   transactionState(connectionId: string, session: string): Promise<TransactionState | null>
   /** While a tab's statement runs: the sessions it waits for on a lock (server ids; this app's own as session keys). */
   whoBlocks(connectionId: string, session: string): Promise<{ ids: string[]; sessions: string[] }>
+  /** Every session with an open transaction (the window asks after it was reopened or reloaded). */
+  openTransactions(): Promise<{ connectionId: string; session: string; state: TransactionState }[]>
   /** Commit / Roll back of a query tab's open transaction; resolves with the state after it. */
   endTransaction(connectionId: string, session: string, action: 'commit' | 'rollback'): Promise<TransactionState>
   listActivity(connectionId: string): Promise<SessionActivity[]>
@@ -851,6 +853,7 @@ export const API_METHODS = [
   'transactionState',
   'endTransaction',
   'whoBlocks',
+  'openTransactions',
   'listActivity',
   'listPrincipals',
   'listGrants',

@@ -73,7 +73,7 @@ import { removeTeamConnection, writeTeamConnection } from './team-folder'
 import { addToMcpClient, mcpClientStatuses, type McpLaunch } from './mcp-clients'
 import { applyMcpHttp, mcpHttpStatus } from './mcp-http'
 import { buildMenu } from './menu'
-import { forgetEditorSession, forgetEditorSessionsOf, trackEditorSession } from './transactions'
+import { forgetEditorSession, forgetEditorSessionsOf, openTransactions, trackEditorSession } from './transactions'
 import * as library from './library'
 import { getSettings, updateSettings } from './settings'
 
@@ -421,6 +421,8 @@ export const api: MastermindApi = {
       managed: undefined,
       team: undefined,
       knowledgeBaseLocal: undefined,
+      // AI turned off by the organization for the server stays off for its other databases.
+      ...(turnedOffCentrally(source.id) ? { ai: { access: 'off' as const }, aiEnabled: false } : {}),
     } as StoredConnection)
     // A password typed for this session (not saved) opens the new one too, without asking again.
     const typed = !source.password && db.isOpen(source.id) ? db.config(source.id).password : undefined
@@ -650,6 +652,9 @@ export const api: MastermindApi = {
   async transactionState(connectionId, session) {
     if (!db.isOpen(connectionId)) return null
     return (await db.transactionState(connectionId, session)) ?? null
+  },
+  async openTransactions() {
+    return openTransactions(db)
   },
   async whoBlocks(connectionId, session) {
     if (!db.isOpen(connectionId)) return { ids: [], sessions: [] }

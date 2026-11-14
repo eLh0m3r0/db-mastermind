@@ -1,3 +1,4 @@
+import { seedTransactions } from '@/store/transactions'
 import { DatabasePicker } from '@/features/connections/DatabasePicker'
 import { PasswordPrompt } from './features/connections/PasswordPrompt'
 import { ConfirmDialog } from './components/ui/ConfirmDialog'
@@ -178,7 +179,7 @@ export function App() {
   useEffect(() => {
     void useSettings.getState().load()
     void useConnections.getState().load()
-    void useWorkspace.getState().restore()
+    void useWorkspace.getState().restore().then(() => seedTransactions())
     const off = bridge.on('update:available', (info) =>
       toast({
         kind: 'info',

@@ -258,8 +258,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       else if (command === 'save-query') void save()
       else if (command === 'focus-editor') editor.current?.focus()
       else if (command === 'inline-ai') openInline()
-      else if (command === 'commit-transaction') void endTransaction(tab.id, 'commit')
-      else if (command === 'rollback-transaction') void endTransaction(tab.id, 'rollback')
+      else if ((command === 'commit-transaction' || command === 'rollback-transaction') && !runId.current) void endTransaction(tab.id, command === 'commit-transaction' ? 'commit' : 'rollback')
     })
   }, [active, run, cancel, format, save, openInline, tab.id])
 
@@ -322,7 +321,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
           <span className="@max-[1050px]:hidden">{t('Ask AI')}</span>
         </Button>
         <div className="flex-1" />
-        <TransactionBar tabId={tab.id} driver={driver} manual={!!connection?.manualCommit && !connection.readOnly && supportsManualCommit(driver)} />
+        <TransactionBar tabId={tab.id} driver={driver} manual={!!connection?.manualCommit && !connection.readOnly && supportsManualCommit(driver)} busy={running} />
         {connection?.readOnly && <span className="text-[11.5px] text-fg-faint">{t('read-only')}</span>}
       </div>
       {blocked && (

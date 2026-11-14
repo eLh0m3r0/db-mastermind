@@ -16,7 +16,7 @@ import { bindParameters, extractParameters } from './parameters.js'
 import { KnowledgeBase, relationToForeignKey } from './knowledge.js'
 import { findTable } from './schema-utils.js'
 import { classifyStatement, fitsReadOnlyTransaction, isReadOnlyCondition, isReadOnlyScript, opensTransaction, splitStatements, stripLiterals } from './sql-split.js'
-import type { CheckInfo, ConnectionConfig, SchemaSnapshot, ServerInfo, StatementOutcome, TableInfo, TablePage, TableRef, TransactionState } from './types.js'
+import type { CheckInfo, ConnectionConfig, QueryResult, SchemaSnapshot, ServerInfo, StatementOutcome, TableInfo, TablePage, TableRef, TransactionState } from './types.js'
 
 export function createDriver(config: ConnectionConfig): DatabaseDriver {
   switch (config.driver) {
@@ -45,13 +45,16 @@ export function createDriver(config: ConnectionConfig): DatabaseDriver {
 
 /** How long a grid save waits for rows another session has locked. */
 const GRID_LOCK_TIMEOUT_MS = 5000
+/** How long an unconfirmed (AI) read on SQL Server waits for locked rows. */
+const READ_LOCK_TIMEOUT_MS = 10000
 
 /** Lock timeout for a grid save inside a session's transaction: set, and set back (session-wide settings). */
-const SESSION_LOCK_TIMEOUT: Partial<Record<ConnectionConfig['driver'], [string, string?]>> = {
-  postgres: [`SET LOCAL lock_timeout = ${GRID_LOCK_TIMEOUT_MS}`],
-  mysql: [`SET SESSION innodb_lock_wait_timeout = ${GRID_LOCK_TIMEOUT_MS / 1000}`, 'SET SESSION innodb_lock_wait_timeout = DEFAULT'],
-  mariadb: [`SET SESSION innodb_lock_wait_timeout = ${GRID_LOCK_TIMEOUT_MS / 1000}`, 'SET SESSION innodb_lock_wait_timeout = DEFAULT'],
-  mssql: [`SET LOCK_TIMEOUT ${GRID_LOCK_TIMEOUT_MS}`, 'SET LOCK_TIMEOUT -1'],
+const digits = (v: string) => (/^-?\d+(ms)?$/.test(v) ? v : null)
+const SESSION_LOCK_TIMEOUT: Partial<Record<ConnectionConfig['driver'], { read: string; set: string; restore: (prior: string) => string }>> = {
+  postgres: { read: 'SHOW lock_timeout', set: `SET LOCAL lock_timeout = ${GRID_LOCK_TIMEOUT_MS}`, restore: (p) => `SET LOCAL lock_timeout = '${p.replace(/'/g, "''")}'` },
+  mysql: { read: 'SELECT @@SESSION.innodb_lock_wait_timeout', set: `SET SESSION innodb_lock_wait_timeout = ${GRID_LOCK_TIMEOUT_MS / 1000}`, restore: (p) => `SET SESSION innodb_lock_wait_timeout = ${digits(p) ?? 'DEFAULT'}` },
+  mariadb: { read: 'SELECT @@SESSION.innodb_lock_wait_timeout', set: `SET SESSION innodb_lock_wait_timeout = ${GRID_LOCK_TIMEOUT_MS / 1000}`, restore: (p) => `SET SESSION innodb_lock_wait_timeout = ${digits(p) ?? 'DEFAULT'}` },
+  mssql: { read: 'SELECT @@LOCK_TIMEOUT', set: `SET LOCK_TIMEOUT ${GRID_LOCK_TIMEOUT_MS}`, restore: (p) => `SET LOCK_TIMEOUT ${digits(p) ?? -1}` },
 }
 
 export interface RunScriptOptions {
@@ -306,6 +309,8 @@ export class DatabaseService {
       if (!begin) return this.runScript(id, script, { ...options, readOnly: false })
       const session = options.session ?? `readonly-${Date.now()}-${Math.random().toString(36).slice(2)}`
       try {
+        // SQL Server reads wait for locked rows (an AI chat's own uncommitted write): give up after a while instead.
+        if (entry.config.driver === 'mssql' && !options.session) await entry.driver.execute(`SET LOCK_TIMEOUT ${READ_LOCK_TIMEOUT_MS}`, { session }).catch(() => {})
         await entry.driver.execute(begin, { session })
         return await this.runScript(id, script, { ...options, readOnly: false, session })
       } finally {
@@ -320,6 +325,11 @@ export class DatabaseService {
     const editorSession = options.editor && options.session && entry.driver.transactionState ? options.session : undefined
     if (editorSession) (entry.editorSessions ??= new Set()).add(editorSession)
     const manual = !!editorSession && !!entry.config.manualCommit && !entry.config.readOnly && !!entry.driver.dialect.begin
+    // PostgreSQL aborts a whole transaction on any error: with manual commit each statement gets a savepoint, so a
+    // typo undoes only itself (psql's ON_ERROR_ROLLBACK). Real PostgreSQL only (CockroachDB, Redshift differ).
+    const statementSavepoints = manual && entry.config.driver === 'postgres' && entry.serverInfo?.product === 'PostgreSQL'
+    const runningKey = editorSession ? `${id}\u0000${editorSession}` : undefined
+    if (runningKey) this.running.set(runningKey, (this.running.get(runningKey) ?? 0) + 1)
     // A multi-statement script runs on one connection (BEGIN … COMMIT must not hop between pooled connections).
     const temporary = !options.session && statements.filter((s) => s.text).length > 1 ? `script-${Date.now()}-${Math.random().toString(36).slice(2)}` : undefined
     if (temporary) options = { ...options, session: temporary }
@@ -337,16 +347,29 @@ export class DatabaseService {
             params = bound.params
           }
           // MySQL, MariaDB and Oracle commit an open transaction before DDL: worth saying, the user expected to decide.
-          const watch = editorSession && ['ddl', 'other'].includes(classifyStatement(statement.text)) && !/\b(COMMIT|ROLLBACK)\b/i.test(stripLiterals(statement.text)) ? await this.transactionState(id, editorSession) : undefined
+          const watch = editorSession && ['ddl', 'other'].includes(classifyStatement(statement.text)) && !/\b(COMMIT|ROLLBACK|ABORT|PREPARE\s+TRANSACTION)\b/i.test(stripLiterals(statement.text)) ? await this.transactionState(id, editorSession) : undefined
           if (manual && opensTransaction(statement.text, entry.config.driver) && (watch ?? (await this.transactionState(id, editorSession!))) === 'none') {
             await entry.driver.execute(entry.driver.dialect.begin, { session: editorSession })
           }
-          const results = await entry.driver.execute(text, {
-            session: options.session,
-            maxRows: options.maxRows,
-            signal: options.signal,
-            params,
-          })
+          const guarded = statementSavepoints && classifyStatement(statement.text) !== 'transaction' && (await this.transactionState(id, editorSession!)) === 'open'
+          if (guarded) await entry.driver.execute('SAVEPOINT dbm_statement', { session: editorSession })
+          let results: QueryResult[]
+          try {
+            results = await entry.driver.execute(text, {
+              session: options.session,
+              maxRows: options.maxRows,
+              signal: options.signal,
+              params,
+            })
+          } catch (err) {
+            if (guarded) {
+              await entry.driver.execute('ROLLBACK TO SAVEPOINT dbm_statement', { session: editorSession }).catch(() => {})
+              await entry.driver.execute('RELEASE SAVEPOINT dbm_statement', { session: editorSession }).catch(() => {})
+              throw Object.assign(err as Error, { undoneOnly: true })
+            }
+            throw err
+          }
+          if (guarded) await entry.driver.execute('RELEASE SAVEPOINT dbm_statement', { session: editorSession }).catch(() => {})
           const committed = watch === 'open' && (await this.transactionState(id, editorSession!)) === 'none'
           outcomes.push({
             sql: statement.text,
@@ -366,6 +389,7 @@ export class DatabaseService {
             end: statement.end,
             error: describeError(err),
             durationMs: Date.now() - started,
+            ...((err as { undoneOnly?: boolean }).undoneOnly ? { note: 'Only this statement was undone: the transaction stays open with the earlier changes.' } : {}),
           })
           if (!options.continueOnError || options.signal?.aborted) {
             // A failed script must not leave its transaction open (PostgreSQL would reject everything after). With
@@ -380,6 +404,11 @@ export class DatabaseService {
       }
     } finally {
       if (temporary) await entry.driver.releaseSession(temporary).catch(() => {})
+      if (runningKey) {
+        const n = (this.running.get(runningKey) ?? 1) - 1
+        if (n > 0) this.running.set(runningKey, n)
+        else this.running.delete(runningKey)
+      }
     }
     if (/^\s*(CREATE|ALTER|DROP|RENAME)\b/im.test(script)) {
       // DDL changes the schema; drop the cache so the explorer refreshes lazily.
@@ -416,12 +445,25 @@ export class DatabaseService {
   }
 
   /** Commits or rolls back the session's open transaction (the editor's Commit / Roll back buttons). */
-  async endTransaction(id: string, session: string, action: 'commit' | 'rollback'): Promise<TransactionState | undefined> {
+  endTransaction(id: string, session: string, action: 'commit' | 'rollback'): Promise<TransactionState | undefined> {
+    return this.serialized(id, session, () => this.endTransactionNow(id, session, action))
+  }
+
+  private async endTransactionNow(id: string, session: string, action: 'commit' | 'rollback'): Promise<TransactionState | undefined> {
     const entry = this.get(id)
     const sql = action === 'commit' ? entry.driver.dialect.commit : entry.driver.dialect.rollback
     if (!sql) return undefined
+    // COMMIT would also commit a statement still running in this session (it queues behind it).
+    if (this.running.has(`${id}\u0000${session}`)) throw new Error('A statement is still running in this tab: wait for it (or cancel it) before Commit or Roll back.')
+    if (action === 'commit') {
+      const state = await this.transactionState(id, session)
+      // PostgreSQL answers COMMIT in a failed transaction with ROLLBACK and no error: never report that as saved.
+      if (state === 'failed') throw new Error('The transaction failed, so it can only be rolled back: nothing was committed.')
+      if (state === 'none') throw new Error('This tab has no open transaction any more (it ended on the server, e.g. after a lost connection): nothing to commit.')
+    }
     try {
-      await entry.driver.execute(sql, { session })
+      const [result] = await entry.driver.execute(sql, { session })
+      if (action === 'commit' && result?.command?.toUpperCase() === 'ROLLBACK') throw new Error('The database rolled the transaction back instead of committing it: nothing was saved.')
     } finally {
       // DDL inside the transaction may have been undone (or made permanent): the explorer reloads lazily.
       entry.schema = undefined
@@ -453,14 +495,34 @@ export class DatabaseService {
       },
       entry.driver.dialect,
     )
-    const [result] = await entry.driver.execute(built.sql, { params: built.params, signal: options.signal, session: this.readSession(entry, options.session) })
+    const [result] = await this.readIn(id, entry, this.readSession(entry, options.session), built.sql, built.params, options.signal)
     if (!result) throw new Error('Query returned no result')
     return { result, sql: built.sql }
   }
 
-  /** A table tab reads on its own session only while that session holds a transaction (manual commit). */
+  /** A table tab reads on its own session once it has written there (it sees its uncommitted rows). */
   private readSession(entry: OpenConnection, session: string | undefined): string | undefined {
-    return session && entry.config.manualCommit && entry.editorSessions?.has(session) ? session : undefined
+    return session && entry.editorSessions?.has(session) ? session : undefined
+  }
+
+  /**
+   * A read on a tab's session. On PostgreSQL inside an open transaction it runs behind a savepoint: a failing or
+   * cancelled read (a typo in a filter, a page changed quickly) must not abort the tab's pending changes.
+   */
+  private async readIn(id: string, entry: OpenConnection, session: string | undefined, sql: string, params: unknown[], signal?: AbortSignal): Promise<QueryResult[]> {
+    if (!session) return entry.driver.execute(sql, { params, signal })
+    const guarded = entry.config.driver === 'postgres' && entry.serverInfo?.product === 'PostgreSQL' && (await this.transactionState(id, session)) === 'open'
+    if (!guarded) return entry.driver.execute(sql, { params, signal, session })
+    await entry.driver.execute('SAVEPOINT dbm_read', { session })
+    try {
+      const results = await entry.driver.execute(sql, { params, signal, session })
+      await entry.driver.execute('RELEASE SAVEPOINT dbm_read', { session }).catch(() => {})
+      return results
+    } catch (err) {
+      await entry.driver.execute('ROLLBACK TO SAVEPOINT dbm_read', { session }).catch(() => {})
+      await entry.driver.execute('RELEASE SAVEPOINT dbm_read', { session }).catch(() => {})
+      throw err
+    }
   }
 
   async countTable(id: string, options: Pick<FetchTableOptions, 'table' | 'filter' | 'signal' | 'session'>): Promise<number> {
@@ -471,7 +533,7 @@ export class DatabaseService {
       { table: options.table, filter: options.filter, knownColumns: table?.columns.map((c) => c.name), columnTypes: table && Object.fromEntries(table.columns.map((c) => [c.name, c.dataType])) },
       entry.driver.dialect,
     )
-    const [result] = await entry.driver.execute(built.sql, { params: built.params, signal: options.signal, session: this.readSession(entry, options.session) })
+    const [result] = await this.readIn(id, entry, this.readSession(entry, options.session), built.sql, built.params, options.signal)
     return Number(result?.rows[0]?.[0] ?? 0)
   }
 
@@ -483,12 +545,14 @@ export class DatabaseService {
     const entry = this.get(id)
     if (entry.config.readOnly) throw new ReadOnlyViolationError()
     const statements = buildChangeStatements(table, changes, entry.driver.dialect)
-    if (options.session && entry.config.manualCommit && entry.driver.transactionState && entry.driver.dialect.begin) {
-      return this.applyInTransaction(id, entry, options.session, statements)
-    }
+    // Manual commit, or a transaction this tab still has open (manual commit was turned off meanwhile).
+    const inTabTransaction =
+      !!options.session && !!entry.driver.transactionState && !!entry.driver.dialect.begin &&
+      (!!entry.config.manualCommit || (!!entry.editorSessions?.has(options.session) && (await this.transactionState(id, options.session)) !== 'none'))
+    if (inTabTransaction) return this.applyInTransaction(id, entry, options.session!, statements)
     try {
       // A row a query tab changed in its open transaction stays locked until Commit / Roll back: say so, don't hang.
-      return await entry.driver.transaction(statements, { lockTimeoutMs: GRID_LOCK_TIMEOUT_MS })
+      return await entry.driver.transaction(statements, this.lockTimeoutApplies(entry) ? { lockTimeoutMs: GRID_LOCK_TIMEOUT_MS } : {})
     } catch (err) {
       if (!isLockTimeout(err)) throw err
       const tabs = await this.openEditorTransactions(id)
@@ -500,7 +564,21 @@ export class DatabaseService {
     }
   }
 
-  private async applyInTransaction(id: string, entry: OpenConnection, session: string, statements: BuiltQuery[]): Promise<number[]> {
+  /** Work on one session's transaction that must not interleave with another (two saves, a save and Commit). */
+  private sessionQueue = new Map<string, Promise<unknown>>()
+  private serialized<T>(id: string, session: string, work: () => Promise<T>): Promise<T> {
+    const key = `${id}\u0000${session}`
+    const run = (this.sessionQueue.get(key) ?? Promise.resolve()).catch(() => {}).then(work)
+    this.sessionQueue.set(key, run)
+    void run.finally(() => this.sessionQueue.get(key) === run && this.sessionQueue.delete(key)).catch(() => {})
+    return run
+  }
+
+  private applyInTransaction(id: string, entry: OpenConnection, session: string, statements: BuiltQuery[]): Promise<number[]> {
+    return this.serialized(id, session, () => this.applyInTransactionNow(id, entry, session, statements))
+  }
+
+  private async applyInTransactionNow(id: string, entry: OpenConnection, session: string, statements: BuiltQuery[]): Promise<number[]> {
     ;(entry.editorSessions ??= new Set()).add(session)
     const driver = entry.config.driver
     const exec = (sql: string, params?: unknown[]) => entry.driver.execute(sql, { session, params })
@@ -509,9 +587,11 @@ export class DatabaseService {
     if (state === 'none') await exec(entry.driver.dialect.begin)
     // One save stays all or nothing inside the longer transaction (DuckDB has no savepoints; an error aborts it anyway).
     const savepoint = driver === 'duckdb' ? undefined : driver === 'mssql' ? ['SAVE TRANSACTION dbm_grid', 'ROLLBACK TRANSACTION dbm_grid'] : ['SAVEPOINT dbm_grid', 'ROLLBACK TO SAVEPOINT dbm_grid']
-    const lock = SESSION_LOCK_TIMEOUT[driver]
+    const lock = this.lockTimeoutApplies(entry) ? SESSION_LOCK_TIMEOUT[driver] : undefined
+    // The user's own lock timeout in this session comes back afterwards (not the server's default).
+    const prior = lock ? await exec(lock.read).then((r) => r[0]?.rows[0]?.[0] ?? null, () => null) : null
     if (savepoint) await exec(savepoint[0]!)
-    if (lock) await exec(lock[0]).catch(() => {})
+    if (lock) await exec(lock.set).catch(() => {})
     try {
       const affected: number[] = []
       for (const s of statements) {
@@ -531,15 +611,24 @@ export class DatabaseService {
           : 'The rows are locked by another session’s open transaction. Save again once it ends (Server activity shows who holds them).',
       )
     } finally {
-      if (lock?.[1]) await exec(lock[1]).catch(() => {})
+      if (lock && prior !== null) await exec(lock.restore(String(prior))).catch(() => {})
     }
   }
+
+  /** lock_timeout is PostgreSQL's own: CockroachDB versions and Redshift (same protocol) may reject it. */
+  private lockTimeoutApplies(entry: OpenConnection): boolean {
+    return entry.config.driver !== 'postgres' || entry.serverInfo?.product === 'PostgreSQL'
+  }
+
+  /** Statements still running per session: Commit must not slip in behind one. */
+  private running = new Map<string, number>()
 
   /** Sessions (query tabs) of this connection with a transaction open. */
   async openEditorTransactions(id: string): Promise<string[]> {
     const out: string[] = []
     for (const session of this.open.get(id)?.editorSessions ?? []) {
-      const state = await this.transactionState(id, session).catch(() => undefined)
+      // A session busy with a statement (waiting on a lock itself) can't answer: don't wait for it.
+      const state = await Promise.race([this.transactionState(id, session).catch(() => undefined), new Promise<undefined>((r) => setTimeout(() => r(undefined), 1000))])
       if (state === 'open' || state === 'failed') out.push(session)
     }
     return out

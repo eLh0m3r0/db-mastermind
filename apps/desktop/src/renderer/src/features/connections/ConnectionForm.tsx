@@ -427,7 +427,7 @@ export function ConnectionForm() {
                       value={config.environment ?? 'none'}
                       onChange={(v) => set({ environment: v === 'none' ? undefined : v })}
                       options={[
-                        { value: 'none', label: t('None') },
+                        { value: 'none', label: t('Not set') },
                         { value: 'development', label: t('Dev') },
                         { value: 'test', label: t('Test') },
                         { value: 'staging', label: t('Staging') },

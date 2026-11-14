@@ -115,9 +115,14 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const connection = useConnections((s) => s.list.find((c) => c.id === tab.connectionId))
   // Manual commit: saves go into this tab's own transaction (Commit / Roll back in the toolbar), and reads see it.
-  const manual = !!connection?.manualCommit && !connection.readOnly && supportsManualCommit(connection.driver)
-  const session = manual ? tab.id : undefined
   const inTransaction = useTransactions((s) => !!s[tab.id])
+  // Also when manual commit was turned off while this tab still holds a transaction: it stays reachable.
+  const manual = (!!connection?.manualCommit && !connection.readOnly && supportsManualCommit(connection.driver)) || inTransaction
+  const session = manual ? tab.id : undefined
+  const connected = useConnections((s) => s.runtime[tab.connectionId]?.status === 'connected')
+  useEffect(() => {
+    if (connected) void refreshTransaction(tab.id, tab.connectionId)
+  }, [connected, tab.id, tab.connectionId])
   const loadSchema = useConnections((s) => s.loadSchema)
   const settings = useSettings((s) => s.settings)
   const updateTab = useWorkspace((s) => s.update)
@@ -219,6 +224,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
     } catch (err) {
       if (runId.current !== id) return
       setError(errorMessage(err))
+      if (session) void refreshTransaction(tab.id, tab.connectionId)
     } finally {
       if (runId.current === id) {
         runId.current = null
@@ -506,6 +512,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
       void load()
       void count()
     } catch (err) {
+      if (session) void refreshTransaction(tab.id, tab.connectionId)
       // Rows a query tab changed and hasn't committed yet: name the tab and offer to go there.
       if ((err as { code?: string }).code === 'ROW_LOCKED') {
         const holders = Object.entries(useTransactions.getState()).filter(([, tx]) => tx.connectionId === tab.connectionId)
@@ -804,7 +811,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
           </div>
         )}
         <div className="flex-1" />
-        {manual && <TransactionBar tabId={tab.id} driver={connection!.driver} manual />}
+        {manual && <TransactionBar tabId={tab.id} driver={connection!.driver} manual busy={saving} />}
         {aiReady && (
           <Input
             inputSize="sm"

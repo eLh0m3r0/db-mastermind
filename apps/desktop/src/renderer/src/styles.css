@@ -13,14 +13,14 @@
   --border-strong: #cfd4db;
   --text: #1b1f27;
   --text-muted: #5b6372;
-  --text-faint: #8b93a1;
+  --text-faint: #6e7684;
   --accent: #6d4aff;
   --accent-hover: #5b37f0;
   --accent-soft: rgba(109, 74, 255, 0.1);
   --accent-fg: #ffffff;
   --danger: #dc3545;
   --danger-soft: rgba(220, 53, 69, 0.1);
-  --warning: #c27c0e;
+  --warning: #8f5a0a;
   --warning-soft: rgba(234, 160, 25, 0.14);
   --success: #157347;
   --success-soft: rgba(25, 135, 84, 0.12);
@@ -33,7 +33,7 @@
   --grid-edited: rgba(234, 160, 25, 0.18);
   --grid-inserted: rgba(25, 135, 84, 0.12);
   --grid-deleted: rgba(220, 53, 69, 0.12);
-  --null: #a0a7b4;
+  --null: #858c99;
   /* SQL highlighting: keywords follow the accent color. */
   --syntax-keyword: var(--accent);
   --syntax-string: #0f7b3f;
@@ -69,7 +69,7 @@
   --border-strong: #3a3f49;
   --text: #e6e8ec;
   --text-muted: #a1a8b5;
-  --text-faint: #6f7684;
+  --text-faint: #8b919c;
   --accent: #8b6dff;
   --accent-hover: #9d84ff;
   --accent-soft: rgba(139, 109, 255, 0.16);
@@ -89,7 +89,7 @@
   --grid-edited: rgba(240, 180, 69, 0.3);
   --grid-inserted: rgba(76, 195, 138, 0.14);
   --grid-deleted: rgba(240, 97, 111, 0.16);
-  --null: #626a78;
+  --null: #7d8593;
   --syntax-string: #86d9a8;
   --syntax-number: #f5b86b;
   --syntax-comment: #6f7684;
@@ -330,15 +330,16 @@ textarea,
 
 /* Christmas: snow white, holly red and fir green. */
 :root.look-christmas {
-  --syntax-string: #1e7a3c; --syntax-number: #b8860b; --syntax-comment: #9c8a77; --syntax-type: #1f5f8b; --syntax-operator: #6b5847; --syntax-special: #8e2a1f;
+  --syntax-string: #a91f17; --syntax-number: #8a6508; --syntax-comment: #9c8a77; --syntax-type: #1f5f8b; --syntax-operator: #6b5847; --syntax-special: #8e2a1f;
   --bg: #fffdf9; --bg-subtle: #f6f1e9; --bg-muted: #ece4d6; --bg-elevated: #ffffff;
   --border: #e2d7c3; --border-strong: #cdbd9f;
-  --text: #2a1d14; --text-muted: #6b5847; --text-faint: #9c8a77;
-  --accent: #c0392b; --accent-hover: #a93226; --accent-soft: rgba(192, 57, 43, 0.1); --accent-fg: #ffffff;
-  --success: #1e7a3c; --success-soft: rgba(30, 122, 60, 0.12); --info: #b8860b;
+  --text: #2a1d14; --text-muted: #6b5847; --text-faint: #7f6b5a;
+  /* Green for the actions (red reads as 'delete' in a database tool); red for the bar and the decoration. */
+  --accent: #17602f; --accent-hover: #124d26; --accent-soft: rgba(23, 96, 47, 0.1); --accent-fg: #ffffff;
+  --success: #2d8a46; --success-soft: rgba(30, 122, 60, 0.12); --info: #8a6508;
   --grid-header: #f6f1e9; --grid-row-alt: #fbf8f2; --grid-selected: rgba(30, 122, 60, 0.14);
 }
-:root.look-christmas :is(.drag-region, .title-band) { background: #1e7a3c; color: #ffffff; }
+:root.look-christmas :is(.drag-region, .title-band) { background: #a91f17; color: #ffffff; }
 :root.look-christmas .drag-region [role='tab'][aria-selected='false'] { color: #e3f3e8; }
 
 /* A medieval campaign: parchment, wood and gold. */
@@ -347,9 +348,9 @@ textarea,
   --bg: #f8f0dc; --bg-subtle: #efe2c3; --bg-muted: #e6d5ae; --bg-elevated: #fbf5e6;
   --bg-hover: rgba(139, 90, 43, 0.09); --bg-active: rgba(139, 90, 43, 0.17);
   --border: #cfb88a; --border-strong: #a8895a;
-  --text: #3b2a17; --text-muted: #6b5434; --text-faint: #957b55;
+  --text: #3b2a17; --text-muted: #6b5434; --text-faint: #7a6342;
   --accent: #8b5a2b; --accent-hover: #74481f; --accent-soft: rgba(139, 90, 43, 0.14); --accent-fg: #fff6e0;
-  --warning: #b8860b; --success: #4f7a28; --success-soft: rgba(79, 122, 40, 0.14); --danger: #a3261b; --info: #2f6b70;
+  --warning: #85600a; --success: #4f7a28; --success-soft: rgba(79, 122, 40, 0.14); --danger: #a3261b; --info: #2f6b70;
   --grid-header: #efe2c3; --grid-row-alt: #f4e9cf; --grid-selected: rgba(184, 134, 11, 0.22);
   --font-sans: 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
 }
@@ -362,7 +363,7 @@ textarea,
   --bg: #0f0d14; --bg-subtle: #17141f; --bg-muted: #201b2b; --bg-elevated: #1c1826;
   --bg-hover: rgba(201, 162, 39, 0.08); --bg-active: rgba(201, 162, 39, 0.16);
   --border: #3a2f4a; --border-strong: #5a4a2a;
-  --text: #e8dcc0; --text-muted: #b3a58a; --text-faint: #7d7362;
+  --text: #e8dcc0; --text-muted: #b3a58a; --text-faint: #958a76;
   --accent: #c9a227; --accent-hover: #ddb63a; --accent-soft: rgba(201, 162, 39, 0.16); --accent-fg: #1a1405;
   --info: #3fa7a0; --success: #4fc38a; --danger: #e5484d;
   --grid-header: #17141f; --grid-row-alt: #13111a; --grid-selected: rgba(142, 107, 255, 0.24); --null: #6d6478;
@@ -379,7 +380,7 @@ textarea,
 }
 :root.look-medieval :is(.drag-region, .title-band) { --text-muted: #f4ead2; --text-faint: #e6d9b8; }
 :root.look-retro2001 :is(.drag-region, .title-band) { --text-muted: #eef3ff; --text-faint: #d4e1ff; }
-:root.look-christmas :is(.drag-region, .title-band) { --text-muted: #eef8f0; --text-faint: #cfe8d6; }
+:root.look-christmas :is(.drag-region, .title-band) { --text-muted: #fbe9e7; --text-faint: #f2cfcb; }
 /* The selected tab sits on the page's own background: the page's own text colors. */
 :root.look-retro2001 .drag-region [role='tab'][aria-selected='true'] { --text: #000000; --bg-hover: rgba(49, 106, 197, 0.1); --text-muted: #3d3d3d; --text-faint: #6f6f6f; }
 :root.look-christmas .drag-region [role='tab'][aria-selected='true'] { --text: #2a1d14; --bg-hover: rgba(15, 23, 42, 0.05); --text-muted: #6b5847; --text-faint: #9c8a77; }
@@ -406,3 +407,7 @@ button.bg-success:focus-visible { outline-color: color-mix(in srgb, var(--succes
 .tab-divider { background: var(--border); }
 :root.high-contrast .tab-divider { background: var(--border-strong); }
 :root:is(.look-retro2001, .look-christmas, .look-medieval) .tab-divider { background: rgba(255, 255, 255, 0.3); }
+
+/* High contrast: the open-transaction warning and edited cells stand out more. */
+:root.high-contrast { --warning: #6b4200; --grid-edited: rgba(194, 124, 14, 0.38); }
+:root.dark.high-contrast { --warning: #ffcf6e; --grid-edited: rgba(240, 180, 69, 0.42); }

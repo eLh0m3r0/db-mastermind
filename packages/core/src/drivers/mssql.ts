@@ -164,9 +164,11 @@ export class MssqlDriver implements DatabaseDriver {
   async transactionState(session: string): Promise<TransactionState> {
     const pool = this.sessions.get(session)
     if (!pool) return 'none'
-    const r = await pool.request().query<{ n: number; s: number }>('SELECT @@TRANCOUNT AS n, XACT_STATE() AS s').catch(() => undefined)
+    const r = await pool.request().query<{ n: number; s: number; id: number }>('SELECT @@TRANCOUNT AS n, XACT_STATE() AS s, @@SPID AS id').catch(() => undefined)
     const row = r?.recordset[0]
     if (!row) return 'none'
+    // The pool may have reconnected (SPIDs are reused): keep the session's id current for server activity.
+    this.spids.set(session, String(row.id))
     // An error that rolled the transaction back (XACT_ABORT) must not later read as a lost connection.
     this.transactions.set(session, Number(row.n) > 0)
     return Number(row.s) === -1 ? 'failed' : Number(row.n) > 0 ? 'open' : 'none'

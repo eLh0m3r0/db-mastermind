@@ -98,7 +98,7 @@ export const useConnections = create<ConnectionsState>((set, get) => {
     async save(config) {
       const before = get().list.find((c) => c.id === config.id)
       // Host, user, TLS… need a new connection, which ends the open transactions of its query tabs.
-      const reconnects = !!before && get().runtime[config.id]?.status === 'connected' && needsReconnect(before, config)
+      const reconnects = !!before && needsReconnect(before, config) && (get().runtime[config.id]?.status === 'connected' || (await api.isConnected(config.id)))
       if (reconnects) {
         const { settleConnectionTransactions } = await import('./workspace')
         if (!(await settleConnectionTransactions(config.id))) throw new Error(t('Not saved: the open transaction is still waiting for Commit or Roll back.'))

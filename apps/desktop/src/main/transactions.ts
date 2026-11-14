@@ -30,17 +30,24 @@ interface OpenTransaction {
   state: TransactionState
 }
 
-async function openTransactions(db: DatabaseService): Promise<OpenTransaction[]> {
-  const out: OpenTransaction[] = []
+/**
+ * Open transactions of the tracked sessions, asked in parallel. A session that doesn't answer in time (busy with a
+ * long statement) counts as open on a manual-commit connection: better asked once too often than rolled back unasked.
+ */
+export async function openTransactions(db: DatabaseService): Promise<OpenTransaction[]> {
+  const checks: Promise<OpenTransaction | undefined>[] = []
   for (const [connectionId, sessions] of editorSessions) {
     if (!db.isOpen(connectionId)) continue
+    const manual = !!db.config(connectionId).manualCommit
     for (const session of sessions) {
-      // A session busy with a long query (or a stuck SQLite worker) must not hold up quitting.
-      const state = await Promise.race([db.transactionState(connectionId, session).catch(() => undefined), new Promise<undefined>((r) => setTimeout(() => r(undefined), 2000))])
-      if (state === 'open' || state === 'failed') out.push({ connectionId, session, state })
+      checks.push(
+        Promise.race([db.transactionState(connectionId, session).catch(() => undefined), new Promise<'unknown'>((r) => setTimeout(() => r('unknown'), 2000))]).then((state) =>
+          state === 'open' || state === 'failed' ? { connectionId, session, state } : state === 'unknown' && manual ? { connectionId, session, state: 'open' as const } : undefined,
+        ),
+      )
     }
   }
-  return out
+  return (await Promise.all(checks)).filter((x): x is OpenTransaction => !!x)
 }
 
 const CS: Record<string, string> = {

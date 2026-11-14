@@ -131,8 +131,17 @@ export class OracleDriver implements DatabaseDriver {
     return Object.fromEntries([...this.sids].filter(([session]) => this.sessions.has(session)))
   }
 
+  /**
+   * Asked of the database: PL/SQL can COMMIT inside a block, and DDL commits even when it then fails. Without a
+   * transaction the session goes back to autocommit (the next manual-commit write starts one again).
+   */
   async transactionState(session: string): Promise<TransactionState> {
-    return this.sessions.has(session) && this.manualTx.has(session) ? 'open' : 'none'
+    const conn = this.sessions.get(session)
+    if (!conn || !this.manualTx.has(session)) return 'none'
+    const r = await conn.execute<[string | null]>('SELECT dbms_transaction.local_transaction_id FROM dual', [], { outFormat: oracledb.OUT_FORMAT_ARRAY }).catch(() => undefined)
+    if (!r || r.rows?.[0]?.[0]) return 'open'
+    this.manualTx.delete(session)
+    return 'none'
   }
 
   async releaseSession(session: string): Promise<void> {
