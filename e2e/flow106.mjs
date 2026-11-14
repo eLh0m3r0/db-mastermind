@@ -37,6 +37,8 @@ try {
   await win.screenshot({ path: `${out}/r106-proposal.png` })
   await win.getByRole('button', { name: 'Review…' }).click()
   await win.getByRole('dialog').waitFor({ timeout: 5000 })
+  // The form fills itself in right after it opens.
+  await win.getByRole('dialog').locator('input[value="Shop staging"]').waitFor({ timeout: 5000 }).catch(() => {})
   const host = await win.getByRole('dialog').locator('input[value="127.0.0.1"]').count()
   check('Review opens the connection form prefilled', host === 1 && (await win.getByRole('dialog').locator('input[value="Shop staging"]').count()) === 1)
   await win.screenshot({ path: `${out}/r106-form.png` })
