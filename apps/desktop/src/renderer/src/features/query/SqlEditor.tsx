@@ -4,6 +4,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab, toggleComment } f
 import { MSSQL, MySQL, MariaSQL, PLSQL, PostgreSQL, SQLite, sql, type SQLDialect, type SQLNamespace } from '@codemirror/lang-sql'
 import { bracketMatching, HighlightStyle, indentOnInput, syntaxHighlighting } from '@codemirror/language'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
+import { linter, type Diagnostic } from '@codemirror/lint'
 import { Compartment, EditorSelection, EditorState, RangeSetBuilder, StateEffect, StateField, type Extension } from '@codemirror/state'
 import {
   Decoration,
@@ -23,7 +24,7 @@ import { tags as t } from '@lezer/highlight'
 import { joinCompletionSource } from './joinCompletion'
 import { allSnippets, snippetSource } from './snippets'
 import { useSettings } from '@/store/settings'
-import { statementAtOffset, type DriverId, type SchemaSnapshot } from '@dbmastermind/core/browser'
+import { inspectSql, objectAt, statementAtOffset, type DriverId, type SchemaSnapshot, type SqlObjectAt, type SqlWarning } from '@dbmastermind/core/browser'
 import { t as tr } from '@/lib/i18n'
 import { keys } from '@/lib/api'
 
@@ -65,6 +66,8 @@ interface Props {
   onFormat?: () => void
   onSave?: () => void
   onAskAi?: () => void
+  /** ⌘-click (Ctrl-click) on a table, view or routine name. */
+  onOpenObject?: (object: SqlObjectAt) => void
   ref?: Ref<SqlEditorHandle>
 }
 
@@ -104,6 +107,13 @@ export function editorTheme(dark: boolean): Extension {
         '.cm-panels': { backgroundColor: 'var(--bg-subtle)', color: 'var(--text)', borderColor: 'var(--border)' },
         '.cm-panel.cm-search input, .cm-panel.cm-search button': { fontSize: '12px' },
         '.cm-placeholder': { color: 'var(--text-faint)' },
+        // Warnings are quiet: a wavy underline in the warning color, the explanation on hover.
+        '.cm-lintRange-warning': { backgroundImage: 'none', textDecoration: 'underline wavy color-mix(in srgb, var(--warning) 75%, transparent)', textUnderlineOffset: '3px' },
+        '.cm-tooltip-lint': { padding: '0' },
+        '.cm-diagnostic': { padding: '6px 10px', fontSize: '12px', fontFamily: 'var(--font-sans)' },
+        '.cm-diagnostic-warning': { borderLeft: '3px solid var(--warning)' },
+        '.cm-diagnosticAction': { backgroundColor: 'var(--accent)', color: 'var(--accent-fg)', borderRadius: '4px', padding: '1px 6px', marginLeft: '8px', fontSize: '11.5px' },
+        '.cm-object-link': { textDecoration: 'underline', textDecorationColor: 'var(--accent)', cursor: 'pointer' },
       },
       { dark },
     ),
@@ -135,6 +145,7 @@ function buildNamespace(schema: SchemaSnapshot | undefined): SQLNamespace {
 }
 
 const setErrorRange = StateEffect.define<{ from: number; to: number } | null>()
+const schemaChanged = StateEffect.define<null>()
 
 function rangeField(effect: typeof setErrorRange, className: string, clearOnChange: boolean) {
   return StateField.define<DecorationSet>({
@@ -180,11 +191,38 @@ function statementHighlight(getDriver: () => DriverId) {
 
 const errorField = rangeField(setErrorRange, 'cm-error-mark', true)
 
-export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunAll, onFormat, onSave, onAskAi, ref }: Props) {
+/** The editor's quiet warnings (see core inspectSql): message, and a one-click fix where there is an obvious one. */
+function toDiagnostic(w: SqlWarning): Diagnostic {
+  switch (w.kind) {
+    case 'unknown-table':
+      return {
+        from: w.from,
+        to: w.to,
+        severity: 'warning',
+        message: w.suggestion ? tr('Unknown table “{name}”. Did you mean “{suggestion}”?', { name: w.name, suggestion: w.suggestion }) : tr('Unknown table “{name}”.', { name: w.name }),
+        actions: w.suggestion ? [{ name: tr('Use {name}', { name: w.suggestion }), apply: (view, _from, to) => view.dispatch({ changes: { from: w.replaceFrom, to, insert: w.suggestion! } }) }] : [],
+      }
+    case 'unknown-column':
+      return {
+        from: w.from,
+        to: w.to,
+        severity: 'warning',
+        message: w.suggestion ? tr('“{table}” has no column “{column}”. Did you mean “{suggestion}”?', { table: w.table, column: w.column, suggestion: w.suggestion }) : tr('“{table}” has no column “{column}”.', { table: w.table, column: w.column }),
+        actions: w.suggestion ? [{ name: tr('Use {name}', { name: w.suggestion }), apply: (view, from, to) => view.dispatch({ changes: { from, to, insert: w.suggestion! } }) }] : [],
+      }
+    case 'no-where':
+      return { from: w.from, to: w.to, severity: 'warning', message: w.verb === 'UPDATE' ? tr('Changes every row of “{table}” (no WHERE).', { table: w.table }) : tr('Deletes every row of “{table}” (no WHERE).', { table: w.table }) }
+  }
+}
+
+const setObjectLink = StateEffect.define<{ from: number; to: number } | null>()
+const objectLinkField = rangeField(setObjectLink, 'cm-object-link', true)
+
+export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunAll, onFormat, onSave, onAskAi, onOpenObject, ref }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
-  const handlers = useRef({ onChange, onRun, onRunAll, onFormat, onSave, onAskAi })
-  handlers.current = { onChange, onRun, onRunAll, onFormat, onSave, onAskAi }
+  const handlers = useRef({ onChange, onRun, onRunAll, onFormat, onSave, onAskAi, onOpenObject })
+  handlers.current = { onChange, onRun, onRunAll, onFormat, onSave, onAskAi, onOpenObject }
   const driverRef = useRef(driver)
   driverRef.current = driver
   const schemaRef = useRef(schema)
@@ -223,6 +261,40 @@ export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunA
           // Sources need a stable identity: autocompletion matches results to sources by reference.
           EditorState.languageData.of(() => [{ autocomplete: joinSource }, { autocomplete: snippetsSource }]),
           errorField,
+          objectLinkField,
+          // Re-checked 400 ms after typing stops; nothing before the schema has loaded.
+          linter((view) => inspectSql(view.state.doc.toString(), driverRef.current, schemaRef.current).map(toDiagnostic), { delay: 400, needsRefresh: (u) => u.transactions.some((tr) => tr.effects.some((e) => e.is(schemaChanged))) }),
+          EditorView.domEventHandlers({
+            mousedown: (e, view) => {
+              if (!(e.metaKey || e.ctrlKey) || e.button !== 0 || !schemaRef.current || !handlers.current.onOpenObject) return false
+              const pos = view.posAtCoords({ x: e.clientX, y: e.clientY })
+              if (pos === null) return false
+              const object = objectAt(view.state.doc.toString(), pos, driverRef.current, schemaRef.current)
+              if (!object) return false
+              e.preventDefault()
+              handlers.current.onOpenObject(object)
+              return true
+            },
+            mousemove: (e, view) => {
+              const current = view.state.field(objectLinkField).size > 0
+              if (!(e.metaKey || e.ctrlKey) || !schemaRef.current || !handlers.current.onOpenObject) {
+                if (current) view.dispatch({ effects: setObjectLink.of(null) })
+                return false
+              }
+              const pos = view.posAtCoords({ x: e.clientX, y: e.clientY })
+              const object = pos === null ? undefined : objectAt(view.state.doc.toString(), pos, driverRef.current, schemaRef.current)
+              view.dispatch({ effects: setObjectLink.of(object ? { from: object.from, to: object.to } : null) })
+              return false
+            },
+            mouseleave: (_e, view) => {
+              if (view.state.field(objectLinkField).size > 0) view.dispatch({ effects: setObjectLink.of(null) })
+              return false
+            },
+            keyup: (e, view) => {
+              if ((e.key === 'Meta' || e.key === 'Control') && view.state.field(objectLinkField).size > 0) view.dispatch({ effects: setObjectLink.of(null) })
+              return false
+            },
+          }),
           keymap.of([
             { key: 'Mod-Enter', run: () => (handlers.current.onRun(), true), preventDefault: true },
             { key: 'Shift-Mod-Enter', run: () => (handlers.current.onRunAll(), true), preventDefault: true },
@@ -256,14 +328,18 @@ export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunA
     const view = viewRef.current
     if (!view) return
     view.dispatch({
-      effects: langCompartment.current.reconfigure(
-        sql({
-          dialect: DIALECTS[driver],
-          upperCaseKeywords: true,
-          schema: buildNamespace(schema),
-          defaultSchema: schema?.defaultSchema,
-        }),
-      ),
+      effects: [
+        langCompartment.current.reconfigure(
+          sql({
+            dialect: DIALECTS[driver],
+            upperCaseKeywords: true,
+            schema: buildNamespace(schema),
+            defaultSchema: schema?.defaultSchema,
+          }),
+        ),
+        // The warnings depend on the schema too: check again with the new one.
+        schemaChanged.of(null),
+      ],
     })
   }, [driver, schema])
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { closeCompletion } from '@codemirror/autocomplete'
 import { format as formatSql, type SqlLanguage } from 'sql-formatter'
 import { Activity, BookmarkPlus, Hourglass, Play, PlayCircle, Sparkles, Square, Wand2 } from 'lucide-react'
-import { changesSchema, extractParameters, supportsManualCommit, isDangerousStatement, splitStatements, type DriverId, type ExplainResult, type QueryParameter, type StatementOutcome } from '@dbmastermind/core/browser'
+import { changesSchema, extractParameters, routineObject, supportsManualCommit, isDangerousStatement, splitStatements, type DriverId, type ExplainResult, type QueryParameter, type StatementOutcome } from '@dbmastermind/core/browser'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -20,6 +20,7 @@ import { PlanView } from './PlanView'
 import { ResultsPanel } from './ResultsPanel'
 import { SqlEditor, type SqlEditorHandle } from './SqlEditor'
 import { TransactionBar } from './TransactionBar'
+import { openDefinition } from '@/lib/definitions'
 import { endTransaction, refreshTransaction } from '@/store/transactions'
 import { useT } from '@/lib/i18n'
 import { confirmAction } from '@/components/ui/ConfirmDialog'
@@ -57,6 +58,9 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
   const [paramPrompt, setParamPrompt] = useState<{ mode: 'current' | 'all'; params: QueryParameter[] } | null>(null)
   const lastParams = useRef<ParamValues>({})
   const [plan, setPlan] = useState<ExplainResult | null>(null)
+  /** The plan before the current one (to compare after adding an index); the latest is kept even when closed. */
+  const [previousPlan, setPreviousPlan] = useState<ExplainResult | null>(null)
+  const latestPlan = useRef<ExplainResult | null>(null)
   const [explaining, setExplaining] = useState(false)
   const runId = useRef<string | null>(null)
   const lastFragmentOffset = useRef(0)
@@ -176,7 +180,10 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       if (!target?.sql.trim()) return
       setExplaining(true)
       try {
-        setPlan(await api.explainQuery(tab.connectionId, target.sql, analyze))
+        const next = await api.explainQuery(tab.connectionId, target.sql, analyze)
+        setPreviousPlan(latestPlan.current)
+        latestPlan.current = next
+        setPlan(next)
       } catch (err) {
         toast({ kind: 'error', message: t('Could not explain the query'), detail: errorMessage(err) })
       } finally {
@@ -480,12 +487,16 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
           onFormat={format}
           onSave={() => void save()}
           onAskAi={openInline}
+          onOpenObject={(object) => {
+            if (object.kind === 'routine') void openDefinition(tab.connectionId, routineObject(object.routine))
+            else useWorkspace.getState().open({ kind: 'structure', connectionId: tab.connectionId, table: { schema: object.table.schema, name: object.table.name }, title: t('{name} · structure', { name: object.table.name }) })
+          }}
         />
       </div>
       <Splitter direction="vertical" size={editorHeight} onResize={setEditorHeight} min={80} max={window.innerHeight - 200} />
       <div className="min-h-0 flex-1 border-t border-line">
         {plan ? (
-          <PlanView plan={plan} onClose={() => setPlan(null)} />
+          <PlanView plan={plan} previous={previousPlan} onClose={() => setPlan(null)} />
         ) : (
         <ResultsPanel
           outcomes={outcomes}
