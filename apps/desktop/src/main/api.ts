@@ -34,7 +34,7 @@ import {
   parseXlsx,
   parseJsonRows,
   createDriver,
-  cellToText,
+  isBinaryValue,
   DatabaseService,
   getDialect,
   inlineParams,
@@ -135,7 +135,13 @@ async function readParquet(path: string): Promise<string[][]> {
   try {
     const [r] = await duck.execute(`SELECT * FROM read_parquet('${path.replaceAll("'", "''")}')`)
     if (!r) return []
-    return [r.fields.map((f) => f.name), ...r.rows.map((row) => row.map((v) => (v === null ? null : cellToText(v))) as string[])]
+    // Values as written (cellToText is for display: it shortens numbers and binary data).
+    const text = (v: unknown) => {
+      if (v === null) return null
+      if (isBinaryValue(v as never)) throw new Error('The Parquet file has binary columns, which can’t be imported')
+      return typeof v === 'object' ? JSON.stringify(v) : String(v)
+    }
+    return [r.fields.map((f) => f.name), ...r.rows.map((row) => row.map(text) as string[])]
   } finally {
     await duck.close().catch(() => {})
   }

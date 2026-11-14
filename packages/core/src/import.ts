@@ -91,6 +91,19 @@ function excelDate(serial: number): string {
   return serial % 1 === 0 ? iso.slice(0, 10) : iso.slice(0, 19).replace('T', ' ')
 }
 
+/** A JSON number as written (JSON.parse would round a 19-digit key or a long decimal). */
+class ExactNumber {
+  constructor(readonly source: string) {}
+}
+
+/** JSON text of a parsed value whose numbers are ExactNumbers. */
+function jsonText(v: unknown): string {
+  if (v instanceof ExactNumber) return v.source
+  if (Array.isArray(v)) return `[${v.map(jsonText).join(',')}]`
+  if (v && typeof v === 'object') return `{${Object.entries(v).map(([k, x]) => `${JSON.stringify(k)}:${jsonText(x)}`).join(',')}}`
+  return JSON.stringify(v)
+}
+
 /**
  * JSON (an array of objects, or an object holding one) or JSON Lines (one object a line) as rows: a header of every
  * key in the order first seen, then the values; nested objects and arrays as JSON text, missing keys and null as null.
@@ -98,30 +111,38 @@ function excelDate(serial: number): string {
 export function parseJsonRows(text: string): (string | null)[][] {
   const trimmed = text.replace(/^\uFEFF/, '').trim()
   let records: unknown[]
+  // Numbers keep their written digits (a 19-digit key would otherwise be rounded by JSON.parse).
+  const exact = (_key: string, value: unknown, context?: { source?: string }) => (typeof value === 'number' && context?.source ? new ExactNumber(context.source) : value)
+  const parse = (json: string) => JSON.parse(json, exact as (key: string, value: unknown) => unknown) as unknown
   let whole: unknown
   try {
-    whole = JSON.parse(trimmed)
+    whole = parse(trimmed)
   } catch {
     whole = undefined
   }
   if (Array.isArray(whole)) records = whole
   else if (whole && typeof whole === 'object') {
-    const list = Object.values(whole).find((v) => Array.isArray(v))
-    records = Array.isArray(list) ? list : [whole]
+    // An API response's list under a well-known key; any other object is one record (its arrays are values).
+    const holder = whole as Record<string, unknown>
+    const key = ['data', 'items', 'results', 'records', 'rows', 'value', 'values', 'hits'].find((k) => Array.isArray(holder[k]) && (holder[k] as unknown[]).every((r) => !!r && typeof r === 'object' && !Array.isArray(r) && !(r instanceof ExactNumber)))
+    records = key ? (holder[key] as unknown[]) : [whole]
   } else {
     records = trimmed
       .split(/\r?\n/)
       .filter((l) => l.trim())
       .map((l, i) => {
         try {
-          return JSON.parse(l) as unknown
+          return parse(l)
         } catch {
           throw new Error(`Line ${i + 1} is not JSON`)
         }
       })
   }
-  const objects = records.filter((r): r is Record<string, unknown> => !!r && typeof r === 'object' && !Array.isArray(r))
-  if (!objects.length) throw new Error('No JSON objects to import')
+  const isObject = (r: unknown) => !!r && typeof r === 'object' && !Array.isArray(r) && !(r instanceof ExactNumber)
+  const bad = records.findIndex((r) => !isObject(r))
+  if (!records.some(isObject)) throw new Error('No JSON objects to import')
+  if (bad !== -1) throw new Error(`Record ${bad + 1} is not an object`)
+  const objects = records as Record<string, unknown>[]
   const keys: string[] = []
   const seen = new Set<string>()
   for (const o of objects) {
@@ -132,7 +153,7 @@ export function parseJsonRows(text: string): (string | null)[][] {
       }
     }
   }
-  const cell = (v: unknown): string | null => (v === null || v === undefined ? null : typeof v === 'object' ? JSON.stringify(v) : String(v))
+  const cell = (v: unknown): string | null => (v === null || v === undefined ? null : v instanceof ExactNumber ? v.source : typeof v === 'object' ? jsonText(v) : String(v))
   return [keys, ...objects.map((o) => keys.map((k) => cell(o[k])))]
 }
 

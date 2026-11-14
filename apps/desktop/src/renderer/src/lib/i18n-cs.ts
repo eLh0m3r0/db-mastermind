@@ -1868,4 +1868,6 @@ export const cs: Record<string, string> = {
   'Stopped: the remaining connections were not run.': 'Zastaveno: na zbývajících připojeních se nespouštělo.',
   'Run the query on several connections…': 'Spustit dotaz na více připojeních…',
   'CSV (UTF-8 or Windows-1250, delimiter detected) · first sheet of .xlsx · JSON or JSON Lines · Parquet': 'CSV (UTF-8 nebo Windows-1250, oddělovač se pozná) · první list .xlsx · JSON nebo JSON Lines · Parquet',
+  'keys: see note': 'klíče: viz poznámka',
+  'New rows’ generated keys are not moved past the copied ones: set the sequence before inserting.': 'Generované klíče nových řádků nenavazují na zkopírované: před vkládáním nastavte sekvenci.',
 }
