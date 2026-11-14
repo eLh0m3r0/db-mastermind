@@ -81,6 +81,12 @@ describe('SQL expressions in cells', () => {
     // Second review: national q-quoting and BigQuery triple quotes.
     expect(checkCellExpression("(nq'(')') WHERE 1=1 --'", 'oracle')).toMatch(/q'/)
     expect(checkCellExpression(`'''a' "''' ) WHERE TRUE -- "`, 'bigquery')).toMatch(/triple/)
+    // Third review: comments that end at a line break, ClickHouse quoting and comments.
+    expect(checkCellExpression("1 # '\n) WHERE TRUE -- '", 'bigquery')).toMatch(/one line/)
+    expect(checkCellExpression("1 # ' ) WHERE TRUE '", 'bigquery')).toMatch(/comment/)
+    expect(checkCellExpression("$x$'$x$ ) WHERE TRUE -- '", 'clickhouse')).toMatch(/dollar/)
+    expect(checkCellExpression("1 // ' ) '", 'clickhouse')).toMatch(/comment/)
+    expect(checkCellExpression("1 #! ' ) '", 'clickhouse')).toMatch(/comment/)
     // Brackets quote only in SQL Server; elsewhere what is inside them still counts.
     expect(checkCellExpression('x[) WHERE true --]', 'postgres')).toMatch(/comment|parenthes/)
     expect(checkCellExpression("[a)b]", 'mssql')).toBeNull()

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { definitionSupport, tableDefinition, withLeadingCreate, type TableInfo } from '../src/index.js'
+import { definitionSupport, qualifyOracleHeader, tableDefinition, withLeadingCreate, type TableInfo } from '../src/index.js'
 
 describe('withLeadingCreate', () => {
   it('rewrites the first CREATE after comments and keeps an existing OR REPLACE / OR ALTER', () => {
@@ -41,5 +41,24 @@ describe('definitionSupport', () => {
   it('offers routines only where the database keeps their source', () => {
     expect(definitionSupport('postgres')).toEqual({ views: true, routines: true })
     expect(definitionSupport('sqlite')).toEqual({ views: true, routines: false })
+  })
+})
+
+describe('qualifyOracleHeader', () => {
+  const q = '"SHOP"."ADD_ONE"'
+  it.each([
+    ['FUNCTION add_one(x NUMBER) RETURN NUMBER IS', `FUNCTION ${q}(x NUMBER) RETURN NUMBER IS`],
+    ['  function "Add_One" (x NUMBER)', `  function ${q} (x NUMBER)`],
+    ['FUNCTION /* note */ add_one RETURN NUMBER', `FUNCTION /* note */ ${q} RETURN NUMBER`],
+    ['-- head\nPROCEDURE other.touch_it IS', `-- head\nPROCEDURE ${q} IS`],
+    ['FUNCTION café(x NUMBER)', `FUNCTION ${q}(x NUMBER)`],
+    ['FUNCTION "OWN" . "X" RETURN NUMBER', `FUNCTION ${q} RETURN NUMBER`],
+  ])('%s', (source, out) => {
+    expect(qualifyOracleHeader(source, q)).toBe(out)
+  })
+
+  it('refuses a header it can not read instead of leaving the name unqualified', () => {
+    expect(() => qualifyOracleHeader('PACKAGE BODY x IS', q)).toThrow(/header/)
+    expect(() => qualifyOracleHeader('FUNCTION /* open', q)).toThrow(/header/)
   })
 })
