@@ -50,6 +50,11 @@ describe('splitStatements', () => {
     expect(texts(script, 'mysql')).toEqual([`select 'it\\'s;'`, 'create procedure p() begin select 1; select 2; end', 'select 3'])
   })
 
+  it('ends a statement at a $$ delimiter right after a word (END$$), though MySQL names may contain $', () => {
+    const script = `DELIMITER $$\ncreate procedure p() begin if 1 then select 1; end if; end$$\nDELIMITER ;\nselect a$b from t;`
+    expect(texts(script, 'mysql')).toEqual(['create procedure p() begin if 1 then select 1; end if; end', 'select a$b from t'])
+  })
+
   it('splits T-SQL on GO lines and bracket identifiers', () => {
     const script = `select [a;b] from t;\nselect 1\ngo\nselect 2\nGO\n`
     expect(texts(script, 'mssql')).toEqual(['select [a;b] from t', 'select 1', 'select 2'])

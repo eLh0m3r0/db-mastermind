@@ -25,7 +25,7 @@ import {
   TerminalSquare,
   Trash2,
 } from 'lucide-react'
-import { generateMigration, getDialect, incomingReferences, migrationScript, qualify, toDesignTable, type SchemaSnapshot, type TableInfo } from '@dbmastermind/core/browser'
+import { definitionSupport, generateMigration, getDialect, incomingReferences, migrationScript, qualify, routineObject, toDesignTable, type RoutineInfo, type SchemaSnapshot, type TableInfo } from '@dbmastermind/core/browser'
 import type { StoredConnection } from '@shared/api'
 import { IconButton } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
@@ -35,6 +35,7 @@ import { exportDataDictionary } from '@/lib/dictionary'
 import { copyText, cn, formatCount, fuzzyScore } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { newTable } from '@/lib/newTable'
+import { openDefinition } from '@/lib/definitions'
 import { askAi } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
 import { tp, useT } from '@/lib/i18n'
@@ -45,7 +46,7 @@ type Node =
   | { kind: 'hidden'; key: string; count: number; depth: number }
   | { kind: 'table'; key: string; table: TableInfo; depth: number }
   | { kind: 'column'; key: string; table: TableInfo; column: TableInfo['columns'][number]; depth: number }
-  | { kind: 'routine'; key: string; name: string; schema?: string; routineKind: string; depth: number }
+  | { kind: 'routine'; key: string; routine: RoutineInfo; depth: number }
 
 
 export function generateSql(kind: 'select' | 'insert' | 'update' | 'delete' | 'count', table: TableInfo, connection: StoredConnection): string {
@@ -84,6 +85,9 @@ export const EXPLAIN_COLUMN_PROMPT =
 
 export const EXPLAIN_TABLE_PROMPT =
   'Explain the table {table}: what it stores, what its columns mean (look at a few sample rows to decode statuses and codes), how it relates to other tables, and two or three typical queries. Use the knowledge base if it documents this table.'
+
+export const EXPLAIN_ROUTINE_PROMPT =
+  'Explain the routine {routine}: what it does, its parameters and what it returns, which tables it reads or changes, and how it is called. Read its definition first. Use the knowledge base if it documents it.'
 
 export function SchemaTree({ connection, schema }: { connection: StoredConnection; schema?: SchemaSnapshot }) {
   const ROW = useCompact() ? 21 : 24
@@ -177,7 +181,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
         out.push({ kind: 'group', key: groupKey, label: 'Functions & procedures', count: routines.length, depth: base, groupKey })
         if (!expanded.has(`${groupKey}:collapsed`) || q) {
           for (const r of routines) {
-            out.push({ kind: 'routine', key: `r:${s}.${r.name}.${r.arguments ?? ''}`, name: r.name, schema: r.schema, routineKind: r.kind, depth: base + 1 })
+            out.push({ kind: 'routine', key: `r:${s}.${r.name}.${r.arguments ?? ''}`, routine: r, depth: base + 1 })
           }
         }
       }
@@ -207,6 +211,9 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
     openMenu(e, [
       { label: tr('Open data'), icon: <Table2 size={13} />, onClick: () => openTable(t) },
       { label: tr('Open structure'), icon: <Layers size={13} />, onClick: () => openTab({ kind: 'structure', connectionId: connection.id, table: { schema: t.schema, name: t.name }, title: tr('{name} · structure', { name: t.name }) }) },
+      ...(t.type === 'table' || definitionSupport(connection.driver).views
+        ? [{ label: tr('Definition (SQL)'), icon: <FileCode2 size={13} />, onClick: () => void openDefinition(connection.id, { schema: t.schema, name: t.name, kind: t.type === 'foreign_table' ? 'table' : t.type }) }]
+        : []),
       { label: tr('Show in diagram'), icon: <Network size={13} />, onClick: () => openTab({ kind: 'diagram', connectionId: connection.id, title: tr('Diagram: {name}', { name: t.name }), focus: t.name }) },
       {
         label: tr('Compare data with…'),
@@ -448,10 +455,32 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
                 </div>
               )
             }
+            const r = node.routine
+            const canDefine = definitionSupport(connection.driver).routines
+            const qualifiedRoutine = `${r.schema ? `${r.schema}.` : ''}${r.name}`
             return (
-              <div key={node.key} className={cn(rowClass, 'text-fg-muted')} style={style} title={`${node.routineKind} ${node.name}`}>
+              <div
+                key={node.key}
+                className={cn(rowClass, 'text-fg-muted', canDefine && 'cursor-pointer')}
+                style={style}
+                title={`${r.kind} ${qualifiedRoutine}(${r.arguments ?? ''})${r.returnType ? ` → ${r.returnType}` : ''}${canDefine ? `\n${tr('Click to open its definition')}` : ''}`}
+                data-routine={r.name}
+                onClick={canDefine ? () => void openDefinition(connection.id, routineObject(r)) : undefined}
+                onContextMenu={(e) =>
+                  openMenu(e, [
+                    ...(canDefine ? [{ label: tr('Definition (SQL)'), icon: <FileCode2 size={13} />, onClick: () => void openDefinition(connection.id, routineObject(r)) }] : []),
+                    { label: tr('Copy name'), icon: <Copy size={13} />, onClick: () => void copyText(r.name) },
+                    {
+                      label: tr('Explain with AI'),
+                      icon: <Sparkles size={13} />,
+                      onClick: () => askAi({ prompt: tr(EXPLAIN_ROUTINE_PROMPT, { routine: qualifiedRoutine }), send: true }),
+                    },
+                  ])
+                }
+              >
                 <Code2 size={12} className="shrink-0 text-fg-faint" />
-                <span className="truncate">{node.name}</span>
+                <span className="truncate">{r.name}</span>
+                {r.arguments ? <span className="ml-auto shrink-0 truncate pl-2 font-mono text-[10.5px] text-fg-faint">({r.arguments})</span> : null}
               </div>
             )
           })}

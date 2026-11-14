@@ -1663,4 +1663,8 @@ export const cs: Record<string, string> = {
   'The transaction failed, so it can only be rolled back: nothing was committed.': 'Transakce selhala, lze ji jen vrátit zpět: nic se nepotvrdilo.',
   'This tab has no open transaction any more (it ended on the server, e.g. after a lost connection): nothing to commit.': 'Záložka už nemá otevřenou transakci (skončila na serveru, např. po výpadku spojení): není co potvrdit.',
   'The database rolled the transaction back instead of committing it: nothing was saved.': 'Databáze transakci místo potvrzení vrátila zpět: nic se neuložilo.',
+  'Definition (SQL)': 'Definice (SQL)',
+  'Click to open its definition': 'Kliknutím otevřete definici',
+  'Could not read the definition of {name}': 'Definici {name} se nepodařilo načíst',
+  'Explain the routine {routine}: what it does, its parameters and what it returns, which tables it reads or changes, and how it is called. Read its definition first. Use the knowledge base if it documents it.': 'Vysvětli rutinu {routine}: co dělá, jaké má parametry a co vrací, které tabulky čte nebo mění a jak se volá. Nejdřív si přečti její definici. Pokud ji popisuje znalostní báze, vycházej z ní. Odpovídej česky.',
 }
