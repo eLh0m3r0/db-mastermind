@@ -25,6 +25,9 @@ interface Pending {
 }
 
 let pending: Pending | undefined
+/** The download in progress: a check by hand while the background check downloads joins it instead of starting over. */
+type Download = { version?: string; waiting: ((version: string) => void)[]; done: Promise<string | undefined> }
+let inFlight: Download | undefined
 let relaunch = false
 let hooked = false
 let swapLog: Log | undefined
@@ -60,8 +63,29 @@ export function parseLatestMac(yml: string): { version: string; files: { url: st
   return { version, files }
 }
 
-/** Looks for a newer version; downloads, verifies and unpacks it. Resolves with the version when one is ready. */
-export async function downloadMacUpdate(current: string, newer: (a: string, b: string) => boolean, log: Log): Promise<string | undefined> {
+/**
+ * Looks for a newer version; downloads, verifies and unpacks it. Resolves with the version when one is ready.
+ * `found` is told the version as soon as the download starts (the zip takes a while, the user wants to know now).
+ */
+export function downloadMacUpdate(current: string, newer: (a: string, b: string) => boolean, log: Log, found?: (version: string) => void): Promise<string | undefined> {
+  if (inFlight) {
+    if (!found) return inFlight.done
+    if (inFlight.version) found(inFlight.version)
+    else inFlight.waiting.push(found)
+    return inFlight.done
+  }
+  const run: Download = { waiting: found ? [found] : [], done: Promise.resolve(undefined) }
+  run.done = fetchMacUpdate(current, newer, log, (version) => {
+    run.version = version
+    for (const tell of run.waiting) tell(version)
+  }).finally(() => {
+    if (inFlight === run) inFlight = undefined
+  })
+  inFlight = run
+  return run.done
+}
+
+async function fetchMacUpdate(current: string, newer: (a: string, b: string) => boolean, log: Log, found: (version: string) => void): Promise<string | undefined> {
   const res = await fetch(`${FEED}/latest-mac.yml`, { signal: AbortSignal.timeout(15_000) })
   if (!res.ok) throw new Error(`latest-mac.yml: HTTP ${res.status}`)
   const latest = parseLatestMac(await res.text())
@@ -73,6 +97,7 @@ export async function downloadMacUpdate(current: string, newer: (a: string, b: s
   const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
   const file = latest.files.find((f) => f.url.endsWith(`-mac-${arch}.zip`))
   if (!file) throw new Error(`No ${arch} zip in latest-mac.yml`)
+  found(latest.version)
 
   const dir = join(app.getPath('userData'), 'updates', latest.version)
   rmSync(dir, { recursive: true, force: true })

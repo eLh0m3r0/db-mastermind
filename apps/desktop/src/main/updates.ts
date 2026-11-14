@@ -174,6 +174,7 @@ export function startUpdateChecks(notify: (info: { version: string; url: string 
 export type UpdateCheck =
   | { state: 'up-to-date'; version: string }
   | { state: 'downloading'; version: string }
+  | { state: 'ready'; version: string }
   | { state: 'available'; version: string; url: string }
   | { state: 'disabled' | 'development' | 'offline' }
 
@@ -183,9 +184,19 @@ export async function checkNow(ready: (info: { version: string }) => void): Prom
   if (disabled()) return { state: 'disabled' }
   try {
     if (canAutoUpdate() && process.platform === 'darwin') {
-      const version = await downloadMacUpdate(app.getVersion(), newer, log)
-      if (version) ready({ version })
-      return version ? { state: 'downloading', version } : { state: 'up-to-date', version: app.getVersion() }
+      // Answers once the download starts; the restart prompt (`ready`) follows when it is done.
+      return await new Promise<UpdateCheck>((resolve, reject) => {
+        downloadMacUpdate(app.getVersion(), newer, log, (version) => resolve({ state: 'downloading', version })).then(
+          (version) => {
+            if (version) ready({ version })
+            resolve(version ? { state: 'ready', version } : { state: 'up-to-date', version: app.getVersion() })
+          },
+          (err: unknown) => {
+            log('ERROR', 'Update download failed', err)
+            reject(err)
+          },
+        )
+      })
     }
     if (canAutoUpdate()) {
       const result = await (await autoUpdaterFor(ready)).checkForUpdates()

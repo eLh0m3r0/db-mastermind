@@ -621,7 +621,7 @@ export interface MastermindApi {
   restoreDatabase(connectionId: string): Promise<BackupResult | null>
   /** Checks for a new version now (Help → Check for Updates). */
   checkForUpdatesNow(): Promise<
-    { state: 'up-to-date' | 'downloading'; version: string } | { state: 'available'; version: string; url: string } | { state: 'disabled' | 'development' | 'offline' }
+    { state: 'up-to-date' | 'downloading' | 'ready'; version: string } | { state: 'available'; version: string; url: string } | { state: 'disabled' | 'development' | 'offline' }
   >
   /** AI tools defined in the connection's knowledge base (tools/*.sql) and files that aren't valid tools. */
   listTeamTools(connectionId: string): Promise<{ tools: { name: string; description: string; params: string[] }[]; errors: string[] }>

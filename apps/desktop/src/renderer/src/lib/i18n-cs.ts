@@ -1430,6 +1430,7 @@ export const cs: Record<string, string> = {
   'Restart now': 'Restartovat',
   'DB Mastermind {version} is up to date': 'DB Mastermind {version} je aktuální',
   'Downloading DB Mastermind {version}…': 'Stahuji DB Mastermind {version}…',
+  'Checking for updates…': 'Hledám aktualizace…',
   'You will be asked to restart when it is ready.': 'Až bude připraven, nabídnu restart.',
   'Update checks are turned off by your organization': 'Kontrolu aktualizací vypnula vaše organizace',
   'Updates are checked in installed builds only': 'Aktualizace se kontrolují jen v nainstalované aplikaci',

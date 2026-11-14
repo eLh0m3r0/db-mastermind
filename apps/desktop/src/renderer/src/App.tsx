@@ -15,7 +15,7 @@ import { t } from '@/lib/i18n'
 import { installKeymap } from '@/lib/keymap'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
-import { askAi, toast, useUi } from '@/store/ui'
+import { askAi, dismissToast, toast, useUi } from '@/store/ui'
 import { confirmCloseTabs, useWorkspace } from '@/store/workspace'
 import { ActivityView } from './features/activity/ActivityView'
 import { AiPanel } from './features/ai/AiPanel'
@@ -69,8 +69,12 @@ function useGlobalCommands() {
           case 'new-model':
             ws.open({ kind: 'model', connectionId: modelConnection(connId), title: t('Model'), text: '' }, { reuse: false })
             break
-          case 'check-updates':
+          case 'check-updates': {
+            const checking = toast({ kind: 'info', message: t('Checking for updates…'), duration: 0 })
             void window.mastermind.api.checkForUpdatesNow().then((r) => {
+              dismissToast(checking)
+              // 'ready': the update:ready prompt (Restart now) says it.
+              if (r.state === 'ready') return
               if (r.state === 'up-to-date') toast({ kind: 'success', message: t('DB Mastermind {version} is up to date', { version: r.version }) })
               else if (r.state === 'downloading') toast({ kind: 'info', message: t('Downloading DB Mastermind {version}…', { version: r.version }), detail: t('You will be asked to restart when it is ready.') })
               else if (r.state === 'available')
@@ -78,8 +82,12 @@ function useGlobalCommands() {
               else if (r.state === 'disabled') toast({ kind: 'info', message: t('Update checks are turned off by your organization') })
               else if (r.state === 'development') toast({ kind: 'info', message: t('Updates are checked in installed builds only') })
               else toast({ kind: 'error', message: t('Could not check for updates (offline?)') })
+            }, () => {
+              dismissToast(checking)
+              toast({ kind: 'error', message: t('Could not check for updates (offline?)') })
             })
             break
+          }
           case 'split-view':
             // Toggles: split the current tab off to the right, or go back to one pane.
             if (ws.split) ws.unsplit()
@@ -193,15 +201,18 @@ export function App() {
     const retryNow = () => useConnections.getState().retryNow()
     window.addEventListener('online', retryNow)
     window.addEventListener('focus', retryNow)
-    const offReady = bridge.on('update:ready', (info) =>
+    const offReady = bridge.on('update:ready', (info) => {
+      const message = t('DB Mastermind {version} is ready', { version: info.version })
+      // A check by hand and the background check can both finish the same download.
+      if (useUi.getState().toasts.some((x) => x.message === message)) return
       toast({
         kind: 'success',
-        message: t('DB Mastermind {version} is ready', { version: info.version }),
+        message,
         detail: t('It installs when you quit, or restart now.'),
         duration: 0,
         action: { label: t('Restart now'), run: () => void window.mastermind.api.installUpdate() },
-      }),
-    )
+      })
+    })
     const uninstall = installKeymap()
     return () => {
       offTeam()
