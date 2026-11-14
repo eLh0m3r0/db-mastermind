@@ -44,6 +44,7 @@ export function CommandPalette() {
 
   const commands: { id: string; label: string; icon: React.ReactNode; shortcut?: string; run: () => void; needsConnection?: boolean }[] = [
     { id: 'new-query', label: t('New query tab'), icon: <TerminalSquare size={14} />, shortcut: `${modKey}T`, run: () => runCommand('new-query'), needsConnection: true },
+    { id: 'open-sql-file', label: t('Open SQL file…'), icon: <FileCode2 size={14} />, shortcut: `⇧${modKey}O`, run: () => runCommand('open-sql-file') },
     { id: 'query-file', label: t('Query a CSV, Parquet, JSON or Excel file…'), icon: <FileSpreadsheet size={14} />, run: () => void queryFile() },
     { id: 'new-connection', label: t('New connection…'), icon: <Plus size={14} />, run: () => setUi({ modal: { kind: 'connection' } }) },
     { id: 'diagram', label: t('Open ER diagram'), icon: <Network size={14} />, run: () => connectionId && openTab({ kind: 'diagram', connectionId, title: t('ER diagram') }), needsConnection: true },

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { DesignTable, DriverId, FilterNode, SortSpec, TableRef, DezignScripting, DezignSqlObject, DezignUserProperty, DezignLabel } from '@dbmastermind/core/browser'
-import type { DiagramNote, ModelDiagram, DiagramBox, DiagramDisplay } from '@shared/api'
+import type { DiagramNote, ModelDiagram, DiagramBox, DiagramDisplay, SqlFileFormat } from '@shared/api'
 import { api } from '@/lib/api'
 import { debounce, uid } from '@/lib/utils'
 import { t, tp } from '@/lib/i18n'
@@ -19,6 +19,10 @@ export interface QueryTab extends BaseTab {
   savedQueryId?: string
   /** Text as last saved, to show the unsaved dot. */
   savedSql?: string
+  /** The .sql file the tab edits: ⌘S writes it back. */
+  path?: string
+  /** How the file is written back, and its modification time as last read or written (to notice outside changes). */
+  file?: { format: SqlFileFormat; mtimeMs: number }
   /** The database object whose definition the tab was opened with (opening it again comes back here). */
   object?: { schema?: string; name: string; kind: string; arguments?: string | null }
 }

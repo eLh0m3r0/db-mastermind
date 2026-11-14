@@ -3,7 +3,7 @@ import { runCommand } from '@/lib/commands'
 import { t } from '@/lib/i18n'
 import { errorMessage } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
-import { toast, useUi } from '@/store/ui'
+import { dismissToast, toast, useUi } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
 import { modelTabFromFile } from '@/features/model/open-model'
 
@@ -79,9 +79,67 @@ export async function openModel(path?: string): Promise<void> {
   }
 }
 
-/** A file handed to the app (double-click in the system, command line, drop): a model, or data to query. */
+/** A file handed to the app (double-click in the system, command line, drop): a SQL script, a model, or data to query. */
 export function openFile(path: string): void {
-  void (MODEL_FILE.test(path) ? openModel(path) : queryFile(path))
+  void (SQL_FILE.test(path) ? openSqlFile(path) : MODEL_FILE.test(path) ? openModel(path) : queryFile(path))
+}
+
+export const SQL_FILE = /\.sql$/i
+
+const waitingSqlFiles = new Set<string>()
+let stopWaiting: (() => void) | undefined
+let waitingToast: number | undefined
+
+/**
+ * Opens a .sql file in a query tab on the current connection (the active tab's, else the one selected in the
+ * sidebar); asks for the file when `path` is omitted. A file already open goes back to its tab.
+ */
+export async function openSqlFile(path?: string): Promise<void> {
+  const ws = useWorkspace.getState()
+  const connections = useConnections.getState()
+  const active = ws.tabs.find((x) => x.id === ws.activeTabId)?.connectionId
+  const connectionId = [active, useUi.getState().selectedConnectionId].find((id) => id && connections.list.some((c) => c.id === id))
+  if (!connectionId) {
+    // Never guess (it could be production): the file waits for the connection the user picks.
+    if (path) {
+      waitingSqlFiles.add(path)
+      if (!stopWaiting) {
+        stopWaiting = useUi.subscribe((state, before) => {
+          if (!state.selectedConnectionId || state.selectedConnectionId === before.selectedConnectionId) return
+          const paths = [...waitingSqlFiles]
+          waitingSqlFiles.clear()
+          stopWaiting?.()
+          stopWaiting = undefined
+          if (waitingToast !== undefined) dismissToast(waitingToast)
+          for (const p of paths) void openSqlFile(p)
+        })
+      }
+      if (waitingToast !== undefined) dismissToast(waitingToast)
+      waitingToast = toast({ kind: 'info', message: t('Select a connection to open {name}', { name: path.split(/[\\/]/).pop() ?? path }), detail: t('The SQL file opens in a query tab of the connection you select.'), duration: 0 })
+    } else toast({ kind: 'info', message: t('Choose a connection first'), detail: t('A SQL file opens in a query tab of the connection selected in the sidebar.') })
+    return
+  }
+  const open = path ? ws.tabs.find((x) => x.kind === 'query' && x.path === path) : undefined
+  if (open) {
+    ws.activate(open.id)
+    return
+  }
+  try {
+    const file = await api.openSqlFile(path)
+    if (!file) return
+    const again = useWorkspace.getState().tabs.find((x) => x.kind === 'query' && x.path === file.path)
+    if (again) {
+      useWorkspace.getState().activate(again.id)
+      return
+    }
+    useWorkspace.getState().open(
+      { kind: 'query', connectionId, title: file.name, sql: file.text, savedSql: file.text, path: file.path, file: { format: file.format, mtimeMs: file.mtimeMs } },
+      { reuse: false },
+    )
+    if (file.format.encoding === 'windows-1250') toast({ kind: 'info', message: t('{name} is in Windows-1250', { name: file.name }), detail: t('It is saved back as UTF-8.') })
+  } catch (err) {
+    toast({ kind: 'error', message: t('Could not open the file'), detail: errorMessage(err) })
+  }
 }
 
 export const QUERYABLE_FILE = /\.(csv|tsv|txt|parquet|json|jsonl|ndjson|xlsx|db|sqlite|sqlite3|db3|duckdb)$/i

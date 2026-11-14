@@ -9,7 +9,7 @@ import { ContextMenuHost } from '@/components/ui/ContextMenu'
 import { Splitter } from '@/components/ui/Splitter'
 import { Toasts } from '@/components/ui/Toasts'
 import { bridge } from '@/lib/api'
-import { MODEL_FILE, modelConnection, openFile, openModel, QUERYABLE_FILE } from '@/lib/files'
+import { MODEL_FILE, modelConnection, openFile, openModel, openSqlFile, QUERYABLE_FILE, SQL_FILE } from '@/lib/files'
 import { onCommand, runCommand } from '@/lib/commands'
 import { t } from '@/lib/i18n'
 import { installKeymap } from '@/lib/keymap'
@@ -65,6 +65,9 @@ function useGlobalCommands() {
             break
           case 'open-model':
             void openModel()
+            break
+          case 'open-sql-file':
+            void openSqlFile()
             break
           case 'new-model':
             ws.open({ kind: 'model', connectionId: modelConnection(connId), title: t('Model'), text: '' }, { reuse: false })
@@ -133,7 +136,7 @@ function useGlobalCommands() {
   )
 }
 
-/** Dropping a CSV / Parquet / JSON / Excel file anywhere opens it for SQL (other drops keep their default handling). */
+/** Dropping a .sql script, a model or a CSV / Parquet / JSON / Excel file anywhere opens it (other drops keep their default handling). */
 function useFileDrop() {
   useEffect(() => {
     const hasFiles = (e: DragEvent) => !!e.dataTransfer && [...e.dataTransfer.types].includes('Files')
@@ -145,9 +148,9 @@ function useFileDrop() {
       // Never let Electron navigate to the dropped file, nor the editor paste its contents.
       e.preventDefault()
       e.stopPropagation()
-      const file = [...(e.dataTransfer?.files ?? [])].find((f) => MODEL_FILE.test(f.name) || QUERYABLE_FILE.test(f.name))
+      const file = [...(e.dataTransfer?.files ?? [])].find((f) => SQL_FILE.test(f.name) || MODEL_FILE.test(f.name) || QUERYABLE_FILE.test(f.name))
       if (file) openFile(bridge.pathForFile(file))
-      else toast({ kind: 'info', message: t('Drop a model (DBML, DeZign) to open it, or a CSV, Parquet, JSON or Excel file to query it with SQL') })
+      else toast({ kind: 'info', message: t('Drop a SQL script or a model (DBML, DeZign) to open it, or a CSV, Parquet, JSON or Excel file to query it with SQL') })
     }
     window.addEventListener('dragover', onDragOver)
     window.addEventListener('drop', onDrop, true)

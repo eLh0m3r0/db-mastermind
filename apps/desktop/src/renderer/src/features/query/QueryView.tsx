@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Splitter } from '@/components/ui/Splitter'
-import { api, modKey } from '@/lib/api'
+import { api, ApiError, modKey } from '@/lib/api'
 import { debounce, errorMessage, uid } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
@@ -201,14 +201,92 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
     }
   }, [driver])
 
+  /** The tab as the store has it now (the `tab` prop can lag a debounced text update). */
+  const current = useCallback(() => useWorkspace.getState().tabs.find((x) => x.id === tab.id) as QueryTab | undefined, [tab.id])
+
+  const saveToFile = useCallback(
+    async (force = false): Promise<void> => {
+      const now = current()
+      if (!now?.path || !now.file) return
+      const sql = editor.current?.getValue() ?? ''
+      try {
+        const mtimeMs = await api.writeSqlFile(now.path, sql, now.file.format, now.file.mtimeMs, force)
+        updateTab(tab.id, { sql, savedSql: sql, file: { ...now.file, mtimeMs } })
+        toast({ kind: 'success', message: t('Saved “{name}”', { name: now.title }) })
+      } catch (err) {
+        const code = err instanceof ApiError ? err.code : undefined
+        if (code === 'FILE_CHANGED') {
+          const ok = await confirmAction({
+            title: t('“{name}” was changed on disk', { name: now.title }),
+            message: t('Another program changed the file since it was opened here. Overwrite it with this tab’s text?'),
+            confirmLabel: t('Overwrite'),
+            danger: true,
+          })
+          if (ok) await saveToFile(true)
+        } else if (code === 'FILE_MISSING') {
+          toast({ kind: 'warning', message: t('The file was moved or deleted'), detail: now.path, action: { label: t('Save as…'), run: () => void saveAsFile() } })
+        } else toast({ kind: 'error', message: t('Could not save the file'), detail: errorMessage(err) })
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [current, tab.id, updateTab, t],
+  )
+
+  /** Makes the tab a .sql file's tab (from the Save query dialog, or when its file went away). */
+  const saveAsFile = useCallback(async () => {
+    const now = current()
+    const sql = editor.current?.getValue() ?? ''
+    try {
+      const file = await api.saveSqlFileAs(sql, now?.title ?? 'query')
+      if (!file) return
+      updateTab(tab.id, { sql, savedSql: sql, path: file.path, title: file.name, file: { format: file.format, mtimeMs: file.mtimeMs }, savedQueryId: undefined })
+      setSaveOpen(false)
+      toast({ kind: 'success', message: t('Saved “{name}”', { name: file.name }) })
+    } catch (err) {
+      toast({ kind: 'error', message: t('Could not save the file'), detail: errorMessage(err) })
+    }
+  }, [current, tab.id, updateTab, t])
+
+  // A file changed by another program: reloaded when the tab has nothing unsaved, offered otherwise (once per change).
+  const warnedAbout = useRef<number | null>(null)
+  useEffect(() => {
+    if (!active || !tab.path) return
+    let stopped = false
+    const look = async () => {
+      const now = current()
+      if (!now?.path || !now.file) return
+      const mtime = await api.sqlFileTime(now.path).catch(() => null)
+      if (stopped || mtime === null || Math.abs(mtime - now.file.mtimeMs) <= 1 || warnedAbout.current === mtime) return
+      const reload = async () => {
+        const file = await api.openSqlFile(now.path).catch(() => null)
+        if (!file) return
+        editor.current?.setValue(file.text)
+        updateTab(tab.id, { sql: file.text, savedSql: file.text, file: { format: file.format, mtimeMs: file.mtimeMs } })
+      }
+      const dirty = (editor.current?.getValue() ?? now.sql) !== now.savedSql
+      if (!dirty) await reload()
+      else {
+        warnedAbout.current = mtime
+        toast({ kind: 'warning', message: t('“{name}” was changed on disk', { name: now.title }), detail: t('This tab has unsaved changes: they stay until you reload.'), duration: 0, action: { label: t('Reload from disk'), run: () => void reload() } })
+      }
+    }
+    void look()
+    window.addEventListener('focus', look)
+    return () => {
+      stopped = true
+      window.removeEventListener('focus', look)
+    }
+  }, [active, tab.path, tab.id, current, updateTab, t])
+
   const save = useCallback(async () => {
+    if (current()?.path) return saveToFile()
     if (tab.savedQueryId) {
       const sql = editor.current?.getValue() ?? ''
       await api.saveQuery({ id: tab.savedQueryId, name: tab.title, sql, connectionId: tab.connectionId })
       updateTab(tab.id, { savedSql: sql })
       toast({ kind: 'success', message: t('Saved “{name}”', { name: tab.title }) })
     } else setSaveOpen(true)
-  }, [tab, updateTab, t])
+  }, [tab, updateTab, t, current, saveToFile])
 
   // Inline AI (Cmd/Ctrl+I): describe the SQL, it lands in the editor (replacing the selection, if any).
   const [inline, setInline] = useState<{ prompt: string; busy: boolean } | null>(null)
@@ -299,7 +377,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
         <Button size="sm" variant="ghost" icon={<Wand2 size={14} />} onClick={format} title={`${t('Format SQL')} (⇧${modKey}F)`}>
           <span className="@max-[1050px]:hidden">{t('Format')}</span>
         </Button>
-        <Button size="sm" variant="ghost" icon={<BookmarkPlus size={14} />} onClick={() => void save()} title={`${t('Save query')} (${modKey}S)`}>
+        <Button size="sm" variant="ghost" icon={<BookmarkPlus size={14} />} onClick={() => void save()} title={`${tab.path ? t('Save to {file}', { file: tab.path }) : t('Save query')} (${modKey}S)`}>
           <span className="@max-[1050px]:hidden">{t('Save')}</span>
         </Button>
         <Button
@@ -448,6 +526,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
         open={saveOpen}
         initialName={/^(Query|Dotaz) \d+$/.test(tab.title) ? '' : tab.title}
         onClose={() => setSaveOpen(false)}
+        onSaveAsFile={() => void saveAsFile()}
         onSave={async (name, folder) => {
           const sql = editor.current?.getValue() ?? ''
           const saved = await api.saveQuery({ name, folder: folder || undefined, sql, connectionId: tab.connectionId })
@@ -465,11 +544,13 @@ function SaveQueryModal({
   initialName,
   onClose,
   onSave,
+  onSaveAsFile,
 }: {
   open: boolean
   initialName: string
   onClose: () => void
   onSave: (name: string, folder: string) => Promise<void>
+  onSaveAsFile: () => void
 }) {
   const [name, setName] = useState(initialName)
   const [folder, setFolder] = useState('')
@@ -485,6 +566,9 @@ function SaveQueryModal({
       width={420}
       footer={
         <>
+          <button type="button" className="text-[12px] text-accent hover:underline" onClick={onSaveAsFile} data-testid="save-as-sql-file">
+            {t('Save as a .sql file instead…')}
+          </button>
           <div className="flex-1" />
           <Button onClick={onClose}>{t('Cancel')}</Button>
           <Button variant="primary" disabled={!name.trim()} onClick={() => void onSave(name.trim(), folder.trim())}>
