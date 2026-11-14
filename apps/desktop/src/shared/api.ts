@@ -1,6 +1,8 @@
 import type {
   ConnectionConfig,
   ConnectionProposal,
+  CopiedTable,
+  CopyProgress,
   ColumnProfile,
   StorageReport,
   TopQueries,
@@ -432,7 +434,7 @@ export interface KnowledgeFileInfo {
 }
 
 export interface ImportPreview {
-  format: 'csv' | 'xlsx'
+  format: 'csv' | 'xlsx' | 'json' | 'parquet'
   delimiter?: string
   encoding?: string
   rows: string[][]
@@ -701,6 +703,8 @@ export interface MastermindApi {
   /** Commit / Roll back of a query tab's open transaction; resolves with the state after it. */
   endTransaction(connectionId: string, session: string, action: 'commit' | 'rollback'): Promise<TransactionState>
   listActivity(connectionId: string): Promise<SessionActivity[]>
+  /** Copies tables (structure and data) to another connection; progress on 'copy:progress', stopped by cancelQuery(runId). */
+  copyTables(request: { sourceId: string; targetId: string; tables: TableRef[]; targetSchema?: string; mode: 'append' | 'replace'; runId: string }): Promise<CopiedTable[]>
   /** Connections agents proposed (MCP propose_connection) that wait for the user. */
   listConnectionProposals(): Promise<{ file: string; proposal: ConnectionProposal }[]>
   dismissConnectionProposal(file: string): Promise<void>
@@ -847,6 +851,8 @@ export interface MainEvents {
   'team:changed': undefined
   /** An agent proposed a connection (or one was saved / dismissed): the window lists them again. */
   'connection:proposals': undefined
+  /** Progress of a copy between connections (copyTables). */
+  'copy:progress': CopyProgress & { runId: string }
   /** A file handed to the running app (double-click in the system, a second launch with a path). */
   'file:open': string
 }
@@ -982,6 +988,7 @@ export const API_METHODS = [
   'storageReport',
   'listConnectionProposals',
   'dismissConnectionProposal',
+  'copyTables',
 ] as const satisfies readonly (keyof MastermindApi)[]
 
 // Compile error if a method is added to MastermindApi but not to API_METHODS.

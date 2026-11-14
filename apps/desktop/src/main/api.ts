@@ -14,6 +14,7 @@ import {
   detectDelimiter,
   explainQuery,
   objectDefinition,
+  copyTables,
   storageReport,
   topQueries,
   DIALECT_NAMES,
@@ -31,6 +32,9 @@ import {
   sanitizeFilter,
   parseDelimited,
   parseXlsx,
+  parseJsonRows,
+  createDriver,
+  cellToText,
   DatabaseService,
   getDialect,
   inlineParams,
@@ -103,10 +107,15 @@ function track<T>(runId: string | undefined, fn: (signal?: AbortSignal) => Promi
   return fn(controller.signal).finally(() => running.delete(runId))
 }
 
-/** Reads CSV/TSV (UTF-8, or Windows-1250 as Czech Excel saves it) or the first sheet of an .xlsx file. */
+/**
+ * Reads CSV/TSV (UTF-8, or Windows-1250 as Czech Excel saves it), the first sheet of an .xlsx file, JSON / JSON Lines,
+ * or Parquet (through the built-in DuckDB).
+ */
 async function readImportFile(path: string, delimiter?: string) {
+  if (/\.parquet$/i.test(path)) return { format: 'parquet' as const, rows: await readParquet(path) }
   const buffer = await readFile(path)
   if (/\.xlsx$/i.test(path)) return { format: 'xlsx' as const, rows: parseXlsx(buffer) }
+  if (/\.(json|jsonl|ndjson)$/i.test(path)) return { format: 'json' as const, rows: parseJsonRows(new TextDecoder('utf-8').decode(buffer)) as string[][] }
   let text: string
   let encoding = 'utf-8'
   try {
@@ -117,6 +126,19 @@ async function readImportFile(path: string, delimiter?: string) {
   }
   const d = delimiter || detectDelimiter(text.slice(0, 20_000))
   return { format: 'csv' as const, delimiter: d, encoding, rows: parseDelimited(text, d) }
+}
+
+/** A Parquet file's rows (header first) as text, read by an in-memory DuckDB. */
+async function readParquet(path: string): Promise<string[][]> {
+  const duck = createDriver({ id: 'parquet-import', name: 'parquet', driver: 'duckdb' })
+  await duck.connect()
+  try {
+    const [r] = await duck.execute(`SELECT * FROM read_parquet('${path.replaceAll("'", "''")}')`)
+    if (!r) return []
+    return [r.fields.map((f) => f.name), ...r.rows.map((row) => row.map((v) => (v === null ? null : cellToText(v))) as string[])]
+  } finally {
+    await duck.close().catch(() => {})
+  }
 }
 
 function knowledge(connectionId: string): KnowledgeBase {
@@ -483,6 +505,26 @@ export const api: MastermindApi = {
   async dismissConnectionProposal(file) {
     await dismissProposal(proposalsDir(), file)
     notifyProposals()
+  },
+  async copyTables(request) {
+    await Promise.all([ensureConnected(request.sourceId), ensureConnected(request.targetId)])
+    const result = await track(request.runId, (signal) =>
+      copyTables(db, request.sourceId, request.targetId, {
+        tables: request.tables,
+        targetSchema: request.targetSchema,
+        create: true,
+        mode: request.mode,
+        signal,
+        onProgress: (p) => {
+          for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send('copy:progress', { ...p, runId: request.runId })
+        },
+      }),
+    )
+    const source = connections.getConnection(request.sourceId).name
+    for (const t of result) {
+      library.addHistory({ connectionId: request.targetId, sql: `-- Copied ${t.rows} rows of ${t.table} from ${source} into ${t.target}${request.mode === 'replace' ? ' (replacing its rows)' : ''}`, executedAt: new Date().toISOString(), durationMs: 0, rowCount: t.rows, source: 'import' })
+    }
+    return result
   },
   async topQueries(connectionId) {
     await ensureConnected(connectionId)

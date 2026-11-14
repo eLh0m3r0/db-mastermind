@@ -76,7 +76,7 @@ export function ImportModal({
     const file = await api.pickFile({
       title: t('Import data'),
       filters: [
-        { name: t('Data files'), extensions: ['csv', 'tsv', 'txt', 'xlsx'] },
+        { name: t('Data files'), extensions: ['csv', 'tsv', 'txt', 'xlsx', 'json', 'jsonl', 'ndjson', 'parquet'] },
         { name: t('All files'), extensions: ['*'] },
       ],
     })
@@ -137,7 +137,7 @@ export function ImportModal({
         >
           <FileUp size={26} />
           <span className="text-[14px] font-medium">{t('Choose a CSV, TSV or Excel file')}</span>
-          <span className="text-[12px] text-fg-faint">{t('UTF-8 or Windows-1250 · delimiter detected automatically · first sheet of .xlsx')}</span>
+          <span className="text-[12px] text-fg-faint">{t('CSV (UTF-8 or Windows-1250, delimiter detected) · first sheet of .xlsx · JSON or JSON Lines · Parquet')}</span>
         </button>
       ) : (
         <div className="flex flex-col gap-3">

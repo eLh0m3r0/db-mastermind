@@ -91,6 +91,51 @@ function excelDate(serial: number): string {
   return serial % 1 === 0 ? iso.slice(0, 10) : iso.slice(0, 19).replace('T', ' ')
 }
 
+/**
+ * JSON (an array of objects, or an object holding one) or JSON Lines (one object a line) as rows: a header of every
+ * key in the order first seen, then the values; nested objects and arrays as JSON text, missing keys and null as null.
+ */
+export function parseJsonRows(text: string): (string | null)[][] {
+  const trimmed = text.replace(/^\uFEFF/, '').trim()
+  let records: unknown[]
+  let whole: unknown
+  try {
+    whole = JSON.parse(trimmed)
+  } catch {
+    whole = undefined
+  }
+  if (Array.isArray(whole)) records = whole
+  else if (whole && typeof whole === 'object') {
+    const list = Object.values(whole).find((v) => Array.isArray(v))
+    records = Array.isArray(list) ? list : [whole]
+  } else {
+    records = trimmed
+      .split(/\r?\n/)
+      .filter((l) => l.trim())
+      .map((l, i) => {
+        try {
+          return JSON.parse(l) as unknown
+        } catch {
+          throw new Error(`Line ${i + 1} is not JSON`)
+        }
+      })
+  }
+  const objects = records.filter((r): r is Record<string, unknown> => !!r && typeof r === 'object' && !Array.isArray(r))
+  if (!objects.length) throw new Error('No JSON objects to import')
+  const keys: string[] = []
+  const seen = new Set<string>()
+  for (const o of objects) {
+    for (const k of Object.keys(o)) {
+      if (!seen.has(k)) {
+        seen.add(k)
+        keys.push(k)
+      }
+    }
+  }
+  const cell = (v: unknown): string | null => (v === null || v === undefined ? null : typeof v === 'object' ? JSON.stringify(v) : String(v))
+  return [keys, ...objects.map((o) => keys.map((k) => cell(o[k])))]
+}
+
 /** Reads the first worksheet of an .xlsx file into rows of text. */
 export function parseXlsx(data: Uint8Array): string[][] {
   const files = unzipSync(data)

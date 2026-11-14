@@ -20,6 +20,7 @@ const CS: Record<string, string> = {
   'New Model': 'Nový model',
   'Open Model…': 'Otevřít model…',
   'Open SQL File…': 'Otevřít SQL soubor…',
+  'Run on Several Connections…': 'Spustit na více připojeních…',
   View: 'Zobrazení',
   'Command Palette…': 'Paleta příkazů…',
   'Quick Open Table…': 'Rychle otevřít tabulku…',
@@ -125,6 +126,7 @@ export function buildMenu(): void {
       submenu: [
         cmd(m('Run Statement / Selection'), 'run-current', 'CmdOrCtrl+Enter'),
         cmd(m('Run All'), 'run-all', 'CmdOrCtrl+Shift+Enter'),
+        cmd(m('Run on Several Connections…'), 'run-on-connections'),
         cmd(m('Cancel Query'), 'cancel-query', 'CmdOrCtrl+.'),
         { type: 'separator' },
         cmd(m('Commit Transaction'), 'commit-transaction', 'CmdOrCtrl+Alt+Shift+Enter'),
