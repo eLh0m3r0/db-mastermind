@@ -658,7 +658,7 @@ compatibility while the screens change).
   when a write fails, keep a backup folder per save and stop on any change made on disk meanwhile
   (apps/desktop/test/dezign-file.test.ts)
 
-## Milestone 10 — Transactions you can see (1.2.0)
+## Milestone 10 — Transactions you can see ✅ released 1.2.0 (2026-11-14)
 
 From the pilot (a colleague used to DataGrip): changes made in the SQL editor commit at once, and nothing shows
 whether a tab holds an open transaction. Kept small: one switch per connection, no session modes.
