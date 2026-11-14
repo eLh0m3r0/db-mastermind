@@ -718,6 +718,21 @@ database a tab's settings protect), SQL formatting settings beyond what there is
 
 ---
 
+## Milestone 11 — Workbench 🚧
+
+The owner picked A, B, E and F of the backlog below (2026-11-14); C waits until somebody can test company sign-ins,
+D is not needed now. The specification, with the UX rules every item follows (no new toolbar buttons, existing
+screens reused, nothing shown before it is relevant, no new settings): [docs/specs/workbench.md](docs/specs/workbench.md).
+
+- ⬜ A1 Definitions of views and routines in a query tab; a table's CREATE statement
+- ⬜ A2 SQL files on disk (⌘⇧O, drop, ⌘S writes back)
+- ⬜ A3 Warnings while typing (unknown table / column, UPDATE or DELETE without WHERE)
+- ⬜ A4 ⌘-click to the definition; "Used by" in the structure tab
+- ⬜ A5 Compare a plan with the previous one
+- ⬜ B1 Totals of the selected cells · B2 a cell set to an SQL expression · B3 find a value anywhere · B4 profile a column
+- ⬜ E Server activity: Sessions · Top queries · Storage (sizes, unused and repeated indexes)
+- ⬜ F1 Agents propose connections, the user reviews them · F2 `dbm` command line · F3 runnable SQL in notes
+
 ## Backlog — what other tools have (review 2026-11-14) 💡
 
 An independent pass over the app against DataGrip 2026.2, DBeaver 26.x, Beekeeper Studio 6, TablePlus, SSMS and
