@@ -281,6 +281,8 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="@container flex h-10 shrink-0 items-center gap-1.5 border-b border-line px-2">
+        {/* The left part gives way (clips) when space runs out; the transaction controls on the right never do. */}
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
         {running ? (
           <Button size="sm" variant="danger" icon={<Square size={12} fill="currentColor" />} onClick={cancel}>
             {t('Cancel')}
@@ -320,7 +322,8 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
         <Button size="sm" variant="ghost" icon={<Sparkles size={14} />} onClick={openInline} title={`${t('Ask AI')} (${modKey}I)`}>
           <span className="@max-[1050px]:hidden">{t('Ask AI')}</span>
         </Button>
-        <div className="flex-1" />
+        </div>
+
         <TransactionBar tabId={tab.id} driver={driver} manual={!!connection?.manualCommit && !connection.readOnly && supportsManualCommit(driver)} busy={running} />
         {connection?.readOnly && <span className="text-[11.5px] text-fg-faint">{t('read-only')}</span>}
       </div>

@@ -358,6 +358,9 @@ export class PostgresDriver implements DatabaseDriver {
     // CockroachDB speaks the PostgreSQL protocol: "CockroachDB CCL v24.3.1 (…)".
     const crdb = /CockroachDB\s+\w+\s+v([\d.]+\w*)/.exec(full)
     if (crdb) return { product: 'CockroachDB', version: crdb[1]! }
+    // Redshift answers "PostgreSQL 8.0.2 … Redshift 1.0.…": not PostgreSQL for what it lacks (savepoints, lock_timeout).
+    const redshift = /Redshift\s+([\d.]+)/.exec(full)
+    if (redshift) return { product: 'Redshift', version: redshift[1]! }
     const m = /^(\S+)\s+([\d.]+\w*)/.exec(full)
     return { product: m?.[1] ?? 'PostgreSQL', version: m?.[2] ?? full }
   }

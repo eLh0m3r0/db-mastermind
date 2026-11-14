@@ -513,9 +513,15 @@ export class DatabaseService {
     if (!session) return entry.driver.execute(sql, { params, signal })
     const guarded = entry.config.driver === 'postgres' && entry.serverInfo?.product === 'PostgreSQL' && (await this.transactionState(id, session)) === 'open'
     if (!guarded) return entry.driver.execute(sql, { params, signal, session })
+    // In line with saves and Commit on this session, and not cancelled (a cancel hits the session's process, which
+    // could land on a save's statement): a stale read just finishes and its result is dropped.
+    return this.serialized(id, session, () => this.guardedRead(entry, session, sql, params))
+  }
+
+  private async guardedRead(entry: OpenConnection, session: string, sql: string, params: unknown[]): Promise<QueryResult[]> {
     await entry.driver.execute('SAVEPOINT dbm_read', { session })
     try {
-      const results = await entry.driver.execute(sql, { params, signal, session })
+      const results = await entry.driver.execute(sql, { params, session })
       await entry.driver.execute('RELEASE SAVEPOINT dbm_read', { session }).catch(() => {})
       return results
     } catch (err) {

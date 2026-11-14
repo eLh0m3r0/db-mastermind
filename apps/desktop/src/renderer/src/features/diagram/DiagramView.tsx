@@ -1799,7 +1799,7 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
         </Button>
         {!design && (
           <span className="shrink-0 text-[11.5px] text-fg-faint">
-            {tp(tables.length, { one: '{n} table', many: '{n} tables' })} · {tp(edges.length, { one: '{n} relationship', many: '{n} relationships' })}
+            {tp(tables.filter((x) => x.type === 'table').length, { one: '{n} table', many: '{n} tables' })} · {tp(edges.length, { one: '{n} relationship', many: '{n} relationships' })}
           </span>
         )}
         {/* The view actions wrap as one group when the window is narrow. */}

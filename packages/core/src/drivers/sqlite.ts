@@ -268,10 +268,16 @@ export class SqliteDriver implements DatabaseDriver {
     }
     const start = process.hrtime.bigint()
     let cancelled = false
+    let refuse: ((err: Error) => void) | undefined
+    const refused = new Promise<never>((_, reject) => (refuse = reject))
+    refused.catch(() => {})
     const onAbort = async () => {
       // Stopping SQLite means reopening the file, which would silently discard a tab's open transaction (its
-      // uncommitted changes): with one open, the statement runs to its end instead.
-      if (this.txOwner !== undefined) return
+      // uncommitted changes): with one open, the statement runs on to its end, and the caller is told why.
+      if (this.txOwner !== undefined) {
+        refuse?.(new Error('SQLite can stop a statement only by reopening the database file, which would discard the open transaction: the statement keeps running to its end.'))
+        return
+      }
       cancelled = true
       const worker = this.worker
       this.worker = undefined
@@ -288,17 +294,20 @@ export class SqliteDriver implements DatabaseDriver {
     }
     options.signal?.addEventListener('abort', onAbort, { once: true })
     try {
-      const raw = (await this.send(
-        {
-          type: 'exec',
-          sql,
-          params: options.params ?? [],
-          maxRows: options.maxRows,
-          session: options.session,
-          write: !isReadOnlyScript(sql, 'sqlite'),
-        },
-        options.session,
-      )) as RawResult
+      const raw = (await Promise.race([
+        this.send(
+          {
+            type: 'exec',
+            sql,
+            params: options.params ?? [],
+            maxRows: options.maxRows,
+            session: options.session,
+            write: !isReadOnlyScript(sql, 'sqlite'),
+          },
+          options.session,
+        ),
+        refused,
+      ])) as RawResult
       const hasRows = raw.fields.length > 0
       return [
         {

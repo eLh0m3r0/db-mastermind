@@ -163,6 +163,7 @@ const Cell = memo(function Cell({
     <div
       role="gridcell"
       aria-selected={selected || undefined}
+      data-edited={edited || undefined}
       className={cn(
         'absolute top-0 flex h-full items-center overflow-hidden border-r border-b border-line px-2 whitespace-nowrap',
         numeric && 'justify-end font-mono text-[12px] tabular-nums',

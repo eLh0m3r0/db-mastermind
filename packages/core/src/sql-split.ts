@@ -391,7 +391,7 @@ export function opensTransaction(sql: string, driver: DriverId): boolean {
   const body = stripLiterals(sql).replace(/--[^\n]*/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ')
   if (!body.trim()) return false
   // "Reads" that change something or hold locks until the transaction ends.
-  if (/\bFOR\s+(UPDATE|SHARE|NO\s+KEY\s+UPDATE|KEY\s+SHARE)\b|\b(nextval|setval)\s*\(/i.test(body) && !OUTSIDE_TRANSACTION[driver]?.test(body)) return true
+  if (/\bFOR\s+(UPDATE|SHARE|NO\s+KEY\s+UPDATE|KEY\s+SHARE)\b|\bLOCK\s+IN\s+SHARE\s+MODE\b|\b(nextval|setval)\s*\(/i.test(body) && !OUTSIDE_TRANSACTION[driver]?.test(body)) return true
   // MariaDB's compound statement outside a routine.
   if ((driver === 'mysql' || driver === 'mariadb') && /^\s*BEGIN\s+NOT\s+ATOMIC\b/i.test(body)) return true
   if (isReadOnlyScript(sql, driver)) return false
@@ -401,7 +401,8 @@ export function opensTransaction(sql: string, driver: DriverId): boolean {
     // lines change nothing.
     if (/\b(BEGIN\s+TRAN\w*|SAVE\s+TRAN\w*|COMMIT|ROLLBACK)\b/i.test(body)) return false
     // T-SQL needs no separators (`SET NOCOUNT ON UPDATE t …` is one line): look for anything that writes, anywhere.
-    return TSQL_WRITES.test(body.replace(/\[[^\]]*\]/g, '[]')) || /\bEXEC(UTE)?\b/i.test(body)
+    // (A batch may start with a procedure name and no EXEC: `sp_rename 'a', 'b'`.)
+    return TSQL_WRITES.test(body.replace(/\[[^\]]*\]/g, '[]')) || /\bEXEC(UTE)?\b/i.test(body) || /^\s*(\[?\w+\]?\.)*\[?sp_\w+/i.test(body)
   }
   // An Oracle PL/SQL block (BEGIN … END; or DECLARE … BEGIN … END;) can change anything: it opens one too.
   if (driver === 'oracle' && /^\s*(BEGIN|DECLARE)\b[\s\S]*\bEND\b/i.test(body)) return true

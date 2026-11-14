@@ -96,7 +96,7 @@ try {
     await win.getByRole('dialog').waitFor({ timeout: 5000 }).catch(() => {})
     await win.waitForTimeout(300)
     await shot(name) // 10 close-tab question
-    await win.getByRole('dialog').getByRole('button', { name: /^(Cancel|Zrušit)$/ }).click().catch(() => {})
+    await win.getByRole('dialog').getByRole('button', { name: /^(Cancel|Zrušit|Keep open|Nezavírat)$/ }).click().catch(() => {})
     await win.keyboard.press(`${mod}+Shift+n`)
     await win.waitForTimeout(500)
     await shot(name) // 11 connection form

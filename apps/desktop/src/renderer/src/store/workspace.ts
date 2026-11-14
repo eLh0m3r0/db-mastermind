@@ -212,8 +212,10 @@ export async function confirmCloseTabs(ids: string[]): Promise<boolean> {
   return settleTransactions(ids, tabTitle, 'close')
 }
 
+/** A session busy with a long statement can't answer at once: after a moment the last known state stands. */
 async function refreshTabs(tabs: Tab[]) {
-  await Promise.all(tabs.filter((tab) => tab.kind === 'query' || tab.kind === 'table').map((tab) => refreshTransaction(tab.id, tab.connectionId)))
+  const wait = new Promise((r) => setTimeout(r, 1500))
+  await Promise.race([Promise.all(tabs.filter((tab) => tab.kind === 'query' || tab.kind === 'table').map((tab) => refreshTransaction(tab.id, tab.connectionId))), wait])
 }
 
 /** Open transactions of a connection (its tabs, the AI chat) settled before disconnecting it. */

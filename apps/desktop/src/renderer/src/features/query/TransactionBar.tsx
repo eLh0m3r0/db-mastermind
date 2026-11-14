@@ -62,7 +62,7 @@ export function TransactionBar({ tabId, driver, manual, busy = false }: { tabId:
   // Open this long, it has most likely been forgotten while it keeps others waiting on its locks.
   const stale = !failed && minutes >= STALE_MINUTES
   return (
-    <div ref={box} className="relative flex items-center gap-1" data-testid="transaction-bar" data-state={tx.state}>
+    <div ref={box} className="relative flex shrink-0 items-center gap-1" data-testid="transaction-bar" data-state={tx.state}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -86,10 +86,10 @@ export function TransactionBar({ tabId, driver, manual, busy = false }: { tabId:
           : changes
             ? t('Transaction · {changes}', { changes: tp(changes, { one: '{n} change', many: '{n} changes' }) })
             : t('Transaction open')}
+          {!failed && minutes >= 1 && <span className="tabular-nums @max-[1200px]:hidden"> · {minutes < 60 ? t('{n} min', { n: minutes }) : t('{n} h', { n: Math.floor(minutes / 60) })}</span>}
         </span>
         {/* Narrow toolbar: the count says enough next to the icon. */}
         {!failed && changes > 0 && <span className="hidden tabular-nums @max-[700px]:inline">{tp(changes, { one: '{n} change', many: '{n} changes' })}</span>}
-        {!failed && minutes >= 1 && <span className="tabular-nums @max-[900px]:hidden">· {minutes < 60 ? t('{n} min', { n: minutes }) : t('{n} h', { n: Math.floor(minutes / 60) })}</span>}
         <ChevronDown size={12} className="opacity-70" />
       </button>
       {!failed && (

@@ -206,4 +206,12 @@ describe('opensTransaction (manual commit)', () => {
     expect(opensTransaction('ALTER TABLE parent DETACH PARTITION child CONCURRENTLY', 'postgres')).toBe(false)
     expect(opensTransaction('ALTER TABLE parent DETACH PARTITION child', 'postgres')).toBe(true)
   })
+  it('opens one for reads that lock or change something', () => {
+    expect(opensTransaction('SELECT * FROM t WHERE id = 1 FOR UPDATE', 'postgres')).toBe(true)
+    expect(opensTransaction('SELECT * FROM t LOCK IN SHARE MODE', 'mysql')).toBe(true)
+    expect(opensTransaction("SELECT nextval('s')", 'postgres')).toBe(true)
+    expect(opensTransaction('BEGIN NOT ATOMIC UPDATE t SET v = 1; END', 'mariadb')).toBe(true)
+    expect(opensTransaction("sp_rename 'a', 'b'", 'mssql')).toBe(true)
+    expect(opensTransaction("SELECT 'sp_x'", 'mssql')).toBe(false)
+  })
 })

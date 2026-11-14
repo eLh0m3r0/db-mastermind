@@ -248,7 +248,8 @@ export class MysqlDriver implements DatabaseDriver {
         this.transactions.ran(session, sql)
         // A failed statement can still have committed (DDL commits before it runs): ask the server again. `DO 0`'s
         // OK packet carries the current SERVER_STATUS_IN_TRANS.
-        if (this.sessions.has(session)) {
+        // (Not after a cancel: the KILL already settled, and the statement it stopped committed nothing new.)
+        if (this.sessions.has(session) && !(err instanceof QueryCancelledError)) {
           await this.executeOnce('DO 0', { session }).catch(() => this.serverInTransaction.delete(session))
           const open = this.serverInTransaction.get(session)
           if (open !== undefined) this.transactions.set(session, open)
