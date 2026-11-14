@@ -109,7 +109,9 @@ export function selectionStats(
     }
   }
   if (count > 0 && allNumbers) {
-    const scale = Math.max(...values.map((d) => d.scale))
+    // (A loop: spreading a million values into Math.max overflows the stack.)
+    let scale = 0
+    for (const d of values) if (d.scale > scale) scale = d.scale
     let sum = 0n
     let min = values[0]!
     let max = values[0]!
