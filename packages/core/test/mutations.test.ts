@@ -70,6 +70,21 @@ describe('SQL expressions in cells', () => {
     expect(checkCellExpression("coalesce(x, ')')")).toBeNull()
     expect(checkCellExpression("'unclosed")).toMatch(/not closed/)
     expect(checkCellExpression('1 # mysql comment')).toMatch(/comment/)
+  })
+
+  it('refuses quoting the database reads differently from the check (review finding)', () => {
+    // MySQL: \' does not end the string, so the check would see a string where MySQL sees code.
+    expect(checkCellExpression("'\\'+') WHERE id = ? OR 1=1 # '", 'mysql')).toMatch(/backslash/)
+    expect(checkCellExpression("E'\\'' ) WHERE true --'", 'postgres')).toMatch(/backslash/)
+    expect(checkCellExpression("$$'$$ ) WHERE true -- '", 'postgres')).toMatch(/dollar/)
+    expect(checkCellExpression("(q'(')') WHERE 1=1 --'", 'oracle')).toMatch(/q'/)
+    // Brackets quote only in SQL Server; elsewhere what is inside them still counts.
+    expect(checkCellExpression('x[) WHERE true --]', 'postgres')).toMatch(/comment|parenthes/)
+    expect(checkCellExpression("[a)b]", 'mssql')).toBeNull()
+    // Everyday expressions still pass.
+    for (const [expr, driver] of [["now() + interval '1 day'", 'postgres'], ['gen_random_uuid()', 'postgres'], ["N'Příliš'", 'mssql'], ['price * 1.21', 'mysql'], ["data #>> '{a}'", 'postgres'], ['$1', 'mysql']] as const) {
+      expect(checkCellExpression(expr, driver), expr).toBeNull()
+    }
     expect(() => buildChangeStatements({ name: 't' }, [{ type: 'update', key: { id: 1 }, values: { a: { $sql: '1; DELETE FROM t' } } }], mssqlDialect)).toThrow(/semicolon/)
   })
 })

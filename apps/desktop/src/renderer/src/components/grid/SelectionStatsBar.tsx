@@ -20,7 +20,12 @@ export function SelectionStatsBar({ fields, rows, selection, dataTypes }: { fiel
     return s.cells >= 2 ? s : null
   }, [fields, rows, selection, dataTypes])
   if (!stats) return null
-  const number = (n: number, decimals = 6) => n.toLocaleString(undefined, { maximumFractionDigits: decimals })
+  /** Exact decimal text shown with digit grouping; past what a double holds exactly, as it is. */
+  const number = (text: string) => {
+    const [whole = '', fraction = ''] = text.replace('-', '').split('.')
+    if (whole.length + fraction.length > 15) return text
+    return Number(text).toLocaleString(undefined, { minimumFractionDigits: fraction.length, maximumFractionDigits: fraction.length })
+  }
   const item = (label: string, shown: string, raw: string) => (
     <button
       key={label}
@@ -39,12 +44,11 @@ export function SelectionStatsBar({ fields, rows, selection, dataTypes }: { fiel
   if (stats.tooMany) {
     // (Only the count: looking at every one of so many cells would freeze the window.)
   } else if (stats.sum !== undefined) {
-    const d = stats.decimals ?? 0
     parts.push(
-      item(t('Sum'), number(stats.sum, Math.max(d, 0)), String(stats.sum)),
-      item(t('Avg'), number(stats.avg!, Math.max(d, 2)), String(Number(stats.avg!.toFixed(Math.max(d, 6))))),
-      item(t('Min'), number(stats.min!, d), String(stats.min)),
-      item(t('Max'), number(stats.max!, d), String(stats.max)),
+      item(t('Sum'), number(stats.sum), stats.sum),
+      item(t('Avg'), number(stats.avg!), stats.avg!),
+      item(t('Min'), number(stats.min!), stats.min!),
+      item(t('Max'), number(stats.max!), stats.max!),
     )
   } else if (stats.distinct !== undefined) parts.push(item(t('Distinct'), formatCount(stats.distinct), String(stats.distinct)))
   if (stats.empty) parts.push(item(t('Empty'), formatCount(stats.empty), String(stats.empty)))

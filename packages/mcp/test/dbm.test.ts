@@ -24,7 +24,14 @@ beforeAll(async () => {
 async function dbm(...argv: string[]) {
   let stdout = ''
   let stderr = ''
-  const code = await runDbm(argv, { stdout: (t) => (stdout += t), stderr: (t) => (stderr += t) })
+  const code = await runDbm(argv, {
+    stdout: (t) => {
+      stdout += t
+    },
+    stderr: (t) => {
+      stderr += t
+    },
+  })
   return { code, stdout, stderr }
 }
 
@@ -55,6 +62,28 @@ describe('dbm query', () => {
     const done = await dbm('query', '--url', url, '--allow-writes', "INSERT INTO customers (name) VALUES ('Eve')")
     expect(done.code).toBe(0)
     expect((await dbm('query', '--url', url, 'SELECT count(*) AS n FROM customers')).stdout).toBe('n\n3\n')
+  })
+
+  it('waits for a slow output and reports a file it can not write (review findings)', async () => {
+    let text = ''
+    let pending = 0
+    let most = 0
+    const code = await runDbm(['query', '--url', url, 'SELECT name FROM customers ORDER BY id'], {
+      stdout: async (t) => {
+        pending++
+        most = Math.max(most, pending)
+        await new Promise((r) => setTimeout(r, 5))
+        text += t
+        pending--
+      },
+      stderr: () => {},
+    })
+    expect(code).toBe(0)
+    expect(text).toBe('name\nAlice\nBob\nEve\n')
+    expect(most).toBe(1)
+    const r = await dbm('query', '--url', url, '--out', join(dir, 'no', 'such', 'folder', 'x.csv'), 'SELECT 1 AS one')
+    expect(r.code).toBe(1)
+    expect(r.stderr).toMatch(/Could not write/)
   })
 
   it('reads the SQL from a file and says what is wrong', async () => {

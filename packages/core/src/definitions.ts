@@ -142,8 +142,10 @@ export async function objectDefinition(db: DatabaseService, id: string, object: 
       })
       const source = (r?.rows ?? []).map((row) => text(row[0])).join('')
       if (!source.trim()) throw notFound()
-      // ALL_SOURCE starts at "FUNCTION name": the CREATE is the caller's; "/" ends the block as in SQL*Plus.
-      return { sql: `CREATE OR REPLACE ${source.trimEnd()}\n/\n` }
+      // ALL_SOURCE starts at "FUNCTION name": the CREATE is the caller's, and the name gets its owner (run as another
+      // user, an unqualified name would create the routine in that user's own schema). "/" ends the block.
+      const qualified = source.replace(/^(\s*(?:FUNCTION|PROCEDURE)\s+)("[^"]+"|[A-Za-z][\w$#]*)(\s*\.\s*("[^"]+"|[A-Za-z][\w$#]*))?/i, (_m, head: string) => `${head}${name}`)
+      return { sql: `CREATE OR REPLACE ${qualified.trimEnd()}\n/\n` }
     }
     case 'duckdb': {
       if (isView) {

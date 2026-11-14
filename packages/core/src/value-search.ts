@@ -1,4 +1,4 @@
-import { columnFamily, newFilterId, type FilterCondition, type FilterGroup } from './filters.js'
+import { columnFamily, newFilterId, type FilterCondition, type FilterGroup, type FilterNode } from './filters.js'
 import type { CellValue, DriverId, TableInfo } from './types.js'
 import { cellToText } from './values.js'
 
@@ -37,12 +37,19 @@ const isPlainDate = (t: string) => /^date$/i.test(t)
  * The conditions that find `text` in one table, each on a column whose type can hold such a value (comparing a
  * uuid, enum or number column with arbitrary text is an error in PostgreSQL); null when no column can.
  */
-export function valueSearchConditions(table: Pick<TableInfo, 'columns'>, text: string, mode: ValueSearchMode, driver: DriverId): FilterCondition[] {
+export function valueSearchConditions(table: Pick<TableInfo, 'columns'>, text: string, mode: ValueSearchMode, driver: DriverId): ValueSearchCondition[] {
   const value = text.trim()
   if (!value) return []
   const kind = searchedValueKind(value)
-  const out: FilterCondition[] = []
-  const add = (column: string, operator: FilterCondition['operator'], v: string, v2?: string) => out.push({ kind: 'condition', id: newFilterId(), column, operator, value: v, ...(v2 ? { value2: v2 } : {}) })
+  const out: ValueSearchCondition[] = []
+  const condition = (column: string, operator: FilterCondition['operator'], v: string): FilterCondition => ({ kind: 'condition', id: newFilterId(), column, operator, value: v })
+  const add = (column: string, operator: 'eq' | 'contains' | 'day', v: string) => {
+    if (operator !== 'day') return out.push({ column, operator, node: condition(column, operator, v) })
+    // The whole day, half open: [day, next day) also holds 23:59:59.9995 and never the next midnight.
+    const next = new Date(`${v}T00:00:00Z`)
+    next.setUTCDate(next.getUTCDate() + 1)
+    return out.push({ column, operator, node: { kind: 'group', id: newFilterId(), combinator: 'and', children: [condition(column, 'gte', v), condition(column, 'lt', next.toISOString().slice(0, 10))] } })
+  }
   for (const c of table.columns) {
     const type = c.dataType ?? ''
     if (unsearchable(type, driver)) continue
@@ -58,20 +65,26 @@ export function valueSearchConditions(table: Pick<TableInfo, 'columns'>, text: s
       add(c.name, 'eq', value)
     } else if (family === 'date' && kind === 'date' && driver !== 'oracle' && driver !== 'bigquery') {
       // A date matches the whole day of a timestamp.
-      if (isPlainDate(type)) add(c.name, 'eq', value)
-      else add(c.name, 'between', `${value} 00:00:00`, `${value} 23:59:59.999`)
+      add(c.name, isPlainDate(type) ? 'eq' : 'day', value)
     }
   }
   return out
 }
 
+/** One searched column: how it is compared, and its part of the table tab's filter. */
+export interface ValueSearchCondition {
+  column: string
+  operator: 'eq' | 'contains' | 'day'
+  node: FilterNode
+}
+
 /** The filter of a table tab that shows the rows holding `text` (the conditions OR-ed). */
-export function valueSearchFilter(conditions: FilterCondition[]): FilterGroup {
-  return { kind: 'group', id: newFilterId(), combinator: 'or', children: conditions }
+export function valueSearchFilter(conditions: ValueSearchCondition[]): FilterGroup {
+  return { kind: 'group', id: newFilterId(), combinator: 'or', children: conditions.map((c) => c.node) }
 }
 
 /** Which of the searched columns hold the value in the rows found (for the result list). */
-export function matchedColumns(fields: { name: string }[], rows: CellValue[][], conditions: FilterCondition[], text: string): string[] {
+export function matchedColumns(fields: { name: string }[], rows: CellValue[][], conditions: ValueSearchCondition[], text: string): string[] {
   const needle = text.trim().toLowerCase()
   const kind = searchedValueKind(needle)
   const out = new Set<string>()
@@ -85,7 +98,7 @@ export function matchedColumns(fields: { name: string }[], rows: CellValue[][], 
       const hit =
         condition.operator === 'contains'
           ? cell.includes(needle)
-          : condition.operator === 'between'
+          : condition.operator === 'day'
             ? cell.startsWith(needle)
             : cell === needle || (kind === 'number' && Number(cell) === Number(needle)) || (kind === 'date' && cell.startsWith(needle))
       if (hit) {

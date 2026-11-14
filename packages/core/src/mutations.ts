@@ -1,6 +1,6 @@
 import { qualify, type Dialect } from './dialect.js'
 import { ParamCollector, type BuiltQuery } from './filters.js'
-import type { TableRef } from './types.js'
+import type { DriverId, TableRef } from './types.js'
 
 /** Values coming from the editor: text, NULL, the DEFAULT keyword, or an SQL expression the user typed (`now()`). */
 export type EditValue = string | number | boolean | null | { $default: true } | { $sql: string }
@@ -20,15 +20,22 @@ const isExpression = (v: EditValue): v is { $sql: string } => typeof v === 'obje
 /**
  * An SQL expression for a cell must stay one expression inside its parentheses: no statement separator or comment
  * outside its string literals (a T-SQL batch would run a second statement; `1) --` would comment out the WHERE) and
- * balanced parentheses (`1), other = (2` would change another column).
+ * balanced parentheses (`1), other = (2` would change another column). Where the database would read the text
+ * differently from this check (backslash escapes in MySQL strings and PostgreSQL E'' strings, PostgreSQL $$ quoting,
+ * Oracle q'' quoting), the expression is refused rather than guessed.
  */
-export function checkCellExpression(expression: string): string | null {
+export function checkCellExpression(expression: string, driver?: DriverId): string | null {
   if (!expression.trim()) return 'Type an expression, e.g. now()'
-  // Quoted text and identifiers out ('it''s', "name", [name], `name`); comments stay visible.
-  const bare = expression.replace(/'(?:[^']|'')*'|"(?:[^"]|"")*"|\[[^\]]*\]|`[^`]*`/g, '_')
-  if (/['"`[\]]/.test(bare)) return 'A quote or bracket is not closed'
+  if (/\\/.test(expression)) return 'No backslashes in an expression'
+  if (/\$[A-Za-z_0-9]*\$/.test(expression) && (driver === undefined || driver === 'postgres' || driver === 'duckdb')) return 'No dollar-quoted text in an expression'
+  if (/(^|[^A-Za-z0-9_])[qQ]'/.test(expression)) return "No q'…' quoting in an expression"
+  // Quoted text and identifiers out: 'it''s' and "name" everywhere, [name] in SQL Server, `name` where it quotes.
+  const backticks = driver === 'mysql' || driver === 'mariadb' || driver === 'sqlite' || driver === 'clickhouse' || driver === 'bigquery'
+  const quoted = driver === 'mssql' ? /'(?:[^']|'')*'|"(?:[^"]|"")*"|\[[^\]]*\]/g : backticks ? /'(?:[^']|'')*'|"(?:[^"]|"")*"|`[^`]*`/g : /'(?:[^']|'')*'|"(?:[^"]|"")*"/g
+  const bare = expression.replace(quoted, '_')
+  if (/['"`]/.test(bare) || (driver === 'mssql' && /[[\]]/.test(bare))) return 'A quote or bracket is not closed'
   if (/;/.test(bare)) return 'One expression only: no semicolons'
-  if (/--|\/\*|\*\/|#/.test(bare)) return 'No comments in an expression'
+  if (/--|\/\*|\*\//.test(bare) || ((driver === undefined || driver === 'mysql' || driver === 'mariadb') && /#/.test(bare))) return 'No comments in an expression'
   let depth = 0
   for (const ch of bare) {
     if (ch === '(') depth++
@@ -37,11 +44,11 @@ export function checkCellExpression(expression: string): string | null {
   return depth === 0 ? null : 'The parentheses do not match'
 }
 
-function valueSql(v: EditValue, params: ParamCollector): string {
+function valueSql(v: EditValue, params: ParamCollector, driver?: DriverId): string {
   if (v === null) return 'NULL'
   if (isDefault(v)) return 'DEFAULT'
   if (isExpression(v)) {
-    const problem = checkCellExpression(v.$sql)
+    const problem = checkCellExpression(v.$sql, driver)
     if (problem) throw new MutationError(problem)
     return `(${v.$sql.trim()})`
   }
@@ -72,7 +79,7 @@ export function buildChangeStatements(table: TableRef, changes: RowChange[], dia
             params: [],
           }
         }
-        const values = cols.map((c) => valueSql(change.values[c]!, params))
+        const values = cols.map((c) => valueSql(change.values[c]!, params, dialect.id))
         return {
           sql: `INSERT INTO ${target} (${cols.map((c) => dialect.quoteIdent(c)).join(', ')}) VALUES (${values.join(', ')})`,
           params: params.values,
@@ -81,7 +88,7 @@ export function buildChangeStatements(table: TableRef, changes: RowChange[], dia
       case 'update': {
         const cols = Object.keys(change.values)
         if (cols.length === 0) throw new MutationError('Update without changed columns')
-        const set = cols.map((c) => `${dialect.quoteIdent(c)} = ${valueSql(change.values[c]!, params)}`).join(', ')
+        const set = cols.map((c) => `${dialect.quoteIdent(c)} = ${valueSql(change.values[c]!, params, dialect.id)}`).join(', ')
         return { sql: `UPDATE ${target} SET ${set} WHERE ${whereKey(change.key, dialect, params)}`, params: params.values }
       }
       case 'delete':

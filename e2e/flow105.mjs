@@ -1,13 +1,19 @@
 // Server health (Milestone 11, E): Server activity keeps Sessions as it was and adds Top queries and Storage.
 // MySQL lists its most expensive statements; PostgreSQL without pg_stat_statements says how to turn it on; Storage
-// lists table sizes and the never-used orders_status_idx, whose DROP INDEX opens in the editor (never runs). Needs
+// lists table sizes and the never-used flow105_unused_idx, whose DROP INDEX opens in the editor (never runs). Needs
 // `npm run db:up` (postgres, mysql) and the shop fixtures.
 import { _electron as electron } from '@playwright/test'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import pg from 'pg'
 
 const out = process.argv[2] ?? tmpdir()
+// A fresh index nothing has used (the fixtures' own may have served other flows' filters since the server started).
+const admin = new pg.Client({ host: '127.0.0.1', port: 54329, user: 'postgres', password: 'mastermind', database: 'mastermind' })
+await admin.connect()
+await admin.query('DROP INDEX IF EXISTS shop.flow105_unused_idx')
+await admin.query('CREATE INDEX flow105_unused_idx ON shop.customers (name, email)')
 const dir = mkdtempSync(join(tmpdir(), 'dbm-ui105-'))
 const app = await electron.launch({ args: ['apps/desktop'], env: { ...process.env, HOME: join(dir, 'home'), DBM_USER_DATA: join(dir, 'data'), DBM_NO_UPDATE_CHECK: '1', DBM_LANGUAGE: 'en', DBM_E2E_BACKGROUND: '1' } })
 const win = await app.firstWindow()
@@ -49,12 +55,12 @@ try {
   await win.getByTestId('index-findings').waitFor({ timeout: 10000 })
   const storage = await win.getByTestId('storage').innerText()
   check('Storage lists the tables with their sizes', /orders/.test(storage) && /customers/.test(storage) && /kB|MB/.test(storage))
-  check('the never-used index is listed', /orders_status_idx/.test(await win.getByTestId('index-findings').innerText()))
+  check('the never-used index is listed', /flow105_unused_idx/.test(await win.getByTestId('index-findings').innerText()))
   await win.screenshot({ path: `${out}/r105-storage.png` })
-  await win.getByTestId('index-findings').locator('div', { hasText: 'orders_status_idx' }).last().getByRole('button', { name: 'Open DROP INDEX in editor' }).click()
+  await win.getByTestId('index-findings').locator('div', { hasText: 'flow105_unused_idx' }).last().getByRole('button', { name: 'Open DROP INDEX in editor' }).click()
   await win.waitForTimeout(800)
   const sql = await win.locator('.cm-content:visible').first().innerText()
-  check('DROP INDEX opens in the editor with a warning, not run', /DROP INDEX "?shop"?\."?orders_status_idx"?;/.test(sql) && /Check before dropping/.test(sql))
+  check('DROP INDEX opens in the editor with a warning, not run', /DROP INDEX "?shop"?\."?flow105_unused_idx"?;/.test(sql) && /Check before dropping/.test(sql))
 
   // MySQL: performance_schema has the statements.
   await win.getByRole('button', { name: 'All connections' }).click()
@@ -72,5 +78,7 @@ try {
   await win.screenshot({ path: `${out}/r105-failure.png` }).catch(() => {})
   process.exitCode = 1
 } finally {
+  await admin.query('DROP INDEX IF EXISTS shop.flow105_unused_idx').catch(() => {})
+  await admin.end()
   await app.close()
 }
