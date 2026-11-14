@@ -718,7 +718,7 @@ database a tab's settings protect), SQL formatting settings beyond what there is
 
 ---
 
-## Milestone 11 — Workbench ✅ (unreleased)
+## Milestone 11 — Workbench ✅ released 1.3.0 (2026-11-14)
 
 The owner picked A, B, E and F of the backlog below (2026-11-14), C at lower priority (it can't all be tested here)
 and D as optional; all five are in. The specification, with the UX rules every item follows (no new toolbar buttons, existing
