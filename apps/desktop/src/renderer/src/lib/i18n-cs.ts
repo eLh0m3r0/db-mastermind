@@ -70,7 +70,6 @@ export const cs: Record<string, string> = {
   'Press': 'Stiskněte',
   'Open source': 'Open source',
   'MIT licensed, no feature limits.': 'Licence MIT, žádná omezení funkcí.',
-  'See the roadmap': 'Zobrazit plán vývoje',
   'Close': 'Zavřít',
   'Close others': 'Zavřít ostatní',
   'Rename…': 'Přejmenovat…',

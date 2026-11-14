@@ -136,12 +136,7 @@ export function HomeScreen() {
           <Shortcut keys={[modKey, 'P']} label={t('Open table')} />
           <Shortcut keys={[modKey, 'J']} label={t('AI assistant')} />
           <span className="flex-1" />
-          <span>
-            {t('MIT licensed, no feature limits.')}{' '}
-            <button type="button" className="text-accent hover:underline" onClick={() => void api.openExternal('https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md')}>
-              {t('See the roadmap')}
-            </button>
-          </span>
+          <span>{t('MIT licensed, no feature limits.')}</span>
         </div>
       </div>
     </div>
