@@ -15,6 +15,7 @@ import { buildChangeStatements, lockRowsFirst, type RowChange } from './mutation
 import { bindParameters, extractParameters } from './parameters.js'
 import { KnowledgeBase, relationToForeignKey } from './knowledge.js'
 import { findTable } from './schema-utils.js'
+import { profileQueries, type ColumnProfile } from './profile.js'
 import { classifyStatement, fitsReadOnlyTransaction, isReadOnlyCondition, isReadOnlyScript, opensTransaction, splitStatements, stripLiterals } from './sql-split.js'
 import type { CheckInfo, ConnectionConfig, QueryResult, SchemaSnapshot, ServerInfo, StatementOutcome, TableInfo, TablePage, TableRef, TransactionState } from './types.js'
 
@@ -541,6 +542,37 @@ export class DatabaseService {
     )
     const [result] = await this.readIn(id, entry, this.readSession(entry, options.session), built.sql, built.params, options.signal)
     return Number(result?.rows[0]?.[0] ?? 0)
+  }
+
+  /**
+   * A column's profile with the table tab's filter: rows, NULLs, distinct values, min / max and the most common
+   * values. A part the database can't compute for the type (MIN of a PostgreSQL boolean, DISTINCT of json) is left out.
+   */
+  async profileColumn(id: string, options: Pick<FetchTableOptions, 'table' | 'filter' | 'signal' | 'session'> & { column: string }): Promise<ColumnProfile> {
+    const entry = this.get(id)
+    this.assertFilterReads(entry, options.filter)
+    const table = await this.findTable(id, options.table)
+    const q = profileQueries(options.table, options.column, options.filter, entry.driver.dialect, table)
+    const session = this.readSession(entry, options.session)
+    const read = async (query: BuiltQuery) => (await this.readIn(id, entry, session, query.sql, query.params, options.signal))[0]
+    const optional = async (query: BuiltQuery) => {
+      try {
+        return await read(query)
+      } catch (err) {
+        if (options.signal?.aborted) throw err
+        return undefined
+      }
+    }
+    const counts = await read(q.counts)
+    const [distinct, range, top] = [await optional(q.distinct), await optional(q.range), await optional(q.top)]
+    const row = counts?.rows[0] ?? []
+    return {
+      total: Number(row[0] ?? 0),
+      filled: Number(row[1] ?? 0),
+      ...(distinct?.rows[0] ? { distinct: Number(distinct.rows[0][0] ?? 0) } : {}),
+      ...(range?.rows[0] ? { min: range.rows[0][0] ?? null, max: range.rows[0][1] ?? null } : {}),
+      top: (top?.rows ?? []).map((r) => ({ value: r[0] ?? null, count: Number(r[1] ?? 0) })),
+    }
   }
 
   /**

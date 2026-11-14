@@ -152,12 +152,21 @@ export interface RolesTab extends BaseTab {
   principal?: string
 }
 
+/** Find a value in every table of a connection. */
+export interface SearchTab extends BaseTab {
+  kind: 'search'
+  text?: string
+  mode?: 'exact' | 'contains'
+  /** Only this schema. */
+  schema?: string
+}
+
 /** Server activity: sessions and running queries. */
 export interface ActivityTab extends BaseTab {
   kind: 'activity'
 }
 
-export type Tab = QueryTab | TableTab | StructureTab | DiagramTab | KnowledgeTab | CompareTab | ActivityTab | DataCompareTab | RolesTab | ModelTab | DashboardTab
+export type Tab = QueryTab | TableTab | StructureTab | DiagramTab | KnowledgeTab | CompareTab | ActivityTab | DataCompareTab | RolesTab | ModelTab | DashboardTab | SearchTab
 export type NewTab =
   | Omit<QueryTab, 'id'>
   | Omit<TableTab, 'id'>
@@ -170,6 +179,7 @@ export type NewTab =
   | Omit<RolesTab, 'id'>
   | Omit<ModelTab, 'id'>
   | Omit<DashboardTab, 'id'>
+  | Omit<SearchTab, 'id'>
 
 /** Two tabs side by side; `activeTabId` is the focused one. */
 export interface SplitView {

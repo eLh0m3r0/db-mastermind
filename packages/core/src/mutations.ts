@@ -2,8 +2,8 @@ import { qualify, type Dialect } from './dialect.js'
 import { ParamCollector, type BuiltQuery } from './filters.js'
 import type { TableRef } from './types.js'
 
-/** Values coming from the editor: text, NULL, or the DEFAULT keyword. */
-export type EditValue = string | number | boolean | null | { $default: true }
+/** Values coming from the editor: text, NULL, the DEFAULT keyword, or an SQL expression the user typed (`now()`). */
+export type EditValue = string | number | boolean | null | { $default: true } | { $sql: string }
 
 export type RowChange =
   | { type: 'update'; key: Record<string, EditValue>; values: Record<string, EditValue> }
@@ -14,11 +14,37 @@ export class MutationError extends Error {
   override name = 'MutationError'
 }
 
-const isDefault = (v: EditValue): v is { $default: true } => typeof v === 'object' && v !== null
+const isDefault = (v: EditValue): v is { $default: true } => typeof v === 'object' && v !== null && '$default' in v
+const isExpression = (v: EditValue): v is { $sql: string } => typeof v === 'object' && v !== null && '$sql' in v
+
+/**
+ * An SQL expression for a cell must stay one expression inside its parentheses: no statement separator or comment
+ * outside its string literals (a T-SQL batch would run a second statement; `1) --` would comment out the WHERE) and
+ * balanced parentheses (`1), other = (2` would change another column).
+ */
+export function checkCellExpression(expression: string): string | null {
+  if (!expression.trim()) return 'Type an expression, e.g. now()'
+  // Quoted text and identifiers out ('it''s', "name", [name], `name`); comments stay visible.
+  const bare = expression.replace(/'(?:[^']|'')*'|"(?:[^"]|"")*"|\[[^\]]*\]|`[^`]*`/g, '_')
+  if (/['"`[\]]/.test(bare)) return 'A quote or bracket is not closed'
+  if (/;/.test(bare)) return 'One expression only: no semicolons'
+  if (/--|\/\*|\*\/|#/.test(bare)) return 'No comments in an expression'
+  let depth = 0
+  for (const ch of bare) {
+    if (ch === '(') depth++
+    else if (ch === ')' && --depth < 0) return 'The parentheses do not match'
+  }
+  return depth === 0 ? null : 'The parentheses do not match'
+}
 
 function valueSql(v: EditValue, params: ParamCollector): string {
   if (v === null) return 'NULL'
   if (isDefault(v)) return 'DEFAULT'
+  if (isExpression(v)) {
+    const problem = checkCellExpression(v.$sql)
+    if (problem) throw new MutationError(problem)
+    return `(${v.$sql.trim()})`
+  }
   return params.add(v)
 }
 

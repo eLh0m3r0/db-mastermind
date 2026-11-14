@@ -1,5 +1,6 @@
 import type {
   ConnectionConfig,
+  ColumnProfile,
   DefinedObject,
   AiPermissions,
   DataCompareResult,
@@ -749,6 +750,8 @@ export interface MastermindApi {
 
   fetchTable(request: FetchTableRequest): Promise<TablePage>
   countTable(request: Omit<FetchTableRequest, 'limit' | 'offset'>): Promise<number>
+  /** Rows, NULLs, distinct values, min / max and the most common values of a column, with the tab's filter. */
+  profileColumn(request: Omit<FetchTableRequest, 'limit' | 'offset' | 'sort'> & { column: string }): Promise<ColumnProfile>
   importPreview(path: string, delimiter?: string): Promise<ImportPreview>
   importFile(request: ImportRequest): Promise<number>
   previewChanges(connectionId: string, table: TableRef, changes: RowChange[]): Promise<string[]>
@@ -960,6 +963,7 @@ export const API_METHODS = [
   'writeSqlFile',
   'saveSqlFileAs',
   'sqlFileTime',
+  'profileColumn',
 ] as const satisfies readonly (keyof MastermindApi)[]
 
 // Compile error if a method is added to MastermindApi but not to API_METHODS.

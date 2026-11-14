@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  BarChart3,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -25,6 +26,7 @@ import {
 } from 'lucide-react'
 import {
   cellToText,
+  checkCellExpression,
   countActiveConditions,
   displayName,
   findTable,
@@ -59,12 +61,17 @@ import { TransactionBar } from '@/features/query/TransactionBar'
 import { copyRowsAs, EXPORT_FORMATS } from '../results/copy'
 import { FilterBuilder, newCondition } from './FilterBuilder'
 import { ImportModal } from './ImportModal'
+import { ProfileModal } from './ProfileModal'
+import { SelectionStatsBar } from '@/components/grid/SelectionStatsBar'
 import { RowDetails } from './RowDetails'
 import { useAiAllowed } from '../ai/AiPermissions'
 import { tp, useT } from '@/lib/i18n'
-import { confirmAction } from '@/components/ui/ConfirmDialog'
+import { askText, confirmAction } from '@/components/ui/ConfirmDialog'
 
-type EditValue = string | null
+/** Text, NULL, or an SQL expression the database evaluates on save (shown as `= expr` in the grid). */
+type EditValue = string | null | { $sql: string }
+
+const shown = (v: EditValue) => (v !== null && typeof v === 'object' ? `= ${v.$sql}` : v)
 
 interface PendingChanges {
   edits: Map<number, Record<string, EditValue>>
@@ -139,6 +146,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
   const [total, setTotal] = useState<number | null>(null)
   const [counting, setCounting] = useState(false)
   const [showFilters, setShowFilters] = useState(countActiveConditions(tab.filter) > 0)
+  const [profiling, setProfiling] = useState<string | null>(null)
   const [draft, setDraft] = useState<FilterGroup>(() => rootGroup(tab.filter))
   const [pending, setPending] = useState<PendingChanges>(emptyPending)
   const [preview, setPreview] = useState<string[] | null>(null)
@@ -328,11 +336,11 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
       const copy = [...row]
       for (const [col, value] of Object.entries(edits)) {
         const i = fieldIndex.get(col)
-        if (i !== undefined) copy[i] = value
+        if (i !== undefined) copy[i] = shown(value)
       }
       return copy
     })
-    for (const ins of pending.inserted) rows.push(fields.map((f) => (f.name in ins ? ins[f.name]! : null)))
+    for (const ins of pending.inserted) rows.push(fields.map((f) => (f.name in ins ? shown(ins[f.name]!) : null)))
     return rows
   }, [result, pending, fields, fieldIndex])
 
@@ -358,7 +366,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
   const viewMeta = useMemo(() => view.map((i) => columnMeta[i]), [view, columnMeta])
 
   /** Applies one cell edit to pending changes (rows past the loaded ones are inserted rows). */
-  const applyEdit = (next: PendingChanges, row: number, col: number, value: string | null) => {
+  const applyEdit = (next: PendingChanges, row: number, col: number, value: EditValue) => {
     const name = fields[col]?.name
     if (!name) return
     if (row >= baseCount) {
@@ -374,7 +382,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
     else next.edits.delete(row)
   }
 
-  const onEdit = (row: number, col: number, value: string | null) => {
+  const onEdit = (row: number, col: number, value: EditValue) => {
     setPending((p) => {
       const next: PendingChanges = { edits: new Map(p.edits), inserted: [...p.inserted], deleted: new Set(p.deleted) }
       applyEdit(next, row, col, value)
@@ -461,6 +469,12 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
     fields.forEach((f, i) => {
       const col = table?.columns.find((c) => c.name === f.name)
       if (col?.isIdentity || col?.isGenerated) return
+      // A pending SQL expression is cloned as the expression, not as its `= …` display text.
+      const pendingValue = row >= baseCount ? pending.inserted[row - baseCount]?.[f.name] : pending.edits.get(row)?.[f.name]
+      if (pendingValue !== undefined && pendingValue !== null && typeof pendingValue === 'object') {
+        values[f.name] = pendingValue
+        return
+      }
       const v = displayRows[row]?.[i] ?? null
       values[f.name] = v === null ? null : cellToText(v)
     })
@@ -608,6 +622,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
           setDraft((d) => ({ ...d, children: [...d.children, newCondition(name)] }))
           setShowFilters(true)
         } },
+        { label: t('Profile values…'), icon: <BarChart3 size={13} />, onClick: () => setProfiling(name) },
         { label: t('Copy column name'), icon: <Copy size={13} />, onClick: () => void copyText(name) },
         'separator',
         { label: t('Hide column'), icon: <EyeOff size={13} />, disabled: view.length <= 1, onClick: () => updateColumnPrefs({ hidden: [...(columnPrefs.hidden ?? []), name] }) },
@@ -671,6 +686,24 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
       items.push(
         'separator',
         { label: t('Set NULL'), disabled: columnMeta[pos.col]?.nullable === false, onClick: () => rows.forEach((r) => onEdit(r, pos.col, null)) },
+        {
+          label: t('Set SQL expression…'),
+          onClick: async () => {
+            const expression = await askText({
+              title: t('Set {column} to an SQL expression', { column: colName }),
+              message: t('The database works it out when the change is saved, e.g. now(), gen_random_uuid() or price * 1.21.'),
+              placeholder: 'now()',
+              confirmLabel: t('Set'),
+            })
+            if (expression === null) return
+            const problem = checkCellExpression(expression)
+            if (problem) {
+              toast({ kind: 'error', message: t(problem) })
+              return
+            }
+            rows.forEach((r) => onEdit(r, pos.col, { $sql: expression.trim() }))
+          },
+        },
         { label: t('Clone row'), icon: <Rows3 size={13} />, onClick: () => cloneRow(pos.row) },
         { label: rows.length > 1 ? tp(rows.length, { one: 'Delete {n} row', many: 'Delete {n} rows' }) : t('Delete row'), icon: <Trash2 size={13} />, danger: true, onClick: () => deleteRows(rows) },
       )
@@ -958,6 +991,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
             </>
           ) : null}
         </span>
+        <SelectionStatsBar fields={viewFields} rows={viewRows} selection={selection} dataTypes={viewMeta.map((m) => m?.dataType)} />
         <div className="flex-1" />
         <IconButton label={t('First page')} disabled={currentPage === 0} onClick={() => goTo(0)}>
           <ChevronsLeft size={14} />
@@ -998,6 +1032,23 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
         </Select>
       </div>
 
+      <ProfileModal
+        connectionId={tab.connectionId}
+        table={tab.table}
+        column={profiling}
+        filter={appliedFilter}
+        session={session}
+        onClose={() => setProfiling(null)}
+        onFilter={(value) => {
+          const name = profiling
+          setProfiling(null)
+          if (!name) return
+          const group: FilterGroup = { ...draft, children: [...draft.children, value === null ? newCondition(name, 'is_null') : newCondition(name, 'eq', cellToText(value))] }
+          setDraft(group)
+          setShowFilters(true)
+          void applyFilter(group)
+        }}
+      />
       {table && (
         <ImportModal
           open={importOpen}

@@ -5,6 +5,7 @@ import { cellToText, type CellValue, type QueryResult, type SortSpec, type State
 import { defaultChartConfig, ResultChart, type ChartConfig } from '@/components/chart/ResultChart'
 import { openCellViewer } from '@/components/grid/CellViewer'
 import { DataGrid, selectionToTsv, type GridSelection } from '@/components/grid/DataGrid'
+import { SelectionStatsBar } from '@/components/grid/SelectionStatsBar'
 import { IconButton } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -134,6 +135,8 @@ export function ResultsPanel({
         : tabs[tabs.length - 1]!.key
   const isPinned = (key: string) => key.startsWith('pin:')
   const current = tabs.find((t) => t.key === activeKey)
+  // A selection belongs to the result it was made in (totals of another result would be wrong).
+  useEffect(() => setSelection(null), [activeKey, outcomes])
   useEffect(() => {
     tabStrip.current?.querySelector(`[data-result-tab="${CSS.escape(activeKey)}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }, [activeKey])
@@ -308,6 +311,7 @@ export function ResultsPanel({
                 )}
               </span>
             )}
+            {!charts[current.key] && <SelectionStatsBar fields={current.result.fields} rows={sortedRows} selection={selection} />}
             <span className="pr-2 text-[11.5px] text-fg-faint">{formatDuration(current.result.durationMs)}</span>
             {(() => {
               const chartable = defaultChartConfig(current.result.fields, sortedRows)

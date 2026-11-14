@@ -120,6 +120,7 @@ export function connectionMenu(c: StoredConnection): Parameters<typeof openMenu>
     ...(supportsOtherDatabases(c.driver)
       ? [{ label: t('Open another database…'), icon: <Database size={13} />, onClick: () => useUi.getState().set({ modal: { kind: 'databases', connectionId: c.id } }) }]
       : []),
+    { label: t('Find a value…'), icon: <Search size={13} />, onClick: () => useWorkspace.getState().open({ kind: 'search', connectionId: c.id, title: t('Find value') }, { reuse: false }) },
     { label: t('Edit…'), icon: <Pencil size={13} />, onClick: () => useUi.getState().set({ modal: { kind: 'connection', connectionId: c.id } }) },
     { label: t('Duplicate'), icon: <Copy size={13} />, onClick: () => void duplicate(c.id) },
     { label: t('Data dictionary (HTML)…'), icon: <FileText size={13} />, onClick: () => void exportDataDictionary(c.id, 'html') },

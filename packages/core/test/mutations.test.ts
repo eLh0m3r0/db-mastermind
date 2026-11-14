@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildChangeStatements, inlineParams, mssqlDialect, mysqlDialect, postgresDialect } from '../src/index.js'
+import { buildChangeStatements, checkCellExpression, inlineParams, mssqlDialect, mysqlDialect, postgresDialect } from '../src/index.js'
 
 describe('buildChangeStatements', () => {
   it('builds parameterized insert/update/delete', () => {
@@ -40,5 +40,36 @@ describe('inlineParams', () => {
     expect(inlineParams(q!, mssqlDialect)).toBe("UPDATE [u] SET [a] = N'it''s', [b] = 1 WHERE [id] = 1")
     const many = { sql: Array.from({ length: 11 }, (_, i) => `$${i + 1}`).join(','), params: Array.from({ length: 11 }, (_, i) => i) }
     expect(inlineParams(many, postgresDialect)).toBe('0,1,2,3,4,5,6,7,8,9,10')
+  })
+})
+
+describe('SQL expressions in cells', () => {
+  it('puts the expression into the statement as written, in parentheses, next to bound values', () => {
+    const [u, i] = buildChangeStatements(
+      { schema: 'shop', name: 'orders' },
+      [
+        { type: 'update', key: { id: 7 }, values: { status: 'paid', paid_at: { $sql: 'now()' } } },
+        { type: 'insert', values: { total: { $sql: "price * 1.21 + length('a;b')" } } },
+      ],
+      postgresDialect,
+    )
+    expect(u).toEqual({ sql: 'UPDATE "shop"."orders" SET "status" = $1, "paid_at" = (now()) WHERE "id" = $2', params: ['paid', 7] })
+    expect(i!.sql).toBe(`INSERT INTO "shop"."orders" ("total") VALUES ((price * 1.21 + length('a;b')))`)
+  })
+
+  it('refuses anything that could be a second statement or hide one', () => {
+    expect(checkCellExpression('now()')).toBeNull()
+    expect(checkCellExpression("'a;b' || x")).toBeNull()
+    expect(checkCellExpression('1); DROP TABLE x')).toMatch(/semicolon/)
+    expect(checkCellExpression('1 -- x')).toMatch(/comment/)
+    expect(checkCellExpression('1 /* x */')).toMatch(/comment/)
+    expect(checkCellExpression('  ')).toMatch(/expression/)
+    // Closing the parentheses early would comment out the WHERE or change another column.
+    expect(checkCellExpression('1) --')).toMatch(/comment|parenthes/)
+    expect(checkCellExpression('1), other = (2')).toMatch(/parenthes/)
+    expect(checkCellExpression("coalesce(x, ')')")).toBeNull()
+    expect(checkCellExpression("'unclosed")).toMatch(/not closed/)
+    expect(checkCellExpression('1 # mysql comment')).toMatch(/comment/)
+    expect(() => buildChangeStatements({ name: 't' }, [{ type: 'update', key: { id: 1 }, values: { a: { $sql: '1; DELETE FROM t' } } }], mssqlDialect)).toThrow(/semicolon/)
   })
 })

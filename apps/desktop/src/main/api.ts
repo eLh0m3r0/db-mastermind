@@ -695,6 +695,10 @@ export const api: MastermindApi = {
     return (await db.endTransaction(connectionId, session, action)) ?? 'none'
   },
 
+  async profileColumn(request) {
+    await ensureConnected(request.connectionId)
+    return track(request.runId, (signal) => db.profileColumn(request.connectionId, { table: request.table, column: request.column, filter: request.filter, session: request.session, signal }))
+  },
   async fetchTable(request) {
     await ensureConnected(request.connectionId)
     return track(request.runId, (signal) =>
