@@ -182,7 +182,8 @@ Server activity becomes one tab with three sections in a segmented control at it
 | Oracle | `v$sqlstats` | no access to v$ views |
 
 Columns: query (one line, full on hover), calls, total time, mean time, rows; sorted by total time (a header
-click sorts by another). Each row: *Open in editor*, *Explain*. Refresh is manual (these are cumulative numbers).
+click sorts by another). Each row: *Open in editor* (no *Explain*: the statistics keep statements normalized, with
+`$1` / `?` for their values, which EXPLAIN can't run). Refresh is manual (these are cumulative numbers).
 
 ### E2. Storage
 

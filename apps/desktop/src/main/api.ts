@@ -14,6 +14,8 @@ import {
   detectDelimiter,
   explainQuery,
   objectDefinition,
+  storageReport,
+  topQueries,
   DIALECT_NAMES,
   extractSql,
   schemaOverview,
@@ -468,6 +470,14 @@ export const api: MastermindApi = {
   async objectDefinition(connectionId, object) {
     await ensureConnected(connectionId)
     return (await objectDefinition(db, connectionId, object)).sql
+  },
+  async topQueries(connectionId) {
+    await ensureConnected(connectionId)
+    return topQueries(db, connectionId)
+  },
+  async storageReport(connectionId) {
+    await ensureConnected(connectionId)
+    return storageReport(db, connectionId)
   },
   async listActivity(connectionId) {
     await ensureConnected(connectionId)

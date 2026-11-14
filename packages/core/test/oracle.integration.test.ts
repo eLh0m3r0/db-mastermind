@@ -18,6 +18,8 @@ import {
   migrationScript,
   toDesignTable,
   objectDefinition,
+  storageReport,
+  topQueries,
 } from '../src/index.js'
 
 /** Oracle (thin mode, no Instant Client). Requires the `oracle` service from docker-compose.test.yml. */
@@ -227,5 +229,14 @@ describe.skipIf(skip)('oracle', () => {
     }
     expect(Number((await run('SELECT add_one(41) FROM dual')).results![0]!.rows[0]![0])).toBe(42)
     await run('DROP VIEW big_orders')
+  })
+
+  it('reports table sizes, and top queries or why it may not read them', async () => {
+    const storage = await storageReport(svc, 'ora')
+    expect(storage.tables.map((t) => t.name)).toEqual(expect.arrayContaining(['ORDERS', 'CUSTOMERS']))
+    expect(storage.tables.find((t) => t.name === 'ORDERS')!.totalBytes).toBeGreaterThan(0)
+    const top = await topQueries(svc, 'ora')
+    if (top.available) expect(top.queries.length).toBeGreaterThan(0)
+    else expect(top.reason).toMatch(/v\$sqlstats/)
   })
 })

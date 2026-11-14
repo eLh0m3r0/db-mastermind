@@ -1,6 +1,8 @@
 import type {
   ConnectionConfig,
   ColumnProfile,
+  StorageReport,
+  TopQueries,
   DefinedObject,
   AiPermissions,
   DataCompareResult,
@@ -696,6 +698,10 @@ export interface MastermindApi {
   /** Commit / Roll back of a query tab's open transaction; resolves with the state after it. */
   endTransaction(connectionId: string, session: string, action: 'commit' | 'rollback'): Promise<TransactionState>
   listActivity(connectionId: string): Promise<SessionActivity[]>
+  /** The statements that took the most time (pg_stat_statements, performance_schema, Query stats, v$sqlstats). */
+  topQueries(connectionId: string): Promise<TopQueries>
+  /** Table and index sizes and indexes nothing used since the statistics started. */
+  storageReport(connectionId: string): Promise<StorageReport>
   listPrincipals(connectionId: string): Promise<Principal[]>
   listGrants(connectionId: string, principal: string): Promise<Grant[]>
   stopSession(connectionId: string, sessionId: string, mode: 'cancel' | 'terminate'): Promise<void>
@@ -964,6 +970,8 @@ export const API_METHODS = [
   'saveSqlFileAs',
   'sqlFileTime',
   'profileColumn',
+  'topQueries',
+  'storageReport',
 ] as const satisfies readonly (keyof MastermindApi)[]
 
 // Compile error if a method is added to MastermindApi but not to API_METHODS.

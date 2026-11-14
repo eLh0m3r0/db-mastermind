@@ -34,3 +34,4 @@ export { definitionSupport, tableDefinition, withLeadingCreate, routineObject, t
 export * from './value-search.js'
 export { PROFILE_TOP, type ColumnProfile } from './profile.js'
 export * from './sql-inspect.js'
+export type { StorageReport, TableSize, TopQueries, TopQuery, UnusedIndex } from './health.js'
