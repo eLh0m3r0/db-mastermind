@@ -19,6 +19,8 @@ export interface QueryTab extends BaseTab {
   savedQueryId?: string
   /** Text as last saved, to show the unsaved dot. */
   savedSql?: string
+  /** The database object whose definition the tab was opened with (opening it again comes back here). */
+  object?: { schema?: string; name: string; kind: string; arguments?: string | null }
 }
 
 export interface TableTab extends BaseTab {
@@ -243,6 +245,9 @@ function sameTarget(a: Tab, b: NewTab): boolean {
   }
   if (a.kind === 'diagram' && b.kind === 'diagram') return a.focus === b.focus && !a.tables && !b.tables
   if (a.kind === 'knowledge' && b.kind === 'knowledge') return true
+  if (a.kind === 'query' && b.kind === 'query') {
+    return !!a.object && !!b.object && a.object.kind === b.object.kind && a.object.name === b.object.name && (a.object.schema ?? '') === (b.object.schema ?? '') && (a.object.arguments ?? '') === (b.object.arguments ?? '')
+  }
   return false
 }
 

@@ -146,7 +146,8 @@ export function splitStatements(
 
     if (isWordChar(ch) && !isWordChar(script[i - 1])) {
       let j = i
-      while (j < n && isWordChar(script[j])) j++
+      // MySQL names may contain `$`: a word still ends where a DELIMITER-set delimiter such as `$$` starts (END$$).
+      while (j < n && isWordChar(script[j]) && !(delimiter !== ';' && j > i && script.startsWith(delimiter, j))) j++
       const word = script.slice(i, j).toUpperCase()
       lastWords.push(word)
       if (lastWords.length > 6) lastWords.shift()

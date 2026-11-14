@@ -309,7 +309,7 @@ export class OracleDriver implements DatabaseDriver {
     const owners = options.schemas?.length ? options.schemas : [current]
     const inList = owners.map((_, i) => `:${i + 1}`).join(', ')
 
-    const [allOwners, tables, columns, constraints, indexes] = await Promise.all([
+    const [allOwners, tables, columns, constraints, indexes, routines] = await Promise.all([
       this.rows(
         `SELECT DISTINCT owner AS "o" FROM all_objects WHERE object_type IN ('TABLE','VIEW') AND owner NOT IN (${SYSTEM_OWNERS.map((o) => `'${o.replace("'", "''")}'`).join(',')}) ORDER BY 1`,
       ),
@@ -352,6 +352,13 @@ export class OracleDriver implements DatabaseDriver {
            JOIN all_ind_columns ic ON ic.index_owner = i.owner AND ic.index_name = i.index_name
           WHERE i.table_owner IN (${inList})
           ORDER BY i.table_owner, i.table_name, i.index_name, ic.column_position`,
+        owners,
+      ),
+      // Standalone functions and procedures (package members belong to their package).
+      this.rows(
+        `SELECT owner AS "s", object_name AS "name", object_type AS "type" FROM all_objects
+          WHERE owner IN (${inList}) AND object_type IN ('FUNCTION', 'PROCEDURE')
+          ORDER BY owner, object_name`,
         owners,
       ),
     ])
@@ -429,7 +436,7 @@ export class OracleDriver implements DatabaseDriver {
       defaultSchema: current,
       schemas: options.schemas?.length ? owners : [...new Set([current, ...allOwners.map((o) => String(o.o))])],
       tables: [...byKey.values()],
-      routines: [],
+      routines: routines.map((r) => ({ schema: String(r.s), name: String(r.name), kind: r.type === 'PROCEDURE' ? ('procedure' as const) : ('function' as const) })),
       capturedAt: new Date().toISOString(),
     }
   }

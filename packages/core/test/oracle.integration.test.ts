@@ -17,6 +17,7 @@ import {
   getDialect,
   migrationScript,
   toDesignTable,
+  objectDefinition,
 } from '../src/index.js'
 
 /** Oracle (thin mode, no Instant Client). Requires the `oracle` service from docker-compose.test.yml. */
@@ -207,5 +208,24 @@ describe.skipIf(skip)('oracle', () => {
     }
     expect(Number((await run('SELECT COUNT(*) FROM orders')).results![0]!.rows[0]![0])).toBe(120)
   })
-})
 
+  it('lists functions and procedures and gives their definitions, which run again', async () => {
+    await svc.runScript('ora', 'CREATE OR REPLACE FUNCTION add_one(x NUMBER) RETURN NUMBER IS\nBEGIN\n  RETURN x + 1;\nEND;\n/')
+    await svc.runScript('ora', 'CREATE OR REPLACE PROCEDURE touch_it(n NUMBER) IS\n  m NUMBER;\nBEGIN\n  m := n;\nEND;\n/')
+    await run(`CREATE OR REPLACE VIEW big_orders AS SELECT id, total FROM orders WHERE total > 1000`)
+    const snapshot = await svc.schema('ora', true)
+    expect(snapshot.routines.map((r) => `${r.kind}:${r.name}`)).toEqual(expect.arrayContaining(['function:ADD_ONE', 'procedure:TOUCH_IT']))
+    for (const object of [
+      { schema: 'SHOP', name: 'ADD_ONE', kind: 'function' as const },
+      { schema: 'SHOP', name: 'TOUCH_IT', kind: 'procedure' as const },
+      { schema: 'SHOP', name: 'BIG_ORDERS', kind: 'view' as const },
+    ]) {
+      const { sql } = await objectDefinition(svc, 'ora', object)
+      expect(sql).toMatch(/^CREATE OR REPLACE /)
+      const failed = (await svc.runScript('ora', sql)).find((o) => o.error)
+      expect(failed?.error?.message, sql).toBeUndefined()
+    }
+    expect(Number((await run('SELECT add_one(41) FROM dual')).results![0]!.rows[0]![0])).toBe(42)
+    await run('DROP VIEW big_orders')
+  })
+})

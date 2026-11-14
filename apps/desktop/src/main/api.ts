@@ -13,6 +13,7 @@ import {
   buildChangeStatements,
   detectDelimiter,
   explainQuery,
+  objectDefinition,
   DIALECT_NAMES,
   extractSql,
   schemaOverview,
@@ -462,6 +463,10 @@ export const api: MastermindApi = {
   async explainQuery(connectionId, sql, analyze) {
     await ensureConnected(connectionId)
     return explainQuery(db, connectionId, sql, analyze)
+  },
+  async objectDefinition(connectionId, object) {
+    await ensureConnected(connectionId)
+    return (await objectDefinition(db, connectionId, object)).sql
   },
   async listActivity(connectionId) {
     await ensureConnected(connectionId)

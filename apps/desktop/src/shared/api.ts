@@ -1,5 +1,6 @@
 import type {
   ConnectionConfig,
+  DefinedObject,
   AiPermissions,
   DataCompareResult,
   CanonicalCheck,
@@ -666,6 +667,8 @@ export interface MastermindApi {
   runQuery(request: RunQueryRequest): Promise<StatementOutcome[]>
   cancelQuery(runId: string): Promise<void>
   explainQuery(connectionId: string, sql: string, analyze?: boolean): Promise<ExplainResult>
+  /** A view's, function's or procedure's SQL as the database keeps it, ready to run (a table: its generated CREATE). */
+  objectDefinition(connectionId: string, object: DefinedObject): Promise<string>
   releaseSession(connectionId: string, session: string): Promise<void>
   /** A query tab's transaction as the database sees it; null when not connected or the database has none to manage. */
   transactionState(connectionId: string, session: string): Promise<TransactionState | null>
@@ -925,6 +928,7 @@ export const API_METHODS = [
   'respondAiApproval',
   'loadWorkspace',
   'saveWorkspace',
+  'objectDefinition',
 ] as const satisfies readonly (keyof MastermindApi)[]
 
 // Compile error if a method is added to MastermindApi but not to API_METHODS.
