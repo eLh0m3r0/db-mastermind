@@ -11,6 +11,9 @@ import pg from 'pg'
 const out = process.argv[2] ?? tmpdir()
 const admin = new pg.Client({ host: '127.0.0.1', port: 54329, user: 'postgres', password: 'mastermind', database: 'mastermind' })
 await admin.connect()
+// The rows this flow looks for, whatever other tests left behind.
+await admin.query(`UPDATE shop.customers SET name = 'Bob' WHERE email = 'bob@example.com'`)
+await admin.query(`UPDATE shop.orders SET total = 10.50 WHERE id = 1`)
 const bobBefore = (await admin.query(`SELECT name FROM shop.customers WHERE email = 'bob@example.com'`)).rows[0]?.name
 
 const dir = mkdtempSync(join(tmpdir(), 'dbm-ui103-'))

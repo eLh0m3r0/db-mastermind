@@ -273,7 +273,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
         const file = await api.openSqlFile(now.path).catch(() => null)
         if (!file || (silent && stopped)) return
         if (editor.current?.getValue() !== typed) {
-          if (!silent) toast({ kind: 'warning', message: t('“{name}” was not reloaded', { name: now.title }), detail: t('You typed in it while the file was being read. Reload again to take the file’s text.') })
+          if (!silent) toast({ kind: 'warning', message: t('“{name}” was not reloaded', { name: now.title }), detail: t('You typed in it while the file was being read. Reload again to take the file’s text.'), duration: 0, action: { label: t('Reload from disk'), run: () => void reload() } })
           return
         }
         editor.current?.setValue(file.text)

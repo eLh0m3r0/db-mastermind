@@ -30,7 +30,8 @@ export function checkCellExpression(expression: string, driver?: DriverId): stri
   if (/[\r\n\u2028\u2029]/.test(expression)) return 'An expression is one line'
   if (/\\/.test(expression)) return 'No backslashes in an expression'
   // $tag$…$tag$ quoting (PostgreSQL, DuckDB, ClickHouse).
-  if (/\$[A-Za-z_0-9]*\$/.test(expression)) return 'No dollar-quoted text in an expression'
+  // (Any tag: PostgreSQL allows non-ASCII letters in them.)
+  if (/\$[^\s$'"]*\$/.test(expression)) return 'No dollar-quoted text in an expression'
   // Oracle q'…' / nq'…' (a name is never directly followed by a quote in valid SQL, so any q' is refused).
   if (/[qQ]'/.test(expression)) return "No q'…' quoting in an expression"
   // BigQuery '''…''' and """…""" strings.
@@ -41,8 +42,8 @@ export function checkCellExpression(expression: string, driver?: DriverId): stri
   const bare = expression.replace(quoted, '_')
   if (/['"`]/.test(bare) || (driver === 'mssql' && /[[\]]/.test(bare))) return 'A quote or bracket is not closed'
   if (/;/.test(bare)) return 'One expression only: no semicolons'
-  // `#` starts a comment everywhere but PostgreSQL and DuckDB (operators there); `//` in ClickHouse.
-  if (/--|\/\*|\*\/|\/\//.test(bare) || (driver !== 'postgres' && driver !== 'duckdb' && /#/.test(bare))) return 'No comments in an expression'
+  // `#` starts a comment everywhere but PostgreSQL and DuckDB (operators there); `//` in ClickHouse (DuckDB: division).
+  if (/--|\/\*|\*\//.test(bare) || ((driver === undefined || driver === 'clickhouse') && /\/\//.test(bare)) || (driver !== 'postgres' && driver !== 'duckdb' && /#/.test(bare))) return 'No comments in an expression'
   let depth = 0
   for (const ch of bare) {
     if (ch === '(') depth++

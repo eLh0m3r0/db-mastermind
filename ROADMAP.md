@@ -745,6 +745,10 @@ screens reused, nothing shown before it is relevant, no new settings): [docs/spe
 - ✅ F1 MCP `propose_connection` (reviewed in the app, never a password) and `get_definition` · F2 `dbm` command line
   (query, dictionary, check, diff) · F3 SQL blocks in knowledge base notes run in place, reads only — e2e/flow106
 
+Reviewed by Codex in four passes (cell SQL expressions follow each database's quoting and comment rules and are
+one line; reloads never drop typed text; whole-day date search is half open; Oracle definitions name their owner;
+`dbm` waits for slow output; selection totals are exact decimals).
+
 Left for later: triggers in the explorer, routine bodies in *Used by*, a folder of scripts in the sidebar, SQL Server
 Agent jobs, editing users and grants, Explain on normalized top queries.
 
