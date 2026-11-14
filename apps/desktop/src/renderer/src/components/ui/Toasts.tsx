@@ -43,7 +43,15 @@ export function Toasts() {
                 </button>
               )}
             </div>
-            <button type="button" className="h-5 shrink-0 text-fg-faint hover:text-fg" onClick={() => dismiss(t.id)} aria-label={tr('Dismiss')}>
+            <button
+              type="button"
+              className="h-5 shrink-0 text-fg-faint hover:text-fg"
+              onClick={() => {
+                t.onDismiss?.()
+                dismiss(t.id)
+              }}
+              aria-label={tr('Dismiss')}
+            >
               <X size={14} />
             </button>
           </div>

@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode } from 'react'
-import { Check, Copy, CornerDownLeft, Play } from 'lucide-react'
+import { Check, Copy, CornerDownLeft, Play, SquareArrowOutUpRight, X } from 'lucide-react'
+import { cellToText, type CellValue, type ResultField } from '@dbmastermind/core/browser'
 import { useState } from 'react'
 import { copyText } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
@@ -11,6 +12,63 @@ export interface CodeActions {
   onApplyModel?: (code: string) => void
   /** DBML blocks while an ER diagram is open: load the tables into the schema designer as pending changes. */
   onApplyDesign?: (code: string) => void
+  /** SQL blocks run in place, the result shown under the block (knowledge base notes). */
+  runInline?: (code: string) => Promise<InlineResult>
+  /** SQL blocks: open in a query tab. */
+  onOpen?: (code: string) => void
+}
+
+export interface InlineResult {
+  fields: ResultField[]
+  rows: CellValue[][]
+  truncated?: boolean
+  /** A statement without rows: what it reported. */
+  message?: string
+}
+
+/** A block's result in compact form: at most a few hundred rows, scrolls inside the note. */
+function InlineResultView({ result, onClose }: { result: InlineResult | { error: string }; onClose: () => void }) {
+  const t = useT()
+  return (
+    <div className="border-t border-line bg-bg" data-testid="inline-result">
+      <div className="flex h-6 items-center gap-2 px-2 text-[11px] text-fg-faint">
+        <span className="flex-1">
+          {'error' in result ? t('Failed') : result.fields.length ? t('{n} rows', { n: String(result.rows.length) }) + (result.truncated ? ` · ${t('first rows only')}` : '') : (result.message ?? t('Done'))}
+        </span>
+        <button type="button" title={t('Close')} className="rounded p-0.5 hover:bg-hover hover:text-fg" onClick={onClose}>
+          <X size={11} />
+        </button>
+      </div>
+      {'error' in result ? (
+        <div className="px-2.5 pb-2 font-mono text-[11.5px] whitespace-pre-wrap text-danger select-text">{result.error}</div>
+      ) : result.fields.length ? (
+        <div className="max-h-[300px] overflow-auto">
+          <table className="w-full border-collapse font-mono text-[11.5px]">
+            <thead className="sticky top-0 bg-subtle">
+              <tr>
+                {result.fields.map((f, i) => (
+                  <th key={i} className="border-b border-line px-2 py-1 text-left font-sans font-semibold whitespace-nowrap">
+                    {f.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {result.rows.map((row, r) => (
+                <tr key={r} className="border-b border-line last:border-b-0">
+                  {row.map((v, c) => (
+                    <td key={c} className={`max-w-[280px] truncate px-2 py-0.5 whitespace-nowrap ${v === null ? 'text-null italic' : ''}`}>
+                      {v === null ? 'NULL' : cellToText(v)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 /** Inline markdown: **bold**, *italic*, `code`, [links](url). Produces React nodes, never HTML. */
@@ -42,6 +100,8 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
 
 function CodeBlock({ code, lang, actions }: { code: string; lang: string; actions: CodeActions }) {
   const [copied, setCopied] = useState(false)
+  const [result, setResult] = useState<InlineResult | { error: string } | null>(null)
+  const [running, setRunning] = useState(false)
   const t = useT()
   const isSql = /^(sql|pgsql|postgres|postgresql|tsql|mysql|sqlite)?$/i.test(lang) && /\b(select|insert|update|delete|with|create|alter)\b/i.test(code)
   return (
@@ -63,6 +123,31 @@ function CodeBlock({ code, lang, actions }: { code: string; lang: string; action
             <CornerDownLeft size={11} /> {t('Insert')}
           </button>
         )}
+        {isSql && actions.onOpen && (
+          <button type="button" className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-hover hover:text-fg" onClick={() => actions.onOpen!(code)}>
+            <SquareArrowOutUpRight size={11} /> {t('Open in editor')}
+          </button>
+        )}
+        {isSql && actions.runInline && (
+          <button
+            type="button"
+            disabled={running}
+            data-testid="run-block"
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-accent hover:bg-accent-soft disabled:opacity-50"
+            onClick={async () => {
+              setRunning(true)
+              try {
+                setResult(await actions.runInline!(code))
+              } catch (err) {
+                setResult({ error: err instanceof Error ? err.message : String(err) })
+              } finally {
+                setRunning(false)
+              }
+            }}
+          >
+            <Play size={11} /> {running ? t('Running…') : t('Run')}
+          </button>
+        )}
         {isSql && actions.onRun && (
           <button type="button" className="flex items-center gap-1 rounded px-1.5 py-0.5 text-accent hover:bg-accent-soft" onClick={() => actions.onRun!(code)}>
             <Play size={11} /> {t('Run')}
@@ -82,6 +167,7 @@ function CodeBlock({ code, lang, actions }: { code: string; lang: string; action
         </button>
       </div>
       <pre className="overflow-auto p-2.5 font-mono text-[11.5px] leading-relaxed whitespace-pre select-text">{code}</pre>
+      {result && <InlineResultView result={result} onClose={() => setResult(null)} />}
     </div>
   )
 }

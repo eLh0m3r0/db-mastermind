@@ -1,6 +1,6 @@
-import { readFileSync } from 'node:fs'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import { DatabaseService, parseConnectionString, type ConnectionConfig } from '@dbmastermind/core'
+import { DatabaseService, type ConnectionConfig } from '@dbmastermind/core'
+import { connectionFromUrl, connectionsFromFile } from './connection-args.js'
 import { createMcpServer } from './server.js'
 
 const HELP = `dbmastermind-mcp: MCP server for your databases
@@ -30,13 +30,6 @@ Examples:
   codex mcp add shop -- npx -y dbmastermind-mcp --config ~/dbs.json
 `
 
-const expandEnv = (s: string) => s.replace(/\$\{(\w+)\}/g, (_, name: string) => process.env[name] ?? '')
-
-interface FileConnection extends Partial<ConnectionConfig> {
-  url?: string
-  knowledgeBase?: string
-}
-
 function parseArgs(argv: string[]) {
   const connections: ConnectionConfig[] = []
   const flags = { allowWrites: false, allowKnowledgeWrites: false, schemaOnly: false, readOnly: false }
@@ -48,12 +41,9 @@ function parseArgs(argv: string[]) {
       return v
     }
     switch (arg) {
-      case '--url': {
-        const parsed = parseConnectionString(expandEnv(next()))
-        const name = parsed.driver === 'sqlite' ? (parsed.filePath ?? 'sqlite') : `${parsed.host ?? 'localhost'}${parsed.database ? `/${parsed.database}` : ''}`
-        connections.push({ ...parsed, id: `c${connections.length + 1}`, name })
+      case '--url':
+        connections.push(connectionFromUrl(next(), `c${connections.length + 1}`))
         break
-      }
       case '--name': {
         const last = connections.at(-1)
         if (!last) throw new Error('--name must follow --url')
@@ -66,21 +56,9 @@ function parseArgs(argv: string[]) {
         last.knowledgeBasePath = next()
         break
       }
-      case '--config': {
-        const list = JSON.parse(expandEnv(readFileSync(next(), 'utf8'))) as FileConnection[]
-        for (const item of list) {
-          const base = item.url ? parseConnectionString(item.url) : {}
-          connections.push({
-            ...base,
-            ...item,
-            driver: (item.driver ?? (base as ConnectionConfig).driver)!,
-            id: item.id ?? `c${connections.length + 1}`,
-            name: item.name ?? `connection ${connections.length + 1}`,
-            knowledgeBasePath: item.knowledgeBase ?? item.knowledgeBasePath,
-          })
-        }
+      case '--config':
+        connections.push(...connectionsFromFile(next(), connections.length))
         break
-      }
       case '--allow-writes':
         flags.allowWrites = true
         break

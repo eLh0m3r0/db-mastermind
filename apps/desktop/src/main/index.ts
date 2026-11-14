@@ -9,6 +9,7 @@ import { flushHistory } from './library'
 import { flushConnections, loadConnections } from './connections'
 import { getSettings, loadSettings } from './settings'
 import { watchTeamFolder } from './team'
+import { watchProposals } from './proposals-watch'
 import { applyMcpHttp } from './mcp-http'
 import { isMcpMode, runMcpMode } from './mcp-mode'
 import { configureDataDir, dataPath, readJson, writeJson } from './storage'
@@ -153,6 +154,7 @@ function startApp() {
     await loadSettings()
     await loadConnections()
     watchTeamFolder()
+    void watchProposals()
     buildMenu()
     createWindow()
     void applyMcpHttp()

@@ -8,6 +8,8 @@ import { db } from './api'
 import { listConnections } from './connections'
 import { addHistory } from './library'
 import { getSettings } from './settings'
+import { writeProposal } from './connection-proposals'
+import { notifyProposals, proposalsDir } from './proposals-watch'
 
 let server: Server | undefined
 let running: { port: number; token: string } | undefined
@@ -51,6 +53,10 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     allowKnowledgeWrites: mcp.allowWrites,
     schemaOnly: ai.dataSharing === 'schema',
     version: app.getVersion(),
+    proposeConnection: async (p) => {
+      await writeProposal(proposalsDir(), p)
+      notifyProposals()
+    },
     onExecuted: (connectionId, o) =>
       addHistory({
         connectionId,

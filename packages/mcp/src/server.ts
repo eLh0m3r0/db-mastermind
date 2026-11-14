@@ -9,6 +9,8 @@ import {
 } from '@modelcontextprotocol/sdk/types.js'
 import {
   buildSystemPrompt,
+  connectionProposal,
+  type ConnectionProposal,
   DB_TOOLS,
   describeError,
   KnowledgeBase,
@@ -45,6 +47,11 @@ export interface McpServerOptions {
    * before saving a knowledge base file or, when set so, before a read query).
    */
   beforeTool?: (name: string, args: Record<string, unknown>) => Promise<string | undefined>
+  /**
+   * Hands a connection an agent proposes to the app, which shows it to the user to review (the desktop app only).
+   * Without it there is no propose_connection tool.
+   */
+  proposeConnection?: (proposal: ConnectionProposal) => Promise<void>
 }
 
 const INSTRUCTIONS = `DB Mastermind gives you safe access to the user's databases.
@@ -132,6 +139,30 @@ export function createMcpServer(options: McpServerOptions): Server {
         inputSchema: { type: 'object' as const, properties: {} },
         annotations: { readOnlyHint: true },
       },
+      ...(options.proposeConnection
+        ? [
+            {
+              name: 'propose_connection',
+              description:
+                'Propose a new database connection to the user. DB Mastermind shows it to them; they review it, type the password themselves and save it (nothing is saved or connected before that). Never include a password: one in a URL is dropped. Give a url, or driver with host, port, database and user.',
+              inputSchema: {
+                type: 'object' as const,
+                properties: {
+                  name: { type: 'string', description: 'A short name for the connection, e.g. "Shop (staging)"' },
+                  url: { type: 'string', description: 'postgres://user@host:5432/db, mysql://…, sqlserver://…, JDBC strings' },
+                  driver: { type: 'string', enum: ['postgres', 'mssql', 'mysql', 'mariadb', 'sqlite', 'oracle', 'duckdb', 'clickhouse', 'bigquery', 'trino'] },
+                  host: { type: 'string' },
+                  port: { type: 'number' },
+                  database: { type: 'string' },
+                  user: { type: 'string' },
+                  filePath: { type: 'string', description: 'For SQLite and DuckDB files' },
+                },
+                additionalProperties: false,
+              },
+              annotations: { readOnlyHint: false, destructiveHint: false },
+            },
+          ]
+        : []),
       ...DB_TOOLS.filter((t) => t.name !== 'write_knowledge' || options.allowKnowledgeWrites || connections.some((c) => c.ai?.knowledgeWrites)).map((t) => ({
         name: t.name,
         description: t.description,
@@ -154,6 +185,13 @@ export function createMcpServer(options: McpServerOptions): Server {
             `${c.name} — ${c.driver}${c.driver === 'sqlite' ? ` ${c.filePath}` : ` ${c.host ?? ''}${c.database ? `/${c.database}` : ''}`}${c.readOnly ? ' (read-only)' : ''}${c.environment ? ` [${c.environment}]` : ''}${c.knowledgeBasePath ? ' (has knowledge base)' : ''}`,
         )
         return { content: [{ type: 'text', text: lines.join('\n') || 'No connections are shared with agents.' }] }
+      }
+      if (name === 'propose_connection' && options.proposeConnection) {
+        const proposal = connectionProposal(args as Record<string, unknown>, server.getClientVersion()?.name)
+        await options.proposeConnection(proposal)
+        return {
+          content: [{ type: 'text', text: `Proposed "${proposal.name}" (${proposal.driver}${proposal.host ? ` on ${proposal.host}${proposal.port ? `:${proposal.port}` : ''}` : ''}). The user reviews it in DB Mastermind, types the password and saves it; it is not available to you until they do and allow agents on it.` }],
+        }
       }
       const config = findConnection((args as Record<string, unknown>).connection)
       const ctx = await contextFor(config)

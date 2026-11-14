@@ -13,6 +13,7 @@ import { MODEL_FILE, modelConnection, openFile, openModel, openSqlFile, QUERYABL
 import { onCommand, runCommand } from '@/lib/commands'
 import { t } from '@/lib/i18n'
 import { installKeymap } from '@/lib/keymap'
+import { listenForConnectionProposals } from '@/lib/proposals'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { askAi, dismissToast, toast, useUi } from '@/store/ui'
@@ -200,6 +201,7 @@ export function App() {
       }),
     )
     const offTeam = bridge.on('team:changed', () => void useConnections.getState().load())
+    const offProposals = listenForConnectionProposals()
     const offOpened = bridge.on('connection:opened', ({ connectionId, serverInfo }) => useConnections.getState().opened(connectionId, serverInfo))
     // VPN or Wi-Fi back: unreachable connections try again right away instead of waiting for the next retry.
     const retryNow = () => useConnections.getState().retryNow()
@@ -220,6 +222,7 @@ export function App() {
     const uninstall = installKeymap()
     return () => {
       offTeam()
+      offProposals()
       offOpened()
       window.removeEventListener('online', retryNow)
       window.removeEventListener('focus', retryNow)

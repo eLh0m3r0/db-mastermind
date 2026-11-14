@@ -5,7 +5,8 @@ databases: **PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite, DuckDB**.
 
 - Read-only by default: writes only with `--allow-writes`, and read-only connections stay read-only
 - Schema exploration: `list_tables`, `describe_table` (columns, keys, indexes, comments, incoming references),
-  `search_schema`, `get_relationships`, `find_join_path` (shortest join chain with ready SQL)
+  `search_schema`, `get_relationships`, `find_join_path` (shortest join chain with ready SQL), `get_definition`
+  (the SQL of a view, function or procedure; a table's CREATE)
 - Data: `sample_rows`, `run_query` (results as compact CSV), `explain_query` (normalized plan tree)
 - **Knowledge base**: point `--knowledge` at a folder of Markdown notes about the database; agents search and
   read them (`search_knowledge`, `read_knowledge`), and relationships declared there
@@ -14,7 +15,8 @@ databases: **PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite, DuckDB**.
 
 Part of [DB Mastermind](https://github.com/eLh0m3r0/db-mastermind), a free open-source database client. The
 desktop app can also act as this MCP server, using your saved connections and keychain passwords
-(Settings → MCP server).
+(Settings → MCP server). There agents also get `propose_connection`: they can suggest a connection, which the
+app shows to you to review, type the password and save; nothing is saved or connected before you do.
 
 ## Usage
 
@@ -40,6 +42,20 @@ Options:
 | `--allow-knowledge-writes` | Let agents create knowledge base files |
 | `--schema-only` | Never return table contents |
 | `--read-only` | Mark all connections read-only (enforced by the database where supported) |
+
+## `dbm`: the command line for scripts and CI
+
+The package also installs `dbm`, which uses the same connections (`--url`, `--config`, `${ENV}` placeholders):
+
+```bash
+npx -p dbmastermind-mcp dbm query --url "$DATABASE_URL" "SELECT * FROM orders WHERE created_at > now() - interval '1 day'" --format csv --out orders.csv
+npx -p dbmastermind-mcp dbm dictionary --url "$DATABASE_URL" --format html --out docs/database.html
+npx -p dbmastermind-mcp dbm check model.dbml            # model checks; exit 1 when a table has problems
+npx -p dbmastermind-mcp dbm diff model.dbml --url "$DATABASE_URL"   # exit 2 + the migration when the database drifted
+```
+
+`query` streams one SELECT of any size (csv, tsv, json, jsonl, markdown) and is read-only unless `--allow-writes`.
+`diff` keeps tables only the database has unless `--drop-extra`.
 
 ## License
 

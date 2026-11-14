@@ -8,6 +8,7 @@ import { appendFileSync } from 'node:fs'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { DatabaseService, useKnownHostsFile, type ConnectionConfig } from '@dbmastermind/core'
 import { createMcpServer } from 'dbmastermind-mcp'
+import { writeProposal } from './connection-proposals'
 
 export interface McpChildConfig {
   connections: ConnectionConfig[]
@@ -18,6 +19,8 @@ export interface McpChildConfig {
   historyFile?: string
   /** Trusted SSH host keys, shared with the app. */
   knownHostsFile?: string
+  /** Where proposed connections wait for the user (the running app watches it). */
+  proposalsDir?: string
 }
 
 process.once('message', (config: McpChildConfig) => {
@@ -31,6 +34,7 @@ process.once('message', (config: McpChildConfig) => {
       allowKnowledgeWrites: config.allowWrites,
       schemaOnly: config.schemaOnly,
       version: config.version,
+      proposeConnection: config.proposalsDir ? async (p) => void (await writeProposal(config.proposalsDir!, p)) : undefined,
       onExecuted: config.historyFile
         ? (connectionId, o) => {
             const entry = { connectionId, sql: o.sql, executedAt: new Date().toISOString(), durationMs: o.durationMs, rowCount: o.results?.reduce((n, r) => n + r.rowCount, 0), error: o.error?.message, source: 'mcp' }

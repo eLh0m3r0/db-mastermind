@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { markdown } from '@codemirror/lang-markdown'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { EditorState } from '@codemirror/state'
@@ -11,12 +11,13 @@ import { openMenu } from '@/components/ui/ContextMenu'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Input } from '@/components/ui/Input'
 import { api, modKey } from '@/lib/api'
-import { cn, errorMessage, fuzzyScore } from '@/lib/utils'
+import { cn, errorMessage, fuzzyScore, uid } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { askAi, toast } from '@/store/ui'
 import { useWorkspace, type KnowledgeTab } from '@/store/workspace'
-import { Markdown } from '../ai/Markdown'
+import { Markdown, type CodeActions } from '../ai/Markdown'
+import { isReadOnlyScript } from '@dbmastermind/core/browser'
 import { askAiToDocument } from './generate'
 import { t, tp, useT } from '@/lib/i18n'
 import { askText, confirmAction } from '@/components/ui/ConfirmDialog'
@@ -81,6 +82,21 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
   const updateTab = useWorkspace((s) => s.update)
   const dark = useSettings((s) => s.dark)
   const [files, setFiles] = useState<KnowledgeFileInfo[]>([])
+  // SQL blocks in a note run in place, reads only (a read-only transaction, always rolled back); changes go to the editor.
+  const notebookActions = useMemo<CodeActions>(
+    () => ({
+      onOpen: (code) => useWorkspace.getState().newQuery(tab.connectionId, code),
+      runInline: async (code) => {
+        if (!connection || !isReadOnlyScript(code, connection.driver)) throw new Error(t('A note runs reads only. Open it in the editor to run changes.'))
+        const outcomes = await api.runQuery({ connectionId: tab.connectionId, sql: code, runId: uid('note'), maxRows: 200, readOnly: true })
+        const failed = outcomes.find((o) => o.error)
+        if (failed) throw new Error(failed.error!.message)
+        const last = outcomes.flatMap((o) => o.results ?? []).filter((r) => r.fields.length).at(-1)
+        return last ? { fields: last.fields, rows: last.rows, truncated: last.truncated } : { fields: [], rows: [], message: t('Done') }
+      },
+    }),
+    [tab.connectionId, connection],
+  )
   const [issues, setIssues] = useState<{ path: string; message: string }[]>([])
   const [search, setSearch] = useState('')
   const [content, setContent] = useState<string | null>(null)
@@ -317,7 +333,7 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
               {preview ? (
                 <div className="h-full overflow-auto">
                   <div className="mx-auto max-w-[820px] px-8 py-6">
-                    <Markdown text={content.replace(/^---[\s\S]*?\n---\n?/, '')} />
+                    <Markdown text={content.replace(/^---[\s\S]*?\n---\n?/, '')} actions={notebookActions} />
                   </div>
                 </div>
               ) : (

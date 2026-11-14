@@ -7,6 +7,7 @@ import { MCP_HISTORY_FILE } from './library'
 import { agentConnections } from './ai-access'
 import { managed } from './managed'
 import { dataPath } from './storage'
+import { PROPOSALS_FOLDER } from './connection-proposals'
 import { getSettings, loadSettings } from './settings'
 
 export const isMcpMode = process.argv.includes('--mcp')
@@ -47,6 +48,7 @@ export async function runMcpMode(): Promise<void> {
     version: app.getVersion(),
     historyFile: dataPath(MCP_HISTORY_FILE),
     knownHostsFile: dataPath('known-hosts.json'),
+    proposalsDir: dataPath(PROPOSALS_FOLDER),
   }
   const child = fork(join(__dirname, 'mcp-server.js'), [], {
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },

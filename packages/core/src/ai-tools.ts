@@ -6,6 +6,7 @@ import { findJoinPath, findTable, incomingReferences, joinPathSql } from './sche
 import { isReadOnlyScript, splitStatements } from './sql-split.js'
 import type { DriverId, QueryResult, SchemaSnapshot, StatementOutcome, TableInfo } from './types.js'
 import { cellToText } from './values.js'
+import { objectDefinition, routineObject } from './definitions.js'
 
 /**
  * Database tools for language models, independent of any AI SDK. The desktop assistant wraps them
@@ -252,6 +253,37 @@ export const DB_TOOLS: DbTool[] = [
         }
       }
       return text
+    },
+  },
+  {
+    name: 'get_definition',
+    description: 'The SQL that defines a view, function or procedure (as the database keeps it), or the CREATE statement of a table. Use it to understand what a routine or view does.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Object name, optionally schema-qualified (schema.name)' },
+        schema: { type: 'string' },
+        kind: { type: 'string', enum: ['table', 'view', 'function', 'procedure'], description: 'Optional; found from the schema when omitted' },
+      },
+      required: ['name'],
+      additionalProperties: false,
+    },
+    readOnly: true,
+    async run(ctx, input) {
+      const raw = str(input, 'name') ?? ''
+      const dot = raw.lastIndexOf('.')
+      const schemaName = str(input, 'schema') ?? (dot > 0 ? raw.slice(0, dot) : undefined)
+      const name = dot > 0 && !str(input, 'schema') ? raw.slice(dot + 1) : raw
+      const snapshot = await ctx.db.schema(ctx.connectionId)
+      const lower = (x: string | undefined) => (x ?? '').toLowerCase()
+      const kind = str(input, 'kind')
+      const table = kind === 'function' || kind === 'procedure' ? undefined : findTable(snapshot, { schema: schemaName, name })
+      if (table) return (await objectDefinition(ctx.db, ctx.connectionId, { schema: table.schema, name: table.name, kind: table.type === 'foreign_table' ? 'table' : table.type })).sql
+      const routines = snapshot.routines.filter((r) => lower(r.name) === lower(name) && (!schemaName || lower(r.schema) === lower(schemaName)) && (!kind || r.kind === kind))
+      if (!routines.length) return `No table, view or routine named ${raw}. Use search_schema or list_tables to find it.`
+      const texts = []
+      for (const r of routines.slice(0, 5)) texts.push((await objectDefinition(ctx.db, ctx.connectionId, routineObject(r))).sql)
+      return texts.join('\n')
     },
   },
   {
