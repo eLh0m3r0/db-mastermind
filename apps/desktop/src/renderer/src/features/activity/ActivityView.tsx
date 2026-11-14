@@ -3,7 +3,8 @@ import { Activity, Ban, CircleStop, RefreshCw, TerminalSquare } from 'lucide-rea
 import type { SessionActivity } from '@dbmastermind/core/browser'
 import { Button, IconButton } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { Badge, Checkbox, Input } from '@/components/ui/Input'
+import { Badge, Checkbox, Input, Segmented } from '@/components/ui/Input'
+import { StorageSection, TopQueriesSection } from './HealthSections'
 import { api } from '@/lib/api'
 import { tp, useT } from '@/lib/i18n'
 import { cn, errorMessage, formatDuration } from '@/lib/utils'
@@ -29,6 +30,8 @@ export function ActivityView({ tab }: { tab: ActivityTab }) {
   const [auto, setAuto] = useState(true)
   const [showIdle, setShowIdle] = useState(false)
   const [search, setSearch] = useState('')
+  const section = tab.section ?? 'sessions'
+  const updateTab = useWorkspace((s) => s.update)
 
   const load = useCallback(async () => {
     setBusy(true)
@@ -43,11 +46,12 @@ export function ActivityView({ tab }: { tab: ActivityTab }) {
   }, [tab.connectionId])
 
   useEffect(() => {
+    if (section !== 'sessions') return
     void load()
     if (!auto) return
     const timer = setInterval(() => void load(), 3000)
     return () => clearInterval(timer)
-  }, [load, auto])
+  }, [load, auto, section])
 
   /** How many sessions each session blocks. */
   const blocking = useMemo(() => {
@@ -85,8 +89,19 @@ export function ActivityView({ tab }: { tab: ActivityTab }) {
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line px-3 py-2">
         <Activity size={15} className="text-accent" />
         <span className="text-[12.5px] font-semibold">{t('Server activity')}</span>
-        {sessions && <span className="text-[11.5px] text-fg-faint">{tp(visible.length, { one: '{n} session', many: '{n} sessions' })}</span>}
+        <Segmented
+          value={section}
+          onChange={(next) => updateTab(tab.id, { section: next })}
+          options={[
+            { value: 'sessions', label: t('Sessions') },
+            { value: 'queries', label: t('Top queries'), title: t('The statements that took the most time since the statistics were reset') },
+            { value: 'storage', label: t('Storage'), title: t('Table and index sizes, unused indexes') },
+          ]}
+        />
+        {section === 'sessions' && sessions && <span className="text-[11.5px] text-fg-faint">{tp(visible.length, { one: '{n} session', many: '{n} sessions' })}</span>}
         <div className="flex-1" />
+        {section === 'sessions' && (
+          <>
         <Input inputSize="sm" className="w-56" placeholder={t('Search sessions…')} value={search} onChange={(e) => setSearch(e.target.value)} />
         <Checkbox checked={onlyApp} onChange={setOnlyApp} label={t('Only DB Mastermind')} />
         <Checkbox checked={showIdle} onChange={setShowIdle} label={t('Show idle')} />
@@ -94,7 +109,11 @@ export function ActivityView({ tab }: { tab: ActivityTab }) {
         <IconButton label={t('Refresh')} onClick={() => void load()}>
           <RefreshCw size={13} className={cn(busy && 'animate-spin')} />
         </IconButton>
+          </>
+        )}
       </div>
+      {section === 'queries' ? <TopQueriesSection connectionId={tab.connectionId} /> : section === 'storage' ? <StorageSection connectionId={tab.connectionId} /> : (
+      <>
       {error && <div className="shrink-0 border-b border-line bg-danger-soft px-3 py-1.5 text-[12px] text-danger">{error}</div>}
       {sessions && visible.length === 0 ? (
         <EmptyState icon={<Activity size={28} />} title={t('Nothing is running')}>
@@ -186,6 +205,8 @@ export function ActivityView({ tab }: { tab: ActivityTab }) {
             </tbody>
           </table>
         </div>
+      )}
+      </>
       )}
     </div>
   )

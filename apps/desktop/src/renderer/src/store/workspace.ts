@@ -164,6 +164,8 @@ export interface SearchTab extends BaseTab {
 /** Server activity: sessions and running queries. */
 export interface ActivityTab extends BaseTab {
   kind: 'activity'
+  /** Sessions (the default), the most expensive statements, or table and index sizes. */
+  section?: 'sessions' | 'queries' | 'storage'
 }
 
 export type Tab = QueryTab | TableTab | StructureTab | DiagramTab | KnowledgeTab | CompareTab | ActivityTab | DataCompareTab | RolesTab | ModelTab | DashboardTab | SearchTab

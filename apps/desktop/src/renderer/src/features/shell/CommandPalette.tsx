@@ -16,7 +16,17 @@ import { useUi } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
 import { DriverIcon } from '../connections/drivers'
 import { connectAndSelect, useCurrentConnectionId } from '../sidebar/Sidebar'
-import { useT } from '@/lib/i18n'
+import { t as translate, useT } from '@/lib/i18n'
+
+/** Server activity on one of its sections: the connection's open activity tab, or a new one. */
+function openActivity(connectionId: string, section: 'sessions' | 'queries' | 'storage') {
+  const ws = useWorkspace.getState()
+  const existing = ws.tabs.find((x) => x.kind === 'activity' && x.connectionId === connectionId)
+  if (existing) {
+    ws.update(existing.id, { section })
+    ws.activate(existing.id)
+  } else ws.open({ kind: 'activity', connectionId, title: translate('Server activity'), section }, { reuse: false })
+}
 
 export function CommandPalette() {
   const mode = useUi((s) => s.palette)
@@ -50,6 +60,8 @@ export function CommandPalette() {
     { id: 'diagram', label: t('Open ER diagram'), icon: <Network size={14} />, run: () => connectionId && openTab({ kind: 'diagram', connectionId, title: t('ER diagram') }), needsConnection: true },
     { id: 'compare', label: t('Compare schemas…'), icon: <GitCompare size={14} />, run: () => connectionId && openTab({ kind: 'compare', connectionId, title: t('Schema compare') }, { reuse: false }), needsConnection: true },
     { id: 'find-value', label: t('Find a value in all tables…'), icon: <Search size={14} />, run: () => connectionId && openTab({ kind: 'search', connectionId, title: t('Find value') }, { reuse: false }), needsConnection: true },
+    { id: 'top-queries', label: t('Top queries (server activity)'), icon: <Activity size={14} />, run: () => connectionId && openActivity(connectionId, 'queries'), needsConnection: true },
+    { id: 'table-sizes', label: t('Table sizes and unused indexes (server activity)'), icon: <Activity size={14} />, run: () => connectionId && openActivity(connectionId, 'storage'), needsConnection: true },
     { id: 'activity', label: t('Server activity'), icon: <Activity size={14} />, run: () => connectionId && openTab({ kind: 'activity', connectionId, title: t('Server activity') }), needsConnection: true },
     { id: 'dictionary-html', label: t('Export data dictionary (HTML)…'), icon: <FileText size={14} />, run: () => connectionId && void exportDataDictionary(connectionId, 'html'), needsConnection: true },
     { id: 'dictionary-md', label: t('Export data dictionary (Markdown)…'), icon: <FileText size={14} />, run: () => connectionId && void exportDataDictionary(connectionId, 'markdown'), needsConnection: true },
