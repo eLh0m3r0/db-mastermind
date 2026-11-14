@@ -718,20 +718,35 @@ database a tab's settings protect), SQL formatting settings beyond what there is
 
 ---
 
-## Milestone 11 — Workbench 🚧
+## Milestone 11 — Workbench ✅ (unreleased)
 
 The owner picked A, B, E and F of the backlog below (2026-11-14); C waits until somebody can test company sign-ins,
 D is not needed now. The specification, with the UX rules every item follows (no new toolbar buttons, existing
 screens reused, nothing shown before it is relevant, no new settings): [docs/specs/workbench.md](docs/specs/workbench.md).
 
-- ⬜ A1 Definitions of views and routines in a query tab; a table's CREATE statement
-- ⬜ A2 SQL files on disk (⌘⇧O, drop, ⌘S writes back)
-- ⬜ A3 Warnings while typing (unknown table / column, UPDATE or DELETE without WHERE)
-- ⬜ A4 ⌘-click to the definition; "Used by" in the structure tab
-- ⬜ A5 Compare a plan with the previous one
-- ⬜ B1 Totals of the selected cells · B2 a cell set to an SQL expression · B3 find a value anywhere · B4 profile a column
-- ⬜ E Server activity: Sessions · Top queries · Storage (sizes, unused and repeated indexes)
-- ⬜ F1 Agents propose connections, the user reviews them · F2 `dbm` command line · F3 runnable SQL in notes
+- ✅ A1 Definitions: a click on a function or procedure in the explorer, or *Definition (SQL)* on a view, routine or
+  table, opens it in a query tab ready to run (CREATE OR REPLACE / CREATE OR ALTER / DELIMITER $$ for MySQL routines /
+  `/` for Oracle); Oracle functions and procedures now show in the explorer; the splitter no longer misses a `$$`
+  delimiter right after a word (`END$$`) — definitions.integration.test.ts, e2e/flow101
+- ✅ A2 SQL files: *File → Open SQL File…* (⇧⌘O), drop or *Open with*; a handed file waits for a selected connection
+  (never guessed); ⌘S writes back with the file's line ends and BOM and refuses to overwrite an outside change;
+  *Save as a .sql file instead…* in the Save query dialog — e2e/flow102
+- ✅ A3 Warnings while typing: unknown table (one-click fix), alias.column the table lacks, UPDATE / DELETE without
+  WHERE; only what is certain (not on Oracle, BigQuery, Trino, ClickHouse); real queries on every engine get no
+  mark — sql-inspect tests, e2e/flow104
+- ✅ A4 ⌘-click a table → its structure, a routine → its definition; *Used by* in the structure tab (views, saved
+  queries, notes)
+- ✅ A5 *Compare with previous* in the plan view
+- ✅ B1 Totals of the selected cells · B2 *Set SQL expression…* (one expression, checked) · B3 *Find a value…*
+  (type-compatible columns, streamed, opens the filtered table) · B4 *Profile values…* on a column header — e2e/flow103
+- ✅ E Server activity: Sessions · Top queries (pg_stat_statements, performance_schema, query stats, v$sqlstats;
+  says how to enable them) · Storage (sizes, never-used and repeated indexes; DROP INDEX only opens in the editor) —
+  health.integration.test.ts, e2e/flow105
+- ✅ F1 MCP `propose_connection` (reviewed in the app, never a password) and `get_definition` · F2 `dbm` command line
+  (query, dictionary, check, diff) · F3 SQL blocks in knowledge base notes run in place, reads only — e2e/flow106
+
+Left for later: triggers in the explorer, routine bodies in *Used by*, a folder of scripts in the sidebar, SQL Server
+Agent jobs, editing users and grants, Explain on normalized top queries.
 
 ## Backlog — what other tools have (review 2026-11-14) 💡
 
