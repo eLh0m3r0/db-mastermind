@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Command } from 'cmdk'
-import { Activity, BookOpen, FileCode2, FileSpreadsheet, LayoutDashboard, FileText, Rows3, ShieldCheck, Eye, GitCompare, Moon, Network, Plug, Plus, RefreshCw, Settings, Sparkles, Sun, Table2, TerminalSquare, Unplug, Columns2, Download } from 'lucide-react'
+import { Activity, BookOpen, FileCode2, FileSpreadsheet, LayoutDashboard, FileText, Rows3, ShieldCheck, Eye, GitCompare, Moon, Network, Plug, Plus, RefreshCw, Search, Settings, Sparkles, Sun, Table2, TerminalSquare, Unplug, Columns2, Download } from 'lucide-react'
 import { Kbd } from '@/components/ui/Input'
 import { api, modKey } from '@/lib/api'
 import { runCommand } from '@/lib/commands'
@@ -49,6 +49,7 @@ export function CommandPalette() {
     { id: 'new-connection', label: t('New connection…'), icon: <Plus size={14} />, run: () => setUi({ modal: { kind: 'connection' } }) },
     { id: 'diagram', label: t('Open ER diagram'), icon: <Network size={14} />, run: () => connectionId && openTab({ kind: 'diagram', connectionId, title: t('ER diagram') }), needsConnection: true },
     { id: 'compare', label: t('Compare schemas…'), icon: <GitCompare size={14} />, run: () => connectionId && openTab({ kind: 'compare', connectionId, title: t('Schema compare') }, { reuse: false }), needsConnection: true },
+    { id: 'find-value', label: t('Find a value in all tables…'), icon: <Search size={14} />, run: () => connectionId && openTab({ kind: 'search', connectionId, title: t('Find value') }, { reuse: false }), needsConnection: true },
     { id: 'activity', label: t('Server activity'), icon: <Activity size={14} />, run: () => connectionId && openTab({ kind: 'activity', connectionId, title: t('Server activity') }), needsConnection: true },
     { id: 'dictionary-html', label: t('Export data dictionary (HTML)…'), icon: <FileText size={14} />, run: () => connectionId && void exportDataDictionary(connectionId, 'html'), needsConnection: true },
     { id: 'dictionary-md', label: t('Export data dictionary (Markdown)…'), icon: <FileText size={14} />, run: () => connectionId && void exportDataDictionary(connectionId, 'markdown'), needsConnection: true },

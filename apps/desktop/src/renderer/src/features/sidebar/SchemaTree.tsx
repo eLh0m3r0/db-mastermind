@@ -337,6 +337,8 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
                   style={style}
                   onContextMenu={(e) =>
                     openMenu(e, [
+                      { label: tr('Find a value in {schema}…', { schema: node.name }), icon: <Search size={13} />, onClick: () => openTab({ kind: 'search', connectionId: connection.id, title: tr('Find value'), schema: node.name }, { reuse: false }) },
+                      'separator',
                       { label: tr('Hide schema'), icon: <EyeOff size={13} />, onClick: () => setHiddenSchemas(connection.id, [...(connection.hiddenSchemas ?? []), node.name]) },
                       'separator',
                       { label: tr('Data dictionary (HTML)…'), icon: <FileText size={13} />, onClick: () => void exportDataDictionary(connection.id, 'html', [node.name]) },

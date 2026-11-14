@@ -1,6 +1,6 @@
 import { setSidebarShown, useSidebarShown } from './sidebar-shown'
 import { useRef, useState } from 'react'
-import { Activity, BookOpen, FileCode2, LayoutDashboard, Rows3, ShieldCheck, GitCompare, Layers, Network, PanelLeft, Plus, Sparkles, Table2, TerminalSquare, X, Columns2 } from 'lucide-react'
+import { Activity, BookOpen, FileCode2, LayoutDashboard, Rows3, ShieldCheck, GitCompare, Layers, Network, PanelLeft, Plus, Search, Sparkles, Table2, TerminalSquare, X, Columns2 } from 'lucide-react'
 import { IconButton } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { askText } from '@/components/ui/ConfirmDialog'
@@ -13,7 +13,7 @@ import { useTransactions } from '@/store/transactions'
 import { useCurrentConnectionId } from '../sidebar/Sidebar'
 import { useT } from '@/lib/i18n'
 
-const ICONS = { query: TerminalSquare, table: Table2, structure: Layers, diagram: Network, knowledge: BookOpen, compare: GitCompare, activity: Activity, datacompare: Rows3, roles: ShieldCheck, model: FileCode2, dashboard: LayoutDashboard }
+const ICONS = { query: TerminalSquare, table: Table2, structure: Layers, diagram: Network, knowledge: BookOpen, compare: GitCompare, activity: Activity, datacompare: Rows3, roles: ShieldCheck, model: FileCode2, dashboard: LayoutDashboard, search: Search }
 
 export function TabBar() {
   const tabs = useWorkspace((s) => s.tabs)

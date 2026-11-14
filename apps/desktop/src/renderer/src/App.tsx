@@ -18,6 +18,7 @@ import { useSettings } from '@/store/settings'
 import { askAi, dismissToast, toast, useUi } from '@/store/ui'
 import { confirmCloseTabs, useWorkspace } from '@/store/workspace'
 import { ActivityView } from './features/activity/ActivityView'
+import { FindValueView } from './features/search/FindValueView'
 import { AiPanel } from './features/ai/AiPanel'
 import { CompareView } from './features/compare/CompareView'
 import { DataCompareView } from './features/compare/DataCompareView'
@@ -279,6 +280,7 @@ export function App() {
                 {tab.kind === 'roles' && <RolesView tab={tab} />}
                 {tab.kind === 'model' && <ModelView tab={tab} />}
                 {tab.kind === 'dashboard' && <DashboardView tab={tab} />}
+                {tab.kind === 'search' && <FindValueView tab={tab} />}
               </div>
               )
             })}
