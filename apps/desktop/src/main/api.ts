@@ -77,6 +77,7 @@ import { buildMenu } from './menu'
 import { forgetEditorSession, forgetEditorSessionsOf, openTransactions, trackEditorSession } from './transactions'
 import * as library from './library'
 import { getSettings, updateSettings } from './settings'
+import { readSqlFile, sqlFileTime, writeSqlFile } from './sql-files'
 
 /** CSV separator: the user's choice, else semicolons in Czech (Excel there splits columns on them). */
 function csvDelimiter(): ',' | ';' {
@@ -556,6 +557,29 @@ export const api: MastermindApi = {
     await writeFile(r.filePath, text, 'utf8')
     return r.filePath
   },
+  async openSqlFile(path) {
+    if (path === undefined) {
+      const window = BrowserWindow.getFocusedWindow()
+      const options = { title: 'Open SQL file', properties: ['openFile' as const], filters: [{ name: 'SQL', extensions: ['sql'] }, { name: 'All files', extensions: ['*'] }] }
+      const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
+      if (r.canceled || !r.filePaths[0]) return null
+      path = r.filePaths[0]
+    }
+    return readSqlFile(path)
+  },
+  async writeSqlFile(path, text, format, expectedMtimeMs, force) {
+    return writeSqlFile(path, text, format, { expectedMtimeMs, force })
+  },
+  async saveSqlFileAs(text, name) {
+    const window = BrowserWindow.getFocusedWindow()
+    const options = { title: 'Save SQL file', defaultPath: /\.sql$/i.test(name) ? name : `${name.replace(/[\\/:*?"<>|]/g, '_')}.sql`, filters: [{ name: 'SQL', extensions: ['sql'] }] }
+    const r = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
+    if (r.canceled || !r.filePath) return null
+    const format = { encoding: 'utf-8' as const, bom: false, eol: (process.platform === 'win32' ? '\r\n' : '\n') as '\n' | '\r\n' }
+    const mtimeMs = await writeSqlFile(r.filePath, text, format, { force: true })
+    return { path: r.filePath, name: basename(r.filePath), format, mtimeMs }
+  },
+  sqlFileTime: (path) => sqlFileTime(path),
   saveDiagramPdf: (request) => saveDiagramPdf(request),
   async saveImageFile(dataUrl, name) {
     const ext = extname(name).slice(1).toLowerCase() === 'svg' ? 'svg' : 'png'

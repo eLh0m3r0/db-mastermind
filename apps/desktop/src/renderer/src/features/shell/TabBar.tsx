@@ -65,7 +65,7 @@ export function TabBar() {
           const Icon = ICONS[tab.kind]
           const conn = connections.find((c) => c.id === tab.connectionId)
           const active = tab.id === activeId
-          const dirty = tab.kind === 'query' && tab.savedQueryId && tab.savedSql !== undefined && tab.sql !== tab.savedSql
+          const dirty = tab.kind === 'query' && (tab.savedQueryId || tab.path) && tab.savedSql !== undefined && tab.sql !== tab.savedSql
           return (
             <div
               key={tab.id}

@@ -32,6 +32,22 @@ import type {
 
 export type ThemePreference = 'system' | 'light' | 'dark'
 
+/** How a .sql file is written back: its line endings and BOM (always UTF-8; a Windows-1250 file becomes UTF-8). */
+export interface SqlFileFormat {
+  encoding: 'utf-8' | 'windows-1250'
+  bom: boolean
+  eol: '\n' | '\r\n'
+}
+
+/** A .sql file opened in a query tab. */
+export interface SqlFile {
+  path: string
+  name: string
+  text: string
+  format: SqlFileFormat
+  mtimeMs: number
+}
+
 export interface AppInfo {
   version: string
   platform: NodeJS.Platform
@@ -698,6 +714,17 @@ export interface MastermindApi {
   /** Reads a SQL DDL script (pg_dump, mysqldump, SSMS…) into DBML; asks for the file. */
   /** Saves a SQL script (migrations); asks where, suggesting `name`. Returns the path or null. */
   saveSqlFile(text: string, name: string, defaultDir?: string): Promise<string | null>
+  /** Reads a .sql file for a query tab; asks for it when `path` is omitted. Null when cancelled. */
+  openSqlFile(path?: string): Promise<SqlFile | null>
+  /**
+   * Writes a query tab's text back to its file. A file changed on disk since `expectedMtimeMs` is refused
+   * (code FILE_CHANGED) unless `force`; a missing one too (FILE_MISSING). Returns the new modification time.
+   */
+  writeSqlFile(path: string, text: string, format: SqlFileFormat, expectedMtimeMs?: number, force?: boolean): Promise<number>
+  /** Saves text as a new .sql file (asks where, suggesting `name`); null when cancelled. */
+  saveSqlFileAs(text: string, name: string): Promise<Omit<SqlFile, 'text'> | null>
+  /** A file's modification time; null when it no longer exists. */
+  sqlFileTime(path: string): Promise<number | null>
   /** Saves a PNG/SVG data URL through a save dialog; null when cancelled. */
   saveImageFile(dataUrl: string, name: string): Promise<string | null>
   /** Prints a diagram to a PDF file; returns the path, or null if cancelled. */
@@ -929,6 +956,10 @@ export const API_METHODS = [
   'loadWorkspace',
   'saveWorkspace',
   'objectDefinition',
+  'openSqlFile',
+  'writeSqlFile',
+  'saveSqlFileAs',
+  'sqlFileTime',
 ] as const satisfies readonly (keyof MastermindApi)[]
 
 // Compile error if a method is added to MastermindApi but not to API_METHODS.
