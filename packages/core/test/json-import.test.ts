@@ -23,7 +23,17 @@ describe('parseJsonRows', () => {
     expect(parseJsonRows('{"a":1}')).toEqual([['a'], ['1']])
   })
 
+  it('an object with array values is one record; a wrapper only under a known key (review finding)', () => {
+    expect(parseJsonRows('{"id":1,"tags":["a"]}')).toEqual([['id', 'tags'], ['1', '["a"]']])
+    expect(parseJsonRows('{"items":[{"a":1},{"a":2}],"page":1}')).toEqual([['a'], ['1'], ['2']])
+  })
+
+  it('keeps every digit of large numbers and decimals (review finding)', () => {
+    expect(parseJsonRows('[{"id":9007199254740993,"price":0.1000000000000000055511}]')).toEqual([['id', 'price'], ['9007199254740993', '0.1000000000000000055511']])
+  })
+
   it('says what is wrong', () => {
+    expect(() => parseJsonRows('[{"a":1}, 5]')).toThrow(/Record 2 is not an object/)
     expect(() => parseJsonRows('{"a":1}\nnot json')).toThrow(/Line 2/)
     expect(() => parseJsonRows('[1, 2]')).toThrow(/No JSON objects/)
   })

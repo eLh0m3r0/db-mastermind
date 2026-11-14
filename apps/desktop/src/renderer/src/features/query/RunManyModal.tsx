@@ -38,6 +38,8 @@ export function RunManyModal() {
   const [runId, setRunId] = useState<string | null>(null)
   const [stopped, setStopped] = useState(false)
   const sql = open ? modal.sql : ''
+  // (A ref: the loop reads it between connections.)
+  const stoppedRef = useState(() => ({ current: false }))[0]
   const origin = open ? list.find((c) => c.id === modal.connectionId) : undefined
 
   useEffect(() => {
@@ -51,6 +53,8 @@ export function RunManyModal() {
 
   const candidates = list.filter((c) => !filter || c.name.toLowerCase().includes(filter.toLowerCase()))
   const close = () => {
+    // Closing stops the rest too, not only the connection that runs now.
+    stoppedRef.current = true
     if (runId) void api.cancelQuery(runId)
     setUi({ modal: undefined })
   }
@@ -70,6 +74,7 @@ export function RunManyModal() {
       if (!ok) return
     }
     setStopped(false)
+    stoppedRef.current = false
     const rows: Outcome[] = targets.map((c) => ({ connectionId: c.id, state: 'waiting' }))
     setOutcomes([...rows])
     for (const [i, c] of targets.entries()) {
@@ -98,11 +103,9 @@ export function RunManyModal() {
       setOutcomes([...rows])
       if (rows[i]!.state === 'failed' && stopOnError) stoppedRef.current = true
     }
+    setOutcomes([...rows])
     setRunId(null)
-    stoppedRef.current = false
   }
-  // (A ref: the loop reads it between connections.)
-  const stoppedRef = useState(() => ({ current: false }))[0]
 
   const running = !!runId
   const done = outcomes && !running

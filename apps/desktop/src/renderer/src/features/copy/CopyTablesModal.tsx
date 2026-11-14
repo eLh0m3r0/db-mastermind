@@ -39,6 +39,8 @@ export function CopyTablesModal() {
   useEffect(() => {
     if (!open) return
     setPicked(new Set((modal.tables ?? []).map(key)))
+    // A target from an earlier copy may be this copy's source.
+    setTargetId('')
     setResult(null)
     setError(null)
     setRun(null)
@@ -154,6 +156,11 @@ export function CopyTablesModal() {
                 <span className="ml-auto tabular-nums">{tp(r.rows, { one: '{n} row', many: '{n} rows' })}</span>
                 {r.created && <span className="text-[11px] text-fg-faint">{t('created')}</span>}
                 {r.skippedColumns.length > 0 && <span className="text-[11px] text-warning" title={r.skippedColumns.join(', ')}>{tp(r.skippedColumns.length, { one: '{n} column left out', many: '{n} columns left out' })}</span>}
+                {r.warnings?.map((w) => (
+                  <span key={w} className="text-[11px] text-warning" title={t(w)}>
+                    {t('keys: see note')}
+                  </span>
+                ))}
               </div>
             ))}
           </div>

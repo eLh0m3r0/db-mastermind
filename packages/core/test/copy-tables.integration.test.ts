@@ -88,6 +88,25 @@ for (const [from, to] of PAIRS) {
         const again = await copyTables(svc, source.id, target.id, { tables: [{ schema: shopSchema(from), name: 'customers' }, { schema: shopSchema(from), name: 'orders' }], targetSchema: schema, create: false, mode: 'replace' })
         expect(again.map((r) => r.rows)).toEqual([3, 120])
         expect(Number(await one(`SELECT COUNT(*) FROM ${q('orders')}`))).toBe(120)
+        // A replace stopped after its first batch leaves the target exactly as it was (one transaction; review finding).
+        if (to !== 'duckdb') {
+          const [mark] = await svc.runScript(target.id, `INSERT INTO ${q('customers')} (id, name, email) VALUES (99, 'Marker', 'marker@example.com')`)
+          if (mark?.error && to === 'mssql') await svc.runScript(target.id, `SET IDENTITY_INSERT ${q('customers')} ON; INSERT INTO ${q('customers')} (id, name, email) VALUES (99, 'Marker', 'marker@example.com'); SET IDENTITY_INSERT ${q('customers')} OFF`)
+          const stop = new AbortController()
+          await expect(
+            copyTables(svc, source.id, target.id, {
+              tables: [{ schema: shopSchema(from), name: 'customers' }, { schema: shopSchema(from), name: 'orders' }],
+              targetSchema: schema,
+              create: false,
+              mode: 'replace',
+              batchRows: 20,
+              signal: stop.signal,
+              onProgress: (p) => p.table.toLowerCase() === 'orders' && p.rows >= 20 && stop.abort(),
+            }),
+          ).rejects.toThrow(/stopped: nothing was changed/)
+          expect(Number(await one(`SELECT COUNT(*) FROM ${q('orders')}`))).toBe(120)
+          expect(Number(await one(`SELECT COUNT(*) FROM ${q('customers')} WHERE name = 'Marker'`))).toBe(1)
+        }
         // Leave nothing behind in the shared test databases (the explorer of every later e2e flow shows them).
         const cleanup = to === 'postgres' ? ['DROP SCHEMA copy_test CASCADE'] : to === 'mssql' ? ['DROP TABLE copy_test.orders', 'DROP TABLE copy_test.customers', 'DROP SCHEMA copy_test'] : to === 'mysql' || to === 'mariadb' ? ['DROP DATABASE copy_test'] : []
         for (const sql of cleanup) await svc.runScript(target.id, sql)
