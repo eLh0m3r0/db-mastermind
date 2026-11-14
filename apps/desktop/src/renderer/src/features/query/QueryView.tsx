@@ -264,14 +264,16 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       if (!now?.path || !now.file) return
       const mtime = await api.sqlFileTime(now.path).catch(() => null)
       if (stopped || mtime === null || Math.abs(mtime - now.file.mtimeMs) <= 1 || warnedAbout.current === mtime) return
-      const reload = async () => {
+      /** `silent`: only when the text is still what it was before reading (typing meanwhile must not be lost). */
+      const reload = async (silent = false) => {
+        const typed = editor.current?.getValue()
         const file = await api.openSqlFile(now.path).catch(() => null)
-        if (!file) return
+        if (!file || (silent && (stopped || editor.current?.getValue() !== typed))) return
         editor.current?.setValue(file.text)
         updateTab(tab.id, { sql: file.text, savedSql: file.text, file: { format: file.format, mtimeMs: file.mtimeMs } })
       }
       const dirty = (editor.current?.getValue() ?? now.sql) !== now.savedSql
-      if (!dirty) await reload()
+      if (!dirty) await reload(true)
       else {
         warnedAbout.current = mtime
         toast({ kind: 'warning', message: t('“{name}” was changed on disk', { name: now.title }), detail: t('This tab has unsaved changes: they stay until you reload.'), duration: 0, action: { label: t('Reload from disk'), run: () => void reload() } })

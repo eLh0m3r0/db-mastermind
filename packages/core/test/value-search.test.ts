@@ -6,7 +6,7 @@ const table: Pick<TableInfo, 'columns'> = {
   columns: [col('id', 'integer'), col('code', 'character varying(20)'), col('ref', 'uuid'), col('status', 'order_status'), col('meta', 'jsonb'), col('created', 'timestamp without time zone'), col('due', 'date'), col('total', 'numeric(12,2)'), col('note', 'text')],
 }
 const plan = (text: string, mode: 'exact' | 'contains' = 'exact', driver: 'postgres' | 'mssql' = 'postgres') =>
-  valueSearchConditions(table, text, mode, driver).map((c) => `${c.column} ${c.operator}${c.value2 ? ` ${c.value}..${c.value2}` : ''}`)
+  valueSearchConditions(table, text, mode, driver).map((c) => `${c.column} ${c.operator}`)
 
 describe('value search', () => {
   it('tells numbers, dates, UUIDs and text apart', () => {
@@ -27,8 +27,10 @@ describe('value search', () => {
     expect(plan('lic', 'contains')).toEqual(['code contains', 'note contains'])
   })
 
-  it('a date matches date columns and the whole day of timestamps', () => {
-    expect(plan('2026-01-05')).toEqual(['code eq', 'created between 2026-01-05 00:00:00..2026-01-05 23:59:59.999', 'due eq', 'note eq'])
+  it('a date matches date columns and the whole day of timestamps, half open (review finding)', () => {
+    expect(plan('2026-01-05')).toEqual(['code eq', 'created day', 'due eq', 'note eq'])
+    const day = valueSearchConditions(table, '2026-12-31', 'exact', 'postgres').find((c) => c.column === 'created')!.node
+    expect(day).toMatchObject({ kind: 'group', combinator: 'and', children: [{ operator: 'gte', value: '2026-12-31' }, { operator: 'lt', value: '2027-01-01' }] })
   })
 
   it('a UUID matches uuid columns too; SQL Server text/ntext columns are skipped', () => {

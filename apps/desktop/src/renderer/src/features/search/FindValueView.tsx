@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowUpRight, Search, Square } from 'lucide-react'
-import { cellToText, matchedColumns, valueSearchConditions, valueSearchFilter, type CellValue, type FilterCondition, type ResultField, type TableInfo, type ValueSearchMode } from '@dbmastermind/core/browser'
+import { cellToText, matchedColumns, valueSearchConditions, valueSearchFilter, type CellValue, type ResultField, type TableInfo, type ValueSearchCondition, type ValueSearchMode } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Badge, Checkbox, Input, Segmented, Select } from '@/components/ui/Input'
@@ -21,7 +21,7 @@ interface Hit {
   rows: CellValue[][]
   more: boolean
   matched: string[]
-  conditions: FilterCondition[]
+  conditions: ValueSearchCondition[]
 }
 
 /**
@@ -107,9 +107,8 @@ export function FindValueView({ tab }: { tab: SearchTab }) {
   }
 
   const open = (hit: Hit) => {
-    // Only the columns that held the value (all searched ones when it can't tell, e.g. a contains on a number).
-    const conditions = hit.matched.length ? hit.conditions.filter((c) => hit.matched.includes(c.column)) : hit.conditions
-    openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: hit.table.schema, name: hit.table.name }, title: hit.table.name, filter: valueSearchFilter(conditions) })
+    // Every searched column: the sample shows only the first rows, later ones may hold the value elsewhere.
+    openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: hit.table.schema, name: hit.table.name }, title: hit.table.name, filter: valueSearchFilter(hit.conditions) })
   }
 
   const schemas = schema?.schemas ?? []

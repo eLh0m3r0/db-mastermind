@@ -53,6 +53,21 @@ for (const engine of engines) {
 
         const nothing = await findEverywhere(svc, config.id, 'no such value anywhere', 'exact')
         expect(nothing).toEqual({ hits: [], errors: [] })
+
+        // The last instant of a day is that day; the next midnight is not (review finding).
+        const ts = { postgres: 'timestamp(6)', mysql: 'datetime(6)', mariadb: 'datetime(6)', mssql: 'datetime2(7)', duckdb: 'timestamp', sqlite: 'datetime' }[engine.id as string]
+        const t = svc.qualifiedName(config.id, { schema: engine.id === 'postgres' || engine.id === 'mssql' ? 'shop' : undefined, name: 'vs_times' })
+        await svc.runScript(config.id, engine.id === 'mssql' ? `IF OBJECT_ID('shop.vs_times') IS NOT NULL DROP TABLE shop.vs_times` : `DROP TABLE IF EXISTS ${t}`)
+        for (const sql of [`CREATE TABLE ${t} (id int, seen ${ts})`, `INSERT INTO ${t} (id, seen) VALUES (1, '2030-05-05 23:59:59.9995'), (2, '2030-05-06 00:00:00')`]) {
+          const [o] = await svc.runScript(config.id, sql)
+          expect(o?.error?.message, sql).toBeUndefined()
+        }
+        await svc.schema(config.id, true)
+        const snapshot = await svc.schema(config.id)
+        const timesTable = snapshot.tables.find((x) => x.name.toLowerCase() === 'vs_times')!
+        const page = await svc.fetchTable(config.id, { table: { schema: timesTable.schema, name: timesTable.name }, filter: valueSearchFilter(valueSearchConditions(timesTable, '2030-05-05', 'exact', engine.id)), limit: 10 })
+        expect(page.result.rows.map((r) => Number(r[0]))).toEqual([1])
+        await svc.runScript(config.id, `DROP TABLE ${t}`)
       } finally {
         await svc.disconnectAll()
       }

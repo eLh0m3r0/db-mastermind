@@ -224,6 +224,8 @@ describe.skipIf(skip)('oracle', () => {
     ]) {
       const { sql } = await objectDefinition(svc, 'ora', object)
       expect(sql).toMatch(/^CREATE OR REPLACE /)
+      // Qualified with its owner, so running it as another user changes this one (review finding).
+      expect(sql).toContain(`"SHOP"."${object.name}"`)
       const failed = (await svc.runScript('ora', sql)).find((o) => o.error)
       expect(failed?.error?.message, sql).toBeUndefined()
     }

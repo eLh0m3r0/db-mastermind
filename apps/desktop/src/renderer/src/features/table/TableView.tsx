@@ -696,7 +696,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
               confirmLabel: t('Set'),
             })
             if (expression === null) return
-            const problem = checkCellExpression(expression)
+            const problem = checkCellExpression(expression, connection?.driver)
             if (problem) {
               toast({ kind: 'error', message: t(problem) })
               return

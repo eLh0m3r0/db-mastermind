@@ -41,7 +41,8 @@ Read-only unless --allow-writes: the database itself refuses writes where it can
 `
 
 export interface DbmIo {
-  stdout: (text: string) => void
+  /** May return a promise that settles when the output can take more (pipes and slow disks: backpressure). */
+  stdout: (text: string) => void | Promise<void>
   stderr: (text: string) => void
 }
 
@@ -147,13 +148,38 @@ export function formatter(format: string): { head(fields: ResultField[]): string
   }
 }
 
-/** Writes to --out (a file) or the given io. */
+/**
+ * Writes to --out (a file) or the given io, waiting whenever the output is behind (rows are fetched no faster than
+ * they are written). A failing file (no folder, no permission, disk full) is reported, never an unhandled event.
+ */
 function output(o: Options, io: DbmIo) {
-  if (!o.out) return { write: io.stdout, close: async () => {} }
+  if (!o.out) return { write: async (text: string) => void (await io.stdout(text)), close: async () => {} }
   const stream = createWriteStream(o.out, 'utf8')
+  let failure: Error | undefined
+  stream.on('error', (err) => (failure ??= err))
+  const check = () => {
+    if (failure) throw new Error(`Could not write ${o.out}: ${failure.message}`)
+  }
   return {
-    write: (text: string) => void stream.write(text),
-    close: () => new Promise<void>((resolve, reject) => stream.end((err?: Error | null) => (err ? reject(err) : resolve()))),
+    write: async (text: string) => {
+      check()
+      if (!stream.write(text)) {
+        await new Promise<void>((resolve) => {
+          const done = () => {
+            stream.off('drain', done)
+            stream.off('error', done)
+            resolve()
+          }
+          stream.on('drain', done)
+          stream.on('error', done)
+        })
+      }
+      check()
+    },
+    close: async () => {
+      if (!failure) await new Promise<void>((resolve) => stream.end(() => resolve()))
+      check()
+    },
   }
 }
 
@@ -173,16 +199,16 @@ async function query(o: Options, db: DatabaseService, io: DbmIo): Promise<number
       let n = 0
       for await (const batch of db.streamQuery(config.id, statements[0]!.text)) {
         if (!headed) {
-          out.write(fmt.head(batch.fields))
+          await out.write(fmt.head(batch.fields))
           headed = true
         }
         for (const row of batch.rows) {
-          out.write(fmt.row(batch.fields, row, first))
+          await out.write(fmt.row(batch.fields, row, first))
           first = false
           n++
         }
       }
-      if (headed) out.write(fmt.tail())
+      if (headed) await out.write(fmt.tail())
       io.stderr(`${n} row${n === 1 ? '' : 's'}\n`)
       return 0
     }
@@ -191,9 +217,9 @@ async function query(o: Options, db: DatabaseService, io: DbmIo): Promise<number
     if (failed) throw new Error(`${failed.error!.message}\n  in: ${failed.sql.slice(0, 200)}`)
     const last = outcomes.flatMap((x) => x.results ?? []).filter((r) => r.fields.length).at(-1)
     if (last) {
-      out.write(fmt.head(last.fields))
-      last.rows.forEach((row, i) => out.write(fmt.row(last.fields, row, i === 0)))
-      out.write(fmt.tail())
+      await out.write(fmt.head(last.fields))
+      for (const [i, row] of last.rows.entries()) await out.write(fmt.row(last.fields, row, i === 0))
+      await out.write(fmt.tail())
     }
     const affected = outcomes.reduce((sum, x) => sum + (x.results ?? []).reduce((s, r) => s + (r.affectedRows ?? 0), 0), 0)
     io.stderr(`${outcomes.length} statement${outcomes.length === 1 ? '' : 's'}${affected ? `, ${affected} rows changed` : ''}\n`)
@@ -211,7 +237,7 @@ async function dictionary(o: Options, db: DatabaseService, io: DbmIo): Promise<n
   const snapshot = await db.schema(config.id)
   const text = buildDataDictionary(snapshot, { format, title: snapshot.database ?? config.name, subtitle: `${info.product} ${info.version}`, schemas: o.schemas.length ? o.schemas : undefined })
   if (o.out) writeFileSync(o.out, text, 'utf8')
-  else io.stdout(text)
+  else await io.stdout(text)
   io.stderr(`${snapshot.tables.length} tables${o.out ? ` → ${o.out}` : ''}\n`)
   return 0
 }
@@ -246,7 +272,7 @@ async function diff(o: Options, db: DatabaseService, io: DbmIo): Promise<number>
   const dialect = getDialect(config.driver)
   const script = migrationScript(generateMigration(changes, dialect, live.tables), dialect)
   if (o.out) writeFileSync(o.out, script, 'utf8')
-  else io.stdout(script)
+  else await io.stdout(script)
   io.stderr(`${changes.length} change${changes.length === 1 ? '' : 's'} to make the database match the model${o.out ? ` → ${o.out}` : ''}\n`)
   return 2
 }
