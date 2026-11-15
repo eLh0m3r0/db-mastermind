@@ -1,5 +1,6 @@
 import { app } from 'electron'
 import { randomUUID } from 'node:crypto'
+import { posix, win32 } from 'node:path'
 import type { ConnectionConfig } from '@dbmastermind/core'
 import type { ExplorerPrefs, StoredConnection } from '@shared/api'
 import { managedConfig } from './managed'
@@ -40,13 +41,18 @@ function mergeAll(stored: StoredConnection[]): StoredConnection[] {
  * folder copied over. Paths elsewhere are left alone.
  */
 export function relocatePaths<T extends { filePath?: string; knowledgeBasePath?: string }>(list: T[], from: string, to: string, windows = process.platform === 'win32'): { list: T[]; changed: boolean } {
-  const norm = (p: string) => (windows ? p.replace(/\//g, '\\').toLowerCase() : p)
-  const base = norm(from).replace(/[\\/]+$/, '')
-  if (!base || base === norm(to).replace(/[\\/]+$/, '')) return { list, changed: false }
+  const path = windows ? win32 : posix
+  // Resolved, so `data\..\private.sqlite` (a file next to the folder, not in it) is never moved.
+  const key = (p: string) => (windows ? path.resolve(p).toLowerCase() : path.resolve(p))
+  const base = path.resolve(from)
+  if (key(base) === key(to)) return { list, changed: false }
   const move = (p: string | undefined) => {
-    if (!p) return p
-    const n = norm(p)
-    return n === base || n.startsWith(base + (windows ? '\\' : '/')) ? to.replace(/[\\/]+$/, '') + p.slice(base.length) : p
+    if (!p || !path.isAbsolute(p)) return p
+    const rel = path.relative(key(base), key(p))
+    if (rel.startsWith('..') || path.isAbsolute(rel)) return p
+    // The original spelling of the part inside the folder (relative() above saw it lower-cased on Windows).
+    const inside = path.resolve(p).slice(path.resolve(base).length).replace(/^[\\/]+/, '')
+    return inside ? path.join(path.resolve(to), inside) : path.resolve(to)
   }
   let changed = false
   const out = list.map((c) => {
@@ -67,10 +73,11 @@ export async function loadConnections(): Promise<void> {
   const here = app.getPath('userData')
   const before = readJson<{ path?: string }>('data-dir.json', {}).path
   const moved = before ? relocatePaths(decrypted, before, here) : { list: decrypted, changed: false }
-  if (before !== here) writeJson('data-dir.json', { path: here })
   cache = mergeAll(moved.list)
-  // Passwords in an older encryption format are saved again in the current one; moved paths too.
-  if (takeLegacySecretsFlag() || moved.changed) persist()
+  // Passwords in an older encryption format are saved again in the current one; moved paths too. The folder is
+  // remembered only once the moved paths are saved, so a failed save tries again on the next start.
+  const saved = takeLegacySecretsFlag() || moved.changed ? persist() : Promise.resolve(true)
+  if (before !== here) void saved.then((ok) => ok && writeJson('data-dir.json', { path: here }))
 }
 
 export function listConnections(): StoredConnection[] {
@@ -80,11 +87,19 @@ export function listConnections(): StoredConnection[] {
 let writes = Promise.resolve()
 
 /** Encrypts and writes in order; later saves never overtake earlier ones. */
-function persist() {
+function persist(): Promise<boolean> {
   const snapshot = cache
-  writes = writes
-    .then(async () => writeJson(FILE, await Promise.all(snapshot.map((c) => transformSecrets(c, (v, field) => unreadable.encrypt(c.id, field, v))))))
-    .catch((err: unknown) => console.error('Could not save connections', err))
+  const done = writes
+    .then(async () => {
+      writeJson(FILE, await Promise.all(snapshot.map((c) => transformSecrets(c, (v, field) => unreadable.encrypt(c.id, field, v)))))
+      return true
+    })
+    .catch((err: unknown) => {
+      console.error('Could not save connections', err)
+      return false
+    })
+  writes = done.then(() => undefined)
+  return done
 }
 
 export function flushConnections(): Promise<void> {

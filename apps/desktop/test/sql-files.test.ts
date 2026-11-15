@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { decodeSqlFile, encodeSqlFile, readSqlFile, writeSqlFile } from '../src/main/sql-files'
+import { decodeSqlFile, encodeSqlFile, fileBytes, readSqlFile, writeSqlFile } from '../src/main/sql-files'
 
 const dir = mkdtempSync(join(tmpdir(), 'dbm-sqlfiles-'))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
@@ -51,6 +51,26 @@ describe('decodeSqlFile / encodeSqlFile', () => {
       await writeSqlFile(path, file.text, file.format, { expectedMtimeMs: file.mtimeMs })
       expect(readFileSync(path).equals(bytes)).toBe(true)
     }
+  })
+
+  it('writes a code page file back in its code page, byte for byte even when the guess was wrong', async () => {
+    // "SELECT 'più'" in Windows-1252: 0xF9 also is ů in Windows-1250, which the letters suggest.
+    const bytes = Buffer.from([...Buffer.from("SELECT 'pi"), 0xf9, 0x27, 0x0d, 0x0a])
+    const path = join(dir, 'cp.sql')
+    writeFileSync(path, bytes)
+    const file = await readSqlFile(path)
+    await writeSqlFile(path, file.text, file.format, { expectedMtimeMs: file.mtimeMs })
+    expect(readFileSync(path).equals(bytes)).toBe(true)
+    // An edit stays in the code page too.
+    const edited = await readSqlFile(path)
+    await writeSqlFile(path, `${edited.text}-- č\n`, edited.format, { expectedMtimeMs: edited.mtimeMs })
+    expect(decodeSqlFile(readFileSync(path), edited.format.encoding as 'windows-1250').text).toBe(`${edited.text}-- č\n`)
+  })
+
+  it('writes UTF-8 only when the code page cannot hold what was typed', () => {
+    const format = { encoding: 'windows-1250', bom: false, eol: '\n' } as const
+    expect(fileBytes('Příliš\n', format).equals(Buffer.from([0x50, 0xf8, 0xed, 0x6c, 0x69, 0x9a, 0x0a]))).toBe(true)
+    expect(fileBytes('日本\n', format).toString('utf8')).toBe('日本\n')
   })
 
   it('writes the editor’s \\n line ends as the file’s own', () => {

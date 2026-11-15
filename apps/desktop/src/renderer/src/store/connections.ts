@@ -189,6 +189,8 @@ export const useConnections = create<ConnectionsState>((set, get) => {
     async loadSchema(id, refresh = false) {
       const rt = get().runtime[id]
       if (rt?.schema && !refresh) return rt.schema
+      // Views load the schema on their own when it's missing; after Disconnect that would connect again at once.
+      if (rt?.byUser && rt.status === 'disconnected' && !refresh) return undefined
       patch(id, { schemaLoading: true, schemaError: undefined })
       try {
         const schema = await api.getSchema(id, refresh)

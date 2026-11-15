@@ -45,11 +45,42 @@ export function encodeSqlFile(text: string, format: Pick<SqlFileFormat, 'bom' | 
   return (format.bom ? BOM : '') + body
 }
 
-/** UTF-16 files stay UTF-16 (tools that wrote them expect it); everything else is written as UTF-8. */
+const codePages = new Map<string, Map<string, number>>()
+/** Character → byte of a Windows code page, made from its own decoder (Node has no encoder for them). */
+function codePage(encoding: 'windows-1250' | 'windows-1252'): Map<string, number> {
+  let map = codePages.get(encoding)
+  if (!map) {
+    map = new Map()
+    const decoder = dezignDecoder(encoding)
+    for (let b = 0; b < 256; b++) {
+      const c = decoder.decode(Uint8Array.of(b))
+      if (c !== '\ufffd' && !map.has(c)) map.set(c, b)
+    }
+    codePages.set(encoding, map)
+  }
+  return map
+}
+
+/**
+ * The file's bytes in its own encoding: UTF-16 stays UTF-16 (tools that wrote it expect it), a Windows code page
+ * stays that code page, so an unchanged byte is written back as it was even when the detection guessed the wrong
+ * code page (ù and ů are both 0xF9). Only text the code page can't hold (an emoji, letters of another script) is
+ * written as UTF-8 instead: changing it is still better than losing what was typed.
+ */
 export function fileBytes(text: string, format: SqlFileFormat): Buffer {
   const encoded = encodeSqlFile(text, { ...format, bom: format.encoding.startsWith('utf-16') || format.bom })
   if (format.encoding === 'utf-16le') return Buffer.from(encoded, 'utf16le')
   if (format.encoding === 'utf-16be') return Buffer.from(encoded, 'utf16le').swap16()
+  if (format.encoding === 'windows-1250' || format.encoding === 'windows-1252') {
+    const map = codePage(format.encoding)
+    const bytes: number[] = []
+    for (const c of encoded) {
+      const b = map.get(c)
+      if (b === undefined) return Buffer.from(encoded, 'utf8')
+      bytes.push(b)
+    }
+    return Buffer.from(bytes)
+  }
   return Buffer.from(encoded, 'utf8')
 }
 
