@@ -40,6 +40,7 @@
       <a class="btn" href="https://github.com/eLh0m3r0/db-mastermind/releases/latest">All downloads</a>
       <a class="btn" href="https://github.com/eLh0m3r0/db-mastermind">Source code</a>
     </div>
+    <div class="note" id="latest" hidden></div>
     <div class="note">Windows · macOS (Apple Silicon &amp; Intel) · Linux — <a href="https://apps.microsoft.com/detail/9p0grd7bz4nf">Microsoft Store</a> · <a href="#install">Scoop, Homebrew, MSI</a></div>
     <ul class="engines">
       <li>PostgreSQL</li><li>SQL Server</li><li>Oracle</li><li>MySQL</li><li>MariaDB</li><li>SQLite</li><li>DuckDB</li><li>ClickHouse</li><li>CockroachDB</li><li>BigQuery</li><li>Trino</li><li>CSV · Parquet · Excel</li>
@@ -51,7 +52,7 @@
     <h2>Everything you do every day, done well</h2>
     <p class="lead">No row limits, no paywalled features. Light, dark and high-contrast themes (follow the system or pick one in Settings), in English and Czech.</p>
     <div class="feature">
-      <div class="text"><h3>An SQL editor that knows your schema</h3><p>Autocomplete suggests tables and columns as you type and writes whole JOINs from foreign keys. Parameters, snippets, execution plans, history and saved queries are built in.</p><p>Results open in a fast grid; export every row to CSV, Excel, JSON or SQL, beyond any display limit.</p></div>
+      <div class="text"><h3>An SQL editor that knows your schema</h3><p>Autocomplete suggests tables and columns as you type and writes whole JOINs from foreign keys. It warns while you type about a table that doesn't exist or an UPDATE without WHERE. Parameters, snippets, execution plans, history and saved queries are built in.</p><p>Open a view, function or table as SQL ready to change, and open and save your own .sql files.</p><p>Results open in a fast grid; export every row to CSV, Excel, JSON or SQL, beyond any display limit.</p></div>
       <img src="screenshots/query.png" alt="SQL editor with results">
     </div>
     <div class="feature">
@@ -66,11 +67,14 @@
     <div class="grid">
       <div class="card"><h3>Advanced filters</h3><p>Nested AND/OR groups, 25+ operators (in list, between, regex, last N days, this month), raw WHERE, or describe the filter in plain words.</p></div>
       <div class="card"><h3>Edit with a safety net</h3><p>Edit cells, paste from Excel and add rows; every change waits in a change set you review before it's saved.</p></div>
+      <div class="card"><h3>Transactions you can see</h3><p>Commit changes yourself, per connection. Every open transaction and lock is shown, and closing a tab never commits or loses anything silently.</p></div>
+      <div class="card"><h3>Find any value</h3><p>Search a value across a whole database, see a column's profile (empty, distinct, most common), and get totals of the cells you select.</p></div>
       <div class="card"><h3>Compare</h3><p>Schemas between environments with the migration for the target, and table data with a sync script.</p></div>
-      <div class="card"><h3>For DBAs too</h3><p>Running queries and lock waits, cancel or end sessions, users &amp; roles with their privileges, backup and restore.</p></div>
-      <div class="card"><h3>Enterprise connections</h3><p>SSH tunnels, SSL, SQL Server Windows authentication, Oracle without Instant Client, import from Beekeeper, DBeaver and DataGrip.</p></div>
+      <div class="card"><h3>For DBAs too</h3><p>Running queries and lock waits, the slowest queries, storage with unused and duplicate indexes, users &amp; roles, backup and restore.</p></div>
+      <div class="card"><h3>Enterprise connections</h3><p>SSH tunnels and jump hosts, SSL, passwords from 1Password, Bitwarden or Vault, SQL Server with Windows authentication or Entra ID, import from Beekeeper, DBeaver and DataGrip.</p></div>
+      <div class="card"><h3>Move data</h3><p>Copy tables to another database, even another engine, run one script on several connections, and import CSV, Excel, JSON or Parquet.</p></div>
       <div class="card"><h3>Safe by default</h3><p>Read-only connections, a production guard, and a confirmation before DELETE or UPDATE without WHERE, DROP or TRUNCATE.</p></div>
-      <div class="card"><h3>Keyboard first</h3><p>Command palette (<span class="kbd">Ctrl/⌘ K</span>), quick table open (<span class="kbd">Ctrl/⌘ P</span>), split view, tabs that survive a restart.</p></div>
+      <div class="card"><h3>Keyboard first</h3><p>Command palette (<span class="kbd">Ctrl/⌘ K</span>), quick table open (<span class="kbd">Ctrl/⌘ P</span>), split view, tabs that survive a restart; every shortcut under Help → Keyboard Shortcuts.</p></div>
       <div class="card"><h3>Big schemas stay fast</h3><p>Thousands of tables across many schemas: filter the explorer, hide schemas you don't use, pin the tables you do.</p></div>
       <div class="card"><h3>Share with your team</h3><p>A shared team folder with connections, queries and notes, exports without passwords, and a data dictionary as one HTML page.</p></div>
     </div>
@@ -146,7 +150,7 @@
       <pre id="mcp-code"></pre>
       <p class="mcp-note" id="mcp-note"></p>
     </div>
-    <p class="lead">Tools for agents: <code>list_connections</code>, <code>list_tables</code>, <code>describe_table</code>, <code>search_schema</code>, <code>get_relationships</code>, <code>find_join_path</code>, <code>sample_rows</code>, <code>run_query</code>, <code>explain_query</code>, <code>search_knowledge</code>, <code>read_knowledge</code>, plus prompts such as <em>document_database</em>.</p>
+    <p class="lead">Tools for agents: <code>list_connections</code>, <code>list_tables</code>, <code>describe_table</code>, <code>search_schema</code>, <code>get_relationships</code>, <code>find_join_path</code>, <code>sample_rows</code>, <code>run_query</code>, <code>explain_query</code>, <code>get_definition</code>, <code>search_knowledge</code>, <code>read_knowledge</code>, plus prompts such as <em>document_database</em>. An agent can also propose a new connection, which you review and save in the app.</p>
   </section>
 
   <section id="privacy">
@@ -205,6 +209,9 @@ brew install --cask db-mastermind</pre>
     const res = await fetch('https://api.github.com/repos/eLh0m3r0/db-mastermind/releases/latest')
     if (!res.ok) return
     const release = await res.json()
+    const latest = document.getElementById('latest')
+    latest.innerHTML = `<a href="${release.html_url}">What's new in ${release.tag_name.replace(/^v/, '')} →</a>`
+    latest.hidden = false
     const assets = release.assets || []
     const pick =
       os === 'win' ? assets.find((a) => /win-x64-portable\.zip$/.test(a.name))
@@ -246,7 +253,7 @@ brew install --cask db-mastermind</pre>
   }
   const osNotes = {
     mac: '',
-    win: " Windows: this is the installer's location; with the portable zip use the path where you unzipped it. In JSON, every backslash is doubled.",
+    win: " Windows: this is the installer's location; with the portable zip use the path where you unzipped it. In JSON, every backslash is doubled. The Microsoft Store version can't be started by agents: use <em>Over HTTP</em>.",
     linux: ' Linux: the .deb installs to <code>/opt/DB Mastermind</code>; with the AppImage use the path to the .AppImage file.',
   }
   let tool = 'claude-code'
