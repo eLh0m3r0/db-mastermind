@@ -258,6 +258,15 @@ export function App() {
     if (activeTab && (!runtime || (runtime.status === 'disconnected' && !runtime.byUser))) void useConnections.getState().connect(activeTab.connectionId)
   }, [activeTab, runtime])
 
+  // The native menu greys out commands the shown tab can't act on (Run in a table tab, Export in a model…).
+  const currentConnectionId = useCurrentConnectionId()
+  const menuConnectionId = activeTab?.connectionId || currentConnectionId
+  const menuConnected = useConnections((s) => (menuConnectionId ? s.runtime[menuConnectionId]?.status === 'connected' : false))
+  const activeKind = activeTab?.kind
+  useEffect(() => {
+    void window.mastermind.api.setMenuContext({ tab: activeKind, connected: menuConnected }).catch(() => {})
+  }, [activeKind, menuConnected])
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex min-h-0 flex-1">

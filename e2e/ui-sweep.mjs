@@ -3,7 +3,7 @@
 // English text in the Czech UI, commands with no visible effect, and every external link the app tries to open.
 // Native dialogs and shell.openExternal are replaced by recorders, so nothing opens on the machine.
 // Needs `npm run db:up` (postgres) with the shop fixtures and a fresh `npm run build -w apps/desktop`.
-// Usage: node e2e/ui-sweep.mjs <out-dir> [cs|en]
+// Usage: node e2e/ui-sweep.mjs <out-dir> [cs|en] [--strict]
 import { _electron as electron } from '@playwright/test'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -11,6 +11,9 @@ import { join } from 'node:path'
 
 const out = process.argv[2] ?? join(tmpdir(), 'dbm-sweep')
 const lang = process.argv[3] ?? 'cs'
+// --strict (CI): exit 1 on what is wrong in any context. "no-effect" stays a hint: it needs a person to judge.
+const strict = process.argv.includes('--strict')
+const SERIOUS = new Set(['pageerror', 'console', 'error-toast', 'english', 'sweep-failed', 'errorBox'])
 mkdirSync(out, { recursive: true })
 const { cs } = await import('../apps/desktop/src/renderer/src/lib/i18n-cs.ts')
 const untranslated = new Map(Object.entries(cs).filter(([k, v]) => k !== v && !k.includes('|') && /[a-z]{3}/.test(k)))
@@ -145,15 +148,19 @@ async function sweepMenu(activateTab) {
     await activateTab?.()
     const tabsBefore = await win.locator('[role="tab"]').count()
     const before = (await snapshot()).signature
-    await app.evaluate(({ Menu, BrowserWindow }, path) => {
+    const clicked = await app.evaluate(({ Menu, BrowserWindow }, path) => {
       let item
       let menu = Menu.getApplicationMenu()
       for (const i of path) {
         item = menu.items[i]
         menu = item.submenu
       }
+      // Greyed out here: nobody can click it.
+      if (!item.enabled) return false
       item.click(undefined, BrowserWindow.getAllWindows()[0], BrowserWindow.getAllWindows()[0].webContents)
+      return true
     }, it.path)
+    if (!clicked) continue
     await win.waitForTimeout(900)
     const s = await checkScreen()
     const c = await calls()
@@ -226,3 +233,8 @@ const lines = [...grouped].map(([k, ctx]) => `${k}\t[${[...ctx].join(', ')}]`).s
 writeFileSync(join(out, 'findings.tsv'), lines.join('\n') + '\n')
 console.log(lines.join('\n'))
 console.log(`findings: ${lines.length}`)
+const serious = findings.filter((f) => SERIOUS.has(f.kind))
+if (strict && serious.length) {
+  console.log(`serious: ${serious.length}`)
+  process.exitCode = 1
+}

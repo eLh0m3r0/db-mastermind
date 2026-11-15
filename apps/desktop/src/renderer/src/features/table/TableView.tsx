@@ -57,7 +57,7 @@ import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { toast } from '@/store/ui'
 import { setUnsavedEdits, useWorkspace, type TableTab } from '@/store/workspace'
-import { refreshTransaction, useTransactions } from '@/store/transactions'
+import { endTransaction, refreshTransaction, useTransactions } from '@/store/transactions'
 import { TransactionBar } from '@/features/query/TransactionBar'
 import { copyRowsAs, EXPORT_FORMATS } from '../results/copy'
 import { FilterBuilder, newCondition } from './FilterBuilder'
@@ -779,8 +779,12 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
     if (!focused) return
     return onCommand((command) => {
       if (command === 'export') exportFromMenu.current()
+      else if (command === 'commit-transaction' || command === 'rollback-transaction') {
+        if (!useTransactions.getState()[tab.id]) toast({ kind: 'info', message: t('No transaction is open in this tab') })
+        else void endTransaction(tab.id, command === 'commit-transaction' ? 'commit' : 'rollback')
+      }
     })
-  }, [focused])
+  }, [focused, tab.id, t])
 
   const onGridKeyDown = (e: React.KeyboardEvent) => {
     if (!editable) return

@@ -79,7 +79,7 @@ import { reloadTeam, setTeamFolder, teamDir, teamStatus } from './team'
 import { removeTeamConnection, writeTeamConnection } from './team-folder'
 import { addToMcpClient, mcpClientStatuses, type McpLaunch } from './mcp-clients'
 import { applyMcpHttp, mcpHttpStatus } from './mcp-http'
-import { buildMenu } from './menu'
+import { buildMenu, setMenuContext } from './menu'
 import { forgetEditorSession, forgetEditorSessionsOf, openTransactions, trackEditorSession } from './transactions'
 import * as library from './library'
 import { getSettings, updateSettings } from './settings'
@@ -974,6 +974,9 @@ export const api: MastermindApi = {
   },
   async reportIssue() {
     await shell.openExternal(reportIssueUrl())
+  },
+  async setMenuContext(context) {
+    setMenuContext(context)
   },
   async openExternal(url) {
     if (/^https?:\/\//.test(url)) await shell.openExternal(url)

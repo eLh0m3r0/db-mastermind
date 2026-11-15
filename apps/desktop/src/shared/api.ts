@@ -802,6 +802,8 @@ export interface MastermindApi {
   /** GitHub's bug form with the app version and OS filled in. */
   reportIssue(): Promise<void>
   openExternal(url: string): Promise<void>
+  /** Which menu commands apply: the native menu greys out the rest (they would do nothing). */
+  setMenuContext(context: MenuContext): Promise<void>
   showItemInFolder(path: string): Promise<void>
 
   /** Knowledge base of a connection; creates a default folder in the data dir when asked. */
@@ -957,6 +959,7 @@ export const API_METHODS = [
   'readTextFile',
   'reportIssue',
   'openExternal',
+  'setMenuContext',
   'showItemInFolder',
   'kbEnsureFolder',
   'kbLocation',
@@ -997,3 +1000,10 @@ export const API_METHODS = [
 // Compile error if a method is added to MastermindApi but not to API_METHODS.
 const _exhaustive: Exclude<keyof MastermindApi, (typeof API_METHODS)[number]> extends never ? true : never = true
 void _exhaustive
+
+/** What the window shows, for greying out menu commands that can't act there. */
+export interface MenuContext {
+  tab?: 'query' | 'table' | 'model' | 'knowledge' | string
+  /** The current connection is connected. */
+  connected: boolean
+}
