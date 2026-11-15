@@ -22,4 +22,10 @@ describe('relocatePaths', () => {
     const moved = relocatePaths(list, '/home/me/.config/DB Mastermind', '/mnt/usb/data', false)
     expect(moved.list.map((c) => c.filePath)).toEqual(['/mnt/usb/data/sample/shop.sqlite', '/home/me/.config/DB Mastermind-old/x.sqlite'])
   })
+
+  it('never moves a path that only spells the folder but leads out of it', () => {
+    const list = [{ id: 'a', filePath: 'E:\\DBM\\data\\..\\private.sqlite' }, { id: 'b', filePath: '/data/../etc/x.sqlite' }]
+    expect(relocatePaths([list[0]!], 'E:\\DBM\\data', 'F:\\DBM\\data', true).changed).toBe(false)
+    expect(relocatePaths([list[1]!], '/data', '/mnt/data', false).changed).toBe(false)
+  })
 })

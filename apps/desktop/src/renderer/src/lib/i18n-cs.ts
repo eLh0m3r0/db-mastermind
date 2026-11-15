@@ -1696,8 +1696,6 @@ export const cs: Record<string, string> = {
   'A SQL file opens in a query tab of the connection selected in the sidebar.': 'SQL soubor se otevře v záložce dotazu připojení vybraného v postranním panelu.',
   'Select a connection to open {name}': 'Vyberte připojení, ve kterém se otevře {name}',
   'The SQL file opens in a query tab of the connection you select.': 'SQL soubor se otevře v záložce dotazu připojení, které vyberete.',
-  '{name} is in {encoding}': '{name} je v kódování {encoding}',
-  'It is saved back as UTF-8.': 'Uloží se zpět v UTF-8.',
   'Drop a SQL script or a model (DBML, DeZign) to open it, or a CSV, Parquet, JSON or Excel file to query it with SQL': 'Přetáhněte SQL skript nebo model (DBML, DeZign) a otevře se, nebo soubor CSV, Parquet, JSON či Excel a můžete se na něj ptát v SQL',
   '“{name}” was changed on disk': '„{name}“ se na disku změnil',
   'Another program changed the file since it was opened here. Overwrite it with this tab’s text?': 'Od otevření soubor změnil jiný program. Přepsat ho textem z této záložky?',

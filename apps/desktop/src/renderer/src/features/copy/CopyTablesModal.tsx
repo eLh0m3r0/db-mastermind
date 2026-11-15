@@ -45,7 +45,8 @@ export function CopyTablesModal() {
     setError(null)
     setRun(null)
     setFilter('')
-    if (!schema) void loadSchema(sourceId)
+    // Opening the dialog is asking for these connections: a disconnected one connects again.
+    if (!schema) void useConnections.getState().connect(sourceId).then(() => loadSchema(sourceId))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -53,7 +54,7 @@ export function CopyTablesModal() {
   useEffect(() => {
     if (!targetId) return
     setTargetSchema('')
-    void loadSchema(targetId)
+    void useConnections.getState().connect(targetId).then(() => loadSchema(targetId))
   }, [targetId, loadSchema])
   const targetSnapshot = targetId ? targetSchemaOf[targetId]?.schema : undefined
 
