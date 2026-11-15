@@ -796,6 +796,12 @@ untested here).
 - ✅ History is Ctrl+H on Windows and Linux (Ctrl+Y is Redo in the SQL editor); ⌘Y on a Mac
 - ✅ CI job `ui-sweep` (e2e/ui-sweep.mjs --strict, Ubuntu, Czech UI, Chromium sandbox kept); the whole e2e suite
   ran green (101 flows; AI flows and flows that need a file skipped); `scripts/e2e-extra-fixtures.sh` for flow46/61
+- ✅ The smallest window (900×560) in Czech, reviewed from screenshots (`e2e/small-window-tour.mjs`): the selected tab
+  always scrolls into view (it could sit out of sight behind the fade), Server activity fits a narrow pane (SQL broke
+  mid-word, Cancel was cut off), result tabs / query toolbar / table footer keep their text, data compare wraps
+  source and target as groups, wider schema selects, a readable design hint
+- ✅ `e2e/context-sweep.mjs`: every context-menu item (connection, schema, table, view, routine, column, cell, header)
+  on nine engines — no defect found; it stays as a check for new menu items
 
 ## Backlog — what other tools have (review 2026-11-14) 💡
 
