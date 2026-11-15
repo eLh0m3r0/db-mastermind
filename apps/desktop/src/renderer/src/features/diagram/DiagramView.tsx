@@ -1927,7 +1927,7 @@ function DiagramInner({ tab, model, modelDriver, domains, userProperties, labels
           <PencilRuler size={13} className="ml-1 shrink-0 text-accent" />
           <b className="shrink-0">{tr('Design mode.')}</b>
           <span
-            className="min-w-0 flex-1 truncate text-fg-muted"
+            className="min-w-[200px] flex-1 truncate text-fg-muted"
             title={model
               ? tr('Click a table to edit it, drag from a column dot to another table to add a foreign key. Write to DBML puts the changes into the model text.')
               : tr('Click a table to edit it, drag from a column dot to another table to add a foreign key. Nothing changes in the database until you run the generated migration.')}

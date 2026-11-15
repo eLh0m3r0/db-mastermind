@@ -175,12 +175,13 @@ export function ActivityView({ tab }: { tab: ActivityTab }) {
                     <td className={cn('px-2 py-1.5 whitespace-nowrap tabular-nums', slow && 'font-medium text-warning')}>
                       {s.durationMs !== undefined && s.durationMs >= 0 ? formatDuration(s.durationMs) : ''}
                     </td>
-                    <td className="max-w-[520px] px-2 py-1.5">
-                      <div className="line-clamp-3 font-mono text-[11.5px] break-all whitespace-pre-wrap text-fg-muted select-text" title={s.query}>
+                    <td className="max-w-[520px] min-w-[220px] px-2 py-1.5">
+                      <div className="line-clamp-3 font-mono text-[11.5px] [overflow-wrap:anywhere] whitespace-pre-wrap text-fg-muted select-text" title={s.query}>
                         {s.query}
                       </div>
                     </td>
-                    <td className="px-2 py-1 whitespace-nowrap">
+                    {/* Kept at the right edge when the table scrolls sideways (a narrow window): Cancel stays reachable. */}
+                    <td className="sticky right-0 bg-bg px-2 py-1 whitespace-nowrap group-hover:[background:linear-gradient(var(--bg-hover),var(--bg-hover)),var(--bg)]">
                       <div className="flex justify-end gap-0.5 opacity-60 group-hover:opacity-100">
                         {s.query && (
                           <IconButton label={t('Open in SQL editor')} onClick={() => newQuery(tab.connectionId, s.query!, t('Session {id}', { id: s.id }))}>

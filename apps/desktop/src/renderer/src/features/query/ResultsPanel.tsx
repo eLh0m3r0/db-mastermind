@@ -268,9 +268,10 @@ export function ResultsPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-8 shrink-0 items-center gap-0.5 border-b border-line bg-subtle px-1.5">
+      {/* @container: in a narrow pane (small window, AI panel open) the timing gives way before the result tabs do. */}
+      <div className="@container flex h-8 shrink-0 items-center gap-0.5 border-b border-line bg-subtle px-1.5">
         {/* Many result sets scroll sideways in one line; Messages stays in view next to them. */}
-        <div ref={tabStrip} className="flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
+        <div ref={tabStrip} className="flex min-w-[96px] items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
           {tabs.map((t) => (
             <button
               key={t.key}
@@ -332,7 +333,7 @@ export function ResultsPanel({
               </span>
             )}
             {!charts[current.key] && <SelectionStatsBar fields={current.result.fields} rows={sortedRows} selection={selection} />}
-            <span className="pr-2 text-[11.5px] text-fg-faint">{formatDuration(current.result.durationMs)}</span>
+            <span className="pr-2 text-[11.5px] whitespace-nowrap text-fg-faint @max-[480px]:hidden">{formatDuration(current.result.durationMs)}</span>
             {(() => {
               const chartable = defaultChartConfig(current.result.fields, sortedRows)
               if (!chartable) return null

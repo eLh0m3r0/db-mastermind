@@ -341,6 +341,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
               return (
                 <div
                   key={node.key}
+                  data-node="schema"
                   className={cn(rowClass, 'font-medium')}
                   style={style}
                   onContextMenu={(e) =>
@@ -407,6 +408,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
               return (
                 <div
                   key={node.key}
+                  data-node={t.type === 'view' ? 'view' : 'table'}
                   className={rowClass}
                   style={style}
                   title={[t.schema ? `${t.schema}.${t.name}` : t.name, t.comment, t.rowEstimate != null && t.rowEstimate >= 0 ? tr('≈ {n} rows', { n: formatCount(t.rowEstimate) }) : null].filter(Boolean).join('\n')}
@@ -440,6 +442,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
               return (
                 <div
                   key={node.key}
+                  data-node="column"
                   className={cn(rowClass, 'text-fg-muted')}
                   style={style}
                   title={[`${c.name} ${c.dataType}${c.nullable ? '' : ' NOT NULL'}`, c.defaultValue ? `${tr('default')} ${c.defaultValue}` : null, fk ? `→ ${fk.refTable}.${fk.refColumns.join(', ')}` : null, c.comment].filter(Boolean).join('\n')}

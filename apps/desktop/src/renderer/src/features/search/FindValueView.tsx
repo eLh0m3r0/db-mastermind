@@ -122,7 +122,7 @@ export function FindValueView({ tab }: { tab: SearchTab }) {
         }}
       >
         <Search size={15} className="text-accent" />
-        <Input ref={input} inputSize="sm" className="w-72" placeholder={t('Value to find, e.g. an order number or an e-mail')} value={text} onChange={(e) => setText(e.target.value)} data-testid="find-value-input" />
+        <Input ref={input} inputSize="sm" className="w-72" placeholder={t('Value to find (order number, e-mail…)')} value={text} onChange={(e) => setText(e.target.value)} data-testid="find-value-input" />
         <Segmented
           value={mode}
           onChange={setMode}
