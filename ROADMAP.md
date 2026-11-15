@@ -788,6 +788,15 @@ Not done: Microsoft Store App Execution Alias (would let agents start the Store 
 the Store pipeline can verify), `--no-sandbox` only for the AppImage (the .deb's SUID sandbox on Ubuntu 24.04 is
 untested here).
 
+### 1.3.2 — menus that fit the tab ✅ released 1.3.2 (2026-11-15)
+
+- ✅ The native menu greys out commands the shown tab can't act on (Run, Format SQL outside a query; Export in a
+  model; History / Saved Queries without a connection); Commit / Roll back work from a table tab; File → Save in a
+  table tab reviews its changes (only ⌘S did) and says when there are none — e2e/flow109
+- ✅ History is Ctrl+H on Windows and Linux (Ctrl+Y is Redo in the SQL editor); ⌘Y on a Mac
+- ✅ CI job `ui-sweep` (e2e/ui-sweep.mjs --strict, Ubuntu, Czech UI, Chromium sandbox kept); the whole e2e suite
+  ran green (101 flows; AI flows and flows that need a file skipped); `scripts/e2e-extra-fixtures.sh` for flow46/61
+
 ## Backlog — what other tools have (review 2026-11-14) 💡
 
 An independent pass over the app against DataGrip 2026.2, DBeaver 26.x, Beekeeper Studio 6, TablePlus, SSMS and
