@@ -12,6 +12,7 @@ import { DRIVERS } from '../connections/drivers'
 import { Segmented, Select } from '@/components/ui/Input'
 import { Splitter } from '@/components/ui/Splitter'
 import { api, keys } from '@/lib/api'
+import { onCommand } from '@/lib/commands'
 import { tp, useT } from '@/lib/i18n'
 import { cn, debounce, errorMessage } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
@@ -139,7 +140,7 @@ function DbmlEditor({ value, dark, onChange, onSave, jumpTo }: { value: string; 
 
 /** DeZign's ids of the databases a project can be switched to (as a new project is made for them). */
 const SWITCH_TO = { postgres: 'postgresql16', mssql: 'mssqlserver2022', mysql: 'mysql8' } as const
-export function ModelView({ tab }: { tab: ModelTab }) {
+export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: boolean }) {
   const t = useT()
   const dark = useSettings((s) => s.dark)
   const updateTab = useWorkspace((s) => s.update)
@@ -275,6 +276,13 @@ export function ModelView({ tab }: { tab: ModelTab }) {
   }
 
   latest.current.save = save
+  // ⌘S and File → Save also when the diagram or the object list has the focus (the DBML editor handles its own).
+  useEffect(() => {
+    if (!focused) return
+    return onCommand((command) => {
+      if (command === 'save-query') void latest.current.save(false)
+    })
+  }, [focused])
   const open = async () => {
     try {
       const file = await api.openModelFile(undefined, connection?.knowledgeBasePath)

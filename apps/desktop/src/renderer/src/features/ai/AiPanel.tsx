@@ -7,7 +7,7 @@ import { askText, confirmAction } from '@/components/ui/ConfirmDialog'
 import { Button, IconButton } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Spinner } from '@/components/ui/Spinner'
-import { api, bridge, modKey } from '@/lib/api'
+import { api, bridge, keys } from '@/lib/api'
 import { runCommand } from '@/lib/commands'
 import { cn, uid } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
@@ -485,7 +485,7 @@ export function AiPanel() {
               )}
             </div>
             <div className="mt-1 px-1 text-[10.5px] text-fg-faint">
-              {t('Enter to send · Shift+Enter for a new line · {shortcut} toggles this panel', { shortcut: `${modKey}J` })}
+              {t('Enter to send · Shift+Enter for a new line · {shortcut} toggles this panel', { shortcut: keys('⌘J') })}
             </div>
           </div>
         </>

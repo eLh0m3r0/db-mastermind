@@ -25,10 +25,23 @@ const KEYMAP: Record<string, string> = {
   'Mod+Shift+Alt+Enter': 'commit-transaction',
   'Mod+Shift+Alt+Backspace': 'rollback-transaction',
   'Mod+Shift+f': 'format-sql',
+  'Mod+Shift+e': 'export',
   'Mod+i': 'ask-ai',
   'Mod+y': 'history',
   'Mod+,': 'settings',
   'Mod+\\': 'split-view',
+}
+
+/** The app-wide shortcuts written the Mac way (⇧⌘O), for `keys()` and Help → Keyboard Shortcuts. */
+export function appShortcuts(): { command: string; mac: string }[] {
+  const glyph: Record<string, string> = { Mod: '⌘', Shift: '⇧', Alt: '⌥', Enter: '↵', Backspace: '⌫' }
+  const order = ['⌥', '⇧', '⌘']
+  return Object.entries(KEYMAP).map(([sig, command]) => {
+    const parts = sig.split('+').map((p, i, all) => (p === '' && i === all.length - 1 ? '+' : p))
+    const key = parts.pop()!
+    const mods = parts.map((p) => glyph[p] ?? p).sort((a, b) => order.indexOf(a) - order.indexOf(b))
+    return { command, mac: mods.join('') + (glyph[key] ?? (key.length === 1 ? key.toUpperCase() : key)) }
+  })
 }
 
 function signature(e: KeyboardEvent): string {

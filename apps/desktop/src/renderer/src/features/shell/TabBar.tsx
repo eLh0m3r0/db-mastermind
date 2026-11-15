@@ -4,7 +4,7 @@ import { Activity, BookOpen, FileCode2, LayoutDashboard, Rows3, ShieldCheck, Git
 import { IconButton } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { askText } from '@/components/ui/ConfirmDialog'
-import { isMac, modKey } from '@/lib/api'
+import { isMac, keys } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useUi } from '@/store/ui'
@@ -34,7 +34,7 @@ export function TabBar() {
   const closeTab = (id: string) => void confirmCloseTabs([id]).then((ok) => ok && close(id))
   const menu = (e: React.MouseEvent, tab: Tab) =>
     openMenu(e, [
-      { label: t('Close'), shortcut: `${modKey}W`, onClick: () => closeTab(tab.id) },
+      { label: t('Close'), shortcut: keys('⌘W'), onClick: () => closeTab(tab.id) },
       { label: t('Close others'), onClick: () => void confirmCloseTabs(tabs.filter((x) => x.id !== tab.id).map((x) => x.id)).then((ok) => ok && closeOthers(tab.id)) },
       'separator',
       { label: t('Open to the side'), icon: <Columns2 size={13} />, disabled: tabs.length < 2 || split?.right === tab.id, onClick: () => splitRight(tab.id) },
@@ -55,7 +55,7 @@ export function TabBar() {
   return (
     <div className={cn('drag-region flex h-[38px] shrink-0 items-end border-b border-line bg-subtle', !sidebarVisible && isMac && 'pl-[78px]')}>
       {!sidebarVisible && (
-        <IconButton label={`${t('Show sidebar')} (${modKey}B)`} className="no-drag mb-1.5 ml-1.5" onClick={() => setSidebarShown(true)}>
+        <IconButton label={`${t('Show sidebar')} (${keys('⌘B')})`} className="no-drag mb-1.5 ml-1.5" onClick={() => setSidebarShown(true)}>
           <PanelLeft size={14} />
         </IconButton>
       )}
@@ -134,13 +134,13 @@ export function TabBar() {
           )
         })}
         {currentConnection && (
-          <IconButton label={`${t('New query')} (${modKey}T)`} className="mb-1 ml-1" onClick={() => newQuery(currentConnection)}>
+          <IconButton label={`${t('New query')} (${keys('⌘T')})`} className="mb-1 ml-1" onClick={() => newQuery(currentConnection)}>
             <Plus size={15} />
           </IconButton>
         )}
       </div>
       <div className="no-drag mb-1.5 flex items-center gap-0.5 px-1.5">
-        <IconButton label={`${t('AI assistant')} (${modKey}J)`} active={aiVisible} onClick={() => setUi({ aiPanelVisible: !aiVisible })}>
+        <IconButton label={`${t('AI assistant')} (${keys('⌘J')})`} active={aiVisible} onClick={() => setUi({ aiPanelVisible: !aiVisible })}>
           <Sparkles size={14} />
         </IconButton>
       </div>

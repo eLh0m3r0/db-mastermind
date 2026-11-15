@@ -8,11 +8,12 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Splitter } from '@/components/ui/Splitter'
-import { api, ApiError, modKey } from '@/lib/api'
+import { api, ApiError, keys } from '@/lib/api'
 import { debounce, errorMessage, uid } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { askAi, toast, useUi } from '@/store/ui'
+import { useAiAllowed } from '@/features/ai/AiPermissions'
 import { useWorkspace, type QueryTab } from '@/store/workspace'
 import { onCommand } from '@/lib/commands'
 import { ParamsModal, type ParamValues } from './ParamsModal'
@@ -306,7 +307,14 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
 
   // Inline AI (Cmd/Ctrl+I): describe the SQL, it lands in the editor (replacing the selection, if any).
   const [inline, setInline] = useState<{ prompt: string; busy: boolean } | null>(null)
-  const openInline = useCallback(() => setInline((v) => v ?? { prompt: '', busy: false }), [])
+  const aiAllowed = useAiAllowed(connection)
+  const hasProvider = useSettings((st) => !!st.settings?.ai.activeProvider)
+  // Without a model the prompt could only fail after typing: set one up first. Turned off: say so.
+  const openInline = useCallback(() => {
+    if (!aiAllowed) toast({ kind: 'info', message: t('AI is turned off for this connection (Settings → AI permissions)') })
+    else if (!hasProvider) useUi.getState().set({ modal: { kind: 'settings', section: 'ai' } })
+    else setInline((v) => v ?? { prompt: '', busy: false })
+  }, [aiAllowed, hasProvider, t])
   const submitInline = useCallback(async (promptOverride?: string) => {
     const view = editor.current?.view()
     const prompt = (promptOverride ?? inline?.prompt ?? '').trim()
@@ -389,18 +397,18 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
             {t('Cancel')}
           </Button>
         ) : (
-          <Button size="sm" variant="primary" icon={<Play size={13} fill="currentColor" />} onClick={() => void run('current')} title={`${t('Run statement or selection')} (${modKey}↵)`}>
+          <Button size="sm" variant="primary" icon={<Play size={13} fill="currentColor" />} onClick={() => void run('current')} title={`${t('Run statement or selection')} (${keys('⌘↵')})`}>
             {t('Run')}
           </Button>
         )}
-        <Button size="sm" variant="ghost" icon={<PlayCircle size={14} />} disabled={running} onClick={() => void run('all')} title={`${t('Run whole script')} (⇧${modKey}↵)`}>
+        <Button size="sm" variant="ghost" icon={<PlayCircle size={14} />} disabled={running} onClick={() => void run('all')} title={`${t('Run whole script')} (${keys('⇧⌘↵')})`}>
           <span className="@max-[1050px]:hidden">{t('Run all')}</span>
         </Button>
         <div className="mx-1 h-5 w-px bg-line" />
-        <Button size="sm" variant="ghost" icon={<Wand2 size={14} />} onClick={format} title={`${t('Format SQL')} (⇧${modKey}F)`}>
+        <Button size="sm" variant="ghost" icon={<Wand2 size={14} />} onClick={format} title={`${t('Format SQL')} (${keys('⇧⌘F')})`}>
           <span className="@max-[1050px]:hidden">{t('Format')}</span>
         </Button>
-        <Button size="sm" variant="ghost" icon={<BookmarkPlus size={14} />} onClick={() => void save()} title={`${tab.path ? t('Save to {file}', { file: tab.path }) : t('Save query')} (${modKey}S)`}>
+        <Button size="sm" variant="ghost" icon={<BookmarkPlus size={14} />} onClick={() => void save()} title={`${tab.path ? t('Save to {file}', { file: tab.path }) : t('Save query')} (${keys('⌘S')})`}>
           <span className="@max-[1050px]:hidden">{t('Save')}</span>
         </Button>
         <Button
@@ -420,9 +428,11 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
         >
           <span className="@max-[1050px]:hidden">{t('Explain')}</span>
         </Button>
-        <Button size="sm" variant="ghost" icon={<Sparkles size={14} />} onClick={openInline} title={`${t('Ask AI')} (${modKey}I)`}>
-          <span className="@max-[1050px]:hidden">{t('Ask AI')}</span>
-        </Button>
+        {aiAllowed && (
+          <Button size="sm" variant="ghost" icon={<Sparkles size={14} />} onClick={openInline} title={`${t('Ask AI')} (${keys('⌘I')})`}>
+            <span className="@max-[1050px]:hidden">{t('Ask AI')}</span>
+          </Button>
+        )}
         </div>
 
         <TransactionBar tabId={tab.id} driver={driver} manual={!!connection?.manualCommit && !connection.readOnly && supportsManualCommit(driver)} busy={running} />
@@ -515,6 +525,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
           <PlanView plan={plan} previous={previousPlan} onClose={() => setPlan(null)} />
         ) : (
         <ResultsPanel
+          focused={active}
           outcomes={outcomes}
           running={running}
           startedAt={startedAt}

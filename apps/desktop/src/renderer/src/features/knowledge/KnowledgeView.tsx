@@ -10,7 +10,8 @@ import { Button, IconButton } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Input } from '@/components/ui/Input'
-import { api, modKey } from '@/lib/api'
+import { api, keys } from '@/lib/api'
+import { onCommand } from '@/lib/commands'
 import { cn, errorMessage, fuzzyScore, uid } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
@@ -75,7 +76,7 @@ function MarkdownEditor({ value, onChange, onSave, dark }: { value: string; onCh
   return <div ref={host} className="h-full overflow-auto" />
 }
 
-export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: boolean }) {
+export function KnowledgeView({ tab, active, focused = active }: { tab: KnowledgeTab; active: boolean; focused?: boolean }) {
   const connection = useConnections((s) => s.list.find((c) => c.id === tab.connectionId))
   const loadConnections = useConnections((s) => s.load)
   const loadSchema = useConnections((s) => s.loadSchema)
@@ -168,6 +169,15 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
     updateTab(tab.id, { file: path })
     setPreview(false)
   }
+
+  const saveRef = useRef(save)
+  saveRef.current = save
+  useEffect(() => {
+    if (!focused) return
+    return onCommand((command) => {
+      if (command === 'save-query') void saveRef.current()
+    })
+  }, [focused])
 
   const remove = async () => {
     if (!current || !(await confirmAction({ title: t('Delete {name}?', { name: current }), confirmLabel: t('Delete'), danger: true }))) return
@@ -322,7 +332,7 @@ export function KnowledgeView({ tab, active }: { tab: KnowledgeTab; active: bool
               <Button size="sm" variant="ghost" icon={preview ? <Pencil size={13} /> : <Eye size={13} />} onClick={() => setPreview((v) => !v)}>
                 {preview ? t('Edit') : t('Preview')}
               </Button>
-              <Button size="sm" variant={dirty ? 'primary' : 'ghost'} icon={<Save size={13} />} disabled={!dirty} onClick={() => void save()} title={`${t('Save')} (${modKey}S)`}>
+              <Button size="sm" variant={dirty ? 'primary' : 'ghost'} icon={<Save size={13} />} disabled={!dirty} onClick={() => void save()} title={`${t('Save')} (${keys('⌘S')})`}>
                 {t('Save')}
               </Button>
               <IconButton label={t('Delete file')} onClick={() => void remove()}>

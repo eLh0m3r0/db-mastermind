@@ -18,6 +18,8 @@ interface ConnectionRuntime {
   schemaError?: string
   /** The server was unreachable (VPN down, offline): the app keeps trying in the background. */
   retrying?: boolean
+  /** The user disconnected or cancelled the password prompt: shown tabs don't reconnect on their own. */
+  byUser?: boolean
 }
 
 interface ConnectionsState {
@@ -145,7 +147,7 @@ export const useConnections = create<ConnectionsState>((set, get) => {
       const current = get().runtime[id]
       if (current?.status === 'connected') return true
       stopRetry(id)
-      patch(id, { status: 'connecting', error: undefined, retrying: false })
+      patch(id, { status: 'connecting', error: undefined, retrying: false, byUser: false })
       let password: PasswordAnswer | undefined
       for (;;) {
         try {
@@ -168,7 +170,7 @@ export const useConnections = create<ConnectionsState>((set, get) => {
           const tried = !!password || !!c?.password
           const answer = await askPassword(c?.name ?? id, c?.user, tried ? errorMessage(err) : undefined)
           if (!answer) {
-            patch(id, { status: 'disconnected', error: undefined })
+            patch(id, { status: 'disconnected', error: undefined, byUser: true })
             return false
           }
           password = answer
@@ -181,7 +183,7 @@ export const useConnections = create<ConnectionsState>((set, get) => {
       stopRetry(id)
       await api.disconnect(id)
       forgetTransactionsOf(id)
-      patch(id, { status: 'disconnected', schema: undefined, serverInfo: undefined })
+      patch(id, { status: 'disconnected', schema: undefined, serverInfo: undefined, byUser: true })
       return true
     },
     async loadSchema(id, refresh = false) {
@@ -201,7 +203,7 @@ export const useConnections = create<ConnectionsState>((set, get) => {
       stopRetry(id)
       const rt = get().runtime[id]
       if (rt?.status === 'connected' && rt.schema) return
-      patch(id, { status: 'connected', serverInfo, error: undefined, retrying: false })
+      patch(id, { status: 'connected', serverInfo, error: undefined, retrying: false, byUser: false })
       // A schema that failed to load while the server was away loads now.
       if (!rt?.schema) void get().loadSchema(id, !!rt?.schemaError)
     },

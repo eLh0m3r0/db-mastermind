@@ -37,6 +37,7 @@ import { useConnections } from '@/store/connections'
 import { newTable } from '@/lib/newTable'
 import { openDefinition } from '@/lib/definitions'
 import { askAi, useUi } from '@/store/ui'
+import { useAiAllowed } from '@/features/ai/AiPermissions'
 import { useWorkspace } from '@/store/workspace'
 import { tp, useT } from '@/lib/i18n'
 
@@ -90,6 +91,8 @@ export const EXPLAIN_ROUTINE_PROMPT =
   'Explain the routine {routine}: what it does, its parameters and what it returns, which tables it reads or changes, and how it is called. Read its definition first. Use the knowledge base if it documents it.'
 
 export function SchemaTree({ connection, schema }: { connection: StoredConnection; schema?: SchemaSnapshot }) {
+  // Turned off for this connection (by the user or the organization): no AI entries, as in the table tab.
+  const aiAllowed = useAiAllowed(connection)
   const ROW = useCompact() ? 21 : 24
   const runtime = useConnections((s) => s.runtime[connection.id])
   const loadSchema = useConnections((s) => s.loadSchema)
@@ -228,11 +231,15 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
       connection.pinnedTables?.includes(pinKey(t))
         ? { label: tr('Unpin'), icon: <PinOff size={13} />, onClick: () => togglePin(connection.id, pinKey(t)) }
         : { label: tr('Pin to top'), icon: <Pin size={13} />, onClick: () => togglePin(connection.id, pinKey(t)) },
-      {
-        label: tr('Explain with AI'),
-        icon: <Sparkles size={13} />,
-        onClick: () => askAi({ prompt: tr(EXPLAIN_TABLE_PROMPT, { table: t.schema ? `${t.schema}.${t.name}` : t.name }), send: true }),
-      },
+      ...(aiAllowed
+        ? [
+            {
+              label: tr('Explain with AI'),
+              icon: <Sparkles size={13} />,
+              onClick: () => askAi({ prompt: tr(EXPLAIN_TABLE_PROMPT, { table: t.schema ? `${t.schema}.${t.name}` : t.name }), send: true }),
+            },
+          ]
+        : []),
       'separator',
       { label: tr('New query: SELECT'), icon: <TerminalSquare size={13} />, onClick: () => newQuery(connection.id, generateSql('select', t, connection), t.name) },
       {
@@ -443,11 +450,15 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
                       ...(fk
                         ? [{ label: tr('Open {table}', { table: fk.refTable }), icon: <Link2 size={13} />, onClick: () => openTab({ kind: 'table', connectionId: connection.id, table: { schema: fk.refSchema, name: fk.refTable }, title: fk.refTable }) }]
                         : []),
-                      {
-                        label: tr('Explain with AI'),
-                        icon: <Sparkles size={13} />,
-                        onClick: () => askAi({ prompt: tr(EXPLAIN_COLUMN_PROMPT, { column: `${node.table.schema ? `${node.table.schema}.` : ''}${node.table.name}.${c.name}` }), send: true }),
-                      },
+                      ...(aiAllowed
+                        ? [
+                            {
+                              label: tr('Explain with AI'),
+                              icon: <Sparkles size={13} />,
+                              onClick: () => askAi({ prompt: tr(EXPLAIN_COLUMN_PROMPT, { column: `${node.table.schema ? `${node.table.schema}.` : ''}${node.table.name}.${c.name}` }), send: true }),
+                            },
+                          ]
+                        : []),
                     ])
                   }
                 >
@@ -478,11 +489,15 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
                   openMenu(e, [
                     ...(canDefine ? [{ label: tr('Definition (SQL)'), icon: <FileCode2 size={13} />, onClick: () => void openDefinition(connection.id, routineObject(r)) }] : []),
                     { label: tr('Copy name'), icon: <Copy size={13} />, onClick: () => void copyText(r.name) },
-                    {
-                      label: tr('Explain with AI'),
-                      icon: <Sparkles size={13} />,
-                      onClick: () => askAi({ prompt: tr(EXPLAIN_ROUTINE_PROMPT, { routine: qualifiedRoutine }), send: true }),
-                    },
+                    ...(aiAllowed
+                      ? [
+                          {
+                            label: tr('Explain with AI'),
+                            icon: <Sparkles size={13} />,
+                            onClick: () => askAi({ prompt: tr(EXPLAIN_ROUTINE_PROMPT, { routine: qualifiedRoutine }), send: true }),
+                          },
+                        ]
+                      : []),
                   ])
                 }
               >
