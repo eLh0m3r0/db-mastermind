@@ -102,6 +102,46 @@ jobs:
         run: npx electron-vite build
         working-directory: apps/desktop
 
+  # Every command palette entry and menu command, with no connection and in a query, table and model tab, in the
+  # Czech UI: fails on page or console errors, error toasts and English text (e2e/ui-sweep.mjs).
+  ui-sweep:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: mastermind
+          POSTGRES_DB: mastermind
+        ports: ['54329:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - name: Shop fixtures
+        run: npx vitest run --project integration packages/core/test/drivers.integration.test.ts
+        env:
+          DBM_SKIP: mysql,mariadb,mssql,ms,duckdb,sqlite,oracle,cockroach,clickhouse,bigquery,trino
+      - name: Build desktop bundles
+        run: npx electron-vite build
+        working-directory: apps/desktop
+      # Ubuntu 24.04 blocks the unprivileged user namespaces Chromium's sandbox uses; allow them instead of
+      # running Electron without its sandbox.
+      - name: Allow the Chromium sandbox
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: UI sweep (virtual display)
+        run: xvfb-run -a node e2e/ui-sweep.mjs ui-sweep cs --strict
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-sweep
+          path: ui-sweep
+          retention-days: 7
+
   # Packages the app on every OS and runs the real executable (headless MCP mode against SQLite).
   package-smoke:
     strategy:
