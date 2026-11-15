@@ -163,6 +163,7 @@ export function StatusDot({ id, className }: { id: string; className?: string })
   if (status === 'connecting') return <Spinner size={10} className={cn('text-fg-faint', className)} />
   return (
     <span
+      data-status={status}
       className={cn(
         'inline-block h-[7px] w-[7px] shrink-0 rounded-full',
         status === 'connected' ? 'bg-success' : status === 'error' ? 'bg-danger' : 'bg-line-strong',
@@ -218,6 +219,7 @@ export function Sidebar() {
                 key={id}
                 type="button"
                 onClick={() => setPanel(id)}
+                aria-pressed={panel === id}
                 title={t(label)}
                 className={cn(
                   'flex h-6 min-w-0 flex-auto items-center justify-center rounded-md px-1 text-[11.5px] font-medium',

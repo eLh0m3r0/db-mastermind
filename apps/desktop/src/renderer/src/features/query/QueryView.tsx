@@ -22,7 +22,7 @@ import { ResultsPanel } from './ResultsPanel'
 import { SqlEditor, type SqlEditorHandle } from './SqlEditor'
 import { TransactionBar } from './TransactionBar'
 import { openDefinition } from '@/lib/definitions'
-import { endTransaction, refreshTransaction } from '@/store/transactions'
+import { endTransaction, refreshTransaction, useTransactions } from '@/store/transactions'
 import { useT } from '@/lib/i18n'
 import { confirmAction } from '@/components/ui/ConfirmDialog'
 
@@ -367,7 +367,10 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
         const sql = view && sel && !sel.empty ? view.state.sliceDoc(sel.from, sel.to) : (editor.current?.getValue() ?? '')
         useUi.getState().set({ modal: { kind: 'runMany', connectionId: tab.connectionId, sql } })
       }
-      else if ((command === 'commit-transaction' || command === 'rollback-transaction') && !runId.current) void endTransaction(tab.id, command === 'commit-transaction' ? 'commit' : 'rollback')
+      else if ((command === 'commit-transaction' || command === 'rollback-transaction') && !runId.current) {
+        if (!useTransactions.getState()[tab.id]) toast({ kind: 'info', message: t('No transaction is open in this tab') })
+        else void endTransaction(tab.id, command === 'commit-transaction' ? 'commit' : 'rollback')
+      }
     })
   }, [active, run, cancel, format, save, openInline, tab.id])
 

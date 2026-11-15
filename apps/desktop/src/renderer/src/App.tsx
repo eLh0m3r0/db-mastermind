@@ -103,6 +103,7 @@ function useGlobalCommands() {
           case 'split-view':
             // Toggles: split the current tab off to the right, or go back to one pane.
             if (ws.split) ws.unsplit()
+            else if (ws.tabs.length < 2) toast({ kind: 'info', message: t('Split view shows two tabs side by side: open another tab first') })
             else if (ws.activeTabId) ws.splitRight(ws.activeTabId)
             break
           case 'toggle-sidebar':
