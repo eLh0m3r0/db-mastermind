@@ -264,8 +264,8 @@ export function App() {
   const menuConnected = useConnections((s) => (menuConnectionId ? s.runtime[menuConnectionId]?.status === 'connected' : false))
   const activeKind = activeTab?.kind
   useEffect(() => {
-    void window.mastermind.api.setMenuContext({ tab: activeKind, connected: menuConnected }).catch(() => {})
-  }, [activeKind, menuConnected])
+    void window.mastermind.api.setMenuContext({ tab: activeKind, connected: menuConnected, connection: !!menuConnectionId }).catch(() => {})
+  }, [activeKind, menuConnected, menuConnectionId])
 
   return (
     <div className="flex h-full flex-col">

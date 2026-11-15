@@ -219,6 +219,9 @@ const APPLIES: Record<string, (c: MenuContext) => boolean> = {
   'save-query': (c) => isData(c) || c.tab === 'model' || c.tab === 'knowledge',
   'close-tab': (c) => !!c.tab,
   disconnect: (c) => c.connected,
+  // The sidebar shows these lists for the selected connection only.
+  history: (c) => !!c.connection,
+  'saved-queries': (c) => !!c.connection,
   'refresh-schema': (c) => c.connected,
 }
 

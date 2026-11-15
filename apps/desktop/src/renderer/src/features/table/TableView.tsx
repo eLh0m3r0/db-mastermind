@@ -746,18 +746,14 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
   const review = useRef(() => {})
   review.current = () => {
     if (pendingCount > 0) void showPreview()
+    else toast({ kind: 'info', message: t('No changes to save') })
   }
   useEffect(() => {
     if (!focused) return
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey
-      if (mod && e.key.toLowerCase() === 's') {
-        e.preventDefault()
-        // A cell editor or a row details field commits on blur: let that edit land before the review opens.
-        const el = document.activeElement
-        if (el instanceof HTMLElement && el.matches('input, textarea') && root.current?.contains(el)) el.blur()
-        setTimeout(() => review.current())
-      } else if (mod && e.key.toLowerCase() === 'r') {
+      // ⌘S is the app's save-query command (keymap.ts), handled below with File → Save.
+      if (mod && e.key.toLowerCase() === 'r') {
         e.preventDefault()
         refresh()
       } else if (mod && e.key.toLowerCase() === 'f' && !e.shiftKey) {
@@ -779,6 +775,12 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
     if (!focused) return
     return onCommand((command) => {
       if (command === 'export') exportFromMenu.current()
+      else if (command === 'save-query') {
+        // A cell editor or a row details field commits on blur: let that edit land before the review opens.
+        const el = document.activeElement
+        if (el instanceof HTMLElement && el.matches('input, textarea') && root.current?.contains(el)) el.blur()
+        setTimeout(() => review.current())
+      }
       else if (command === 'commit-transaction' || command === 'rollback-transaction') {
         if (!useTransactions.getState()[tab.id]) toast({ kind: 'info', message: t('No transaction is open in this tab') })
         else void endTransaction(tab.id, command === 'commit-transaction' ? 'commit' : 'rollback')
