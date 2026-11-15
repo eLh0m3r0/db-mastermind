@@ -26,7 +26,8 @@ export function TabBar() {
   const aiVisible = useUi((s) => s.aiPanelVisible)
   const setUi = useUi((s) => s.set)
   const dragId = useRef<string | null>(null)
-  // With more tabs than fit, the selected one is scrolled into view (it could be out of sight behind the fade).
+  // Tabs keep their names (up to 220 px; squeezing them made every tab unreadable). With more tabs than fit, the
+  // strip scrolls and the selected one is brought into view (it could be out of sight behind the fade).
   const strip = useRef<HTMLDivElement>(null)
   const tabCount = useWorkspace((s) => s.tabs.length)
   useEffect(() => {
@@ -105,7 +106,7 @@ export function TabBar() {
               onContextMenu={(e) => menu(e, tab)}
               title={`${tab.title}${conn ? ` · ${conn.name}` : ''}`}
               className={cn(
-                'group relative flex h-[31px] max-w-[220px] min-w-[96px] shrink cursor-default items-center gap-1.5 rounded-t-md border border-b-0 pr-1 pl-2.5 text-[12.5px]',
+                'group relative flex h-[31px] max-w-[220px] min-w-[110px] shrink-0 cursor-default items-center gap-1.5 rounded-t-md border border-b-0 pr-1 pl-2.5 text-[12.5px]',
                 active ? 'z-10 -mb-px h-[32px] border-line bg-bg text-fg' : 'border-transparent text-fg-muted hover:bg-hover hover:text-fg',
                 dropTarget === tab.id && 'border-l-2 border-l-accent',
               )}
