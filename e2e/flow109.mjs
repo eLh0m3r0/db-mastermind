@@ -73,7 +73,7 @@ try {
   await win.getByTestId('run-many-start').click()
   await win.waitForTimeout(2500)
   const result = await win.getByTestId('run-many').innerText()
-  check('Run on Several Connections from a table tab runs typed SQL', /Shop/.test(result) && /\b3\b/.test(result))
+  check('Run on Several Connections from a table tab runs typed SQL', /Shop/.test(result) && /1 row/.test(result))
   await win.screenshot({ path: `${out}/r109-run-many.png` })
   check('no page errors', errors.length === 0)
   if (errors.length) console.log(errors)
