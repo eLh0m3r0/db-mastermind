@@ -19,7 +19,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "DB Mastermind ${TAG#v}" --generate-notes
+          # Notes written for the release (.github/release-notes/<tag>.md) go out with it; otherwise GitHub's list of commits.
+          NOTES=(--generate-notes)
+          [ -f ".github/release-notes/$TAG.md" ] && NOTES=(--notes-file ".github/release-notes/$TAG.md")
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "DB Mastermind ${TAG#v}" "${NOTES[@]}"
 
   desktop:
     needs: create-release

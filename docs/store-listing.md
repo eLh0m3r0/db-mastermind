@@ -83,7 +83,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 
 **Search terms** (7): `database client` · `SQL editor` · `PostgreSQL` · `SQL Server` · `data modeling` · `ER diagram` · `database AI`
 
-**What's new in this version:** Data modeling without a database: start a model on the home page, rename tables and columns and change types right on the diagram, everything else in one panel next to it; changes are kept as you make them, with undo. Models are DBML text files: generate SQL for any supported database or compare a model with a database for the migration. Opens and saves DeZign for Databases projects (.dez, .dezproj), including diagrams, domains, subtypes, labels, triggers, procedures, sequences and archived versions.
+**What's new in this version** (1.3.2; covers the 1.3 releases, as Store users update from older ones): Open a function, view or table as SQL and change it; open and save .sql files; warnings while you type (unknown table, UPDATE or DELETE without WHERE). Totals of selected cells, SQL expressions in cells, find a value anywhere in a database, value profile of a column. Server activity shows the slowest queries and storage, including unused and duplicate indexes. Copy tables to another database, run a script on several connections, import JSON and Parquet. Passwords from a password manager, SSH through a jump host, SQL Server with Microsoft Entra ID. Also: Help > Keyboard Shortcuts, Ctrl+H for Find and replace in the SQL editor, menus that grey out what can't act in the open tab, a tidier layout in small windows, and many small fixes.
 
 **Copyright and trademark info:** © 2026 Václav Mudra. MIT license. DeZign for Databases is a trademark of Datanamic; DB Mastermind is not affiliated with or endorsed by Datanamic.
 
@@ -163,7 +163,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 
 **Search terms:** `databázový klient` · `SQL editor` · `PostgreSQL` · `SQL Server` · `datové modelování` · `ER diagram` · `databáze AI`
 
-**What's new in this version:** Datové modelování bez databáze: model založíte na úvodní stránce, tabulky a sloupce přejmenujete a typy změníte přímo v diagramu, vše ostatní je v jednom panelu vedle něj; změny se ukládají průběžně a jdou vrátit. Modely jsou textové soubory DBML: vygenerujete z nich SQL pro kteroukoli podporovanou databázi nebo je porovnáte s databází a dostanete migraci. Otevírá a ukládá projekty DeZign for Databases (.dez, .dezproj) včetně diagramů, domén, podtypů, štítků, triggerů, procedur, sekvencí a archivovaných verzí.
+**What's new in this version:** Funkci, pohled nebo tabulku otevřete jako SQL a upravíte; soubory .sql otevřete i uložíte; upozornění už při psaní (neznámá tabulka, UPDATE nebo DELETE bez WHERE). Součty vybraných buněk, SQL výraz v buňce, hledání hodnoty v celé databázi, profil hodnot sloupce. Aktivita serveru ukazuje nejnáročnější dotazy a úložiště včetně nepoužívaných a duplicitních indexů. Kopírování tabulek do jiné databáze, spuštění skriptu na více připojeních, import JSON a Parquet. Hesla ze správce hesel, SSH přes jump host, SQL Server s Microsoft Entra ID. Také: Nápověda > Klávesové zkratky, Ctrl+H pro Najít a nahradit v SQL editoru, menu zašedí, co v otevřené kartě nejde použít, úhlednější rozvržení v malém okně a řada drobných oprav.
 
 **Screenshots:** the same files; captions:
 
