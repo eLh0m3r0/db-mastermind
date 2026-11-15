@@ -764,6 +764,30 @@ one line; reloads never drop typed text; whole-day date search is half open; Ora
 Left for later: Entra ID for PostgreSQL / MySQL in Azure and AWS / Google Cloud IAM tokens (new SDK dependencies and real cloud accounts to test with), SOCKS / HTTP proxies, Kerberos, triggers in the explorer, routine bodies in *Used by*, a folder of scripts in the sidebar, SQL Server
 Agent jobs, editing users and grants, Explain on normalized top queries.
 
+### 1.3.1 — the long tail ✅
+
+The owner asked for a pass over things that don't work although nothing tests them. Method, kept for future releases:
+`apps/desktop/test/ui-coverage.test.ts` (translations, menu commands, shortcuts), `e2e/ui-sweep.mjs` (every palette
+entry and menu command in four situations, Czech UI), two independent code reviews (install types / OS; every place
+a user triggers something) and Codex on the result.
+
+- ✅ Help → Keyboard Shortcuts and File → Export Results… (⇧⌘E) never did anything: a shortcuts list made from the
+  keymap, ⇧⌘E opens the export menu of results or a table; History / Saved Queries switch the sidebar — e2e/flow109
+- ✅ Disconnect (and Cancel on a password prompt) no longer reconnects at once; Run on Several Connections takes typed
+  SQL outside a query tab; ⌘S saves models and notes also without the editor's focus; Split view and Commit/Roll back
+  say why nothing happened
+- ✅ Shortcut labels through keys() (Windows showed "CtrlT"); native menus fully Czech; AI entries hidden where AI is off
+- ✅ Install types: Store and all-users MSI don't announce GitHub releases; the AppImage keeps one name across
+  updates and agents start it by its file; MCP settings warn where agents can't start the app (Store, disk image);
+  the window never reopens on an unplugged monitor; a file opened with the window closed opens one (macOS)
+- ✅ Password commands and `claude mcp add` find Homebrew / native installs from a Finder-started app; `.sql` files in
+  UTF-16 stay UTF-16, code page files are written back in their code page; paths into a moved portable data folder
+  follow it; pg_dump picks the newest version; Linux without a keychain says so; Windows auth on ARM64 explains itself
+
+Not done: Microsoft Store App Execution Alias (would let agents start the Store version; needs a manifest change only
+the Store pipeline can verify), `--no-sandbox` only for the AppImage (the .deb's SUID sandbox on Ubuntu 24.04 is
+untested here).
+
 ## Backlog — what other tools have (review 2026-11-14) 💡
 
 An independent pass over the app against DataGrip 2026.2, DBeaver 26.x, Beekeeper Studio 6, TablePlus, SSMS and
