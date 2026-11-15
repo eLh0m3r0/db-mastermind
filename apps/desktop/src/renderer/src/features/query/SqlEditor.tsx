@@ -3,7 +3,7 @@ import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, t
 import { defaultKeymap, history, historyKeymap, indentWithTab, toggleComment } from '@codemirror/commands'
 import { MSSQL, MySQL, MariaSQL, PLSQL, PostgreSQL, SQLite, sql, type SQLDialect, type SQLNamespace } from '@codemirror/lang-sql'
 import { bracketMatching, HighlightStyle, indentOnInput, syntaxHighlighting } from '@codemirror/language'
-import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
+import { highlightSelectionMatches, openSearchPanel, searchKeymap } from '@codemirror/search'
 import { linter, type Diagnostic } from '@codemirror/lint'
 import { Compartment, EditorSelection, EditorState, RangeSetBuilder, StateEffect, StateField, type Extension } from '@codemirror/state'
 import {
@@ -302,6 +302,8 @@ export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunA
             { key: 'Mod-s', run: () => (handlers.current.onSave?.(), true), preventDefault: true },
             { key: 'Mod-i', run: () => (handlers.current.onAskAi?.(), true), preventDefault: true },
             { key: 'Mod-/', run: toggleComment },
+            // Find and replace is Ctrl+H on Windows and Linux (SSMS, VS Code); the panel has both fields.
+            { win: 'Ctrl-h', linux: 'Ctrl-h', run: openSearchPanel, preventDefault: true },
             ...closeBracketsKeymap,
             ...defaultKeymap,
             ...searchKeymap,

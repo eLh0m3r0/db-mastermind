@@ -121,12 +121,12 @@ export function ActivityView({ tab }: { tab: ActivityTab }) {
         </EmptyState>
       ) : (
         <div className="@container min-h-0 flex-1 overflow-auto">
-          {/* @container: in a narrow pane Database and Client give way, so the query and its actions stay in view. */}
+          {/* @container: in a narrow pane Cancel's label, then Client, then Database give way (only as much as needed), so the query and its actions stay in view. */}
           <table className="w-full border-collapse text-[12px]">
             <thead className="sticky top-0 z-10 bg-subtle text-left text-[11px] font-semibold text-fg-muted">
               <tr>
                 {[t('Session'), t('User'), t('Database'), t('Client'), t('State'), t('Running for'), t('Query'), ''].map((h, i) => (
-                  <th key={i} className={cn('border-b border-line px-2 py-1.5 font-semibold whitespace-nowrap', (i === 2 || i === 3) && '@max-[760px]:hidden')}>
+                  <th key={i} className={cn('border-b border-line px-2 py-1.5 font-semibold whitespace-nowrap', i === 2 && '@max-[680px]:hidden', i === 3 && '@max-[760px]:hidden')}>
                     {h}
                   </th>
                 ))}
@@ -151,7 +151,7 @@ export function ActivityView({ tab }: { tab: ActivityTab }) {
                       )}
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap">{s.user}</td>
-                    <td className="px-2 py-1.5 whitespace-nowrap @max-[760px]:hidden">{s.database}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap @max-[680px]:hidden">{s.database}</td>
                     <td className="max-w-[180px] truncate px-2 py-1.5 text-fg-muted @max-[760px]:hidden" title={[s.client, s.application].filter(Boolean).join(' · ')}>
                       {s.application || s.client}
                     </td>
@@ -191,7 +191,7 @@ export function ActivityView({ tab }: { tab: ActivityTab }) {
                         {canStop && !s.own && (
                           <>
                             <Button size="xs" variant="ghost" icon={<CircleStop size={12} />} title={t('Cancel query')} onClick={() => void stop(s, 'cancel')}>
-                              <span className="@max-[760px]:hidden">{t('Cancel query')}</span>
+                              <span className="@max-[860px]:hidden">{t('Cancel query')}</span>
                             </Button>
                             <IconButton label={t('End session')} onClick={() => void stop(s, 'terminate')}>
                               <Ban size={13} className="text-danger" />

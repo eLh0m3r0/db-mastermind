@@ -28,8 +28,9 @@ const KEYMAP: Record<string, string> = {
   'Mod+Shift+f': 'format-sql',
   'Mod+Shift+e': 'export',
   'Mod+i': 'ask-ai',
-  // Ctrl+Y is Redo in the editor on Windows and Linux (on a Mac Redo is ⇧⌘Z): History is Ctrl+H there.
-  ...(isMac ? { 'Mod+y': 'history' } : { 'Mod+h': 'history' }),
+  // On Windows and Linux Ctrl+Y is Redo and Ctrl+H Find and replace in the editor (SSMS, VS Code): History is
+  // Ctrl+Shift+H there. On a Mac Redo is ⇧⌘Z, so ⌘Y is free.
+  ...(isMac ? { 'Mod+y': 'history' } : { 'Mod+Shift+h': 'history' }),
   'Mod+,': 'settings',
   'Mod+\\': 'split-view',
 }
