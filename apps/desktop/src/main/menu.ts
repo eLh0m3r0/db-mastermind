@@ -173,7 +173,7 @@ export function buildMenu(): void {
         cmd(m('Format SQL'), 'format-sql', 'CmdOrCtrl+Shift+F'),
         cmd(m('Ask AI…'), 'ask-ai', 'CmdOrCtrl+I'),
         { type: 'separator' },
-        cmd(m('History'), 'history', isMac ? 'Cmd+Y' : 'Ctrl+H'),
+        cmd(m('History'), 'history', isMac ? 'Cmd+Y' : 'Ctrl+Shift+H'),
         cmd(m('Saved Queries'), 'saved-queries'),
       ],
     },

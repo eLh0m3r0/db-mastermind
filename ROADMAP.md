@@ -793,7 +793,7 @@ untested here).
 - ✅ The native menu greys out commands the shown tab can't act on (Run, Format SQL outside a query; Export in a
   model; History / Saved Queries without a connection); Commit / Roll back work from a table tab; File → Save in a
   table tab reviews its changes (only ⌘S did) and says when there are none — e2e/flow109
-- ✅ History is Ctrl+H on Windows and Linux (Ctrl+Y is Redo in the SQL editor); ⌘Y on a Mac
+- ✅ History is Ctrl+Shift+H on Windows and Linux (Ctrl+Y is Redo, Ctrl+H is Find and replace in the SQL editor, as in SSMS and VS Code); ⌘Y on a Mac
 - ✅ CI job `ui-sweep` (e2e/ui-sweep.mjs --strict, Ubuntu, Czech UI, Chromium sandbox kept); the whole e2e suite
   ran green (101 flows; AI flows and flows that need a file skipped); `scripts/e2e-extra-fixtures.sh` for flow46/61
 - ✅ The smallest window (900×560) in Czech, reviewed from screenshots (`e2e/small-window-tour.mjs`): the selected tab
