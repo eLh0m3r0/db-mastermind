@@ -764,7 +764,7 @@ one line; reloads never drop typed text; whole-day date search is half open; Ora
 Left for later: Entra ID for PostgreSQL / MySQL in Azure and AWS / Google Cloud IAM tokens (new SDK dependencies and real cloud accounts to test with), SOCKS / HTTP proxies, Kerberos, triggers in the explorer, routine bodies in *Used by*, a folder of scripts in the sidebar, SQL Server
 Agent jobs, editing users and grants, Explain on normalized top queries.
 
-### 1.3.1 — the long tail ✅
+### 1.3.1 — the long tail ✅ released 1.3.1 (2026-11-15)
 
 The owner asked for a pass over things that don't work although nothing tests them. Method, kept for future releases:
 `apps/desktop/test/ui-coverage.test.ts` (translations, menu commands, shortcuts), `e2e/ui-sweep.mjs` (every palette
