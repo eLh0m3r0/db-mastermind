@@ -7,6 +7,15 @@ import { getSettings } from './settings'
 import { isPortable } from './storage'
 
 const RELEASES_API = 'https://api.github.com/repos/eLh0m3r0/db-mastermind/releases/latest'
+/** The app's Store page (Windows opens it in the Store app). */
+export const STORE_URL = 'https://apps.microsoft.com/detail/9p0grd7bz4nf'
+
+/**
+ * Microsoft Store installs are updated by the Store, which offers a version only after it passes certification.
+ * GitHub's newer release must not be announced there: its installer would add a second copy beside the Store one,
+ * which doesn't see the Store copy's data.
+ */
+export const isStoreInstall = (): boolean => !!process.windowsStore
 
 function newer(a: string, b: string): boolean {
   const pa = a.replace(/^v/, '').split(/[.-]/).map((x) => Number.parseInt(x, 10) || 0)
@@ -22,8 +31,7 @@ function newer(a: string, b: string): boolean {
  * portable zip (Scoop or the user replaces it), not MSI (IT deploys it). macOS: see mac-update.ts.
  */
 export function canAutoUpdate(): boolean {
-  // Microsoft Store installs are updated by the Store.
-  if (process.windowsStore) return false
+  if (isStoreInstall()) return false
   if (process.platform === 'win32') return !isPortable && existsSync(join(dirname(app.getPath('exe')), 'Uninstall DB Mastermind.exe'))
   // The unsigned macOS app updates through its own path (mac-update.ts) when it may replace its bundle.
   if (process.platform === 'darwin') return canSelfUpdateMac()
@@ -98,7 +106,7 @@ export async function checkForUpdates(
   notify: (info: { version: string; url: string }) => void,
   ready: (info: { version: string }) => void = () => {},
 ): Promise<void> {
-  if (!app.isPackaged || automaticOff()) return
+  if (!app.isPackaged || automaticOff() || isStoreInstall()) return
   const auto = canAutoUpdate()
   log('INFO', `Version ${app.getVersion()} on ${process.platform}/${process.arch}; self-updating install: ${auto}; exe ${app.getPath('exe')}`)
   if (auto) {
@@ -176,12 +184,14 @@ export type UpdateCheck =
   | { state: 'downloading'; version: string }
   | { state: 'ready'; version: string }
   | { state: 'available'; version: string; url: string }
+  | { state: 'store'; url: string }
   | { state: 'disabled' | 'development' | 'offline' }
 
 /** Help → Check for Updates: the same check, with an answer for the user. */
 export async function checkNow(ready: (info: { version: string }) => void): Promise<UpdateCheck> {
   if (!app.isPackaged) return { state: 'development' }
   if (disabled()) return { state: 'disabled' }
+  if (isStoreInstall()) return { state: 'store', url: STORE_URL }
   try {
     if (canAutoUpdate() && process.platform === 'darwin') {
       // Answers once the download starts; the restart prompt (`ready`) follows when it is done.
