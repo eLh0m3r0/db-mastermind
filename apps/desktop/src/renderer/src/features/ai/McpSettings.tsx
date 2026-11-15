@@ -17,6 +17,7 @@ export function McpSettingsSection() {
   const t = useT()
   const command = info?.mcpCommand.command ?? 'dbmastermind'
   const args = info?.mcpCommand.args ?? ['--mcp']
+  const issue = info?.mcpCommand.issue
   const quoted = [command, ...args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(' ')
   const snippets: [string, string][] = [
     ['Claude Code', `claude mcp add --scope user dbmastermind -- ${quoted}`],
@@ -63,7 +64,17 @@ export function McpSettingsSection() {
           : t('The MCP server lets AI agents (Claude Code, Codex, Cursor, Claude Desktop…) work with your databases through DB Mastermind: list tables, read the schema and knowledge base, and query data. It uses the connections saved in this app, and only those with AI enabled.')}
       </p>
       <p className="text-[12px] text-fg-muted">{t('Which connections agents see and whether they may change data is set per connection in Settings → AI permissions.')}</p>
-      {clients.length > 0 && (
+      {issue === 'store' && (
+        <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[12.5px]">
+          {t('Agents cannot start the Microsoft Store version themselves (Windows keeps it inside its package). Turn on the local HTTP endpoint below: agents then connect while DB Mastermind is open. To let agents start it on their own, install the version from dbmastermind.app.')}
+        </div>
+      )}
+      {issue === 'temporary' && (
+        <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[12.5px]">
+          {t('DB Mastermind runs from the disk image or a temporary location: move it to Applications and start it from there first, or agents lose the path when the disk image is ejected.')}
+        </div>
+      )}
+      {issue !== 'store' && clients.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <span className="text-[12px] font-medium">{t('Add to')}</span>
           <div className="flex flex-wrap gap-1.5">
@@ -82,7 +93,7 @@ export function McpSettingsSection() {
           </div>
         </div>
       )}
-      {snippets.map(([label, code]) => (
+      {issue !== 'store' && snippets.map(([label, code]) => (
         <div key={label} className="flex flex-col gap-1">
           <div className="flex items-center justify-between">
             <span className="text-[12px] font-medium">{label}</span>

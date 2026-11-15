@@ -4,6 +4,7 @@
  */
 import { exec } from 'node:child_process'
 import type { ConnectionConfig } from '@dbmastermind/core'
+import { resolvedPath } from './ai/cli'
 
 /** Long enough for a biometric or master-password prompt of the password manager. */
 const TIMEOUT_MS = 60_000
@@ -13,9 +14,11 @@ export class PasswordCommandError extends Error {
   readonly code = 'PASSWORD_COMMAND'
 }
 
-export function runPasswordCommand(command: string, timeoutMs = TIMEOUT_MS): Promise<string> {
+export async function runPasswordCommand(command: string, timeoutMs = TIMEOUT_MS): Promise<string> {
+  // Started from Finder or the Dock the app has a bare PATH: `op` or `bw` from Homebrew wouldn't be found.
+  const env = { ...process.env, PATH: await resolvedPath() }
   return new Promise((resolve, reject) => {
-    exec(command, { timeout: timeoutMs, maxBuffer: 64 * 1024, windowsHide: true, encoding: 'utf8' }, (err, stdout, stderr) => {
+    exec(command, { timeout: timeoutMs, maxBuffer: 64 * 1024, windowsHide: true, encoding: 'utf8', env }, (err, stdout, stderr) => {
       if (err) {
         const why = (err as { killed?: boolean }).killed ? `it did not finish within ${Math.round(timeoutMs / 1000)} s` : (stderr.trim().split(/\r?\n/)[0] ?? '') || err.message
         reject(new PasswordCommandError(`The password command failed: ${why}`))

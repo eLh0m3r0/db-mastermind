@@ -79,3 +79,7 @@ linux:
     - target: deb
       arch: [x64]
   maintainer: DB Mastermind contributors
+appImage:
+  # No version in the name: electron-updater replaces a version-less AppImage in place, while a versioned one is
+  # renamed and the old file deleted, which breaks launchers and the MCP path agents were given.
+  artifactName: DB-Mastermind-linux-${arch}.${ext}

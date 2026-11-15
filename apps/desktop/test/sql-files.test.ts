@@ -24,6 +24,35 @@ describe('decodeSqlFile / encodeSqlFile', () => {
     expect(format).toEqual({ encoding: 'windows-1250', bom: false, eol: '\n' })
   })
 
+  it('reads Windows-1252 by its letters, also on a Czech system, with € and quotes intact', () => {
+    // "Café “à la carte” €5" in Windows-1252.
+    const bytes = Buffer.from([...Buffer.from('Caf'), 0xe9, 0x20, 0x93, 0xe0, 0x20, 0x6c, 0x61, 0x20, 0x63, 0x61, 0x72, 0x74, 0x65, 0x94, 0x20, 0x80, 0x35])
+    const { text, format } = decodeSqlFile(bytes, 'windows-1250')
+    expect(text).toBe('Café “à la carte” €5')
+    expect(format.encoding).toBe('windows-1252')
+  })
+
+  it('falls back to the system language’s code page when the letters don’t tell', () => {
+    // "é" alone is the same byte in both code pages.
+    expect(decodeSqlFile(Uint8Array.from([0xe9]), 'windows-1250').format.encoding).toBe('windows-1250')
+    expect(decodeSqlFile(Uint8Array.from([0xe9]), 'windows-1252').format.encoding).toBe('windows-1252')
+  })
+
+  it('reads UTF-16 with a byte order mark (SSMS "Unicode") and writes it back as it was', async () => {
+    for (const [encoding, bytes] of [
+      ['utf-16le', Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('SELECT N\'Žluť\';\r\n', 'utf16le')])],
+      ['utf-16be', Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from('SELECT N\'Žluť\';\r\n', 'utf16le').swap16()])],
+    ] as const) {
+      const path = join(dir, `${encoding}.sql`)
+      writeFileSync(path, bytes)
+      const file = await readSqlFile(path)
+      expect(file.text).toBe("SELECT N'Žluť';\n")
+      expect(file.format).toEqual({ encoding, bom: true, eol: '\r\n' })
+      await writeSqlFile(path, file.text, file.format, { expectedMtimeMs: file.mtimeMs })
+      expect(readFileSync(path).equals(bytes)).toBe(true)
+    }
+  })
+
   it('writes the editor’s \\n line ends as the file’s own', () => {
     expect(encodeSqlFile('a\nb\n', { bom: false, eol: '\r\n' })).toBe('a\r\nb\r\n')
     expect(encodeSqlFile('a\r\nb', { bom: false, eol: '\n' })).toBe('a\nb')
