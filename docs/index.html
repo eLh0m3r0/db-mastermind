@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DB Mastermind — free database client and data modeler with AI</title>
 <meta name="author" content="Václav Mudra">
-<meta name="description" content="Free, open-source database client and data modeler for PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite and DuckDB: data browser with advanced filters, ER diagrams, data modeling that opens DeZign for Databases projects, schema design with migrations, and AI that knows your database.">
+<meta name="description" content="Free, open-source database client and data modeler for PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite, DuckDB, ClickHouse, CockroachDB, BigQuery and Trino: data browser with advanced filters, ER diagrams, data modeling that opens DeZign for Databases projects, schema design with migrations, and AI that knows your database.">
 <link rel="canonical" href="https://dbmastermind.app/">
 <link rel="icon" href="icon.svg">
 <link rel="stylesheet" href="site.css">
@@ -18,8 +18,8 @@
     <strong>DB Mastermind</strong>
     <nav>
       <a href="#features">Features</a>
-      <a href="#ai">AI</a>
       <a href="#design">Modeling</a>
+      <a href="#ai">AI</a>
       <a href="#mcp">MCP</a>
       <a href="#privacy">Privacy</a>
       <a href="#install">Install</a>
@@ -32,6 +32,7 @@
     </div>
   </header>
 
+  <main>
   <div class="hero">
     <h1>The database client that<br>understands your data</h1>
     <p>Browse and filter data without limits, model a new database or redesign one you have with generated migrations (DeZign for Databases projects open too), and ask an AI that knows your database. Free and open source, nothing to install on Windows.</p>
@@ -53,15 +54,15 @@
     <p class="lead">No row limits, no paywalled features. Light, dark and high-contrast themes (follow the system or pick one in Settings), in English and Czech.</p>
     <div class="feature">
       <div class="text"><h3>An SQL editor that knows your schema</h3><p>Autocomplete suggests tables and columns as you type and writes whole JOINs from foreign keys. It warns while you type about a table that doesn't exist or an UPDATE without WHERE. Parameters, snippets, execution plans, history and saved queries are built in.</p><p>Open a view, function or table as SQL ready to change, and open and save your own .sql files.</p><p>Results open in a fast grid; export every row to CSV, Excel, JSON or SQL, beyond any display limit.</p></div>
-      <img src="screenshots/query.png" alt="SQL editor with results">
+      <img loading="lazy" src="screenshots/query.png" alt="SQL editor with results">
     </div>
     <div class="feature">
-      <div class="text"><h3>Query any file</h3><p>Drop a CSV, Parquet, JSON or Excel file on the window and query it with SQL right away. Czech exports with semicolons and decimal commas just work.</p><p>Import a file into a table with column mapping when you need it in the database.</p></div>
-      <img src="screenshots/query-file.png" alt="SQL over a CSV file">
+      <div class="text"><h3>Query any file</h3><p>Drop a CSV, Parquet, JSON or Excel file on the window and query it with SQL right away. European exports with semicolons and decimal commas just work.</p><p>Import a file into a table with column mapping when you need it in the database.</p></div>
+      <img loading="lazy" src="screenshots/query-file.png" alt="SQL over a CSV file">
     </div>
     <div class="feature">
       <div class="text"><h3>Charts in one click</h3><p>Turn any result into a bar, line or scatter chart, and pin charts and single numbers to a dashboard that refreshes itself.</p></div>
-      <img src="screenshots/chart.png" alt="Chart of a query result">
+      <img loading="lazy" src="screenshots/chart.png" alt="Chart of a query result">
     </div>
     <h3 class="grid-title">And much more</h3>
     <div class="grid">
@@ -71,7 +72,7 @@
       <div class="card"><h3>Find any value</h3><p>Search a value across a whole database, see a column's profile (empty, distinct, most common), and get totals of the cells you select.</p></div>
       <div class="card"><h3>Compare</h3><p>Schemas between environments with the migration for the target, and table data with a sync script.</p></div>
       <div class="card"><h3>For DBAs too</h3><p>Running queries and lock waits, the slowest queries, storage with unused and duplicate indexes, users &amp; roles, backup and restore.</p></div>
-      <div class="card"><h3>Enterprise connections</h3><p>SSH tunnels and jump hosts, SSL, passwords from 1Password, Bitwarden or Vault, SQL Server with Windows authentication or Entra ID, import from Beekeeper, DBeaver and DataGrip.</p></div>
+      <div class="card"><h3>Enterprise connections</h3><p>SSH tunnels and jump hosts, SSL, passwords from 1Password, Bitwarden or Vault, SQL Server with Windows authentication or Entra ID, import connections from DBeaver, DataGrip, pgAdmin, SSMS, TablePlus and more.</p></div>
       <div class="card"><h3>Move data</h3><p>Copy tables to another database, even another engine, run one script on several connections, and import CSV, Excel, JSON or Parquet.</p></div>
       <div class="card"><h3>Safe by default</h3><p>Read-only connections, a production guard, and a confirmation before DELETE or UPDATE without WHERE, DROP or TRUNCATE.</p></div>
       <div class="card"><h3>Keyboard first</h3><p>Command palette (<span class="kbd">Ctrl/⌘ K</span>), quick table open (<span class="kbd">Ctrl/⌘ P</span>), split view, tabs that survive a restart; every shortcut under Help → Keyboard Shortcuts.</p></div>
@@ -85,19 +86,19 @@
     <p class="lead">Design a database before it exists, or change the one you have. Teams that use DeZign for Databases open their projects here, edit them and save them back, without DeZign installed.</p>
     <div class="feature">
       <div class="text"><h3>Interactive ER diagrams</h3><p>Automatic layout, crow's-foot notation, focus on a table and its neighbours, saved subject-area diagrams, and the join path between any two tables as ready SQL.</p></div>
-      <img src="screenshots/join-path.png" alt="Join path between two tables in the ER diagram">
+      <img loading="lazy" src="screenshots/join-path.png" alt="Join path between two tables in the ER diagram">
     </div>
     <div class="feature">
-      <div class="text"><h3>Design on the live database</h3><p>Edit tables, columns, keys and indexes right on the diagram. DB Mastermind writes the migration for your database, checks the existing data first and gives you the rollback script.</p></div>
-      <img src="screenshots/designer.png" alt="Schema designer">
+      <div class="text"><h3>Design on the live database</h3><p>Edit tables, columns, keys and indexes right on the diagram. DB Mastermind writes the migration for your database and checks the existing data before anything runs.</p></div>
+      <img loading="lazy" src="screenshots/designer.png" alt="Schema designer">
     </div>
     <div class="feature">
       <div class="text"><h3>Model a new database</h3><p>Draw tables and relationships, rename and retype right on the canvas, and keep everything else in one panel. The model is a DBML text file for Git; generate DDL for any database or compare it with one to get the migration. Opens and saves DeZign for Databases projects too.</p></div>
-      <img src="screenshots/modeler.png" alt="A model edited on the canvas with the detail panel">
+      <img loading="lazy" src="screenshots/modeler.png" alt="A model edited on the canvas with the detail panel">
     </div>
     <div class="feature">
-      <div class="text"><h3>Migrations you can trust</h3><p>Every change to a database comes as a reviewed script: the existing data is checked first (NULLs, duplicates, orphans) and you get the rollback script with it.</p></div>
-      <img src="screenshots/migration.png" alt="Generated migration with impact checks">
+      <div class="text"><h3>Migrations you can trust</h3><p>Every schema change comes as a script you review. The existing data is checked first (NULLs, duplicates, orphans), steps that can't be undone, like dropping a table, are called out, and everything else comes with a rollback script.</p></div>
+      <img loading="lazy" src="screenshots/migration.png" alt="Generated migration with impact checks">
     </div>
   </section>
 
@@ -105,7 +106,7 @@
     <h2>AI that knows your database</h2>
     <p class="lead">Bring the AI you already have: your Claude Code or Codex subscription, your own API key, or a model running on your computer.</p>
     <ul class="engines left">
-      <li>Claude Code</li><li>Codex</li><li>Anthropic</li><li>OpenAI</li><li>OpenRouter</li><li>Gemini</li><li>Azure OpenAI</li><li>Ollama (local)</li>
+      <li>Claude Code</li><li>Codex</li><li>Anthropic</li><li>OpenAI</li><li>OpenRouter</li><li>Gemini</li><li>Azure OpenAI</li><li>Ollama (local)</li><li>OpenAI-compatible (LM Studio, vLLM, your gateway)</li>
     </ul>
     <div class="feature">
       <div class="text">
@@ -113,7 +114,7 @@
         <p>The assistant explores the schema, samples data, runs read-only queries and asks before any change. Press <span class="kbd">Ctrl/⌘ I</span> in the editor to describe a query; failed statements get a <em>Fix with AI</em> button.</p>
         <p>A per-database <strong>knowledge base</strong> of Markdown notes teaches it what your codes and statuses mean — and AI can write the first version for you.</p>
       </div>
-      <img src="screenshots/ai.png" alt="AI assistant">
+      <img loading="lazy" src="screenshots/ai.png" alt="AI assistant">
     </div>
     <div class="grid">
       <div class="card"><h3>Knowledge base</h3><p>Markdown notes per database explain what tables, codes and statuses mean. Keep them in Git, share them with the team, let AI draft them.</p></div>
@@ -128,17 +129,17 @@
     <p class="mcp-easy">Easiest: in the app open <em>Settings → MCP server</em> and click <em>Add to Claude Code / Claude Desktop / Codex / Cursor / VS Code</em>. It writes their config for you and keeps a <code>.bak</code> copy. The same page shows the exact command for your computer.</p>
     <div class="mcp">
       <div class="mcp-bar">
-        <div class="tabs" role="tablist" aria-label="Agent">
-          <button role="tab" data-tool="claude-code" aria-selected="true">Claude Code</button>
-          <button role="tab" data-tool="codex">Codex</button>
-          <button role="tab" data-tool="claude-desktop">Claude Desktop</button>
-          <button role="tab" data-tool="cursor">Cursor</button>
-          <button role="tab" data-tool="vscode">VS Code / Copilot</button>
-          <button role="tab" data-tool="windsurf">Windsurf</button>
-          <button role="tab" data-tool="gemini">Gemini CLI</button>
-          <button role="tab" data-tool="zed">Zed</button>
-          <button role="tab" data-tool="jetbrains">JetBrains</button>
-          <button role="tab" data-tool="http">Over HTTP</button>
+        <div class="tabs" role="group" aria-label="Agent">
+          <button data-tool="claude-code" aria-pressed="true">Claude Code</button>
+          <button data-tool="codex" aria-pressed="false">Codex</button>
+          <button data-tool="claude-desktop" aria-pressed="false">Claude Desktop</button>
+          <button data-tool="cursor" aria-pressed="false">Cursor</button>
+          <button data-tool="vscode" aria-pressed="false">VS Code / Copilot</button>
+          <button data-tool="windsurf" aria-pressed="false">Windsurf</button>
+          <button data-tool="gemini" aria-pressed="false">Gemini CLI</button>
+          <button data-tool="zed" aria-pressed="false">Zed</button>
+          <button data-tool="jetbrains" aria-pressed="false">JetBrains</button>
+          <button data-tool="http" aria-pressed="false">Over HTTP</button>
         </div>
         <div class="os" role="group" aria-label="Your system">
           <button data-os="mac" aria-pressed="true">macOS</button>
@@ -150,7 +151,7 @@
       <pre id="mcp-code"></pre>
       <p class="mcp-note" id="mcp-note"></p>
     </div>
-    <p class="lead">Tools for agents: <code>list_connections</code>, <code>list_tables</code>, <code>describe_table</code>, <code>search_schema</code>, <code>get_relationships</code>, <code>find_join_path</code>, <code>sample_rows</code>, <code>run_query</code>, <code>explain_query</code>, <code>get_definition</code>, <code>search_knowledge</code>, <code>read_knowledge</code>, plus prompts such as <em>document_database</em>. An agent can also propose a new connection, which you review and save in the app.</p>
+    <p class="lead">Tools for agents: <code>list_connections</code>, <code>list_tables</code>, <code>describe_table</code>, <code>search_schema</code>, <code>get_relationships</code>, <code>find_join_path</code>, <code>sample_rows</code>, <code>run_query</code>, <code>explain_query</code>, <code>get_definition</code>, <code>search_knowledge</code>, <code>read_knowledge</code>, <code>write_knowledge</code> (when you allow it), plus prompts such as <em>document_database</em>. An agent can also propose a new connection, which you review and save in the app.</p>
   </section>
 
   <section id="privacy">
@@ -158,28 +159,30 @@
     <p class="lead">Your databases, queries and passwords stay on your computer. No account, no tracking, nothing sent anywhere you didn't choose.</p>
     <div class="grid trust">
       <div class="card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg><h3>No telemetry</h3><p>No analytics, no crash reports, no usage statistics, no sign-in.</p></div>
-      <div class="card"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><h3>Secrets stay local</h3><p>Passwords and API keys are encrypted with your system keychain and go only to the database or AI provider they belong to.</p></div>
-      <div class="card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4"/></svg><h3>AI only when you choose</h3><p>Off until you set up a provider, read-only by default, and switchable off per connection or for the whole company. Ollama keeps it all on your machine.</p></div>
-      <div class="card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg><h3>One request of its own</h3><p>The only automatic network call asks GitHub whether a new version exists. Turn it off in Settings → General.</p></div>
+      <div class="card"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><h3>Secrets stay local</h3><p>Passwords and API keys are encrypted with your system keychain (on Linux without one, the app warns you) and go only to the database or AI provider they belong to.</p></div>
+      <div class="card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4"/></svg><h3>AI only when you choose</h3><p>Off until you set up a provider. Every change asks first, agents are read-only unless you allow writes, and AI can be switched off per connection or for the whole company. Ollama on your computer keeps it all there.</p></div>
+      <div class="card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg><h3>Updates, nothing else</h3><p>The only network access of its own is the update check with GitHub (and the download, where the app updates itself). Turn it off in Settings → General.</p></div>
     </div>
     <p class="more"><a href="privacy.html">Read the full privacy policy →</a></p>
   </section>
 
   <section id="install">
     <h2>Install</h2>
-    <p class="lead">Free for everyone, with no feature limits. The app keeps itself up to date.</p>
+    <p class="lead">Free for everyone, with no feature limits. The installer, the AppImage and the macOS app update themselves, the Store updates its copy, and the portable zip and .deb tell you when a new version is out.</p>
     <div class="grid install">
       <div class="card">
         <h3>Windows</h3>
-        <p><strong>Microsoft Store</strong> (recommended): signed by Microsoft, no warnings, updates through the Store. <a href="https://apps.microsoft.com/detail/9p0grd7bz4nf">Get it from the Microsoft Store →</a></p>
+        <p><strong>Microsoft Store</strong> (recommended): signed by Microsoft, no warnings, updates through the Store. <a href="https://apps.microsoft.com/detail/9p0grd7bz4nf">Get it from the Microsoft Store →</a> (AI agents reach this version over HTTP; see MCP above.)</p>
         <p><strong>No installation:</strong> download the <em>portable zip</em>, unzip it, run <em>DB Mastermind.exe</em>. Settings stay in the folder.</p>
-        <p><strong>Installer:</strong> <em>…-setup.exe</em>, per user, no admin rights. <strong>For IT:</strong> per-machine <em>.msi</em>.</p>
+        <p><strong>Installer:</strong> <em>…-setup.exe</em>, per user, no admin rights, updates itself. <strong>For IT:</strong> per-machine <em>.msi</em>.</p>
+        <p>Files from GitHub aren't code-signed yet: if SmartScreen warns, choose <em>More info → Run anyway</em>.</p>
         <p><strong>Scoop:</strong></p>
         <pre>scoop install https://github.com/eLh0m3r0/db-mastermind/releases/latest/download/db-mastermind.json</pre>
       </div>
       <div class="card">
         <h3>macOS</h3>
-        <p>Download the <em>.dmg</em> for Apple Silicon or Intel and drag the app to Applications. The first time, right-click it and choose <em>Open</em>.</p>
+        <p>Download the <em>.dmg</em> for Apple Silicon or Intel and drag the app to Applications. The app isn't notarized yet, so macOS blocks it the first time: open <em>System Settings → Privacy &amp; Security</em> and click <em>Open Anyway</em>, or run</p>
+        <pre>xattr -dr com.apple.quarantine "/Applications/DB Mastermind.app"</pre>
         <p><strong>Homebrew:</strong></p>
         <pre>brew tap elh0m3r0/db-mastermind https://github.com/eLh0m3r0/db-mastermind
 brew install --cask db-mastermind</pre>
@@ -192,6 +195,7 @@ brew install --cask db-mastermind</pre>
     </div>
     <p class="more"><a href="https://github.com/eLh0m3r0/db-mastermind/releases/latest">All downloads and release notes →</a></p>
   </section>
+  </main>
 
   <footer>
     <span>DB Mastermind by <a href="https://vaclavmudra.com">Václav Mudra</a> · MIT license · made with Claude</span>
@@ -203,23 +207,26 @@ brew install --cask db-mastermind</pre>
 // Point the main button at the right file of the latest release for this computer.
 (async () => {
   const ua = navigator.userAgent
+  // Phones and tablets keep the link to all downloads (an iPhone says "Mac OS X", Android says "Linux").
+  if (/Android|iPhone|iPad|Mobile/.test(ua)) return
   const os = /Windows/.test(ua) ? 'win' : /Mac/.test(ua) ? 'mac' : /Linux/.test(ua) ? 'linux' : null
   if (!os) return
   try {
     const res = await fetch('https://api.github.com/repos/eLh0m3r0/db-mastermind/releases/latest')
     if (!res.ok) return
     const release = await res.json()
-    const latest = document.getElementById('latest')
-    latest.innerHTML = `<a href="${release.html_url}">What's new in ${release.tag_name.replace(/^v/, '')} →</a>`
-    latest.hidden = false
+    const version = release.tag_name.replace(/^v/, '')
     const assets = release.assets || []
-    const pick =
-      os === 'win' ? assets.find((a) => /win-x64-portable\.zip$/.test(a.name))
-      : os === 'mac' ? assets.find((a) => /mac-arm64\.dmg$/.test(a.name))
-      : assets.find((a) => /\.AppImage$/.test(a.name))
+    const find = (re) => assets.find((a) => re.test(a.name))
+    const pick = os === 'win' ? find(/win-x64-setup\.exe$/) : os === 'mac' ? find(/mac-arm64\.dmg$/) : find(/linux-x86_64\.AppImage$/) ?? find(/\.AppImage$/)
+    // The user agent can't tell an Intel Mac or a Windows on Arm PC: the other build is one click away.
+    const other = os === 'win' ? find(/win-arm64-setup\.exe$/) : os === 'mac' ? find(/mac-x64\.dmg$/) : null
+    const latest = document.getElementById('latest')
+    latest.innerHTML = `<a href="${release.html_url}">What's new in ${version} →</a>` + (other ? ` · <a href="${other.browser_download_url}">${os === 'win' ? 'Windows on Arm' : 'Intel Mac'}</a>` : '')
+    latest.hidden = false
     if (!pick) return
     document.getElementById('download').href = pick.browser_download_url
-    document.getElementById('download-os').textContent = `${release.tag_name} for ${os === 'win' ? 'Windows (portable)' : os === 'mac' ? 'macOS (Apple Silicon)' : 'Linux'}`
+    document.getElementById('download-os').textContent = `${version} for ${os === 'win' ? 'Windows' : os === 'mac' ? 'macOS (Apple Silicon)' : 'Linux'}`
   } catch {
     // Offline or rate-limited: the button still opens the releases page.
   }
@@ -253,7 +260,7 @@ brew install --cask db-mastermind</pre>
   }
   const osNotes = {
     mac: '',
-    win: " Windows: this is the installer's location; with the portable zip use the path where you unzipped it. In JSON, every backslash is doubled. The Microsoft Store version can't be started by agents: use <em>Over HTTP</em>.",
+    win: " Windows: this is the installer's location; installed for all users (MSI) it is <code>C:\\Program Files\\DB Mastermind\\DB Mastermind.exe</code>, with the portable zip the folder where you unzipped it. In JSON and TOML every backslash is doubled. The Microsoft Store version can't be started by agents: use <em>Over HTTP</em>.",
     linux: ' Linux: the .deb installs to <code>/opt/DB Mastermind</code>; with the AppImage use the path to the .AppImage file.',
   }
   let tool = 'claude-code'
@@ -263,7 +270,7 @@ brew install --cask db-mastermind</pre>
     document.getElementById('mcp-where').innerHTML = t.where
     document.getElementById('mcp-code').textContent = t.code
     document.getElementById('mcp-note').innerHTML = t.note + (tool === 'http' ? '' : osNotes[os])
-    document.querySelectorAll('.tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tool === tool)))
+    document.querySelectorAll('.tabs button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tool === tool)))
     document.querySelectorAll('.os button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.os === os)))
     document.querySelector('.os').hidden = tool === 'http'
   }
