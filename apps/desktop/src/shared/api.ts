@@ -40,7 +40,8 @@ export type ThemePreference = 'system' | 'light' | 'dark'
 
 /** How a .sql file is written back: its line endings and BOM (always UTF-8; a Windows-1250 file becomes UTF-8). */
 export interface SqlFileFormat {
-  encoding: 'utf-8' | 'windows-1250'
+  /** 8-bit files are written back as UTF-8; UTF-16 stays UTF-16. */
+  encoding: 'utf-8' | 'utf-16le' | 'utf-16be' | 'windows-1250' | 'windows-1252'
   bom: boolean
   eol: '\n' | '\r\n'
 }
@@ -60,7 +61,7 @@ export interface AppInfo {
   portable: boolean
   dataDir: string
   /** How an agent launches this app as a stdio MCP server. */
-  mcpCommand: { command: string; args: string[] }
+  mcpCommand: { command: string; args: string[]; issue?: 'store' | 'temporary' }
   /** Set when an organization's managed configuration file is in effect. */
   managed?: ManagedInfo
 }

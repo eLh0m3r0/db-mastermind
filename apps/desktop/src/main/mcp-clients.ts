@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { resolvedPath } from './ai/cli'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,6 +9,11 @@ import type { McpClientId, McpClientStatus } from '../shared/api'
 export interface McpLaunch {
   command: string
   args: string[]
+  /**
+   * Why agents can't keep using `command`: the Microsoft Store copy can't be started from outside its package, and
+   * a Mac app run from the disk image (or translocated) has a path that disappears.
+   */
+  issue?: 'store' | 'temporary'
 }
 
 const NAME = 'dbmastermind'
@@ -131,13 +137,15 @@ export function mcpClientStatuses(env = process.env, platform = process.platform
 }
 
 /** Runs `claude mcp add`, so a running Claude Code doesn't overwrite our edit of its config file. */
-function claudeCli(launch: McpLaunch): Promise<boolean> {
+async function claudeCli(launch: McpLaunch): Promise<boolean> {
   const args = ['mcp', 'add', '--scope', 'user', NAME, '--', launch.command, ...launch.args]
-  // `claude` is a .cmd shim on Windows, which needs a shell; quote everything for cmd.exe.
+  // On Windows `claude` is an npm .cmd shim or the native installer's .exe: through cmd.exe both resolve (quoted
+  // for it). Started from Finder the PATH is bare, so it comes from the login shell.
   const win = process.platform === 'win32'
+  const env = { ...process.env, PATH: await resolvedPath() }
   const run = (a: string[]) =>
     new Promise<boolean>((resolve) =>
-      execFile(win ? 'claude.cmd' : 'claude', win ? a.map((x) => `"${x}"`) : a, { timeout: 20_000, shell: win, windowsHide: true }, (err) => resolve(!err)),
+      execFile('claude', win ? a.map((x) => `"${x}"`) : a, { timeout: 20_000, shell: win, windowsHide: true, env }, (err) => resolve(!err)),
     )
   // `add` fails when the name exists; remove the old entry first.
   return run(['mcp', 'remove', '--scope', 'user', NAME]).then(() => run(args))

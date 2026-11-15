@@ -200,11 +200,13 @@ async function askSavePath(format: ExportFormat, defaultName: string, zip = fals
 
 
 /** How an agent starts this app as a stdio MCP server. */
-function mcpLaunch(): McpLaunch {
-  return {
-    command: process.execPath,
-    args: [...(app.isPackaged ? [] : [app.getAppPath()]), ...(process.platform === 'linux' ? ['--no-sandbox'] : []), '--mcp'],
-  }
+export function mcpLaunch(): McpLaunch {
+  const args = [...(app.isPackaged ? [] : [app.getAppPath()]), ...(process.platform === 'linux' ? ['--no-sandbox'] : []), '--mcp']
+  // An AppImage runs from a mount that exists only while it runs: agents start the .AppImage file itself.
+  if (process.platform === 'linux' && process.env.APPIMAGE) return { command: process.env.APPIMAGE, args }
+  if (process.windowsStore) return { command: process.execPath, args, issue: 'store' }
+  if (process.platform === 'darwin' && app.isPackaged && /^\/Volumes\/|\/AppTranslocation\//.test(process.execPath)) return { command: process.execPath, args, issue: 'temporary' }
+  return { command: process.execPath, args }
 }
 export const api: MastermindApi = {
   async getAppInfo() {

@@ -1,4 +1,5 @@
 import { deliverOpenedFilesTo, filesFromArgs, openFileInApp } from './opened-files'
+import { reachablePosition } from './window-bounds'
 import { join } from 'node:path'
 import { app, BrowserWindow, ipcMain, nativeTheme, screen, shell } from 'electron'
 import { describeError, sqliteWorkersAlive, useKnownHostsFile } from '@dbmastermind/core'
@@ -52,11 +53,12 @@ function createWindow() {
   // A test run's window stays on the main display, in its far corner: a window placed off every screen is moved by
   // macOS onto the nearest display, which can be a second monitor somebody is working on.
   const main = e2eBackground ? screen.getPrimaryDisplay().workArea : undefined
+  const saved = main ? undefined : reachablePosition(state, screen.getAllDisplays().map((d) => d.workArea))
   mainWindow = new BrowserWindow({
     width: state.width,
     height: state.height,
-    x: main ? main.x + main.width - 40 : state.x,
-    y: main ? main.y + main.height - 40 : state.y,
+    x: main ? main.x + main.width - 40 : saved?.x,
+    y: main ? main.y + main.height - 40 : saved?.y,
     minWidth: 900,
     minHeight: 560,
     show: false,

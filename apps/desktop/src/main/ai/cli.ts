@@ -17,7 +17,12 @@ export function resolvedPath(): Promise<string> {
   shellPath ??= (async () => {
     const extra =
       process.platform === 'win32'
-        ? [process.env.APPDATA ? `${process.env.APPDATA}\\npm` : '', process.env.LOCALAPPDATA ? `${process.env.LOCALAPPDATA}\\Programs` : '']
+        ? [
+            process.env.APPDATA ? `${process.env.APPDATA}\\npm` : '',
+            process.env.LOCALAPPDATA ? `${process.env.LOCALAPPDATA}\\Programs` : '',
+            // Claude Code's native installer.
+            process.env.USERPROFILE ? `${process.env.USERPROFILE}\\.local\\bin` : '',
+          ]
         : ['/opt/homebrew/bin', '/usr/local/bin', `${process.env.HOME}/.local/bin`, `${process.env.HOME}/.npm-global/bin`, `${process.env.HOME}/.claude/local`]
     let fromShell = ''
     if (process.platform !== 'win32') {

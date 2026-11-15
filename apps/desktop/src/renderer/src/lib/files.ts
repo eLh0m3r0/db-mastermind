@@ -136,7 +136,7 @@ export async function openSqlFile(path?: string): Promise<void> {
       { kind: 'query', connectionId, title: file.name, sql: file.text, savedSql: file.text, path: file.path, file: { format: file.format, mtimeMs: file.mtimeMs } },
       { reuse: false },
     )
-    if (file.format.encoding === 'windows-1250') toast({ kind: 'info', message: t('{name} is in Windows-1250', { name: file.name }), detail: t('It is saved back as UTF-8.') })
+    if (file.format.encoding.startsWith('windows-')) toast({ kind: 'info', message: t('{name} is in {encoding}', { name: file.name, encoding: file.format.encoding.replace('windows', 'Windows') }), detail: t('It is saved back as UTF-8.') })
   } catch (err) {
     toast({ kind: 'error', message: t('Could not open the file'), detail: errorMessage(err) })
   }
