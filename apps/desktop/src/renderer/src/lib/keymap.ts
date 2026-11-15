@@ -1,5 +1,6 @@
 import { runCommand } from './commands'
 import { useWorkspace } from '@/store/workspace'
+import { isMac } from './api'
 
 /**
  * App shortcuts live here, not in native menu accelerators: one implementation for every platform,
@@ -27,7 +28,8 @@ const KEYMAP: Record<string, string> = {
   'Mod+Shift+f': 'format-sql',
   'Mod+Shift+e': 'export',
   'Mod+i': 'ask-ai',
-  'Mod+y': 'history',
+  // Ctrl+Y is Redo in the editor on Windows and Linux (on a Mac Redo is ⇧⌘Z): History is Ctrl+H there.
+  ...(isMac ? { 'Mod+y': 'history' } : { 'Mod+h': 'history' }),
   'Mod+,': 'settings',
   'Mod+\\': 'split-view',
 }

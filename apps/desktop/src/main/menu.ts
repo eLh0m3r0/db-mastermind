@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu, shell, type MenuItemConstructorOptions } from 'electron'
 import { reportIssueUrl } from './report-issue'
 import { getSettings } from './settings'
+import type { MenuContext } from '@shared/api'
 
 function sendCommand(command: string) {
   const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
@@ -77,6 +78,7 @@ export function buildMenu(): void {
   const isMac = process.platform === 'darwin'
   // Accelerators are only displayed; the renderer's keymap handles the keys (see lib/keymap.ts).
   const cmd = (label: string, command: string, accelerator?: string): MenuItemConstructorOptions => ({
+    id: command,
     label,
     accelerator,
     registerAccelerator: false,
@@ -171,7 +173,7 @@ export function buildMenu(): void {
         cmd(m('Format SQL'), 'format-sql', 'CmdOrCtrl+Shift+F'),
         cmd(m('Ask AI…'), 'ask-ai', 'CmdOrCtrl+I'),
         { type: 'separator' },
-        cmd(m('History'), 'history', 'CmdOrCtrl+Y'),
+        cmd(m('History'), 'history', isMac ? 'Cmd+Y' : 'Ctrl+H'),
         cmd(m('Saved Queries'), 'saved-queries'),
       ],
     },
@@ -200,4 +202,38 @@ export function buildMenu(): void {
     },
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+  applyContext()
+}
+
+const isQuery = (c: MenuContext) => c.tab === 'query'
+const isData = (c: MenuContext) => c.tab === 'query' || c.tab === 'table'
+/** Commands that only act in some tabs: elsewhere they would do nothing, so the menu greys them out. */
+const APPLIES: Record<string, (c: MenuContext) => boolean> = {
+  'run-current': isQuery,
+  'run-all': isQuery,
+  'cancel-query': isQuery,
+  'format-sql': isQuery,
+  'commit-transaction': isData,
+  'rollback-transaction': isData,
+  export: isData,
+  'save-query': (c) => isData(c) || c.tab === 'model' || c.tab === 'knowledge',
+  'close-tab': (c) => !!c.tab,
+  disconnect: (c) => c.connected,
+  'refresh-schema': (c) => c.connected,
+}
+
+let context: MenuContext = { connected: false }
+
+function applyContext(): void {
+  const menu = Menu.getApplicationMenu()
+  if (!menu) return
+  for (const [id, applies] of Object.entries(APPLIES)) {
+    const item = menu.getMenuItemById(id)
+    if (item) item.enabled = applies(context)
+  }
+}
+
+export function setMenuContext(next: MenuContext): void {
+  context = next
+  applyContext()
 }
