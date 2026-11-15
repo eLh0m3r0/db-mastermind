@@ -137,19 +137,27 @@ function startApp() {
   // Files handed to the app: on the command line (Windows, Linux, `open -a`), by macOS (double-click, Open With)
   // or by a second launch, which passes its arguments to this instance.
   for (const file of filesFromArgs(process.argv.slice(1))) openFileInApp(file)
+  // With its window closed (macOS keeps the app running) a handed file opens a new window, which takes the queued
+  // files once its page is ready. Before 'ready' the startup creates the window.
+  const windowForFiles = () => {
+    if (app.isReady() && (!mainWindow || mainWindow.isDestroyed())) createWindow()
+  }
   app.on('open-file', (event, path) => {
     event.preventDefault()
     openFileInApp(path)
+    windowForFiles()
   })
   app.on('second-instance', (_event, argv, cwd) => {
-    if (!mainWindow) return
+    const files = filesFromArgs(argv.slice(1), cwd)
+    for (const file of files) openFileInApp(file)
+    if (!mainWindow || mainWindow.isDestroyed()) return windowForFiles()
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.focus()
-    for (const file of filesFromArgs(argv.slice(1), cwd)) openFileInApp(file)
   })
 
   app.whenReady().then(async () => {
-    app.setAppUserModelId('dev.dbmastermind.app')
+    // The Store package has its own identity; setting another would split its taskbar icon.
+    if (!process.windowsStore) app.setAppUserModelId('dev.dbmastermind.app')
     app.setAboutPanelOptions({ copyright: '© 2026 Václav Mudra · MIT license', website: 'https://dbmastermind.app', credits: 'Václav Mudra · vaclavmudra.com' })
     useKnownHostsFile(dataPath('known-hosts.json'))
     // Settings first: they name the team folder that contributes connections.

@@ -945,6 +945,8 @@ export const cs: Record<string, string> = {
   'Tables from a SQL script or from the database': 'Tabulky ze skriptu SQL nebo z databáze',
   'Save as…': 'Uložit jako…',
   'Save script…': 'Uložit skript…',
+  'This computer has no keychain (GNOME Keyring or KWallet): the password is saved without real encryption. Install one, or use a password manager.': 'Tento počítač nemá úložiště hesel (GNOME Keyring nebo KWallet): heslo se uloží bez skutečného šifrování. Nainstalujte ho, nebo použijte správce hesel.',
+  'This copy is installed for all users of the computer: your administrator updates it.': 'Tato kopie je nainstalovaná pro všechny uživatele počítače: aktualizuje ji váš správce.',
   'Agents cannot start the Microsoft Store version themselves (Windows keeps it inside its package). Turn on the local HTTP endpoint below: agents then connect while DB Mastermind is open. To let agents start it on their own, install the version from dbmastermind.app.': 'Verzi z Microsoft Storu si agenti sami spustit nemohou (Windows ji drží uvnitř jejího balíčku). Zapněte níže lokální HTTP rozhraní: agenti se pak připojí, dokud je DB Mastermind otevřený. Aby si ho agenti spouštěli sami, nainstalujte verzi z dbmastermind.app.',
   'DB Mastermind runs from the disk image or a temporary location: move it to Applications and start it from there first, or agents lose the path when the disk image is ejected.': 'DB Mastermind běží z obrazu disku nebo z dočasného umístění: nejdřív ho přesuňte do Aplikací a spusťte odtud, jinak agenti po vysunutí obrazu disku cestu ztratí.',
   'Could not create the sample database': 'Ukázkovou databázi se nepodařilo vytvořit',

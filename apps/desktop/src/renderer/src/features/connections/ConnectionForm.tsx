@@ -72,6 +72,7 @@ export function ConnectionForm() {
   const editingId = open ? modal.connectionId : undefined
   const existing = useConnections((s) => (editingId ? s.list.find((c) => c.id === editingId) : undefined))
   const settings = useSettings((s) => s.settings)
+  const weakSecrets = useSettings((s) => !!s.info?.weakSecrets)
   const save = useConnections((s) => s.save)
   const connect = useConnections((s) => s.connect)
   const [config, setConfig] = useState<ConnectionConfig>(blank())
@@ -459,6 +460,11 @@ export function ConnectionForm() {
                             <Input type="password" value={config.password ?? ''} onChange={(e) => set({ password: e.target.value })} autoComplete="new-password" />
                           </Field>
                         )}
+                      </div>
+                    )}
+                    {weakSecrets && !!config.password && config.passwordCommand === undefined && (
+                      <div className="text-[11.5px] text-warning">
+                        {t('This computer has no keychain (GNOME Keyring or KWallet): the password is saved without real encryption. Install one, or use a password manager.')}
                       </div>
                     )}
                     {config.passwordCommand !== undefined && !windowsAuth && !entraAuth && (

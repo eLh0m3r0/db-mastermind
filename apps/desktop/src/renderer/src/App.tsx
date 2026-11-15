@@ -87,6 +87,8 @@ function useGlobalCommands() {
               else if (r.state === 'downloading') toast({ kind: 'info', message: t('Downloading DB Mastermind {version}…', { version: r.version }), detail: t('You will be asked to restart when it is ready.') })
               else if (r.state === 'available')
                 toast({ kind: 'info', message: t('DB Mastermind {version} is available', { version: r.version }), action: { label: t('Download'), run: () => void window.mastermind.api.openExternal(r.url) } })
+              else if (r.state === 'administrator')
+                toast({ kind: 'info', message: t('DB Mastermind {version} is available', { version: r.version }), detail: t('This copy is installed for all users of the computer: your administrator updates it.'), action: { label: t('Download'), run: () => void window.mastermind.api.openExternal(r.url) } })
               else if (r.state === 'store')
                 toast({ kind: 'info', message: t('Updates come from the Microsoft Store'), detail: t('The Store installs new versions by itself.'), action: { label: t('Open the Store'), run: () => void window.mastermind.api.openExternal(r.url) } })
               else if (r.state === 'disabled') toast({ kind: 'info', message: t('Update checks are turned off by your organization') })

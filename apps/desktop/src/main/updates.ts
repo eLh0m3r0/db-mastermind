@@ -4,7 +4,7 @@ import { app, powerMonitor } from 'electron'
 import { canSelfUpdateMac, downloadMacUpdate, installMacUpdateNow } from './mac-update'
 import { managedConfig } from './managed'
 import { getSettings } from './settings'
-import { isPortable } from './storage'
+import { installedForAllUsers, isPortable } from './storage'
 
 const RELEASES_API = 'https://api.github.com/repos/eLh0m3r0/db-mastermind/releases/latest'
 /** The app's Store page (Windows opens it in the Store app). */
@@ -106,7 +106,8 @@ export async function checkForUpdates(
   notify: (info: { version: string; url: string }) => void,
   ready: (info: { version: string }) => void = () => {},
 ): Promise<void> {
-  if (!app.isPackaged || automaticOff() || isStoreInstall()) return
+  // The Store and an MSI deployed for all users are updated by others; a reminder would only lead to a second copy.
+  if (!app.isPackaged || automaticOff() || isStoreInstall() || installedForAllUsers) return
   const auto = canAutoUpdate()
   log('INFO', `Version ${app.getVersion()} on ${process.platform}/${process.arch}; self-updating install: ${auto}; exe ${app.getPath('exe')}`)
   if (auto) {
@@ -185,6 +186,7 @@ export type UpdateCheck =
   | { state: 'ready'; version: string }
   | { state: 'available'; version: string; url: string }
   | { state: 'store'; url: string }
+  | { state: 'administrator'; version: string; url: string }
   | { state: 'disabled' | 'development' | 'offline' }
 
 /** Help → Check for Updates: the same check, with an answer for the user. */
@@ -215,7 +217,8 @@ export async function checkNow(ready: (info: { version: string }) => void): Prom
     }
     const release = await latestRelease()
     if (!release) return { state: 'offline' }
-    return newer(release.version, app.getVersion()) ? { state: 'available', ...release } : { state: 'up-to-date', version: app.getVersion() }
+    if (!newer(release.version, app.getVersion())) return { state: 'up-to-date', version: app.getVersion() }
+    return installedForAllUsers ? { state: 'administrator', ...release } : { state: 'available', ...release }
   } catch {
     return { state: 'offline' }
   }

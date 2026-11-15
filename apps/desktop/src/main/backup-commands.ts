@@ -113,6 +113,9 @@ function myEnv(c: ConnectionConfig): Record<string, string> {
   return c.password ? { MYSQL_PWD: c.password } : {}
 }
 
+/** Version folders newest first, compared as numbers: PostgreSQL\17 before PostgreSQL\9.6 (as text, 9.6 wins). */
+export const newestFirst = (a: string, b: string): number => b.localeCompare(a, 'en', { numeric: true })
+
 /** Finds a database command-line tool on PATH or where its installers usually put it. */
 export function findTool(tool: string, env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string | null {
   const exe = platform === 'win32' ? `${tool}.exe` : tool
@@ -124,10 +127,10 @@ export function findTool(tool: string, env: NodeJS.ProcessEnv = process.env, pla
     for (const [root, sub] of [['PostgreSQL', 'bin'], ['MySQL', 'bin'], ['MariaDB', 'bin']] as const) {
       const base = join(pf, root)
       // Newest version first: C:\Program Files\PostgreSQL\17\bin, …\MySQL\MySQL Server 8.4\bin
-      if (existsSync(base)) for (const v of readdirSync(base).sort().reverse()) dirs.push(join(base, v, sub))
+      if (existsSync(base)) for (const v of readdirSync(base).sort(newestFirst)) dirs.push(join(base, v, sub))
     }
   }
-  if (platform === 'linux' && existsSync('/usr/lib/postgresql')) for (const v of readdirSync('/usr/lib/postgresql').sort().reverse()) dirs.push(join('/usr/lib/postgresql', v, 'bin'))
+  if (platform === 'linux' && existsSync('/usr/lib/postgresql')) for (const v of readdirSync('/usr/lib/postgresql').sort(newestFirst)) dirs.push(join('/usr/lib/postgresql', v, 'bin'))
   for (const dir of dirs) {
     const path = join(dir, exe)
     if (existsSync(path)) return path
