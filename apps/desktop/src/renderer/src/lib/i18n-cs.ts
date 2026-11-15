@@ -1730,7 +1730,7 @@ export const cs: Record<string, string> = {
   'Find a value in {schema}…': 'Najít hodnotu ve schématu {schema}…',
   'Find a value in all tables…': 'Najít hodnotu ve všech tabulkách…',
   'Find “{value}”': 'Hledat „{value}“',
-  'Value to find, e.g. an order number or an e-mail': 'Hledaná hodnota, např. číslo objednávky nebo e-mail',
+  'Value to find (order number, e-mail…)': 'Hledaná hodnota (číslo objednávky, e-mail…)',
   'Exact': 'Přesně',
   'Contains': 'Obsahuje',
   'The whole value: fast, uses indexes': 'Celá hodnota: rychlé, využije indexy',

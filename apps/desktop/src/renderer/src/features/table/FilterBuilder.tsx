@@ -87,10 +87,10 @@ function GroupView({ group, depth, ctx }: { group: FilterGroup; depth: number; c
                 title={t('Switch between AND / OR')}
                 onClick={() => set((g) => ({ ...(g as FilterGroup), combinator: (g as FilterGroup).combinator === 'and' ? 'or' : 'and' }))}
               >
-                {group.combinator}
+                {group.combinator.toUpperCase()}
               </button>
             ) : (
-              <span className="pr-1.5 text-[11px] font-semibold text-fg-faint uppercase">{group.combinator}</span>
+              <span className="pr-1.5 text-[11px] font-semibold text-fg-faint uppercase">{group.combinator.toUpperCase()}</span>
             )}
           </div>
           <div className="min-w-0 flex-1">

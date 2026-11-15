@@ -1,5 +1,5 @@
 import { setSidebarShown, useSidebarShown } from './sidebar-shown'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Activity, BookOpen, FileCode2, LayoutDashboard, Rows3, ShieldCheck, GitCompare, Layers, Network, PanelLeft, Plus, Search, Sparkles, Table2, TerminalSquare, X, Columns2 } from 'lucide-react'
 import { IconButton } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
@@ -26,6 +26,12 @@ export function TabBar() {
   const aiVisible = useUi((s) => s.aiPanelVisible)
   const setUi = useUi((s) => s.set)
   const dragId = useRef<string | null>(null)
+  // With more tabs than fit, the selected one is scrolled into view (it could be out of sight behind the fade).
+  const strip = useRef<HTMLDivElement>(null)
+  const tabCount = useWorkspace((s) => s.tabs.length)
+  useEffect(() => {
+    strip.current?.querySelector('[role="tab"][aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [activeId, tabCount])
   const [dropTarget, setDropTarget] = useState<string | null>(null)
   const t = useT()
   const multipleConnections = new Set(tabs.map((t) => t.connectionId)).size > 1
@@ -60,7 +66,14 @@ export function TabBar() {
         </IconButton>
       )}
       {/* The first tab keeps off the sidebar's border line. */}
-      <div className="no-drag flex min-w-0 flex-1 items-end overflow-x-auto pl-1.5 [mask-image:linear-gradient(to_right,black_calc(100%-28px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div
+        ref={strip}
+        // A mouse wheel scrolls the strip sideways; the padding keeps a scrolled-to tab clear of the fade.
+        onWheel={(e) => {
+          if (strip.current && Math.abs(e.deltaY) > Math.abs(e.deltaX)) strip.current.scrollLeft += e.deltaY
+        }}
+        className="no-drag flex min-w-0 flex-1 scroll-px-8 items-end overflow-x-auto pl-1.5 [mask-image:linear-gradient(to_right,black_calc(100%-28px),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
         {tabs.map((tab, i) => {
           const Icon = ICONS[tab.kind]
           const conn = connections.find((c) => c.id === tab.connectionId)
@@ -92,7 +105,7 @@ export function TabBar() {
               onContextMenu={(e) => menu(e, tab)}
               title={`${tab.title}${conn ? ` · ${conn.name}` : ''}`}
               className={cn(
-                'group relative flex h-[31px] max-w-[220px] min-w-[110px] shrink-0 cursor-default items-center gap-1.5 rounded-t-md border border-b-0 pr-1 pl-2.5 text-[12.5px]',
+                'group relative flex h-[31px] max-w-[220px] min-w-[96px] shrink cursor-default items-center gap-1.5 rounded-t-md border border-b-0 pr-1 pl-2.5 text-[12.5px]',
                 active ? 'z-10 -mb-px h-[32px] border-line bg-bg text-fg' : 'border-transparent text-fg-muted hover:bg-hover hover:text-fg',
                 dropTarget === tab.id && 'border-l-2 border-l-accent',
               )}

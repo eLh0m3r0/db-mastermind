@@ -84,6 +84,8 @@ export function DataCompareView({ tab }: { tab: DataCompareTab }) {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line px-3 py-2">
         <Rows3 size={15} className="text-accent" />
+        {/* Source and target each stay together when the line wraps (a narrow window): never a target table under the source. */}
+        <div className="flex items-center gap-2">
         <Select inputSize="sm" className="w-44" value={tab.sourceId ?? ''} onChange={(e) => updateTab(tab.id, { sourceId: e.target.value || undefined, sourceTable: undefined })}>
           <option value="">{t('Source…')}</option>
           {connections.map((c) => (
@@ -98,6 +100,8 @@ export function DataCompareView({ tab }: { tab: DataCompareTab }) {
           onChange={(table) => updateTab(tab.id, { sourceTable: table, targetTable: tab.targetTable ?? (tab.sourceId === tab.connectionId ? undefined : table) })}
         />
         <ArrowRight size={14} className="text-fg-faint" />
+        </div>
+        <div className="flex items-center gap-2">
         <Select inputSize="sm" className="w-44" value={tab.connectionId} onChange={(e) => updateTab(tab.id, { connectionId: e.target.value, targetTable: undefined })}>
           {connections.map((c) => (
             <option key={c.id} value={c.id}>
@@ -106,6 +110,7 @@ export function DataCompareView({ tab }: { tab: DataCompareTab }) {
           ))}
         </Select>
         <TablePicker connectionId={tab.connectionId} value={tab.targetTable} onChange={(table) => updateTab(tab.id, { targetTable: table })} />
+        </div>
         <Input
           inputSize="sm"
           className="w-40"

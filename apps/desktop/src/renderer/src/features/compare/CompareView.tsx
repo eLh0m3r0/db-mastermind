@@ -157,7 +157,7 @@ export function CompareView({ tab }: { tab: CompareTab }) {
           </Select>
         )}
         {tab.sourceModel === undefined && sourceSchemas && sourceSchemas.length > 1 && (
-          <Select inputSize="sm" className="w-36" value={tab.sourceSchema ?? ''} onChange={(e) => updateTab(tab.id, { sourceSchema: e.target.value || undefined })}>
+          <Select inputSize="sm" className="w-44" value={tab.sourceSchema ?? ''} onChange={(e) => updateTab(tab.id, { sourceSchema: e.target.value || undefined })}>
             <option value="">{t('All schemas')}</option>
             {sourceSchemas.map((s) => (
               <option key={s}>{s}</option>
@@ -184,7 +184,7 @@ export function CompareView({ tab }: { tab: CompareTab }) {
         </Select>
         )}
         {targetSchemas && targetSchemas.length > 1 && (
-          <Select inputSize="sm" className="w-36" value={tab.targetSchema ?? ''} onChange={(e) => updateTab(tab.id, { targetSchema: e.target.value || undefined })}>
+          <Select inputSize="sm" className="w-44" value={tab.targetSchema ?? ''} onChange={(e) => updateTab(tab.id, { targetSchema: e.target.value || undefined })}>
             <option value="">{t('All schemas')}</option>
             {targetSchemas.map((s) => (
               <option key={s}>{s}</option>

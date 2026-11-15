@@ -992,8 +992,9 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
       </div>
 
       {/* Footer */}
-      <div className="flex h-8 shrink-0 items-center gap-2 border-t border-line bg-subtle px-2 text-[12px] text-fg-muted">
-        <span className="truncate" title={lastSql}>
+      {/* @container: in a narrow pane the row count and the page size keep their text; the selection totals fade out. */}
+      <div className="@container flex h-8 shrink-0 items-center gap-2 border-t border-line bg-subtle px-2 text-[12px] text-fg-muted">
+        <span className="shrink-0 whitespace-nowrap" title={lastSql}>
           {result ? (
             <>
               {total !== null ? (
@@ -1007,19 +1008,20 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
                   {t('Count rows')}
                 </button>
               )}
-              {duration !== null && <span className="ml-2 text-fg-faint">{formatDuration(duration)}</span>}
+              {duration !== null && <span className="ml-2 text-fg-faint @max-[640px]:hidden">{formatDuration(duration)}</span>}
             </>
           ) : null}
         </span>
-        <SelectionStatsBar fields={viewFields} rows={viewRows} selection={selection} dataTypes={viewMeta.map((m) => m?.dataType)} />
-        <div className="flex-1" />
-        <IconButton label={t('First page')} disabled={currentPage === 0} onClick={() => goTo(0)}>
+        <div className="flex min-w-0 flex-1 overflow-hidden whitespace-nowrap [mask-image:linear-gradient(to_right,black_calc(100%-24px),transparent)]">
+          <SelectionStatsBar fields={viewFields} rows={viewRows} selection={selection} dataTypes={viewMeta.map((m) => m?.dataType)} />
+        </div>
+        <IconButton label={t('First page')} className="@max-[640px]:hidden" disabled={currentPage === 0} onClick={() => goTo(0)}>
           <ChevronsLeft size={14} />
         </IconButton>
         <IconButton label={t('Previous page')} disabled={currentPage === 0} onClick={() => goTo(currentPage - 1)}>
           <ChevronLeft size={14} />
         </IconButton>
-        <span className="min-w-[110px] text-center tabular-nums">
+        <span className="shrink-0 text-center whitespace-nowrap tabular-nums @min-[640px]:min-w-[110px]">
           {result && result.rows.length > 0 ? `${formatCount(offset + 1)}–${formatCount(pageEnd)}` : '0'}
           {total !== null && ` ${t('of')} ${formatCount(total)}`}
         </span>
@@ -1030,12 +1032,12 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
         >
           <ChevronRight size={14} />
         </IconButton>
-        <IconButton label={t('Last page')} disabled={lastPage === null || currentPage >= lastPage} onClick={() => lastPage !== null && goTo(lastPage)}>
+        <IconButton label={t('Last page')} className="@max-[640px]:hidden" disabled={lastPage === null || currentPage >= lastPage} onClick={() => lastPage !== null && goTo(lastPage)}>
           <ChevronsRight size={14} />
         </IconButton>
         <Select
           inputSize="sm"
-          className="h-6 w-auto min-w-[112px] text-[12px]"
+          className="h-6 w-auto min-w-[136px] shrink-0 text-[12px]"
           value={limit}
           onChange={async (e) => {
             const next = Number(e.target.value)

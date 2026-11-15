@@ -364,6 +364,7 @@ function ConnectionList() {
                 style={c.color ? { boxShadow: `inset 3px 0 0 ${c.color}` } : undefined}
                 onClick={() => void connectAndSelect(c.id)}
                 onContextMenu={(e) => openMenu(e, connectionMenu(c))}
+                data-connection={c.name}
               >
                 <DriverIcon driver={c.driver} size={18} />
                 <div className="min-w-0 flex-1">

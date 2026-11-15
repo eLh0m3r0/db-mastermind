@@ -394,20 +394,21 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
     <div className="flex h-full min-h-0 flex-col">
       <div className="@container flex h-10 shrink-0 items-center gap-1.5 border-b border-line px-2">
         {/* The left part gives way (clips) when space runs out; the transaction controls on the right never do. */}
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+        {/* In the narrowest pane (small window with the AI panel) Run is an icon and the gaps shrink, so all fit. */}
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden @max-[460px]:gap-0.5">
         {running ? (
           <Button size="sm" variant="danger" icon={<Square size={12} fill="currentColor" />} onClick={cancel}>
             {t('Cancel')}
           </Button>
         ) : (
           <Button size="sm" variant="primary" icon={<Play size={13} fill="currentColor" />} onClick={() => void run('current')} title={`${t('Run statement or selection')} (${keys('⌘↵')})`}>
-            {t('Run')}
+            <span className="@max-[460px]:hidden">{t('Run')}</span>
           </Button>
         )}
         <Button size="sm" variant="ghost" icon={<PlayCircle size={14} />} disabled={running} onClick={() => void run('all')} title={`${t('Run whole script')} (${keys('⇧⌘↵')})`}>
           <span className="@max-[1050px]:hidden">{t('Run all')}</span>
         </Button>
-        <div className="mx-1 h-5 w-px bg-line" />
+        <div className="mx-1 h-5 w-px bg-line @max-[460px]:hidden" />
         <Button size="sm" variant="ghost" icon={<Wand2 size={14} />} onClick={format} title={`${t('Format SQL')} (${keys('⇧⌘F')})`}>
           <span className="@max-[1050px]:hidden">{t('Format')}</span>
         </Button>
