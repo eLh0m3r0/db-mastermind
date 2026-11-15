@@ -81,7 +81,10 @@ try {
   await win.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control')
   await win.getByTestId('used-by').waitFor({ timeout: 10000 })
   check('⌘-click opens the structure of the table', (await win.getByRole('tab').filter({ hasText: 'customers · structure' }).count()) === 1)
-  check('Used by lists the saved query and the view', /VIP report/.test(await win.getByTestId('used-by').innerText()) && /vip_customers/.test(await win.getByTestId('used-by').innerText()))
+  // The section fills in as views and saved queries are read: wait for both.
+  const usedBy = win.getByTestId('used-by')
+  const listed = await Promise.all([usedBy.getByText('VIP report').first().waitFor({ timeout: 10000 }), usedBy.getByText('vip_customers').first().waitFor({ timeout: 10000 })]).then(() => true, () => false)
+  check('Used by lists the saved query and the view', listed)
   await win.screenshot({ path: `${out}/r104-used-by.png` })
 
   // Plans before and after an index.
