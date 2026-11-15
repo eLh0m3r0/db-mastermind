@@ -34,6 +34,14 @@ const portableDir = detectPortableDir()
 
 export const isPortable = portableDir !== null
 
+/** Installed for all users (the MSI, in Program Files; not the Store package): the organization updates it. */
+export const installedForAllUsers = (() => {
+  if (process.platform !== 'win32' || !app.isPackaged || process.windowsStore) return false
+  const exeDir = dirname(app.getPath('exe')).toLowerCase()
+  const programFiles = [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.ProgramW6432].filter((p): p is string => !!p).map((p) => p.toLowerCase())
+  return programFiles.some((p) => exeDir.startsWith(p)) && !existsSync(join(dirname(app.getPath('exe')), 'Uninstall DB Mastermind.exe'))
+})()
+
 /** Must run before app 'ready' so Chromium also stores its profile in the portable folder. */
 export function configureDataDir(): string {
   if (portableDir) app.setPath('userData', portableDir)
@@ -146,12 +154,28 @@ export function takeLegacySecretsFlag(): boolean {
   return was
 }
 
+/**
+ * Linux without a secret service (GNOME Keyring, KWallet): Chromium falls back to a fixed key ('basic_text'), or
+ * the app to plain obfuscation. Saved passwords are then readable by anyone who can read the data folder.
+ */
+export function secretsWithoutKeychain(): boolean {
+  if (process.platform !== 'linux' || process.env.DBM_USER_DATA) return false
+  try {
+    if (!safeStorage.isEncryptionAvailable()) return true
+    const backend = (safeStorage as { getSelectedStorageBackend?: () => string }).getSelectedStorageBackend?.()
+    return backend === 'basic_text' || backend === 'unknown'
+  } catch {
+    return false
+  }
+}
+
 export async function encryptSecret(value: string | undefined): Promise<string | undefined> {
   if (!value) return value
   const key = macSecretKey()
   if (key) return sealMac(key, value)
   if (await safeStorage.isAsyncEncryptionAvailable()) return ENC_PREFIX + (await safeStorage.encryptStringAsync(value)).toString('base64')
-  // No OS keychain (e.g. Linux without a secret service): stored obfuscated only. Surfaced in Settings.
+  // No OS keychain (e.g. Linux without a secret service): stored obfuscated only. The connection form says so
+  // (secretsWithoutKeychain).
   return PLAIN_PREFIX + Buffer.from(value, 'utf8').toString('base64')
 }
 

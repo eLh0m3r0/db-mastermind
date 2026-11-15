@@ -93,6 +93,8 @@ export class MssqlDriver implements DatabaseDriver {
     if (opts.authentication === 'windows') {
       // Integrated security (the logged-in Windows account) is only available through ODBC.
       if (process.platform !== 'win32') throw new Error('Windows authentication is only available on Windows')
+      // msnodesqlv8 ships a native module for x64 only.
+      if (process.arch !== 'x64') throw new Error('Windows authentication is not available in the ARM64 version yet: sign in with a SQL Server login, or install the x64 version (it runs on Windows on Arm too)')
       const mod = (await import('mssql/msnodesqlv8')) as unknown as { default?: SqlModule } & SqlModule
       this.sql = mod.default ?? mod
       const driver = opts.odbcDriver ? String(opts.odbcDriver) : await detectOdbcDriver()

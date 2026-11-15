@@ -94,7 +94,7 @@ function csvDelimiter(): ',' | ';' {
   return settings.csvDelimiter ?? (settings.language === 'cs' ? ';' : ',')
 }
 import { reportIssueUrl } from './report-issue'
-import { isPortable } from './storage'
+import { isPortable, secretsWithoutKeychain } from './storage'
 
 export const db = new DatabaseService()
 
@@ -218,6 +218,7 @@ export const api: MastermindApi = {
       // Linux: Chromium's SUID sandbox check runs before any app code; headless MCP mode doesn't need it.
       mcpCommand: mcpLaunch(),
       managed: managed()?.info,
+      weakSecrets: secretsWithoutKeychain(),
     }
   },
   async getSettings() {

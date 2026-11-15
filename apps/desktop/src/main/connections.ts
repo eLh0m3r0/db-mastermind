@@ -1,3 +1,4 @@
+import { app } from 'electron'
 import { randomUUID } from 'node:crypto'
 import type { ConnectionConfig } from '@dbmastermind/core'
 import type { ExplorerPrefs, StoredConnection } from '@shared/api'
@@ -33,14 +34,43 @@ function mergeAll(stored: StoredConnection[]): StoredConnection[] {
   return mergeManagedConnections(mergeManagedConnections(stored, { connections: team()?.connections }, undefined, 'team'), managedConfig())
 }
 
+/**
+ * Paths into the data folder (the sample database, default knowledge base folders) follow the folder when it moved:
+ * a portable copy on a USB stick that got another drive letter, or a new version unzipped elsewhere with its data
+ * folder copied over. Paths elsewhere are left alone.
+ */
+export function relocatePaths<T extends { filePath?: string; knowledgeBasePath?: string }>(list: T[], from: string, to: string, windows = process.platform === 'win32'): { list: T[]; changed: boolean } {
+  const norm = (p: string) => (windows ? p.replace(/\//g, '\\').toLowerCase() : p)
+  const base = norm(from).replace(/[\\/]+$/, '')
+  if (!base || base === norm(to).replace(/[\\/]+$/, '')) return { list, changed: false }
+  const move = (p: string | undefined) => {
+    if (!p) return p
+    const n = norm(p)
+    return n === base || n.startsWith(base + (windows ? '\\' : '/')) ? to.replace(/[\\/]+$/, '') + p.slice(base.length) : p
+  }
+  let changed = false
+  const out = list.map((c) => {
+    const filePath = move(c.filePath)
+    const knowledgeBasePath = move(c.knowledgeBasePath)
+    if (filePath === c.filePath && knowledgeBasePath === c.knowledgeBasePath) return c
+    changed = true
+    return { ...c, filePath, knowledgeBasePath }
+  })
+  return { list: out, changed }
+}
+
 /** Reads and decrypts saved connections. Must run after app 'ready', before anything uses them. */
 export async function loadConnections(): Promise<void> {
   takeLegacySecretsFlag()
   unreadable.clear()
-  const stored = await Promise.all(readJson<StoredConnection[]>(FILE, []).map((c) => transformSecrets(c, (v, field) => unreadable.decrypt(c.id, field, v))))
-  cache = mergeAll(stored)
-  // Passwords in an older encryption format are saved again in the current one.
-  if (takeLegacySecretsFlag()) persist()
+  const decrypted = await Promise.all(readJson<StoredConnection[]>(FILE, []).map((c) => transformSecrets(c, (v, field) => unreadable.decrypt(c.id, field, v))))
+  const here = app.getPath('userData')
+  const before = readJson<{ path?: string }>('data-dir.json', {}).path
+  const moved = before ? relocatePaths(decrypted, before, here) : { list: decrypted, changed: false }
+  if (before !== here) writeJson('data-dir.json', { path: here })
+  cache = mergeAll(moved.list)
+  // Passwords in an older encryption format are saved again in the current one; moved paths too.
+  if (takeLegacySecretsFlag() || moved.changed) persist()
 }
 
 export function listConnections(): StoredConnection[] {

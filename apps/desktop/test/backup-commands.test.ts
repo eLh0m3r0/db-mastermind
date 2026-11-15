@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { backupFileType, backupPlan, findTool, restorePlan } from '../src/main/backup-commands'
+import { backupFileType, backupPlan, findTool, newestFirst, restorePlan } from '../src/main/backup-commands'
 
 const pg = { id: 'pg', name: 'pg', driver: 'postgres' as const, host: 'db', port: 5433, user: 'jan', password: 's3cret', database: 'shop', ssl: { mode: 'require' as const } }
 
@@ -36,5 +36,12 @@ describe('backup plans', () => {
   it('finds tools on PATH', () => {
     expect(findTool('definitely-not-a-tool', { PATH: '/usr/bin' }, 'linux')).toBeNull()
     expect(findTool('sh', { PATH: '/bin:/usr/bin' }, 'linux')).toMatch(/\/sh$/)
+  })
+})
+
+describe('newestFirst', () => {
+  it('orders version folders as numbers', () => {
+    expect(['9.6', '17', '16', '10'].sort(newestFirst)).toEqual(['17', '16', '10', '9.6'])
+    expect(['MySQL Server 8.0', 'MySQL Server 10.1', 'MySQL Server 8.4'].sort(newestFirst)).toEqual(['MySQL Server 10.1', 'MySQL Server 8.4', 'MySQL Server 8.0'])
   })
 })
