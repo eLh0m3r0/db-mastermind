@@ -350,6 +350,8 @@ export function ResultsPanel({
             })()}
             {!isPinned(current.key) && (
               <IconButton
+                // In the narrowest pane Copy and Export stay; pinning gives way.
+                className="@max-[360px]:hidden"
                 label={tr('Keep this result (pin)')}
                 onClick={() =>
                   setPinned((p) => [...p, { ...current, key: `pin:${Date.now()}`, label: tr('Pinned {n}', { n: String(p.length + 1) }) }])
@@ -360,6 +362,7 @@ export function ResultsPanel({
             )}
             {/^\s*(select|with|values|show|table)\b/i.test(current.statement.sql) && (
               <IconButton
+                className="@max-[360px]:hidden"
                 label={tr('Pin to dashboard')}
                 onClick={(e) =>
                   void pinToDashboard(e.currentTarget, connectionId, {
