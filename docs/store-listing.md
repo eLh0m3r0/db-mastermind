@@ -81,12 +81,12 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 4. Interactive ER diagrams with saved views and join paths
 5. Schema designer that writes and checks the migration
 6. Schema and data compare between databases
-7. AI assistant with your own key, Ollama, or Claude Code / Codex
+7. AI assistant with your own Claude Code / Codex subscription, your own API key or with local models
 8. Markdown knowledge base about your data model
 9. MCP server for Claude Code, Codex, Cursor and VS Code
 10. Query CSV, Parquet, JSON and Excel files with SQL
 11. SSH tunnels, SSL and SQL Server Windows authentication
-12. No telemetry, no account, no feature limits
+12. No telemetry, no account, no feature limits. Free and open source, forever
 13. Data modeler that opens and saves DeZign for Databases projects
 14. Transactions you can see, with manual commit per connection
 15. Server activity: sessions, slowest queries, storage and unused indexes
@@ -137,11 +137,11 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 > • Součty vybraných buněk, hledání hodnoty v celé databázi, profil hodnot sloupce.
 >
 > DATOVÝ MODEL
-> • Model nové databáze bez databáze: tabulky a vztahy kreslíte, přejmenujete a měníte typy přímo v diagramu; modely jsou textové soubory DBML vhodné pro Git, s SQL pro kteroukoli podporovanou databázi.
-> • Otevírá a ukládá projekty DeZign for Databases (.dez, .dezproj) včetně diagramů, domén, podtypů, triggerů a verzí, i bez nainstalovaného DeZignu.
 > • Interaktivní ER diagramy s automatickým rozložením, uloženými pohledy a cestou JOIN mezi libovolnými tabulkami.
 > • Návrh tabulek, sloupců, klíčů a indexů přímo v diagramu; DB Mastermind napíše migraci, předem zkontroluje data a připraví i vrácení změn.
 > • Porovnání schémat i dat mezi databázemi.
+> • Model nové databáze bez databáze: tabulky a vztahy kreslíte, přejmenujete a měníte typy přímo v diagramu; modely jsou textové soubory DBML vhodné pro Git, s SQL pro kteroukoli podporovanou databázi.
+> • Otevírá a ukládá projekty DeZign for Databases (.dez, .dezproj) včetně diagramů, domén, podtypů, triggerů a verzí, i bez nainstalovaného DeZignu.
 >
 > SERVERY A TÝMY
 > • Aktivita serveru: běžící relace, nejnáročnější dotazy a úložiště včetně nepoužívaných a duplicitních indexů.
@@ -155,7 +155,8 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 > • Vestavěný MCP server pro Claude Code, Codex, Cursor, VS Code a další agenty.
 >
 > SOUKROMÍ
-> • Žádná telemetrie, žádný účet. Hesla šifruje Windows. AI je vypnutá, dokud ji nenastavíte, a lze ji vypnout pro jednotlivá připojení nebo centrálně z IT.
+> • Žádná telemetrie, žádný účet. Hesla šifruje Windows.
+> • AI je vypnutá, dokud ji nenastavíte, a lze ji vypnout pro jednotlivá připojení nebo centrálně z IT.
 >
 > DATABÁZE: PostgreSQL, SQL Server (včetně přihlášení přes Windows), Oracle, MySQL, MariaDB, SQLite, DuckDB, ClickHouse, CockroachDB, BigQuery, Trino.
 >
@@ -173,13 +174,13 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 4. Interaktivní ER diagramy s uloženými pohledy a cestami JOIN
 5. Návrhář schématu, který napíše a zkontroluje migraci
 6. Porovnání schémat a dat mezi databázemi
-7. AI asistent s vlastním klíčem, Ollamou nebo Claude Code / Codex
-8. Znalostní báze o datovém modelu v Markdownu
+7. AI asistent s vlastním předplatným Claude Code / Codex, vlastním API klíčem nebo s využitím lokálních modelů
+8. Znalostní báze o datovém modelu v Markdownu, sdílitelná s týmem i mezi jednotlivými připojeními
 9. MCP server pro Claude Code, Codex, Cursor a VS Code
 10. SQL dotazy nad soubory CSV, Parquet, JSON a Excel
 11. SSH tunely, SSL a přihlášení do SQL Serveru přes Windows
-12. Žádná telemetrie, žádný účet, žádná omezení funkcí
-13. Datový modelář, který otevírá a ukládá projekty DeZign for Databases
+12. Žádná telemetrie, žádný účet, žádná omezení funkcí. Zdarma a open source navždy
+13. Nástroj pro datové modelování, který otevírá a ukládá i projekty DeZign for Databases
 14. Transakce pod kontrolou, ruční potvrzování pro každé připojení
 15. Aktivita serveru: relace, nejnáročnější dotazy, úložiště a nepoužívané indexy
 16. Kopírování tabulek mezi databázemi a skript na více připojeních
