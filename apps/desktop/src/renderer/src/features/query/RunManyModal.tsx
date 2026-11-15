@@ -3,7 +3,7 @@ import { CheckCircle2, Square, TerminalSquare, XCircle } from 'lucide-react'
 import { isDangerousStatement, splitStatements, type StatementOutcome } from '@dbmastermind/core/browser'
 import { Button, IconButton } from '@/components/ui/Button'
 import { confirmAction } from '@/components/ui/ConfirmDialog'
-import { Checkbox, Input } from '@/components/ui/Input'
+import { Checkbox, Input, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { api } from '@/lib/api'
 import { tp, useT } from '@/lib/i18n'
@@ -37,7 +37,10 @@ export function RunManyModal() {
   const [outcomes, setOutcomes] = useState<Outcome[] | null>(null)
   const [runId, setRunId] = useState<string | null>(null)
   const [stopped, setStopped] = useState(false)
-  const sql = open ? modal.sql : ''
+  // Opened outside a query tab (menu, palette) it has no SQL yet: the script is typed here.
+  const given = open ? modal.sql : ''
+  const [typed, setTyped] = useState('')
+  const sql = given.trim() ? given : typed
   // (A ref: the loop reads it between connections.)
   const stoppedRef = useState(() => ({ current: false }))[0]
   const origin = open ? list.find((c) => c.id === modal.connectionId) : undefined
@@ -48,6 +51,7 @@ export function RunManyModal() {
     setOutcomes(null)
     setFilter('')
     setStopped(false)
+    setTyped('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -141,7 +145,20 @@ export function RunManyModal() {
       }
     >
       <div className="flex flex-col gap-3 text-[12.5px]" data-testid="run-many">
-        <pre className="max-h-24 overflow-auto rounded-md border border-line bg-subtle p-2 font-mono text-[11.5px] whitespace-pre-wrap">{sql.trim()}</pre>
+        {given.trim() ? (
+          <pre className="max-h-24 overflow-auto rounded-md border border-line bg-subtle p-2 font-mono text-[11.5px] whitespace-pre-wrap">{sql.trim()}</pre>
+        ) : (
+          <Textarea
+            autoFocus
+            rows={4}
+            value={typed}
+            disabled={!!outcomes}
+            onChange={(e) => setTyped(e.target.value)}
+            placeholder={t('SQL to run on each connection')}
+            className="font-mono text-[11.5px]"
+            data-testid="run-many-sql"
+          />
+        )}
         {!outcomes ? (
           <>
             <Input inputSize="sm" placeholder={t('Filter connections…')} value={filter} onChange={(e) => setFilter(e.target.value)} />

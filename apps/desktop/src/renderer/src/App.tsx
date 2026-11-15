@@ -1,5 +1,6 @@
 import { seedTransactions } from '@/store/transactions'
 import { DatabasePicker } from '@/features/connections/DatabasePicker'
+import { ShortcutsModal } from '@/features/shell/ShortcutsModal'
 import { CopyTablesModal } from '@/features/copy/CopyTablesModal'
 import { RunManyModal } from '@/features/query/RunManyModal'
 import { PasswordPrompt } from './features/connections/PasswordPrompt'
@@ -124,6 +125,15 @@ function useGlobalCommands() {
           case 'settings':
             ui.set({ modal: { kind: 'settings' } })
             break
+          case 'run-on-connections': {
+            // A query tab sends its own SQL; anywhere else the dialog starts empty.
+            const active = useWorkspace.getState().tabs.find((tab) => tab.id === useWorkspace.getState().activeTabId)
+            if (active?.kind !== 'query') ui.set({ modal: { kind: 'runMany', connectionId: connId ?? '', sql: '' } })
+            break
+          }
+          case 'shortcuts':
+            ui.set({ modal: { kind: 'shortcuts' } })
+            break
           case 'refresh-schema':
             if (connId) void useConnections.getState().loadSchema(connId, true)
             break
@@ -135,6 +145,7 @@ function useGlobalCommands() {
           case 'history':
           case 'saved-queries':
             setSidebarShown(true)
+            ui.set({ sidePanel: command === 'history' ? 'history' : 'saved' })
             break
         }
       }),
@@ -236,11 +247,12 @@ export function App() {
     }
   }, [])
 
-  // Tabs of disconnected connections reconnect lazily when shown.
+  // Tabs of disconnected connections reconnect lazily when shown, unless the user disconnected (or cancelled the
+  // password prompt): Disconnect would otherwise undo itself, and Cancel would bring the prompt straight back.
   const activeTab = tabs.find((t) => t.id === activeId)
   const runtime = useConnections((s) => (activeTab ? s.runtime[activeTab.connectionId] : undefined))
   useEffect(() => {
-    if (activeTab && (!runtime || runtime.status === 'disconnected')) void useConnections.getState().connect(activeTab.connectionId)
+    if (activeTab && (!runtime || (runtime.status === 'disconnected' && !runtime.byUser))) void useConnections.getState().connect(activeTab.connectionId)
   }, [activeTab, runtime])
 
   return (
@@ -280,12 +292,12 @@ export function App() {
                 {tab.kind === 'table' && <TableView tab={tab} active={visible} focused={focused} />}
                 {tab.kind === 'structure' && <StructureView tab={tab} />}
                 {tab.kind === 'diagram' && visible && <DiagramView tab={tab} />}
-                {tab.kind === 'knowledge' && <KnowledgeView tab={tab} active={visible} />}
+                {tab.kind === 'knowledge' && <KnowledgeView tab={tab} active={visible} focused={focused} />}
                 {tab.kind === 'compare' && <CompareView tab={tab} />}
                 {tab.kind === 'activity' && <ActivityView tab={tab} />}
                 {tab.kind === 'datacompare' && <DataCompareView tab={tab} />}
                 {tab.kind === 'roles' && <RolesView tab={tab} />}
-                {tab.kind === 'model' && <ModelView tab={tab} />}
+                {tab.kind === 'model' && <ModelView tab={tab} focused={focused} />}
                 {tab.kind === 'dashboard' && <DashboardView tab={tab} />}
                 {tab.kind === 'search' && <FindValueView tab={tab} />}
               </div>
@@ -328,6 +340,7 @@ export function App() {
       <ConnectionForm />
       <SettingsModal />
       <DatabasePicker />
+      <ShortcutsModal />
       <CopyTablesModal />
       <RunManyModal />
       <PasswordPrompt />

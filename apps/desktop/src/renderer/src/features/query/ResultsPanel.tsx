@@ -15,6 +15,7 @@ import { pinToDashboard } from '@/lib/dashboards'
 import { cn, copyText, errorMessage, formatCount, formatDuration } from '@/lib/utils'
 import { useSettings } from '@/store/settings'
 import { toast } from '@/store/ui'
+import { onCommand } from '@/lib/commands'
 import { copyResultsAs, copyRowsAs, EXPORT_FORMATS, type NamedResult, type ResultCopyFormat } from '../results/copy'
 
 // With SQL is a separate choice: a long script's statements can dwarf a one-row result.
@@ -80,6 +81,7 @@ export function ResultsPanel({
   onShowStatement,
   onFixWithAi,
   onLoadAll,
+  focused = true,
 }: {
   outcomes: StatementOutcome[] | null
   running: boolean
@@ -91,6 +93,8 @@ export function ResultsPanel({
   onFixWithAi?: (outcome: StatementOutcome) => void
   /** Runs the statement again without the row limit. */
   onLoadAll?: () => void
+  /** The tab has the keyboard: File → Export Results… (⇧⌘E) opens this panel's export menu. */
+  focused?: boolean
 }) {
   const settings = useSettings((s) => s.settings)
   const [active, setActive] = useState<string>('auto')
@@ -149,6 +153,17 @@ export function ResultsPanel({
   // Copy all / Download all cover this run's results, not the pinned ones from earlier runs.
   const runTabs = tabs.filter((t) => !t.key.startsWith('pin:'))
 
+  // File → Export Results… (⇧⌘E). Set again below once there are results; until then it says what to do.
+  const exportButton = useRef<HTMLButtonElement>(null)
+  const exportFromMenu = useRef<() => void>(() => {})
+  exportFromMenu.current = () => toast({ kind: 'info', message: tr('Run a query first: Export saves its result') })
+  useEffect(() => {
+    if (!focused) return
+    return onCommand((command) => {
+      if (command === 'export') exportFromMenu.current()
+    })
+  }, [focused])
+
   if (running && !outcomes) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-fg-muted">
@@ -176,6 +191,11 @@ export function ResultsPanel({
     } catch (err) {
       toast({ kind: 'error', message: tr('Export failed'), detail: errorMessage(err) })
     }
+  }
+
+  exportFromMenu.current = () => {
+    if (current && exportButton.current) exportCurrent(exportButton.current)
+    else toast({ kind: 'info', message: tr('Run a query first: Export saves its result') })
   }
 
   const exportCurrent = (anchor: HTMLElement) => {
@@ -355,7 +375,7 @@ export function ResultsPanel({
             <IconButton label={tr('Copy')} onClick={(e) => openMenu(e.currentTarget, copyFormats(() => [{ ...named(current), rows: sortedRows }]))}>
               <Copy size={13} />
             </IconButton>
-            <IconButton label={tr('Export')} onClick={(e) => exportCurrent(e.currentTarget)}>
+            <IconButton ref={exportButton} label={tr('Export')} title={`${tr('Export')} (${keys('⇧⌘E')})`} onClick={(e) => exportCurrent(e.currentTarget)}>
               <Download size={13} />
             </IconButton>
           </>

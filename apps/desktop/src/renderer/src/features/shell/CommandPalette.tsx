@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { Command } from 'cmdk'
 import { Activity, BookOpen, FileCode2, FileSpreadsheet, LayoutDashboard, FileText, Rows3, ShieldCheck, Eye, GitCompare, Moon, Network, Plug, Plus, RefreshCw, Search, Settings, Sparkles, Sun, Table2, TerminalSquare, Unplug, Columns2, Download } from 'lucide-react'
 import { Kbd } from '@/components/ui/Input'
-import { api, modKey } from '@/lib/api'
+import { api, keys } from '@/lib/api'
 import { runCommand } from '@/lib/commands'
 import { exportDataDictionary } from '@/lib/dictionary'
 import { modelConnection, openModel, queryFile } from '@/lib/files'
@@ -53,8 +53,8 @@ export function CommandPalette() {
   const dark = useSettings.getState().dark
 
   const commands: { id: string; label: string; icon: React.ReactNode; shortcut?: string; run: () => void; needsConnection?: boolean }[] = [
-    { id: 'new-query', label: t('New query tab'), icon: <TerminalSquare size={14} />, shortcut: `${modKey}T`, run: () => runCommand('new-query'), needsConnection: true },
-    { id: 'open-sql-file', label: t('Open SQL file…'), icon: <FileCode2 size={14} />, shortcut: `⇧${modKey}O`, run: () => runCommand('open-sql-file') },
+    { id: 'new-query', label: t('New query tab'), icon: <TerminalSquare size={14} />, shortcut: keys('⌘T'), run: () => runCommand('new-query'), needsConnection: true },
+    { id: 'open-sql-file', label: t('Open SQL file…'), icon: <FileCode2 size={14} />, shortcut: keys('⇧⌘O'), run: () => runCommand('open-sql-file') },
     { id: 'query-file', label: t('Query a CSV, Parquet, JSON or Excel file…'), icon: <FileSpreadsheet size={14} />, run: () => void queryFile() },
     { id: 'new-connection', label: t('New connection…'), icon: <Plus size={14} />, run: () => setUi({ modal: { kind: 'connection' } }) },
     { id: 'diagram', label: t('Open ER diagram'), icon: <Network size={14} />, run: () => connectionId && openTab({ kind: 'diagram', connectionId, title: t('ER diagram') }), needsConnection: true },
@@ -74,7 +74,7 @@ export function CommandPalette() {
       id: 'model-open',
       label: t('Open model (DBML, DeZign)…'),
       icon: <FileCode2 size={14} />,
-      shortcut: `${modKey}O`,
+      shortcut: keys('⌘O'),
       run: () => void openModel(),
     },
     { id: 'dashboards', label: t('Dashboards'), icon: <LayoutDashboard size={14} />, run: () => connectionId && openDashboard(connectionId), needsConnection: true },
@@ -90,12 +90,12 @@ export function CommandPalette() {
     },
     { id: 'knowledge', label: t('Open knowledge base'), icon: <BookOpen size={14} />, run: () => connectionId && openTab({ kind: 'knowledge', connectionId, title: t('Knowledge base') }), needsConnection: true },
     { id: 'refresh', label: t('Refresh schema'), icon: <RefreshCw size={14} />, shortcut: 'F5', run: () => runCommand('refresh-schema'), needsConnection: true },
-    { id: 'ai', label: t('Toggle AI assistant'), icon: <Sparkles size={14} />, shortcut: `${modKey}J`, run: () => runCommand('toggle-ai') },
+    { id: 'ai', label: t('Toggle AI assistant'), icon: <Sparkles size={14} />, shortcut: keys('⌘J'), run: () => runCommand('toggle-ai') },
     { id: 'updates', label: t('Check for updates…'), icon: <Download size={14} />, run: () => runCommand('check-updates') },
-    { id: 'split', label: t('Split view: open the current tab to the side'), icon: <Columns2 size={14} />, shortcut: `${modKey}\\`, run: () => runCommand('split-view') },
-    { id: 'sidebar', label: t('Toggle sidebar'), icon: <Eye size={14} />, shortcut: `${modKey}B`, run: () => runCommand('toggle-sidebar') },
+    { id: 'split', label: t('Split view: open the current tab to the side'), icon: <Columns2 size={14} />, shortcut: keys('⌘\\'), run: () => runCommand('split-view') },
+    { id: 'sidebar', label: t('Toggle sidebar'), icon: <Eye size={14} />, shortcut: keys('⌘B'), run: () => runCommand('toggle-sidebar') },
     { id: 'theme', label: dark ? t('Switch to light theme') : t('Switch to dark theme'), icon: dark ? <Sun size={14} /> : <Moon size={14} />, run: () => void useSettings.getState().update({ theme: dark ? 'light' : 'dark' }) },
-    { id: 'settings', label: t('Settings…'), icon: <Settings size={14} />, shortcut: `${modKey},`, run: () => setUi({ modal: { kind: 'settings' } }) },
+    { id: 'settings', label: t('Settings…'), icon: <Settings size={14} />, shortcut: keys('⌘,'), run: () => setUi({ modal: { kind: 'settings' } }) },
     { id: 'disconnect', label: t('Disconnect'), icon: <Unplug size={14} />, run: () => runCommand('disconnect'), needsConnection: true },
   ]
 

@@ -7,16 +7,21 @@ import { Kbd } from '@/components/ui/Input'
 import { api, modKey } from '@/lib/api'
 import { forgetRecentModel, queryFile, openModel, recentModels } from '@/lib/files'
 import { useConnections } from '@/store/connections'
-import { useUi } from '@/store/ui'
+import { toast, useUi } from '@/store/ui'
+import { errorMessage } from '@/lib/utils'
 import { connectionDetail, DriverIcon } from '../connections/drivers'
 import { connectAndSelect, openImportMenu, StatusDot } from '../sidebar/Sidebar'
 import { useT } from '@/lib/i18n'
 import { LookDecoration } from '@/components/LookDecoration'
 
-async function openDemo() {
-  const id = await api.createSampleDatabase()
-  await useConnections.getState().load()
-  await connectAndSelect(id)
+async function openDemo(t: (key: string) => string) {
+  try {
+    const id = await api.createSampleDatabase()
+    await useConnections.getState().load()
+    await connectAndSelect(id)
+  } catch (err) {
+    toast({ kind: 'error', message: t('Could not create the sample database'), detail: errorMessage(err) })
+  }
 }
 
 export function HomeScreen() {
@@ -53,7 +58,7 @@ export function HomeScreen() {
                 <Button size="sm" variant="ghost" icon={<Download size={13} />} onClick={(e) => void openImportMenu(e.currentTarget)} title={t('From Beekeeper, DBeaver, DataGrip, pgAdmin, SSMS, Workbench, HeidiSQL…')}>
                   {t('Import connections')}
                 </Button>
-                <Button size="sm" variant="ghost" icon={<Coffee size={13} />} onClick={() => void openDemo()}>
+                <Button size="sm" variant="ghost" icon={<Coffee size={13} />} onClick={() => void openDemo(t)}>
                   {t('Try the demo database')}
                 </Button>
                 <Button size="sm" variant="ghost" icon={<FileSpreadsheet size={13} />} onClick={() => void queryFile()} title={t('CSV, Parquet, JSON or Excel: query it with SQL, no import needed')}>

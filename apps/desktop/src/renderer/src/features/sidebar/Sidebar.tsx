@@ -178,7 +178,8 @@ export function Sidebar() {
   const connectionId = useCurrentConnectionId()
   const connection = useConnections((s) => s.list.find((c) => c.id === connectionId))
   const runtime = useConnections((s) => (connectionId ? s.runtime[connectionId] : undefined))
-  const [panel, setPanel] = useState<Panel>('explorer')
+  const panel: Panel = useUi((s) => s.sidePanel ?? 'explorer')
+  const setPanel = (p: Panel) => useUi.getState().set({ sidePanel: p })
   const t = useT()
 
   return (

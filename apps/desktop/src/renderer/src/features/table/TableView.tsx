@@ -50,6 +50,7 @@ import { Badge, Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Spinner } from '@/components/ui/Spinner'
 import { api, keys } from '@/lib/api'
+import { onCommand } from '@/lib/commands'
 import { columnView, loadColumnPrefs, pinnedCount, saveColumnPrefs, type ColumnPrefs } from '@/lib/columnPrefs'
 import { copyText, errorMessage, formatCount, formatDuration, uid } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
@@ -768,6 +769,19 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
     return () => window.removeEventListener('keydown', onKey)
   })
 
+  // File → Export Results… (⇧⌘E) opens the toolbar's export menu.
+  const exportButton = useRef<HTMLButtonElement>(null)
+  const exportFromMenu = useRef(() => {})
+  exportFromMenu.current = () => {
+    if (exportButton.current) exportMenu(exportButton.current)
+  }
+  useEffect(() => {
+    if (!focused) return
+    return onCommand((command) => {
+      if (command === 'export') exportFromMenu.current()
+    })
+  }, [focused])
+
   const onGridKeyDown = (e: React.KeyboardEvent) => {
     if (!editable) return
     if ((e.key === 'Delete' || e.key === 'Backspace') && (e.metaKey || e.ctrlKey)) {
@@ -857,7 +871,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
             leading={aiBusy ? <Spinner size={12} /> : <Sparkles size={12} className="text-accent" />}
           />
         )}
-        <IconButton label={t('Export')} size="md" onClick={(e) => exportMenu(e.currentTarget)}>
+        <IconButton ref={exportButton} label={t('Export')} title={`${t('Export')} (${keys('⇧⌘E')})`} size="md" onClick={(e) => exportMenu(e.currentTarget)}>
           <Download size={14} />
         </IconButton>
         <IconButton

@@ -32,7 +32,8 @@ interface UiState {
   selectedConnectionId?: string
   modal?: Modal
   palette?: 'commands' | 'tables'
-  sidePanel?: 'history' | 'saved'
+  /** The sidebar's panel (Query → History / Saved Queries switch it). */
+  sidePanel?: 'explorer' | 'history' | 'saved'
   toasts: Toast[]
   /** Pending request for the AI panel; consumed once the panel is mounted. */
   aiRequest?: { prompt?: string; send?: boolean; nonce: number }
