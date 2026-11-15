@@ -33,14 +33,14 @@
     <p>DB Mastermind has no telemetry, no analytics, no crash reports and no account. Here is everything it connects to, and when.</p>
 
     <h2>Update checks</h2>
-    <p>The only thing the app does on its own: every few hours it asks GitHub for the latest release and, if there is a newer one, downloads it. GitHub sees your IP address and the app version, under the <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub Privacy Statement</a>.</p>
+    <p>The only thing the app does on its own: every few hours it asks GitHub for the latest release; the installer, the AppImage and the macOS app then download a newer one. The Microsoft Store version and an MSI installed for all users don't check at all: the Store or your IT updates them. GitHub sees your IP address and the app version, under the <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub Privacy Statement</a>.</p>
     <ul>
       <li>Turn it off in <em>Settings → General → Updates</em>. <em>Help → Check for Updates</em> still works when you ask.</li>
       <li>IT can turn it off for everyone with the <a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/docs/managed-config.md"><code>disableUpdateCheck</code></a> policy.</li>
     </ul>
 
     <h2>Databases</h2>
-    <p>The app connects only to the databases you set up, directly or through the SSH tunnel you configure.</p>
+    <p>The app connects only to the databases you set up, directly or through the SSH tunnels and jump hosts you configure. Signing in to SQL Server with Microsoft Entra ID contacts Microsoft. A password command runs the tool you name (1Password, Bitwarden, Vault…) on your computer when connecting.</p>
 
     <h2>AI assistant</h2>
     <p>AI is off until you set up a provider. Then your questions, and the schema and data the assistant reads to answer them, go to the provider you chose, under its privacy policy:</p>
@@ -50,7 +50,8 @@
       <li><a href="https://openrouter.ai/privacy">OpenRouter</a></li>
       <li><a href="https://policies.google.com/privacy">Google Gemini</a></li>
       <li><a href="https://www.microsoft.com/privacy/privacystatement">Azure OpenAI</a></li>
-      <li>Ollama runs on your own computer: nothing leaves it.</li>
+      <li>An OpenAI-compatible endpoint you set up (LM Studio, vLLM, a company gateway): data goes only to that address.</li>
+      <li>Ollama on your own computer: nothing leaves it. If you point the app to Ollama on another machine, data goes there.</li>
     </ul>
     <p>Each connection can have AI turned off or limited to the schema without data, and IT can turn AI off for all connections.</p>
 
@@ -58,7 +59,7 @@
     <p>Off until you add DB Mastermind to an agent or turn on the local HTTP endpoint. The endpoint listens only on your own computer (127.0.0.1) and needs a token. Agents see only the connections where you allow AI.</p>
 
     <h2>Passwords and keys</h2>
-    <p>Saved passwords and API keys are encrypted with your system keychain (macOS Keychain, Windows DPAPI, the Linux secret service; on a Linux system without one the app says so in Settings) and are sent only to the database or AI provider they belong to. Exported connections never include them.</p>
+    <p>Saved passwords and API keys are encrypted with your system keychain (macOS Keychain, Windows DPAPI, the Linux secret service; on a Linux system without one the connection form says so) and are sent only to the database or AI provider they belong to. Exported connections never include them.</p>
 
     <h2>This website</h2>
     <p>The site is hosted on GitHub Pages. The download button asks GitHub which file is the latest; there are no cookies or trackers.</p>

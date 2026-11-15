@@ -1,5 +1,5 @@
 :root {
-  --bg: #ffffff; --fg: #1b1d23; --muted: #5d6472; --faint: #8a919c; --line: #e5e7eb; --subtle: #f6f7f9;
+  --bg: #ffffff; --fg: #1b1d23; --muted: #5d6472; --faint: #6b7280; --line: #e5e7eb; --subtle: #f6f7f9;
   --accent: #5b3ee6; --accent-fg: #ffffff; --accent-soft: #efebff; --card: #ffffff;
 }
 @media (prefers-color-scheme: dark) {
@@ -36,7 +36,7 @@ header nav a:hover { color: var(--fg); }
 section { padding: 64px 0 8px; }
 section > h2 { font-size: 30px; letter-spacing: -0.01em; margin: 0 0 8px; }
 section > p.lead { color: var(--muted); margin: 0 0 28px; max-width: 720px; }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: 16px; }
 .grid-title { font-size: 18px; margin: 48px 0 14px; }
 .engines.left { justify-content: flex-start; margin: -12px 0 8px; }
 .card { border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: 18px 20px; }
@@ -56,7 +56,7 @@ footer .trademark { order: 3; flex-basis: 100%; font-size: 12.5px; }
 .tabs, .os { display: flex; flex-wrap: wrap; gap: 4px; }
 .tabs button, .os button { font: inherit; font-size: 13.5px; padding: 5px 11px; border-radius: 8px; border: 1px solid transparent; background: none; color: var(--muted); cursor: pointer; }
 .tabs button:hover, .os button:hover { color: var(--fg); background: var(--subtle); }
-.tabs button[aria-selected="true"] { background: var(--accent-soft); color: var(--fg); font-weight: 600; }
+.tabs button[aria-pressed="true"] { background: var(--accent-soft); color: var(--fg); font-weight: 600; }
 [hidden] { display: none !important; }
 .os { border: 1px solid var(--line); border-radius: 9px; padding: 2px; }
 .os button { padding: 3px 9px; font-size: 12.5px; }
@@ -83,7 +83,7 @@ header a.home { display: flex; align-items: center; gap: 12px; color: var(--fg);
 .page ul { padding-left: 20px; }
 .page li { margin: 6px 0; }
 .page .callout { background: var(--accent-soft); border-radius: 12px; padding: 16px 20px; color: var(--fg); font-size: 17px; margin: 20px 0; }
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   header nav { display: none; }
   .theme-toggle { margin-left: auto; }
   .feature { grid-template-columns: 1fr; gap: 14px; }
