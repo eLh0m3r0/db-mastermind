@@ -1006,4 +1006,6 @@ export interface MenuContext {
   tab?: 'query' | 'table' | 'model' | 'knowledge' | string
   /** The current connection is connected. */
   connected: boolean
+  /** A connection is selected (connected or not). */
+  connection?: boolean
 }

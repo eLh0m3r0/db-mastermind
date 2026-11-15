@@ -945,6 +945,7 @@ export const cs: Record<string, string> = {
   'Tables from a SQL script or from the database': 'Tabulky ze skriptu SQL nebo z databáze',
   'Save as…': 'Uložit jako…',
   'Save script…': 'Uložit skript…',
+  'No changes to save': 'Nic k uložení',
   'Split view shows two tabs side by side: open another tab first': 'Rozdělené zobrazení ukazuje dvě karty vedle sebe: nejdřív otevřete další kartu',
   'No transaction is open in this tab': 'V této kartě není otevřená žádná transakce',
   'This computer has no keychain (GNOME Keyring or KWallet): the password is saved without real encryption. Install one, or use a password manager.': 'Tento počítač nemá úložiště hesel (GNOME Keyring nebo KWallet): heslo se uloží bez skutečného šifrování. Nainstalujte ho, nebo použijte správce hesel.',
