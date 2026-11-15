@@ -40,6 +40,9 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 > • Inline editing with a reviewed change set, paste from Excel, copy as CSV, JSON, Markdown or SQL.
 > • SQL editor with schema-aware autocomplete that writes whole JOINs from foreign keys, snippets, history, saved queries and execution plans.
 > • Export everything to CSV, Excel, JSON or SQL, and query CSV, Parquet, JSON and Excel files with SQL.
+> • Transactions you can see: commit changes yourself, per connection; every open transaction and every lock is shown.
+> • Open a view, function or table as SQL and change it; open and save .sql files; warnings while you type (unknown table, UPDATE or DELETE without WHERE).
+> • Totals of selected cells, find a value anywhere in a database, value profile of a column.
 >
 > MODEL, UNDERSTAND AND REDESIGN
 > • Model a new database without one: draw tables and relationships, rename and retype right on the diagram; models are DBML text files you can keep in Git, with SQL for any supported database.
@@ -47,6 +50,11 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 > • Interactive ER diagrams with automatic layout, saved diagrams and the join path between any two tables.
 > • Design tables, columns, keys and indexes right on the diagram; DB Mastermind writes the migration, checks your data first and gives you the rollback.
 > • Compare schemas and data between databases.
+>
+> SERVERS AND TEAMS
+> • Server activity: running sessions, the slowest queries and storage, including unused and duplicate indexes.
+> • Copy tables to another database (even another engine), run one script on several connections, import JSON and Parquet.
+> • Passwords from your password manager (1Password, Bitwarden, Vault), SSH through a jump host, SQL Server with Microsoft Entra ID.
 >
 > AI THAT KNOWS YOUR DATABASE
 > • Use your own API key (Anthropic, OpenAI, OpenRouter, Gemini, Azure), a local Ollama model, or your Claude Code / Codex subscription.
@@ -80,10 +88,14 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 11. SSH tunnels, SSL and SQL Server Windows authentication
 12. No telemetry, no account, no feature limits
 13. Data modeler that opens and saves DeZign for Databases projects
+14. Transactions you can see, with manual commit per connection
+15. Server activity: sessions, slowest queries, storage and unused indexes
+16. Copy tables between databases and run a script on several connections
+17. Passwords from 1Password, Bitwarden or Vault; SSH jump hosts
 
 **Search terms** (7): `database client` · `SQL editor` · `PostgreSQL` · `SQL Server` · `data modeling` · `ER diagram` · `database AI`
 
-**What's new in this version** (1.3.2; covers the 1.3 releases, as Store users update from older ones): Open a function, view or table as SQL and change it; open and save .sql files; warnings while you type (unknown table, UPDATE or DELETE without WHERE). Totals of selected cells, SQL expressions in cells, find a value anywhere in a database, value profile of a column. Server activity shows the slowest queries and storage, including unused and duplicate indexes. Copy tables to another database, run a script on several connections, import JSON and Parquet. Passwords from a password manager, SSH through a jump host, SQL Server with Microsoft Entra ID. Also: Help > Keyboard Shortcuts, Ctrl+H for Find and replace in the SQL editor, menus that grey out what can't act in the open tab, a tidier layout in small windows, and many small fixes.
+**What's new in this version** (1.3.2, everything since 1.1.0, the previous Store version): Transactions you can see: commit changes yourself per connection, with every open transaction and lock shown, and nothing lost when closing. Open another database on the same server as its own connection; accent colors and a compact density. Open a view, function or table as SQL and change it; open and save .sql files; warnings while you type (unknown table, UPDATE or DELETE without WHERE). Totals of selected cells, SQL expressions in cells, find a value anywhere in a database, value profile of a column. Server activity shows the slowest queries and storage, including unused and duplicate indexes. Copy tables to another database, run a script on several connections, import JSON and Parquet. Passwords from a password manager, SSH through a jump host, SQL Server with Microsoft Entra ID. Also Help > Keyboard Shortcuts, Ctrl+H for Find and replace, menus that grey out what can't act in the open tab, a tidier small window, and many fixes.
 
 **Copyright and trademark info:** © 2026 Václav Mudra. MIT license. DeZign for Databases is a trademark of Datanamic; DB Mastermind is not affiliated with or endorsed by Datanamic.
 
@@ -120,6 +132,9 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 > • Úpravy přímo v tabulce s kontrolou změn před uložením, vkládání z Excelu, kopírování jako CSV, JSON, Markdown nebo SQL.
 > • SQL editor s našeptávačem, který z cizích klíčů napíše celý JOIN, šablony, historie, uložené dotazy a prováděcí plány.
 > • Export do CSV, Excelu, JSON nebo SQL a dotazy SQL přímo nad soubory CSV, Parquet, JSON a Excel.
+> • Transakce pod kontrolou: změny potvrzujete sami, pro každé připojení zvlášť; každá otevřená transakce i zámek jsou vidět.
+> • Pohled, funkci nebo tabulku otevřete jako SQL a upravíte; soubory .sql otevřete i uložíte; upozornění už při psaní (neznámá tabulka, UPDATE nebo DELETE bez WHERE).
+> • Součty vybraných buněk, hledání hodnoty v celé databázi, profil hodnot sloupce.
 >
 > DATOVÝ MODEL
 > • Model nové databáze bez databáze: tabulky a vztahy kreslíte, přejmenujete a měníte typy přímo v diagramu; modely jsou textové soubory DBML vhodné pro Git, s SQL pro kteroukoli podporovanou databázi.
@@ -127,6 +142,11 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 > • Interaktivní ER diagramy s automatickým rozložením, uloženými pohledy a cestou JOIN mezi libovolnými tabulkami.
 > • Návrh tabulek, sloupců, klíčů a indexů přímo v diagramu; DB Mastermind napíše migraci, předem zkontroluje data a připraví i vrácení změn.
 > • Porovnání schémat i dat mezi databázemi.
+>
+> SERVERY A TÝMY
+> • Aktivita serveru: běžící relace, nejnáročnější dotazy a úložiště včetně nepoužívaných a duplicitních indexů.
+> • Kopírování tabulek do jiné databáze (i jiného typu), jeden skript na více připojeních, import JSON a Parquet.
+> • Hesla ze správce hesel (1Password, Bitwarden, Vault), SSH přes jump host, SQL Server s Microsoft Entra ID.
 >
 > AI, KTERÁ ZNÁ VAŠI DATABÁZI
 > • Vlastní API klíč (Anthropic, OpenAI, OpenRouter, Gemini, Azure), lokální model v Ollamě nebo předplatné Claude Code / Codex.
@@ -160,10 +180,14 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 11. SSH tunely, SSL a přihlášení do SQL Serveru přes Windows
 12. Žádná telemetrie, žádný účet, žádná omezení funkcí
 13. Datový modelář, který otevírá a ukládá projekty DeZign for Databases
+14. Transakce pod kontrolou, ruční potvrzování pro každé připojení
+15. Aktivita serveru: relace, nejnáročnější dotazy, úložiště a nepoužívané indexy
+16. Kopírování tabulek mezi databázemi a skript na více připojeních
+17. Hesla z 1Password, Bitwardenu nebo Vaultu; SSH přes jump host
 
 **Search terms:** `databázový klient` · `SQL editor` · `PostgreSQL` · `SQL Server` · `datové modelování` · `ER diagram` · `databáze AI`
 
-**What's new in this version:** Funkci, pohled nebo tabulku otevřete jako SQL a upravíte; soubory .sql otevřete i uložíte; upozornění už při psaní (neznámá tabulka, UPDATE nebo DELETE bez WHERE). Součty vybraných buněk, SQL výraz v buňce, hledání hodnoty v celé databázi, profil hodnot sloupce. Aktivita serveru ukazuje nejnáročnější dotazy a úložiště včetně nepoužívaných a duplicitních indexů. Kopírování tabulek do jiné databáze, spuštění skriptu na více připojeních, import JSON a Parquet. Hesla ze správce hesel, SSH přes jump host, SQL Server s Microsoft Entra ID. Také: Nápověda > Klávesové zkratky, Ctrl+H pro Najít a nahradit v SQL editoru, menu zašedí, co v otevřené kartě nejde použít, úhlednější rozvržení v malém okně a řada drobných oprav.
+**What's new in this version:** Transakce pod kontrolou: změny potvrzujete sami pro každé připojení, každá otevřená transakce i zámek jsou vidět a při zavírání se nic neztratí. Jinou databázi na stejném serveru otevřete jako samostatné připojení; barevné akcenty a kompaktní zobrazení. Pohled, funkci nebo tabulku otevřete jako SQL a upravíte; soubory .sql otevřete i uložíte; upozornění už při psaní (neznámá tabulka, UPDATE nebo DELETE bez WHERE). Součty vybraných buněk, SQL výraz v buňce, hledání hodnoty v celé databázi, profil hodnot sloupce. Aktivita serveru ukazuje nejnáročnější dotazy a úložiště včetně nepoužívaných a duplicitních indexů. Kopírování tabulek do jiné databáze, skript na více připojeních, import JSON a Parquet. Hesla ze správce hesel, SSH přes jump host, SQL Server s Microsoft Entra ID. Také Nápověda > Klávesové zkratky, Ctrl+H pro Najít a nahradit, menu zašedí, co v otevřené kartě nejde použít, úhlednější malé okno a řada oprav.
 
 **Screenshots:** the same files; captions:
 
