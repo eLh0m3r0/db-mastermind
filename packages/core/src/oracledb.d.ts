@@ -60,8 +60,10 @@ declare module 'oracledb' {
     close(drainTime?: number): Promise<void>
   }
   export function createPool(attrs: PoolAttributes): Promise<Pool>
+  export function getConnection(attrs: { user?: string; password?: string; connectString: string; connectTimeout?: number }): Promise<Connection>
   const oracledb: {
     createPool: typeof createPool
+    getConnection: typeof getConnection
     OUT_FORMAT_ARRAY: number
     OUT_FORMAT_OBJECT: number
     STRING: unknown

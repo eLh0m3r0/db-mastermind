@@ -8,6 +8,7 @@ import { classifyStatement } from '../sql-split.js'
 import {
   ConnectionLostError,
   elapsed,
+  isShortLivedSession,
   QueryCancelledError,
   SessionTransactions,
   type DatabaseDriver,
@@ -43,9 +44,6 @@ const typeOverrides = {
 }
 
 const SYSTEM_SCHEMA_FILTER = `n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg\\_toast%' AND n.nspname NOT LIKE 'pg\\_temp\\_%'`
-
-/** Sessions core opens and releases within one call: they borrow from the pool instead of opening a connection. */
-const SHORT_LIVED_SESSION = /^(readonly|script|copy|explain)-/
 
 export class PostgresDriver implements DatabaseDriver {
   readonly dialect = postgresDialect
@@ -176,7 +174,7 @@ export class PostgresDriver implements DatabaseDriver {
     this.transactions.check(session)
     let client = this.sessions.get(session)
     if (!client) {
-      client = SHORT_LIVED_SESSION.test(session) ? await this.checkout() : await this.sessionClient()
+      client = isShortLivedSession(session) ? await this.checkout() : await this.sessionClient()
       const c = client
       c.on('error', () => {
         if (this.sessions.get(session) !== c) return
