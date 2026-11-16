@@ -1,4 +1,4 @@
-import { splitStatements } from './sql-split.js'
+import { splitStatements, statementAtOffset } from './sql-split.js'
 import type { DriverId, RoutineInfo, SchemaSnapshot, TableInfo } from './types.js'
 
 /**
@@ -430,4 +430,21 @@ export function objectAt(script: string, offset: number, driver: DriverId, schem
 export function mentionsTable(sql: string, driver: DriverId, schema: SchemaSnapshot, table: Pick<TableInfo, 'schema' | 'name'>): boolean {
   const same = (t: TableInfo | null | undefined) => !!t && t.name === table.name && (t.schema ?? '') === (table.schema ?? '')
   return readSql(sql, driver).some((s) => s.tables.some((ref) => same(resolveTable(ref, schema))))
+}
+
+/**
+ * Tables (with their aliases) the statement at `offset` reads or changes, as the snapshot knows them: the editor
+ * completes their columns without a qualifier. Tables in subqueries count too; CTEs and unknown names don't.
+ */
+export function tablesInScope(script: string, offset: number, driver: DriverId, schema: SchemaSnapshot): { table: TableInfo; alias?: string }[] {
+  const stmt = statementAtOffset(script, offset, driver)
+  if (!stmt) return []
+  const reading = readStatement(stmt.text, stmt.start, driver)
+  const out: { table: TableInfo; alias?: string }[] = []
+  for (const ref of reading.tables) {
+    if (ref.parts.length === 1 && reading.defines.includes(lower(ref.parts[0]!))) continue
+    const table = resolveTable(ref, schema)
+    if (table && !out.some((x) => x.table === table && x.alias === ref.alias)) out.push({ table, ...(ref.alias ? { alias: ref.alias } : {}) })
+  }
+  return out
 }
