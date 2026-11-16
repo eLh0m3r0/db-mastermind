@@ -92,6 +92,17 @@ try {
   check(`upper-case typing keeps upper-case keywords: ${labels.slice(0, 3).join(', ')}`, labels.includes('ORDER') && !labels.includes('order'))
   await win.keyboard.press('Escape')
 
+  // RAISE NOTICE shows in Messages, with a count on the tab even when a result grid is in front.
+  await complete("DO $$BEGIN RAISE NOTICE 'hello from plpgsql'; END$$; SELECT 1 AS one")
+  await win.keyboard.press('Escape')
+  await win.keyboard.press(`Shift+${mod}+Enter`)
+  await win.locator('[data-server-messages]').waitFor({ timeout: 10000 }).catch(() => {})
+  check(`message count on the Messages tab: ${await win.locator('[data-server-messages]').textContent().catch(() => 'none')}`, (await win.locator('[data-server-messages]').textContent().catch(() => '')) === '1')
+  await win.getByRole('button', { name: /^Messages/ }).click()
+  const shown = await win.locator('[data-server-message]').allTextContents()
+  check(`notice shown: ${JSON.stringify(shown)}`, shown[0] === 'NOTICE: hello from plpgsql')
+  await win.screenshot({ path: `${out}/r110-notice.png` })
+
   await openConsole('Lite', 'Shop PG')
   labels = await complete('select * from items where i')
   check(`SQLite: "where i" → id: ${labels.slice(0, 5).join(', ')}`, labels[0] === 'id')

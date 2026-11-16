@@ -271,6 +271,13 @@ export class PostgresDriver implements DatabaseDriver {
     }
     if (options.signal?.aborted) throw new QueryCancelledError()
     options.signal?.addEventListener('abort', onAbort, { once: true })
+    const messages: string[] = []
+    const onNotice = (n: NoticeMessage) => messages.push(noticeText(n))
+    client.on('notice', onNotice)
+    const withMessages = (results: QueryResult[]) => {
+      if (messages.length && results[0]) results[0].messages = messages
+      return results
+    }
     const start = process.hrtime.bigint()
     try {
       if (options.maxRows === undefined) {
@@ -283,7 +290,7 @@ export class PostgresDriver implements DatabaseDriver {
         const results = (Array.isArray(res) ? res : [res]) as pg.QueryArrayResult[]
         const durationMs = elapsed(start)
         await this.learnTypes(results)
-        return results.map((r) => this.toResult(r, r.rows, false, durationMs))
+        return withMessages(results.map((r) => this.toResult(r, r.rows, false, durationMs)))
       }
       const cursor = client.query(new Cursor(sql, options.params, { rowMode: 'array', types: typeOverrides }))
       const { rows, result } = await new Promise<{ rows: unknown[][]; result: pg.QueryArrayResult }>(
@@ -296,14 +303,17 @@ export class PostgresDriver implements DatabaseDriver {
       await cursor.close().catch(() => {})
       await this.learnTypes([result])
       const truncated = rows.length > options.maxRows
-      return [
+      return withMessages([
         this.toResult(result, truncated ? rows.slice(0, options.maxRows) : rows, truncated, elapsed(start)),
-      ]
+      ])
     } catch (err) {
       failure = err
       if (cancelled) throw new QueryCancelledError()
+      // RAISE NOTICE … then an exception: the notices explain the error.
+      if (messages.length && err && typeof err === 'object') Object.assign(err, { notices: messages })
       throw err
     } finally {
+      client.off('notice', onNotice)
       options.signal?.removeEventListener('abort', onAbort)
       release(failure)
     }
@@ -656,6 +666,19 @@ export class PostgresDriver implements DatabaseDriver {
       capturedAt: new Date().toISOString(),
     }
   }
+}
+
+/** The fields of pg's 'notice' event we show (its type lives in pg-protocol, not a dependency of ours). */
+interface NoticeMessage {
+  severity?: string
+  message?: string
+  detail?: string
+  hint?: string
+}
+
+/** `NOTICE: text` with the detail and hint the server added, as psql prints them. */
+function noticeText(n: NoticeMessage): string {
+  return [`${n.severity ?? 'NOTICE'}: ${n.message}`, n.detail && `DETAIL: ${n.detail}`, n.hint && `HINT: ${n.hint}`].filter(Boolean).join('\n')
 }
 
 /** The connection itself is gone (server restart, admin kill, network): the client can't be reused. */

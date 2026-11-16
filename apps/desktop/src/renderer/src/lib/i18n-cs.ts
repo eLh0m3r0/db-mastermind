@@ -420,6 +420,7 @@ export const cs: Record<string, string> = {
   'runs the statement under the cursor or the selection': 'spustí příkaz pod kurzorem nebo výběr',
   'runs the whole script': 'spustí celý skript',
   'Messages': 'Zprávy',
+  'Messages from the server (NOTICE, RAISE …)': 'Zprávy ze serveru (NOTICE, RAISE …)',
   'First {n} rows': 'Prvních {n} řádků',
   'Show table': 'Zobrazit tabulku',
   'Show chart': 'Zobrazit graf',

@@ -45,6 +45,24 @@ describe.skipIf(skip.has('postgres'))('PostgreSQL sessions', () => {
     for (const session of tabs) await db.releaseSession(id, session)
   }, 30_000)
 
+  it('NOTICE / RAISE messages reach the outcome, also when the statement then fails', async () => {
+    const [ok, failed, quiet] = await db.runScript(
+      id,
+      `DO $$BEGIN RAISE NOTICE 'hello %', 42; RAISE WARNING 'careful' USING HINT = 'look here'; END$$;
+       DO $$BEGIN RAISE NOTICE 'before'; RAISE EXCEPTION 'boom'; END$$;
+       SELECT 1`,
+      { continueOnError: true, session: 'notice-tab' },
+    )
+    expect(ok?.messages).toEqual(['NOTICE: hello 42', 'WARNING: careful\nHINT: look here'])
+    expect(failed?.error?.message).toMatch(/boom/)
+    expect(failed?.messages).toEqual(['NOTICE: before'])
+    expect(quiet?.messages).toBeUndefined()
+    // Server notices of DDL, as psql shows them.
+    const [skip] = await db.runScript(id, 'DROP TABLE IF EXISTS dbm_no_such_table')
+    expect(skip?.messages?.[0]).toMatch(/^NOTICE: .*does not exist, skipping/)
+    await db.releaseSession(id, 'notice-tab')
+  })
+
   it('a type created after connecting has its name in results', async () => {
     await db.runScript(id, "DROP TYPE IF EXISTS dbm_mood_later; CREATE TYPE dbm_mood_later AS ENUM ('ok', 'meh')")
     const [o] = await db.runScript(id, "SELECT 'ok'::dbm_mood_later AS mood")
