@@ -1,5 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import { parseConnectionString, parseDataGrip } from '../src/index.js'
+import { startupOptions } from '../src/drivers/postgres.js'
+
+describe('PostgreSQL default schema and session settings', () => {
+  it('reads currentSchema (JDBC) and options=-c search_path from URLs', () => {
+    expect(parseConnectionString('jdbc:postgresql://pg01:5432/crm?currentSchema=app').options).toEqual({ searchPath: 'app' })
+    expect(parseConnectionString('postgres://u@pg01/crm?options=-c%20search_path%3Dapp%2Cpublic').options).toEqual({ searchPath: 'app,public' })
+    expect(parseConnectionString('postgres://u@pg01/crm').options).toBeUndefined()
+  })
+
+  it('passes them to every connection as startup options', () => {
+    expect(startupOptions({})).toBeUndefined()
+    expect(startupOptions({ readOnly: true })).toBe('-c default_transaction_read_only=on')
+    expect(startupOptions({ options: { searchPath: ' app , public ', statementTimeout: 30000 } })).toBe('-c search_path=app,public -c statement_timeout=30000')
+    expect(startupOptions({ options: { searchPath: '"My Schema"' } })).toBe('-c search_path="My\\ Schema"')
+  })
+})
 
 describe('parseConnectionString', () => {
   it('parses postgres URLs with encoded credentials and sslmode', () => {

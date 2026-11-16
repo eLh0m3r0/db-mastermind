@@ -75,7 +75,7 @@ export class PostgresDriver implements DatabaseDriver {
       connectionTimeoutMillis: 15_000,
       keepAlive: true,
       types: typeOverrides,
-      options: this.config.readOnly ? '-c default_transaction_read_only=on' : undefined,
+      options: startupOptions(this.config),
     })
     // The pool serves short work (grid, explorer, EXPLAIN, AI); editor tabs get their own clients (sessionClient).
     const makePool = (options: pg.ClientConfig) => new pg.Pool({ ...options, idleTimeoutMillis: 60_000, max: 6 })
@@ -669,6 +669,25 @@ export class PostgresDriver implements DatabaseDriver {
       capturedAt: new Date().toISOString(),
     }
   }
+}
+
+/**
+ * Session settings every connection starts with (libpq `options`): read-only, the connection's default schema
+ * (search_path) and a statement timeout in milliseconds. Spaces and backslashes in values are escaped, as libpq expects.
+ */
+export function startupOptions(config: Pick<ConnectionConfig, 'readOnly' | 'options'>): string | undefined {
+  const settings: string[] = []
+  if (config.readOnly) settings.push('default_transaction_read_only=on')
+  const searchPath = String(config.options?.searchPath ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join(',')
+  if (searchPath) settings.push(`search_path=${searchPath}`)
+  const timeout = Number(config.options?.statementTimeout ?? 0)
+  if (timeout > 0) settings.push(`statement_timeout=${Math.round(timeout)}`)
+  const escape = (s: string) => s.replace(/[\\ ]/g, (c) => `\\${c}`)
+  return settings.length ? settings.map((s) => `-c ${escape(s)}`).join(' ') : undefined
 }
 
 /** The fields of pg's 'notice' event we show (its type lives in pg-protocol, not a dependency of ours). */
