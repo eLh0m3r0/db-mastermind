@@ -53,6 +53,27 @@ for (const [from, to] of PAIRS) {
         const svc = new DatabaseService()
         await svc.connect(source)
         await svc.connect(target)
+        // A copy stopped after it created the tables takes them away again: the message says nothing changed.
+        const early = new AbortController()
+        await expect(
+          copyTables(svc, source.id, target.id, {
+            tables: [{ schema: shopSchema(from), name: 'orders' }, { schema: shopSchema(from), name: 'customers' }],
+            targetSchema: schema,
+            create: true,
+            mode: 'append',
+            batchRows: 20,
+            signal: early.signal,
+            onProgress: (p) => p.table.toLowerCase() === 'orders' && p.rows >= 20 && early.abort(),
+          }),
+        ).rejects.toThrow(/stopped: nothing was changed in the target$/)
+        const after = await svc.schema(target.id, true)
+        const inTarget = (name: string) => after.tables.some((t) => t.name.toLowerCase() === name && (schema === undefined || t.schema?.toLowerCase() === schema))
+        if (to === 'mysql' || to === 'mariadb') {
+          const [o] = await svc.runScript(target.id, `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'copy_test'`)
+          expect(Number(o!.results![0]!.rows[0]![0])).toBe(0)
+        } else {
+          expect(inTarget('customers') || inTarget('orders')).toBe(false)
+        }
         const progress: string[] = []
         const result = await copyTables(svc, source.id, target.id, {
           tables: [{ schema: shopSchema(from), name: 'orders' }, { schema: shopSchema(from), name: 'customers' }],
@@ -88,8 +109,9 @@ for (const [from, to] of PAIRS) {
         const again = await copyTables(svc, source.id, target.id, { tables: [{ schema: shopSchema(from), name: 'customers' }, { schema: shopSchema(from), name: 'orders' }], targetSchema: schema, create: false, mode: 'replace' })
         expect(again.map((r) => r.rows)).toEqual([3, 120])
         expect(Number(await one(`SELECT COUNT(*) FROM ${q('orders')}`))).toBe(120)
-        // A replace stopped after its first batch leaves the target exactly as it was (one transaction; review finding).
-        if (to !== 'duckdb') {
+        // A replace stopped after its first batch leaves the target exactly as it was (one transaction; on DuckDB the
+        // emptied tables are filled again).
+        {
           const [mark] = await svc.runScript(target.id, `INSERT INTO ${q('customers')} (id, name, email) VALUES (99, 'Marker', 'marker@example.com')`)
           if (mark?.error && to === 'mssql') await svc.runScript(target.id, `SET IDENTITY_INSERT ${q('customers')} ON; INSERT INTO ${q('customers')} (id, name, email) VALUES (99, 'Marker', 'marker@example.com'); SET IDENTITY_INSERT ${q('customers')} OFF`)
           const stop = new AbortController()
@@ -118,3 +140,56 @@ for (const [from, to] of PAIRS) {
     })
   })
 }
+
+const run = async (svc: DatabaseService, id: string, sql: string) => {
+  const [o] = await svc.runScript(id, sql)
+  if (o?.error) throw new Error(`${sql}: ${o.error.message}`)
+  return o!.results?.[0]?.rows ?? []
+}
+
+describe.skipIf(skip.has('mysql') || skip.has('postgres'))('copy tables: MySQL BIT values', () => {
+  it('copies BIT columns as bits instead of NULL', async () => {
+    const svc = new DatabaseService()
+    try {
+      const source = await setupEngine(svc, engine('mysql'))
+      const { config: target, schema } = await emptyTarget(svc, 'postgres')
+      await run(svc, source.id, 'DROP TABLE IF EXISTS copy_bits')
+      await run(svc, source.id, 'CREATE TABLE copy_bits (id int PRIMARY KEY, active bit(1) NOT NULL, flags bit(4))')
+      await run(svc, source.id, "INSERT INTO copy_bits VALUES (1, b'1', b'0101'), (2, b'0', NULL)")
+      const [r] = await copyTables(svc, source.id, target.id, { tables: [{ name: 'copy_bits' }], targetSchema: schema, create: true, mode: 'append' })
+      expect(r!.skippedColumns).toEqual([])
+      expect(await run(svc, target.id, 'SELECT id, active::text, flags::text FROM copy_test.copy_bits ORDER BY id')).toEqual([
+        [1, '1', '0101'],
+        [2, '0', null],
+      ])
+      await run(svc, source.id, 'DROP TABLE copy_bits')
+      await run(svc, target.id, 'DROP SCHEMA copy_test CASCADE')
+    } finally {
+      await svc.disconnectAll()
+    }
+  })
+})
+
+describe.skipIf(skip.has('mssql') || skip.has('postgres'))('copy tables: SQL Server identity', () => {
+  it('appends rows without the identity column into a table that has one (no IDENTITY_INSERT)', async () => {
+    const svc = new DatabaseService()
+    try {
+      const source = await setupEngine(svc, engine('postgres'))
+      const { config: target, schema } = await emptyTarget(svc, 'mssql')
+      await run(svc, source.id, 'DROP TABLE IF EXISTS shop.copy_names')
+      await run(svc, source.id, "CREATE TABLE shop.copy_names (name text); INSERT INTO shop.copy_names VALUES ('a'), ('b')")
+      await run(svc, target.id, "IF OBJECT_ID('copy_test.copy_names') IS NOT NULL DROP TABLE copy_test.copy_names")
+      await run(svc, target.id, 'CREATE TABLE copy_test.copy_names (id int IDENTITY PRIMARY KEY, name nvarchar(50))')
+      const [r] = await copyTables(svc, source.id, target.id, { tables: [{ schema: 'shop', name: 'copy_names' }], targetSchema: schema, create: false, mode: 'append' })
+      expect(r!.rows).toBe(2)
+      expect(await run(svc, target.id, 'SELECT id, name FROM copy_test.copy_names ORDER BY id')).toEqual([
+        [1, 'a'],
+        [2, 'b'],
+      ])
+      await run(svc, source.id, 'DROP TABLE shop.copy_names')
+      await run(svc, target.id, 'DROP TABLE copy_test.copy_names')
+    } finally {
+      await svc.disconnectAll()
+    }
+  })
+})

@@ -180,9 +180,12 @@ export class MysqlDriver implements DatabaseDriver {
       ;(c.connection as unknown as CallbackConnection).on('error', () => {
         if (this.sessions.get(session) !== c) return
         this.sessions.delete(session)
+        this.serverInTransaction.delete(session)
         this.transactions.dropped(session)
         c.destroy()
       })
+      // A new connection has no transaction, whatever the last one's OK packet said.
+      this.serverInTransaction.delete(session)
       this.sessions.set(session, conn)
     }
     return { conn, release: () => {} }

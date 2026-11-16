@@ -48,6 +48,15 @@ describe('type translation', () => {
     expect(translateTables(tables, 'oracle', 'postgres')[0]!.checks!.map((c) => c.name)).toEqual(['positive'])
   })
 
+  it('drops only checks that call a nondeterministic function, not ones that mention its name', () => {
+    const { tables } = parseDbml(
+      "Table t {\n  id integer [pk]\n  role text\n  uuid text\n  at timestamp\n\n  checks {\n    `role IN ('user','admin')` [name: 'role_ok']\n    `uuid <> ''` [name: 'uuid_set']\n    `\"user\" IS NULL OR role <> 'now()'` [name: 'quoted']\n    `at <= now()` [name: 'past']\n    `role <> current_user` [name: 'not_me']\n    `uuid <> uuid()` [name: 'called']\n  }\n}\n",
+    )
+    for (const to of ['mysql', 'mariadb', 'oracle'] as const) {
+      expect(translateTables(tables, to, 'postgres')[0]!.checks!.map((c) => c.name), to).toEqual(['role_ok', 'uuid_set', 'quoted'])
+    }
+  })
+
   it('leaves the types of the model\'s own database as written', () => {
     expect(translateType('json', 'postgres', 'postgres')).toBe('json')
     expect(translateType('timestamp', 'mysql', 'mysql')).toBe('timestamp')

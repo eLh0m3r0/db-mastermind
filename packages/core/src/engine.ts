@@ -58,6 +58,12 @@ const SESSION_LOCK_TIMEOUT: Partial<Record<ConnectionConfig['driver'], { read: s
   mssql: { read: 'SELECT @@LOCK_TIMEOUT', set: `SET LOCK_TIMEOUT ${GRID_LOCK_TIMEOUT_MS}`, restore: (p) => `SET LOCK_TIMEOUT ${digits(p) ?? -1}` },
 }
 
+/**
+ * canonicalChecks' own probe script, which writes only a temporary table it drops again: it may run on a read-only
+ * connection. Not part of RunScriptOptions, so nothing outside this file can set it.
+ */
+const PROBE = Symbol('check probe')
+
 export interface RunScriptOptions {
   session?: string
   maxRows?: number
@@ -246,6 +252,9 @@ export class DatabaseService {
     const d = entry.driver.dialect
     const out: ({ definition: string; current?: string } | { missingColumn: true } | null)[] = []
     if (driver !== 'postgres' && driver !== 'mysql' && driver !== 'mssql') return items.map(() => null)
+    // A read-only MySQL session refuses even temporary tables (and making it writable for a moment could leak a
+    // writable connection back into the pool).
+    if (driver === 'mysql' && entry.config.readOnly) return items.map(() => null)
     for (const { table, check } of items) {
       try {
         const live = await this.findTable(id, table)
@@ -260,6 +269,12 @@ export class DatabaseService {
         }
         const source = `${live.schema ? `${d.quoteIdent(live.schema)}.` : ''}${d.quoteIdent(live.name)}`
         const model = checkCondition(check, live.columns, d)
+        // On a read-only connection (dbm diff) the probe still writes its temporary table, so the model's condition
+        // must be only a condition: nothing of it may run as a statement of its own.
+        if (entry.config.readOnly && !isReadOnlyCondition(model, driver)) {
+          out.push(null)
+          continue
+        }
         // Names nobody else has: check names are per schema in MySQL and SQL Server, also for temporary tables.
         const tag = Math.random().toString(36).slice(2, 10)
         const [m, c] = [`dbm_m_${tag}`, `dbm_c_${tag}`]
@@ -267,11 +282,11 @@ export class DatabaseService {
         const add = (name: string, condition: string) => `ALTER TABLE ${probe} ADD CONSTRAINT ${name} CHECK (${condition})`
         const script =
           driver === 'postgres'
-            ? ['BEGIN', `CREATE TEMP TABLE ${probe} (LIKE ${source}) ON COMMIT DROP`, add(m, model), ...(twin ? [add(c, twin.expression)] : []), `SELECT conname, pg_get_constraintdef(oid, true) FROM pg_constraint WHERE conrelid = '${probe}'::regclass AND conname IN ('${m}', '${c}')`, 'ROLLBACK']
+            ? [entry.config.readOnly ? 'BEGIN READ WRITE' : 'BEGIN', `CREATE TEMP TABLE ${probe} (LIKE ${source}) ON COMMIT DROP`, add(m, model), ...(twin ? [add(c, twin.expression)] : []), `SELECT conname, pg_get_constraintdef(oid, true) FROM pg_constraint WHERE conrelid = '${probe}'::regclass AND conname IN ('${m}', '${c}')`, 'ROLLBACK']
             : driver === 'mysql'
               ? [`CREATE TEMPORARY TABLE ${probe} LIKE ${source}`, add(m, model), ...(twin ? [add(c, twin.expression)] : []), `SHOW CREATE TABLE ${probe}`, `DROP TEMPORARY TABLE IF EXISTS ${probe}`]
               : [`SELECT TOP 0 * INTO ${probe} FROM ${source}`, add(m, model), ...(twin ? [add(c, twin.expression)] : []), `SELECT name, definition FROM tempdb.sys.check_constraints WHERE name IN ('${m}', '${c}')`, `DROP TABLE ${probe}`]
-        const outcomes = await this.runScript(id, script.join(';\n'), { continueOnError: true })
+        const outcomes = await this.runScript(id, script.join(';\n'), { continueOnError: true, [PROBE]: true } as RunScriptOptions)
         // The model's condition is the second statement after the copy; the last is the clean-up, which always runs.
         // (SQL Server takes the script as one batch: one outcome with a result set per statement that has one.)
         const modelFailed = driver === 'mssql' ? outcomes.find((o) => o.error)?.error : outcomes[driver === 'postgres' ? 2 : 1]?.error
@@ -317,10 +332,11 @@ export class DatabaseService {
   /** Splits and runs a script statement by statement, collecting per-statement outcomes. */
   async runScript(id: string, script: string, options: RunScriptOptions = {}): Promise<StatementOutcome[]> {
     const entry = this.get(id)
+    const probe = (options as { [PROBE]?: true })[PROBE] === true
     // ApplicationIntent=ReadOnly only binds on read replicas, and T-SQL needs no semicolons (`SELECT 1 DELETE …`):
     // a read-only SQL Server connection also runs everything in a transaction that is rolled back.
     // (`readOnly: false` is the guarded inner run.)
-    if (entry.config.readOnly && entry.config.driver === 'mssql' && options.readOnly === undefined) {
+    if (entry.config.readOnly && entry.config.driver === 'mssql' && options.readOnly === undefined && !probe) {
       // Same per-statement error as other read-only connections, without running any of the script.
       if (!fitsReadOnlyTransaction(script, entry.config.driver)) return [{ sql: script, start: 0, end: script.length, error: describeError(new ReadOnlyViolationError()), durationMs: 0 }]
       options = { ...options, readOnly: true }
@@ -361,7 +377,7 @@ export class DatabaseService {
         const started = Date.now()
         try {
           if (entry.config.driver === 'postgres') refusePsqlOnly(statement.text)
-          this.assertAllowed(entry, statement.text)
+          if (!probe) this.assertAllowed(entry, statement.text)
           let text = statement.text
           let params = statements.length === 1 ? options.params : undefined
           if (options.parameterValues && extractParameters(text, entry.config.driver).length) {
@@ -370,7 +386,7 @@ export class DatabaseService {
             params = bound.params
           }
           // MySQL, MariaDB and Oracle commit an open transaction before DDL: worth saying, the user expected to decide.
-          const watch = editorSession && ['ddl', 'other'].includes(classifyStatement(statement.text)) && !/\b(COMMIT|ROLLBACK|ABORT|PREPARE\s+TRANSACTION)\b/i.test(stripLiterals(statement.text)) ? await this.transactionState(id, editorSession) : undefined
+          const watch = editorSession && ['ddl', 'other'].includes(classifyStatement(statement.text)) && !/\b(COMMIT|ROLLBACK|ABORT|PREPARE\s+TRANSACTION)\b/i.test(stripLiterals(statement.text, entry.config.driver)) ? await this.transactionState(id, editorSession) : undefined
           if (manual && opensTransaction(statement.text, entry.config.driver) && (watch ?? (await this.transactionState(id, editorSession!))) === 'none') {
             await entry.driver.execute(entry.driver.dialect.begin, { session: editorSession })
           }
@@ -537,6 +553,16 @@ export class DatabaseService {
    */
   private async readIn(id: string, entry: OpenConnection, session: string | undefined, sql: string, params: unknown[], signal?: AbortSignal): Promise<QueryResult[]> {
     if (!session) return entry.driver.execute(sql, { params, signal })
+    if (entry.config.driver === 'duckdb' && (await this.transactionState(id, session)) === 'open') {
+      // DuckDB has no savepoints, and any error or interrupt aborts the whole transaction. The read is tried first on
+      // a connection of its own (committed rows; it may be cancelled there), and only then run on the session, in
+      // line with saves and never interrupted.
+      // (A table only the transaction has created is not there yet: a catalog error doesn't abort a transaction.)
+      await entry.driver.execute(sql, { params, signal }).catch((err: unknown) => {
+        if (signal?.aborted || !/^Catalog Error/.test((err as Error)?.message ?? '')) throw err
+      })
+      return this.serialized(id, session, () => entry.driver.execute(sql, { params, session }))
+    }
     const guarded = entry.config.driver === 'postgres' && entry.serverInfo?.product === 'PostgreSQL' && (await this.transactionState(id, session)) === 'open'
     if (!guarded) return entry.driver.execute(sql, { params, signal, session })
     // In line with saves and Commit on this session, and not cancelled (a cancel hits the session's process, which

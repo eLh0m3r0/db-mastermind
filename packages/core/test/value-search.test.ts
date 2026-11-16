@@ -38,6 +38,30 @@ describe('value search', () => {
     expect(plan('Alice', 'exact', 'mssql')).toEqual(['code eq'])
   })
 
+  it('compares a number only with columns whose type can hold it (review finding)', () => {
+    const t = { columns: [col('small', 'smallint'), col('n', 'integer'), col('big', 'bigint'), col('price', 'numeric(5,2)'), col('d', 'double precision'), col('tiny', 'tinyint'), col('u', 'int unsigned')] }
+    const cols = (text: string, driver: 'postgres' | 'mssql' | 'mysql' = 'postgres') => valueSearchConditions(t, text, 'exact', driver).map((c) => c.column)
+    expect(cols('4500012345')).toEqual(['big', 'd'])
+    expect(cols('12.50')).toEqual(['price', 'd'])
+    expect(cols('12.00')).toEqual(['small', 'n', 'big', 'price', 'd', 'tiny', 'u'])
+    expect(cols('40000')).toEqual(['n', 'big', 'd', 'u'])
+    expect(cols('-5', 'mssql')).toEqual(['small', 'n', 'big', 'price', 'd'])
+    expect(cols('200', 'mysql')).toEqual(['small', 'n', 'big', 'price', 'd', 'u'])
+  })
+
+  it('a date is not compared with time columns; SQL Server timestamp is a rowversion', () => {
+    const t = { columns: [col('at', 'time without time zone'), col('on', 'date'), col('ts', 'timestamp(3) with time zone'), col('rv', 'timestamp')] }
+    expect(valueSearchConditions(t, '2024-01-15', 'exact', 'postgres').map((c) => `${c.column} ${c.operator}`)).toEqual(['on eq', 'ts day', 'rv day'])
+    expect(valueSearchConditions(t, '2024-01-15', 'exact', 'mssql').map((c) => c.column)).toEqual(['on', 'ts'])
+  })
+
+  it('reads the type name, not its enum labels or a user type name (review finding)', () => {
+    const t = { columns: [col('status', "enum('pending','printed','shipped')"), col('role', 'user_role_enum'), col('pts', "set('int','text')")] }
+    expect(valueSearchConditions(t, 'printed', 'exact', 'mysql').map((c) => c.column)).toEqual(['status', 'pts'])
+    expect(valueSearchConditions(t, 'admin', 'exact', 'postgres').map((c) => c.column)).toEqual(['status', 'pts'])
+    expect(valueSearchConditions({ columns: [col('role', 'user_role_enum')] }, 'admin', 'exact', 'postgres')).toEqual([])
+  })
+
   it('names the columns that hold the value in the rows found', () => {
     const conditions = valueSearchConditions(table, '1042', 'exact', 'postgres')
     const fields = table.columns.map((c) => ({ name: c.name }))

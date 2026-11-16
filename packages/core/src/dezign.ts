@@ -83,6 +83,9 @@ export interface DezignSqlObject {
   sequence?: DezignSequenceSettings
 }
 
+/** A trigger's id in the model: its own (unique per table only in older files) and its table's. */
+export const dezignTriggerId = (entityId: string, triggerId: string) => `${triggerId}@${entityId}`
+
 /** What DeZign keeps of a sequence (empty: the database's default). */
 export interface DezignSequenceSettings {
   increment?: string
@@ -614,7 +617,8 @@ export function readDezign(binary: string, options: ReadDezignOptions = {}): Dez
     const table = qualified(ent)
     for (const trigger of kids(kid(ent, 'TRIGGERS'))) {
       const sql = code(trigger, { triggername: text(trigger, 'NAME'), name: text(trigger, 'NAME'), tablename: table.full, table: table.full })
-      if (sql) sqlObjects.push({ kind: 'trigger', name: text(trigger, 'NAME'), schema: table.schema, table: table.name, sql, ...(text(trigger, 'ID') ? { id: text(trigger, 'ID'), code: text(trigger, 'CODE').replace(/\r\n?/g, '\n') } : {}) })
+      // Files before DeZign 14 number triggers per table (two tables each have trigger 1): the id names its table's too.
+      if (sql) sqlObjects.push({ kind: 'trigger', name: text(trigger, 'NAME'), schema: table.schema, table: table.name, sql, ...(text(trigger, 'ID') ? { id: dezignTriggerId(text(ent, 'ID'), text(trigger, 'ID')), code: text(trigger, 'CODE').replace(/\r\n?/g, '\n') } : {}) })
     }
   }
 
@@ -690,6 +694,7 @@ const PROJECT_SECTIONS: [folder: string, element: string][] = [
   ['textareas', 'TEXTAREAS'],
   ['groupboxes', 'GROUPBOXES'],
   ['relationships', 'RELATIONSHIPS'],
+  ['user defined properties', 'USERDEFINEDPROPERTIES'],
 ]
 
 /**

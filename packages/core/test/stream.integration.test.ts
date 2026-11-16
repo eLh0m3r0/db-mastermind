@@ -33,6 +33,11 @@ for (const engine of engines) {
         }
         const [after] = await svc.runScript(config.id, `SELECT COUNT(*) FROM ${orders}`)
         expect(Number(after!.results![0]!.rows[0]![0])).toBe(120)
+
+        // An empty result still names its columns (dbm query writes the header, or [] for JSON).
+        const empty: { fields: string[]; rows: number }[] = []
+        for await (const batch of svc.streamQuery(config.id, `SELECT id, total FROM ${orders} WHERE id < 0`)) empty.push({ fields: batch.fields.map((f) => f.name.toLowerCase()), rows: batch.rows.length })
+        expect(empty).toEqual([{ fields: ['id', 'total'], rows: 0 }])
       } finally {
         await svc.disconnectAll()
       }

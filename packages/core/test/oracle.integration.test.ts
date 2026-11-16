@@ -209,12 +209,17 @@ describe.skipIf(skip)('oracle', () => {
       break
     }
     expect(Number((await run('SELECT COUNT(*) FROM orders')).results![0]!.rows[0]![0])).toBe(120)
+    const empty: string[][] = []
+    for await (const b of svc.streamQuery('ora', 'SELECT id, total FROM orders WHERE id < 0')) empty.push(b.fields.map((f) => f.name.toLowerCase()))
+    expect(empty).toEqual([['id', 'total']])
   })
 
   it('lists functions and procedures and gives their definitions, which run again', async () => {
     await svc.runScript('ora', 'CREATE OR REPLACE FUNCTION add_one(x NUMBER) RETURN NUMBER IS\nBEGIN\n  RETURN x + 1;\nEND;\n/')
     await svc.runScript('ora', 'CREATE OR REPLACE PROCEDURE touch_it(n NUMBER) IS\n  m NUMBER;\nBEGIN\n  m := n;\nEND;\n/')
-    await run(`CREATE OR REPLACE VIEW big_orders AS SELECT id, total FROM orders WHERE total > 1000`)
+    // Longer than ALL_VIEWS.TEXT_VC's 4,000 characters (review finding).
+    const excluded = Array.from({ length: 1200 }, (_, i) => -(i + 1)).join(', ')
+    await run(`CREATE OR REPLACE VIEW big_orders AS SELECT id, total FROM orders WHERE total > 1000 AND id NOT IN (${excluded})`)
     const snapshot = await svc.schema('ora', true)
     expect(snapshot.routines.map((r) => `${r.kind}:${r.name}`)).toEqual(expect.arrayContaining(['function:ADD_ONE', 'procedure:TOUCH_IT']))
     for (const object of [
@@ -224,6 +229,7 @@ describe.skipIf(skip)('oracle', () => {
     ]) {
       const { sql } = await objectDefinition(svc, 'ora', object)
       expect(sql).toMatch(/^CREATE OR REPLACE /)
+      if (object.kind === 'view') expect(sql).toContain('-1200)')
       // Qualified with its owner, so running it as another user changes this one (review finding).
       expect(sql).toContain(`"SHOP"."${object.name}"`)
       const failed = (await svc.runScript('ora', sql)).find((o) => o.error)

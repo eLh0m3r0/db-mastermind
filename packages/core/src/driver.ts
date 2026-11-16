@@ -49,6 +49,7 @@ export interface StreamOptions {
   batchSize?: number
 }
 
+/** A stream yields at least one batch for a result with columns, so an empty result still names its columns. */
 export interface StreamBatch {
   fields: ResultField[]
   rows: CellValue[][]
@@ -97,10 +98,12 @@ export async function* batchesFromEvents(source: EventRowSource, batchSize: numb
       notify()
     },
   })
+  let yielded = false
   try {
     for (;;) {
       if (failure) throw failure
-      if (queue.length >= batchSize || (done && queue.length)) {
+      if (queue.length >= batchSize || (done && (queue.length || (!yielded && fields.length)))) {
+        yielded = true
         const rows = queue.splice(0, batchSize)
         if (paused && queue.length < batchSize) {
           paused = false

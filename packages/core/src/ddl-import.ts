@@ -158,25 +158,53 @@ const JOIN = '__dbm__'
 const AFTER_TYPE = /^(NOT|NULL|DEFAULT|PRIMARY|REFERENCES|UNIQUE|CHECK|CONSTRAINT|COLLATE|IDENTITY|GENERATED|AUTO_INCREMENT|AUTOINCREMENT|COMMENT|CHARACTER\s+SET|CHARSET|ON\s+UPDATE|ENCODE|SPARSE|ROWGUIDCOL|FILESTREAM|MASKED|AS|WITH(?!\s+(?:LOCAL\s+)?TIME\s+ZONE)|INVISIBLE|VISIBLE|STORAGE|COLUMN_FORMAT|SRID)\b/i
 const TABLE_PART = /^(CONSTRAINT|PRIMARY|FOREIGN|UNIQUE|KEY|INDEX|CHECK|FULLTEXT|SPATIAL|PERIOD|EXCLUDE|LIKE)\b/i
 
-/** Splits at commas outside parentheses and quotes. */
+/** Where a quoted string, quoted name or comment that starts at `i` ends (exclusive), or -1 when none starts there. */
+function skipQuoted(text: string, i: number): number {
+  const ch = text[i]
+  if (ch === '-' && text[i + 1] === '-') {
+    const end = text.indexOf('\n', i)
+    return end === -1 ? text.length : end
+  }
+  if (ch === '/' && text[i + 1] === '*') {
+    const end = text.indexOf('*/', i + 2)
+    return end === -1 ? text.length : end + 2
+  }
+  if (ch !== "'" && ch !== '"') return -1
+  for (let j = i + 1; ; ) {
+    const end = text.indexOf(ch, j)
+    if (end === -1) return text.length
+    if (text[end + 1] !== ch) return end + 1
+    j = end + 2
+  }
+}
+
+const isComment = (text: string, i: number) => (text[i] === '-' && text[i + 1] === '-') || (text[i] === '/' && text[i + 1] === '*')
+
+/**
+ * Splits at commas outside parentheses, quotes and comments. Comments are left out of the parts: a part must start
+ * with its column or constraint, and a comma in a comment separates nothing.
+ */
 function topLevel(body: string): string[] {
   const out: string[] = []
   let depth = 0
-  let quote = ''
-  let start = 0
-  for (let i = 0; i < body.length; i++) {
-    const ch = body[i]!
-    if (quote) {
-      if (ch === quote) quote = ''
-    } else if (ch === "'" || ch === '"') quote = ch
-    else if (ch === '(') depth++
-    else if (ch === ')') depth--
-    else if (ch === ',' && depth === 0) {
-      out.push(body.slice(start, i))
-      start = i + 1
+  let part = ''
+  for (let i = 0; i < body.length; ) {
+    const skip = skipQuoted(body, i)
+    if (skip >= 0) {
+      part += isComment(body, i) ? ' ' : body.slice(i, skip)
+      i = skip
+      continue
     }
+    const ch = body[i]!
+    if (ch === '(') depth++
+    else if (ch === ')') depth--
+    if (ch === ',' && depth === 0) {
+      out.push(part)
+      part = ''
+    } else part += ch
+    i++
   }
-  out.push(body.slice(start))
+  out.push(part)
   return out.map((x) => x.trim()).filter(Boolean)
 }
 
@@ -189,6 +217,11 @@ function declaredColumn(definition: string): (DeclaredColumn & { name: string })
   let end = rest.length
   for (let i = 0; i < rest.length; i++) {
     const ch = rest[i]!
+    const skip = ch === "'" ? skipQuoted(rest, i) : -1
+    if (skip >= 0) {
+      i = skip - 1
+      continue
+    }
     if (ch === '(') depth++
     else if (ch === ')') depth--
     else if (depth === 0 && /\s/.test(ch) && AFTER_TYPE.test(rest.slice(i + 1).trimStart())) {
@@ -196,16 +229,17 @@ function declaredColumn(definition: string): (DeclaredColumn & { name: string })
       break
     }
   }
-  let type = rest
-    .slice(0, end)
-    .replace(/"/g, '')
-    .replace(/\s+/g, ' ')
-    .replace(/\s*\(\s*/g, '(')
-    .replace(/\s*,\s*/g, ',')
-    .replace(/\s*\)/g, ')')
-    .replace(/\b(unsigned|zerofill)\b/gi, '')
-    .trim()
-    .toLowerCase()
+  // Spelled one way outside literals; ENUM and SET labels stay exactly as written.
+  let type = outsideStrings(rest.slice(0, end), (code) =>
+    code
+      .replace(/"/g, '')
+      .replace(/\s+/g, ' ')
+      .replace(/\s*\(\s*/g, '(')
+      .replace(/\s*,\s*/g, ',')
+      .replace(/\s*\)/g, ')')
+      .replace(/\b(unsigned|zerofill)\b/gi, '')
+      .toLowerCase(),
+  ).trim()
   // Display widths of MySQL integers say nothing about the type (tinyint(1) is how MySQL spells a flag).
   type = type.replace(/\b(smallint|mediumint|int|integer|bigint)\(\d+\)/g, '$1')
   const after = rest.slice(end)
@@ -311,14 +345,10 @@ function declaredTables(script: string): DeclaredTable[] {
     const m = new RegExp(`^\\s*CREATE\\s+(?:UNLOGGED\\s+|TEMP(?:ORARY)?\\s+)?TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(${NAME})\\s*\\(`, 'i').exec(sql)
     if (!m) continue
     const parts = m[1]!.match(/"[^"]+"|[\w$]+/g)!.map(unquote)
-    let depth = 1
-    let i = m[0].length
-    for (; i < sql.length && depth > 0; i++) {
-      if (sql[i] === '(') depth++
-      else if (sql[i] === ')') depth--
-    }
+    const body = tableBody(sql, m)
+    const i = body.end + 1
     const columns = new Map<string, DeclaredColumn>()
-    for (const part of topLevel(sql.slice(m[0].length, i - 1))) {
+    for (const part of topLevel(sql.slice(body.start, body.end))) {
       if (TABLE_PART.test(part)) continue
       const column = declaredColumn(part)
       if (column) columns.set(column.name.toLowerCase(), column)
@@ -365,13 +395,19 @@ const actions = (text: string) => ({
 })
 const CREATE_TABLE = new RegExp(`^\\s*CREATE\\s+(?:UNLOGGED\\s+|TEMP(?:ORARY)?\\s+)?TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(${NAME})\\s*\\(`, 'i')
 
-/** The body of a CREATE TABLE statement between its outer parentheses. */
+/** The body of a CREATE TABLE statement between its outer parentheses (parentheses in literals and comments don't count). */
 function tableBody(sql: string, m: RegExpExecArray): { start: number; end: number } {
   let depth = 1
   let i = m[0].length
-  for (; i < sql.length && depth > 0; i++) {
+  while (i < sql.length && depth > 0) {
+    const skip = skipQuoted(sql, i)
+    if (skip >= 0) {
+      i = skip
+      continue
+    }
     if (sql[i] === '(') depth++
     else if (sql[i] === ')') depth--
+    i++
   }
   return { start: m[0].length, end: i - 1 }
 }

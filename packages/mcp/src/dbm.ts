@@ -263,17 +263,24 @@ async function diff(o: Options, db: DatabaseService, io: DbmIo): Promise<number>
   await db.connect(config)
   const live = await db.schema(config.id, true)
   const model = readModel(o.positional[0], live.defaultSchema, config.driver)
-  const checkChanged = await findChangedChecks(model.tables, live.tables, (items) => db.canonicalChecks(config.id, items)).catch(() => undefined)
+  // A check whose condition the database can't compare (no probe on this engine or connection) may still differ.
+  let uncompared = 0
+  const checkChanged = await findChangedChecks(model.tables, live.tables, async (items) => {
+    const answers = await db.canonicalChecks(config.id, items)
+    uncompared = answers.filter((a) => a === null).length
+    return answers
+  }).catch(() => undefined)
+  const note = uncompared ? `(${uncompared} check condition${uncompared === 1 ? '' : 's'} with the same name in both could not be compared here.)\n` : ''
   const changes = compareSchemas(model.tables, live.tables, { keepExtra: !o.dropExtra, model: true, checkChanged })
   if (!changes.length) {
-    io.stderr('The database matches the model.\n')
+    io.stderr(`The database matches the model.\n${note}`)
     return 0
   }
   const dialect = getDialect(config.driver)
   const script = migrationScript(generateMigration(changes, dialect, live.tables), dialect)
   if (o.out) writeFileSync(o.out, script, 'utf8')
   else await io.stdout(script)
-  io.stderr(`${changes.length} change${changes.length === 1 ? '' : 's'} to make the database match the model${o.out ? ` → ${o.out}` : ''}\n`)
+  io.stderr(`${changes.length} change${changes.length === 1 ? '' : 's'} to make the database match the model${o.out ? ` → ${o.out}` : ''}\n${note}`)
   return 2
 }
 

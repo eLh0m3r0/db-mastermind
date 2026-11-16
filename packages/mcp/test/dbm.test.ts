@@ -55,6 +55,13 @@ describe('dbm query', () => {
     expect(readFileSync(out, 'utf8')).toBe('name\nAlice\nBob\n')
   })
 
+  it('an empty result still writes its header, or an empty JSON array (review finding)', async () => {
+    const empty = 'SELECT id, name FROM customers WHERE id < 0'
+    expect((await dbm('query', '--url', url, empty)).stdout).toBe('id,name\n')
+    expect(JSON.parse((await dbm('query', '--url', url, '--format', 'json', empty)).stdout)).toEqual([])
+    expect((await dbm('query', '--url', url, '--format', 'markdown', empty)).stdout).toBe('| id | name |\n| --- | --- |\n')
+  })
+
   it('is read-only unless --allow-writes', async () => {
     const refused = await dbm('query', '--url', url, "INSERT INTO customers (name) VALUES ('Eve')")
     expect(refused.code).toBe(1)

@@ -288,9 +288,12 @@ export class OracleDriver implements DatabaseDriver {
       if (!rs) return
       try {
         const fields = rs.metaData.map((m) => ({ name: m.name, dataType: m.dbTypeName?.toLowerCase() }))
-        for (;;) {
+        for (let first = true; ; first = false) {
           const rows = await rs.getRows(options.batchSize ?? 5000)
-          if (!rows.length) return
+          if (!rows.length) {
+            if (first && fields.length) yield { fields, rows: [] }
+            return
+          }
           yield { fields, rows: rows.map((row) => row.map(normalizeValue)) }
         }
       } finally {

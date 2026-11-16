@@ -49,6 +49,32 @@ describe('DDL import', () => {
     expect([t('items').schema, t('items').columns.map((c) => c.dataType), t('items').columns[0]!.isIdentity]).toEqual([undefined, ['int', 'tinyint(1)', 'text', 'varchar(50)'], true])
   })
 
+  it('reads comments inside a CREATE TABLE body (review finding)', async () => {
+    const { tables, skipped } = await tablesFromDdl(`
+      CREATE TABLE customers (id int PRIMARY KEY);
+      CREATE TABLE orders (
+        id int PRIMARY KEY, -- the key, see (docs
+        customer_id int REFERENCES customers(id) ON DELETE CASCADE, /* who, ordered, it */
+        note varchar(40) -- free text, optional
+      );
+    `)
+    expect(skipped).toEqual([])
+    const orders = tables.find((t) => t.name === 'orders')!
+    expect(orders.columns.map((c) => [c.name, c.dataType])).toEqual([['id', 'int'], ['customer_id', 'int'], ['note', 'varchar(40)']])
+    expect(orders.foreignKeys).toMatchObject([{ columns: ['customer_id'], refTable: 'customers', onDelete: 'CASCADE' }])
+  })
+
+  it('keeps ENUM and SET labels as written, and parentheses in literals in their place (review findings)', async () => {
+    const { tables, skipped } = await tablesFromDdl(
+      "CREATE TABLE `tickets` (`id` int NOT NULL, `status` enum('Open','In Progress','Closed (won)') NOT NULL, `tags` set('A','b') DEFAULT NULL, `step` int COMMENT '1) new 2) paid', `note` varchar(20) COMMENT 'Note', PRIMARY KEY (`id`)) ENGINE=InnoDB COMMENT='Tickets';",
+    )
+    expect(skipped).toEqual([])
+    const t = tables[0]!
+    expect(t.columns.map((c) => c.dataType)).toEqual(['int', "enum('Open','In Progress','Closed (won)')", "set('A','b')", 'int', 'varchar(20)'])
+    expect(t.columns.find((c) => c.name === 'note')!.comment).toBe('Note')
+    expect(t.comment).toBe('Tickets')
+  })
+
   it('reads a SQL Server script as sqlpackage writes it', async () => {
     const { tables, skipped } = await tablesFromDdl(`CREATE TABLE [dbo].[shift] (
     [id]      INT                IDENTITY (1, 1) NOT NULL,

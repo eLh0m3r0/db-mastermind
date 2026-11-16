@@ -321,6 +321,26 @@ for (const c of cases) {
           await svc.releaseSession(id, tab)
         })
       }
+      if (c.engine === 'duckdb') {
+        it('a failing or cancelled read in a table tab keeps its pending changes (no savepoints)', async () => {
+          const tab = 'table-read-tab'
+          const ref = { name: 'tx_grid' }
+          await svc.applyChanges(id, ref, [{ type: 'insert', values: { id: '50', v: '50' } }], { session: tab })
+          const raw = (sql: string) => ({ kind: 'raw', id: 'f', sql }) as never
+          // A conversion error aborts a DuckDB transaction.
+          await expect(svc.fetchTable(id, { table: ref, limit: 10, session: tab, filter: raw("v = 'x'") })).rejects.toThrow(/Conversion/)
+          expect(await svc.transactionState(id, tab)).toBe('open')
+          // So does an interrupt: a superseded load is cancelled.
+          const abort = new AbortController()
+          const slow = svc.countTable(id, { table: ref, session: tab, signal: abort.signal, filter: raw('(SELECT count(*) FROM range(3000000000)) > 0') })
+          setTimeout(() => abort.abort(), 100)
+          await expect(slow).rejects.toThrow()
+          expect(await svc.transactionState(id, tab)).toBe('open')
+          expect((await svc.fetchTable(id, { table: ref, limit: 100, session: tab })).result.rows.some((r) => String(r[0]) === '50')).toBe(true)
+          expect(await svc.endTransaction(id, tab, 'rollback')).toBe('none')
+          await svc.releaseSession(id, tab)
+        })
+      }
     }
 
     if (c.engine === 'postgres') {

@@ -138,9 +138,12 @@ export class DuckDBDriver implements DatabaseDriver {
       const types = result.columnTypes().map(String)
       const fields = result.columnNames().map((name, i) => ({ name, dataType: types[i] }))
       // DuckDB hands out vectors of ~2048 rows; that is the batch.
-      for (;;) {
+      for (let first = true; ; first = false) {
         const chunk = await result.fetchChunk()
-        if (!chunk || chunk.rowCount === 0) return
+        if (!chunk || chunk.rowCount === 0) {
+          if (first && fields.length) yield { fields, rows: [] }
+          return
+        }
         yield { fields, rows: chunk.convertRows(duckdb.JsonDuckDBValueConverter).map((r) => r.map((v) => normalizeValue(v) as CellValue)) }
       }
     } catch (err) {

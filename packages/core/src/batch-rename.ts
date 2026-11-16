@@ -26,7 +26,7 @@ export interface BatchRename {
  * bare or in double quotes; text in single quotes, comments and function names stay as they are.
  */
 export const renameInCondition = (text: string, to: (name: string) => string | undefined) =>
-  text.replace(/'(?:[^']|'')*'|--[^\n]*|\/\*[\s\S]*?\*\/|"[^"]*"|[A-Za-z_][\w$]*(?!\s*\()/g, (w) => {
+  text.replace(/'(?:[^']|'')*'|--[^\n]*|\/\*[\s\S]*?\*\/|"[^"]*"|(?<![\w$])[A-Za-z_][\w$]*(?![\w$]|\s*\()/g, (w) => {
     if (w.startsWith("'") || w.startsWith('--') || w.startsWith('/*')) return w
     if (w.startsWith('"')) {
       const name = to(w.slice(1, -1))

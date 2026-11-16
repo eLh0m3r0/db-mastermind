@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { copyFile, mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { basename, dirname, extname, join, relative } from 'node:path'
+import { basename, dirname, extname, join, relative, sep } from 'node:path'
 import { app } from 'electron'
 import { archiveDezignVersion, assembleDezignProject, dezignAsFolder, dezignDomainsNote, dezignDomainsOfModel, dezignDatabaseFor, dezignObjectEdits, listDezignVersions, newDezignProject, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '@dbmastermind/core'
 import type { DezignSaveOutcome, DezignSaveRequest, ModelExportLayout, ModelVersion, OpenedModelFile } from '@shared/api'
@@ -11,17 +11,25 @@ import { paletteFill, paletteIndex } from './palette'
 const NODE = { width: 240, header: 32, row: 22 }
 const isProject = (path: string) => extname(path).toLowerCase() === '.dezproj'
 
-/** The parts of a folder project the model needs; archived versions (hundreds of MB) are left alone. */
+/** A path inside a folder project as core names it: `/` between folders on every system. */
+const projectPath = (path: string) => path.split(sep).join('/')
+/** The same file whatever separators a path was written with (core's results against the files read here). */
+const sameFile = (path: string) => path.replace(/[\\/]+/g, '/')
+
+/**
+ * The parts of a folder project: settings, dictionary header and display preferences, the dictionary, diagrams and
+ * labels (an archived version needs all of them). Archived versions (hundreds of MB) are left alone.
+ */
 async function projectFiles(projectFile: string): Promise<DezignFile[]> {
   const dir = dirname(projectFile)
   const paths: string[] = []
   for (const name of await readdir(dir)) {
-    if (extname(name).toLowerCase() === '.dds' || name === basename(projectFile)) paths.push(name)
+    if (['.dds', '.ddp'].includes(extname(name).toLowerCase()) || name === basename(projectFile)) paths.push(name)
   }
   for (const name of await readdir(dir, { withFileTypes: true })) {
-    if (!name.isDirectory() || !['data dictionary', 'diagrams'].includes(name.name.toLowerCase())) continue
+    if (!name.isDirectory() || !['data dictionary', 'diagrams', 'labels'].includes(name.name.toLowerCase())) continue
     for (const entry of await readdir(join(dir, name.name), { recursive: true, withFileTypes: true })) {
-      if (entry.isFile() && extname(entry.name).toLowerCase() === '.xml') paths.push(relative(dir, join(entry.parentPath, entry.name)))
+      if (entry.isFile() && extname(entry.name).toLowerCase() === '.xml') paths.push(projectPath(relative(dir, join(entry.parentPath, entry.name))))
     }
   }
   const out: DezignFile[] = []
@@ -147,9 +155,11 @@ export async function saveDezignModel(request: DezignSaveRequest): Promise<Dezig
 
   const dir = dirname(path)
   const backup = backupFolder(path)
-  const existing = new Set(files.map((f) => f.path))
+  // (Compared whatever the separators: a file taken for a new one would be deleted, not put back, after a failure.)
+  const existingFiles = new Set(files.map((f) => sameFile(f.path)))
+  const existed = (rel: string) => existingFiles.has(sameFile(rel))
   for (const rel of [...result.files.map((f) => f.path), ...result.deleted]) {
-    if (!existing.has(rel)) continue
+    if (!existed(rel)) continue
     await mkdir(dirname(join(backup, rel)), { recursive: true })
     await copyFile(join(dir, rel), join(backup, rel))
   }
@@ -176,7 +186,7 @@ export async function saveDezignModel(request: DezignSaveRequest): Promise<Dezig
     const lost: string[] = []
     for (const rel of touched) {
       try {
-        if (existing.has(rel)) await copyFile(join(backup, rel), join(dir, rel))
+        if (existed(rel)) await copyFile(join(backup, rel), join(dir, rel))
         else await rm(join(dir, rel), { force: true })
       } catch {
         lost.push(rel)
