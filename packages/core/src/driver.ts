@@ -216,3 +216,11 @@ export class ReadOnlyViolationError extends Error {
 export function elapsed(start: bigint): number {
   return Math.round(Number(process.hrtime.bigint() - start) / 1e5) / 10
 }
+
+/**
+ * Sessions core opens and releases within one call (read-only AI runs, multi-statement scripts, copies, EXPLAIN):
+ * drivers lend them a pooled connection. Editor tabs keep theirs until closed and get one outside the pool.
+ */
+export function isShortLivedSession(session: string): boolean {
+  return /^(readonly|script|copy|explain)-/.test(session)
+}

@@ -3,7 +3,7 @@ import { lockRowsFirst } from '../mutations.js'
 import oracledb, { type Connection, type Metadata, type Pool } from 'oracledb'
 import { oracleDialect } from '../dialect.js'
 import { classifyStatement } from '../sql-split.js'
-import { ConnectionLostError, elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
+import { ConnectionLostError, elapsed, isShortLivedSession, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import { openSshTunnel, type SshTunnel } from '../ssh.js'
 import type { ConnectionConfig, QueryOptions, QueryResult, SchemaSnapshot, ServerInfo, TableInfo, TransactionState } from '../types.js'
@@ -56,6 +56,7 @@ export class OracleDriver implements DatabaseDriver {
   private pool?: Pool
   private tunnel?: SshTunnel
   private sessions = new Map<string, Connection>()
+  private connectString?: string
   /** Sessions where the user started a transaction (SET TRANSACTION); others auto-commit like DBeaver/SQL Developer's default. */
   private manualTx = new Set<string>()
 
@@ -74,6 +75,7 @@ export class OracleDriver implements DatabaseDriver {
       ? String(this.config.options.connectString)
       : `${this.config.ssl && this.config.ssl.mode !== 'disable' ? 'tcps://' : ''}${host}:${port}/${this.config.database || 'FREEPDB1'}`
     const readOnly = this.config.readOnly
+    this.connectString = connectString
     this.pool = await oracledb.createPool({
       user: this.config.user,
       password: this.config.password,
@@ -114,7 +116,7 @@ export class OracleDriver implements DatabaseDriver {
     }
     let conn = this.sessions.get(session)
     if (!conn) {
-      conn = await this.activePool.getConnection()
+      conn = isShortLivedSession(session) ? await this.activePool.getConnection() : await this.sessionConnection()
       this.sessions.set(session, conn)
       // Server activity names sessions "sid,serial#"; reading v$session needs the same privilege activity does.
       const r = await conn.execute<[string]>(`SELECT sid || ',' || serial# FROM v$session WHERE sid = SYS_CONTEXT('USERENV', 'SID')`, [], { outFormat: oracledb.OUT_FORMAT_ARRAY }).catch(() => undefined)
@@ -122,6 +124,23 @@ export class OracleDriver implements DatabaseDriver {
       if (id) this.sids.set(session, String(id))
     }
     return { conn, release: async () => {} }
+  }
+
+  /**
+   * An editor tab keeps its connection until it closes: a standalone one, set up like the pool's, so nine tabs never
+   * starve the 6-connection pool the grid and explorer use (they used to wait for it forever).
+   */
+  private async sessionConnection(): Promise<Connection> {
+    if (!this.pool) throw new Error('Not connected')
+    const conn = await oracledb.getConnection({ user: this.config.user, password: this.config.password, connectString: this.connectString ?? "", connectTimeout: 15 })
+    try {
+      for (const sql of SESSION_SETUP) await conn.execute(sql)
+      if (this.config.readOnly) await conn.execute('SET TRANSACTION READ ONLY')
+    } catch (err) {
+      await conn.close().catch(() => {})
+      throw err
+    }
+    return conn
   }
 
   /** Statements of other sessions auto-commit, so only a transaction the user started can be open. */

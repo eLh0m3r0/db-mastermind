@@ -9,6 +9,7 @@ import {
   batchesFromEvents,
   ConnectionLostError,
   elapsed,
+  isShortLivedSession,
   QueryCancelledError,
   SessionTransactions,
   type DatabaseDriver,
@@ -60,6 +61,7 @@ export class MysqlDriver implements DatabaseDriver {
   private pool?: Pool
   private tunnel?: SshTunnel
   private sessions = new Map<string, PoolConnection>()
+  private sessionPool?: Pool
 
   constructor(readonly config: ConnectionConfig) {
     this.dialect = config.driver === 'mariadb' ? mariadbDialect : mysqlDialect
@@ -71,7 +73,7 @@ export class MysqlDriver implements DatabaseDriver {
     if (this.config.ssh?.enabled) this.tunnel = await openSshTunnel(this.config.ssh, host, port)
     const tunnel = this.tunnel
     const mode = this.config.ssl?.mode ?? 'disable'
-    const makePool = (tls: boolean) =>
+    const makePool = (tls: boolean, connectionLimit = 6) =>
       mysql.createPool({
         // Through a tunnel the socket goes to its local end while mysql2 keeps the real host name, which TLS
         // verification (verify-full) checks the certificate against.
@@ -91,7 +93,7 @@ export class MysqlDriver implements DatabaseDriver {
                 key: this.config.ssl?.key || undefined,
               }
             : undefined,
-        connectionLimit: 6,
+        connectionLimit,
         connectTimeout: 15_000,
         dateStrings: true,
         supportBigNumbers: true,
@@ -115,11 +117,13 @@ export class MysqlDriver implements DatabaseDriver {
           return value
         },
       })
-    this.pool = makePool(true)
-    if (this.config.readOnly) {
-      // Raw (callback) connections: enforce read-only before the pool hands them out.
-      this.pool.pool.on('connection', (conn) => conn.query('SET SESSION TRANSACTION READ ONLY'))
+    // Raw (callback) connections: enforce read-only before a pool hands them out.
+    const guard = (pool: Pool) => {
+      if (this.config.readOnly) pool.pool.on('connection', (conn) => conn.query('SET SESSION TRANSACTION READ ONLY'))
+      return pool
     }
+    let tlsUsed = true
+    this.pool = guard(makePool(true))
     try {
       const conn = await this.pool.getConnection()
       try {
@@ -135,12 +139,14 @@ export class MysqlDriver implements DatabaseDriver {
     } catch (err) {
       if (this.config.ssl?.mode !== 'prefer' || !noTlsOnServer(err)) throw err
       await this.pool.end().catch(() => {})
-      this.pool = makePool(false)
-      if (this.config.readOnly)
-        this.pool.pool.on('connection', (conn) => conn.query('SET SESSION TRANSACTION READ ONLY'))
+      tlsUsed = false
+      this.pool = guard(makePool(false))
       const conn = await this.pool.getConnection()
       conn.release()
     }
+    // Editor tabs keep a connection until they close: from a pool without a limit, so nine tabs never starve the
+    // grid, the explorer or KILL QUERY (they waited forever on the 6-connection pool).
+    this.sessionPool = guard(makePool(tlsUsed, 0))
   }
 
   async close(): Promise<void> {
@@ -148,6 +154,8 @@ export class MysqlDriver implements DatabaseDriver {
     this.sessions.clear()
     await this.pool?.end()
     this.pool = undefined
+    await this.sessionPool?.end().catch(() => {})
+    this.sessionPool = undefined
     await this.tunnel?.close()
     this.tunnel = undefined
   }
@@ -165,7 +173,8 @@ export class MysqlDriver implements DatabaseDriver {
     this.transactions.check(session)
     let conn = this.sessions.get(session)
     if (!conn) {
-      conn = await this.activePool.getConnection()
+      // Sessions core opens and releases within one call borrow from the bounded pool.
+      conn = isShortLivedSession(session) || !this.sessionPool ? await this.activePool.getConnection() : await this.sessionPool.getConnection()
       const c = conn
       ;(c.connection as unknown as CallbackConnection).on('error', () => {
         if (this.sessions.get(session) !== c) return
@@ -204,7 +213,7 @@ export class MysqlDriver implements DatabaseDriver {
   }
 
   private async killQuery(threadId: number): Promise<void> {
-    await this.activePool.query(`KILL QUERY ${Number(threadId)}`).catch(() => {})
+    await (this.sessionPool ?? this.activePool).query(`KILL QUERY ${Number(threadId)}`).catch(() => {})
   }
 
   private transactions = new SessionTransactions()
