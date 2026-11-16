@@ -143,12 +143,20 @@ export class PostgresDriver implements DatabaseDriver {
     if (!this.clientOptions) throw new Error('Not connected')
     const client = new pg.Client(this.clientOptions)
     client.on('error', () => {})
+    // LISTEN in a tab: notifications are shown with the tab's next statement, as psql prints them.
+    const heard: string[] = []
+    this.notifications.set(client, heard)
+    client.on('notification', (n: { channel: string; payload?: string; processId: number }) => {
+      heard.push(`Asynchronous notification "${n.channel}"${n.payload ? ` with payload "${n.payload}"` : ''} received from server process with PID ${n.processId}.`)
+    })
     await client.connect()
     return Object.assign(client, {
       dbmGuarded: true,
       release: () => void client.end().catch(() => {}),
     }) as unknown as pg.PoolClient
   }
+
+  private notifications = new WeakMap<object, string[]>()
 
   /** Cancels on a connection of its own, so a busy pool never delays it. */
   private cancelBackend(pid: number): void {
@@ -273,6 +281,9 @@ export class PostgresDriver implements DatabaseDriver {
     const onNotice = (n: NoticeMessage) => messages.push(noticeText(n))
     client.on('notice', onNotice)
     const withMessages = (results: QueryResult[]) => {
+      // Notifications that arrived since the last statement (and during this one).
+      const heard = this.notifications.get(client)
+      if (heard?.length) messages.push(...heard.splice(0))
       if (messages.length && results[0]) results[0].messages = messages
       return results
     }

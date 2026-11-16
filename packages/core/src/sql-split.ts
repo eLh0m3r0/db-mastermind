@@ -31,12 +31,17 @@ export function splitStatements(
   let blockDepth = 0
   let trackBlocks = false
   let lastWords: string[] = []
+  // PostgreSQL COPY … FROM STDIN: its data lines (up to a line "\.") belong to it, they are not SQL.
+  let copyData = false
 
   const push = (endOfText: number, endIncl: number) => {
     const raw = script.slice(stmtStart, endOfText)
     const leading = raw.length - raw.trimStart().length
     const text = raw.trim()
-    if (text && !isOnlyComments(text)) out.push({ text, start: stmtStart + leading, end: endIncl })
+    if (text && !isOnlyComments(text)) {
+      out.push({ text, start: stmtStart + leading, end: endIncl })
+      if (driver === 'postgres' && /^COPY\b[\s\S]*\bFROM\s+STDIN\b/i.test(text)) copyData = true
+    }
     stmtStart = endIncl
     blockDepth = 0
     trackBlocks = false
@@ -51,7 +56,26 @@ export function splitStatements(
   }
 
   while (i < n) {
+    if (copyData) {
+      copyData = false
+      const end = /^\\\.[ \t]*(?:\r?\n|$)/m.exec(script.slice(i))
+      const stop = end ? i + end.index + end[0].length : n
+      const last = out[out.length - 1]!
+      last.text = script.slice(last.start, stop).trimEnd()
+      last.end = stop
+      i = stmtStart = stop
+      continue
+    }
     const ch = script[i]!
+
+    // psql meta-commands (\d users, \timing) end at the end of their line, without a semicolon.
+    if (driver === 'postgres' && ch === '\\' && atLineStart(i) && isOnlyComments(script.slice(stmtStart, i).trim() || '--')) {
+      const lineEnd = script.indexOf('\n', i)
+      stmtStart = i
+      push(lineEnd === -1 ? n : lineEnd, lineEnd === -1 ? n : lineEnd + 1)
+      i = stmtStart
+      continue
+    }
     const next = script[i + 1]
 
     // MySQL client-side DELIMITER command.

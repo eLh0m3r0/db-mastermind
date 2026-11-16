@@ -122,6 +122,21 @@ interface OpenConnection {
  * Owns live connections. Shared by the desktop app and the MCP server so both behave identically,
  * including read-only enforcement.
  */
+/**
+ * What only psql understands, said plainly instead of the server's "syntax error at or near \": meta-commands
+ * (\d, \dt, \timing) and COPY … FROM STDIN with its data.
+ */
+function refusePsqlOnly(sql: string): void {
+  const meta = /^\\(\S+)/.exec(sql)
+  if (meta) {
+    const hint = /^d[a-zA-Z+]*$/.test(meta[1]!) ? ' The explorer shows tables, columns, indexes and definitions (right-click → Definition).' : ''
+    throw new Error(`\\${meta[1]} is a psql command, not SQL: the server can't run it.${hint}`)
+  }
+  if (/^COPY\b[\s\S]*\bFROM\s+STDIN\b/i.test(sql)) {
+    throw new Error('COPY … FROM STDIN needs psql to send the data. Use Import data (CSV / Excel) on the table, or INSERT statements.')
+  }
+}
+
 export class DatabaseService {
   private open = new Map<string, OpenConnection>()
 
@@ -345,6 +360,7 @@ export class DatabaseService {
         if (!statement.text) continue
         const started = Date.now()
         try {
+          if (entry.config.driver === 'postgres') refusePsqlOnly(statement.text)
           this.assertAllowed(entry, statement.text)
           let text = statement.text
           let params = statements.length === 1 ? options.params : undefined
