@@ -1,8 +1,8 @@
 import { useEffect, useImperativeHandle, useRef, type Ref } from 'react'
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, type Completion } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab, toggleComment } from '@codemirror/commands'
-import { MSSQL, MySQL, MariaSQL, PLSQL, PostgreSQL, SQLite, sql, type SQLDialect, type SQLNamespace } from '@codemirror/lang-sql'
-import { bracketMatching, HighlightStyle, indentOnInput, syntaxHighlighting } from '@codemirror/language'
+import { keywordCompletionSource, MSSQL, MySQL, MariaSQL, PLSQL, PostgreSQL, schemaCompletionSource, SQLite, type SQLDialect, type SQLNamespace } from '@codemirror/lang-sql'
+import { bracketMatching, HighlightStyle, indentOnInput, LanguageSupport, syntaxHighlighting } from '@codemirror/language'
 import { highlightSelectionMatches, openSearchPanel, searchKeymap } from '@codemirror/search'
 import { linter, type Diagnostic } from '@codemirror/lint'
 import { Compartment, EditorSelection, EditorState, RangeSetBuilder, StateEffect, StateField, type Extension } from '@codemirror/state'
@@ -22,6 +22,7 @@ import {
 } from '@codemirror/view'
 import { tags as t } from '@lezer/highlight'
 import { joinCompletionSource } from './joinCompletion'
+import { columnCompletionSource, functionCompletionSource, keywordsWithoutFunctions } from './sqlCompletion'
 import { allSnippets, snippetSource } from './snippets'
 import { useSettings } from '@/store/settings'
 import { inspectSql, objectAt, statementAtOffset, type DriverId, type SchemaSnapshot, type SqlObjectAt, type SqlWarning } from '@dbmastermind/core/browser'
@@ -144,6 +145,16 @@ function buildNamespace(schema: SchemaSnapshot | undefined): SQLNamespace {
   return root
 }
 
+/** lang-sql's `sql()`, but its keywords leave out what the function list offers as a call (COUNT → count()). */
+function sqlLanguage(driver: DriverId, schema: SchemaSnapshot | undefined): LanguageSupport {
+  const dialect = DIALECTS[driver]
+  const keywords = keywordsWithoutFunctions(keywordCompletionSource(dialect, true), () => driver)
+  return new LanguageSupport(dialect.language, [
+    ...(schema ? [dialect.language.data.of({ autocomplete: schemaCompletionSource({ dialect, schema: buildNamespace(schema), defaultSchema: schema.defaultSchema }) })] : []),
+    dialect.language.data.of({ autocomplete: keywords }),
+  ])
+}
+
 const setErrorRange = StateEffect.define<{ from: number; to: number } | null>()
 const schemaChanged = StateEffect.define<null>()
 
@@ -236,6 +247,8 @@ export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunA
   useEffect(() => {
     const joinSource = joinCompletionSource(() => schemaRef.current, () => driverRef.current)
     const snippetsSource = snippetSource(() => snippetsRef.current)
+    const functionSource = functionCompletionSource(() => schemaRef.current, () => driverRef.current)
+    const columnSource = columnCompletionSource(() => schemaRef.current, () => driverRef.current)
     const view = new EditorView({
       parent: host.current!,
       state: EditorState.create({
@@ -257,9 +270,9 @@ export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunA
           highlightSelectionMatches(),
           placeholderExt(tr('Write SQL…   {run} runs the statement under the cursor, {runAll} runs everything', { run: keys('⌘↵'), runAll: keys('⇧⌘↵') })),
           statementHighlight(() => driverRef.current),
-          // Extra completion source next to the SQL language's own (tables, columns, keywords).
+          // Extra completion sources next to the SQL language's own (tables, qualified columns, keywords).
           // Sources need a stable identity: autocompletion matches results to sources by reference.
-          EditorState.languageData.of(() => [{ autocomplete: joinSource }, { autocomplete: snippetsSource }]),
+          EditorState.languageData.of(() => [{ autocomplete: joinSource }, { autocomplete: columnSource }, { autocomplete: functionSource }, { autocomplete: snippetsSource }]),
           errorField,
           objectLinkField,
           // Re-checked 400 ms after typing stops; nothing before the schema has loaded.
@@ -311,7 +324,7 @@ export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunA
             ...completionKeymap,
             indentWithTab,
           ]),
-          langCompartment.current.of(sql({ dialect: DIALECTS[driver], upperCaseKeywords: true })),
+          langCompartment.current.of(sqlLanguage(driver, undefined)),
           themeCompartment.current.of(editorTheme(dark)),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) handlers.current.onChange(u.state.doc.toString())
@@ -331,14 +344,7 @@ export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunA
     if (!view) return
     view.dispatch({
       effects: [
-        langCompartment.current.reconfigure(
-          sql({
-            dialect: DIALECTS[driver],
-            upperCaseKeywords: true,
-            schema: buildNamespace(schema),
-            defaultSchema: schema?.defaultSchema,
-          }),
-        ),
+        langCompartment.current.reconfigure(sqlLanguage(driver, schema)),
         // The warnings depend on the schema too: check again with the new one.
         schemaChanged.of(null),
       ],
