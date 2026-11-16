@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { StatementOutcome, TransactionState } from '@dbmastermind/core/browser'
 import { stepsAfterRun, type TransactionStep } from './transaction-steps'
+import { forgetSessionTablesOf } from './session-tables'
 import { askChoice, confirmAction } from '@/components/ui/ConfirmDialog'
 import { api } from '@/lib/api'
 import { t, tp } from '@/lib/i18n'
@@ -82,6 +83,7 @@ export async function seedTransactions(): Promise<void> {
 
 /** The connection went away (disconnect, reconnect with new settings): its transactions went with it. */
 export function forgetTransactionsOf(connectionId: string): void {
+  forgetSessionTablesOf(connectionId)
   useTransactions.setState((s) => Object.fromEntries(Object.entries(s).filter(([, tx]) => tx.connectionId !== connectionId)), true)
 }
 

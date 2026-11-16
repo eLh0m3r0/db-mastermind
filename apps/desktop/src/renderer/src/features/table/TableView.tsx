@@ -69,6 +69,7 @@ import { SelectionStatsBar } from '@/components/grid/SelectionStatsBar'
 import { RowDetails } from './RowDetails'
 import { carryPending } from './pending'
 import { lockHolder } from './lock-holder'
+import { saveErrorText } from './save-errors'
 import { useAiAllowed } from '../ai/AiPermissions'
 import { tp, useT } from '@/lib/i18n'
 import { askText, confirmAction } from '@/components/ui/ConfirmDialog'
@@ -560,8 +561,11 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
         return
       }
       // In the open review dialog the reason sits next to the SQL; otherwise a toast says it.
-      if (preview !== null) setApplyError(errorMessage(err))
-      else toast({ kind: 'error', message: t('Changes were rolled back'), detail: t(errorMessage(err)) })
+      // (The pending edits stay in the grid either way: only a save that went through clears them.)
+      const tooMany = (err as { code?: string }).code === 'TOO_MANY_ROWS'
+      const reason = saveErrorText(errorMessage(err), t)
+      if (preview !== null) setApplyError(reason)
+      else toast({ kind: 'error', message: tooMany ? t('Not saved: the change would touch several rows') : t('Changes were rolled back'), detail: reason })
     } finally {
       setSaving(false)
     }

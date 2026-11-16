@@ -5,6 +5,7 @@ import { api } from '@/lib/api'
 import { errorMessage } from '@/lib/utils'
 import { t } from '@/lib/i18n'
 import { forgetTransactionsOf } from './transactions'
+import { forgetSessionTablesOf } from './session-tables'
 import { askPassword, type PasswordAnswer } from '@/features/connections/PasswordPrompt'
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
@@ -152,6 +153,7 @@ export const useConnections = create<ConnectionsState>((set, get) => {
       for (;;) {
         try {
           const { serverInfo } = await api.connect(id, password)
+          forgetSessionTablesOf(id)
           patch(id, { status: 'connected', serverInfo })
           void get().loadSchema(id)
           void get().load()
@@ -203,6 +205,8 @@ export const useConnections = create<ConnectionsState>((set, get) => {
     },
     opened(id, serverInfo) {
       stopRetry(id)
+      // Main opened a new connection: the old sessions' temporary tables are gone with them.
+      forgetSessionTablesOf(id)
       const rt = get().runtime[id]
       if (rt?.status === 'connected' && rt.schema) return
       patch(id, { status: 'connected', serverInfo, error: undefined, retrying: false, byUser: false })
