@@ -625,6 +625,7 @@ export class PostgresDriver implements DatabaseDriver {
         defaultValue: c.default,
         isPrimaryKey: t.primaryKey.includes(c.name),
         isIdentity: c.identity !== '' || /^nextval\(/.test(c.default ?? ''),
+        ...(c.identity === 'a' ? { identityAlways: true } : {}),
         isGenerated: c.generated !== '',
         comment: c.comment,
       }

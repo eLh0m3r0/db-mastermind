@@ -102,6 +102,9 @@ describe.skipIf(skip.has('postgres'))('PostgreSQL objects in the explorer', () =
     expect(notes.policies?.[0]?.definition).toContain('AS PERMISSIVE FOR SELECT TO public')
     const eventsSql = tableDefinition(events, 'postgres')
     expect(eventsSql).toContain(') PARTITION BY RANGE (happened)')
+    // Identity kinds and serial columns as declared.
+    expect(eventsSql).toContain('"id" bigint GENERATED ALWAYS AS IDENTITY NOT NULL')
+    expect(eventsSql).toMatch(/"seq" serial NOT NULL,/)
     expect(eventsSql).toContain(`CREATE TABLE "dbm_obj"."events_2026_eu" PARTITION OF "dbm_obj"."events_2026" FOR VALUES IN ('eu');`)
     for (const [sql, drop] of [
       [eventsSql, 'DROP TABLE dbm_obj.events'],

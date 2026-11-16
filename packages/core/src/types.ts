@@ -135,6 +135,8 @@ export interface TableRef {
 }
 
 export interface ColumnInfo {
+  /** PostgreSQL GENERATED ALWAYS AS IDENTITY (a value can't be given), rather than BY DEFAULT. */
+  identityAlways?: boolean
   name: string
   ordinal: number
   dataType: string
