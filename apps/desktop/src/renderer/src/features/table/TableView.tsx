@@ -29,7 +29,8 @@ import {
   checkCellExpression,
   countActiveConditions,
   displayName,
-  findTable,
+  findTableOrPartition,
+  rowKey,
   incomingReferences,
   newFilterId,
   referencedTable,
@@ -136,7 +137,8 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
   const updateTab = useWorkspace((s) => s.update)
   const openTab = useWorkspace((s) => s.open)
   const schema = runtime?.schema
-  const table = schema ? findTable(schema, tab.table) : undefined
+  // A partition is shown (and edited) with its parent's columns and key.
+  const table = schema ? findTableOrPartition(schema, tab.table) : undefined
 
   const pageSize = settings?.pageSize ?? 200
   const [limit, setLimit] = useState(pageSize)
@@ -186,7 +188,8 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
   const appliedFilter = tab.filter
   const sort = tab.sort
   const readOnly = !!connection?.readOnly
-  const primaryKey = table?.primaryKey ?? []
+  // The primary key, or a unique index over NOT NULL columns when the table has none.
+  const primaryKey = table ? rowKey(table) : []
   const editable = !!table && table.type === 'table' && primaryKey.length > 0 && !readOnly
   const pendingCount = pending.edits.size + pending.inserted.length + pending.deleted.size
   useEffect(() => {
@@ -843,9 +846,9 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
             </IconButton>
           </>
         ) : (
-          <span className="flex items-center gap-1 px-1 text-[11.5px] text-fg-faint" title={readOnly ? t('Connection is read-only') : table?.type !== 'table' ? t('Views are read-only') : t('Editing needs a primary key')}>
+          <span className="flex items-center gap-1 px-1 text-[11.5px] text-fg-faint" title={readOnly ? t('Connection is read-only') : table?.type !== 'table' ? t('Views are read-only') : t('Editing needs a primary key or a unique index over columns that are never NULL')}>
             <KeyRound size={12} />
-            {readOnly ? t('Read-only connection') : table?.type !== 'table' ? t('View (read-only)') : t('No primary key: read-only')}
+            {readOnly ? t('Read-only connection') : table?.type !== 'table' ? t('View (read-only)') : t('No primary key or unique index: read-only')}
           </span>
         )}
         {pendingCount > 0 && (
