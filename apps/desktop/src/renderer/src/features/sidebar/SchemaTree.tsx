@@ -149,7 +149,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
     const ordered = [...schemaNames].sort((a, b) => (a === schema.defaultSchema ? -1 : b === schema.defaultSchema ? 1 : naturalCompare(a, b)))
     for (const s of ordered) {
       const tables = schema.tables.filter((t) => (t.schema ?? '') === s && matches(t))
-      const routines = schema.routines.filter((r) => (r.schema ?? '') === s && (!q || fuzzyScore(r.name, q) >= 0))
+      const routines = schema.routines.filter((r) => !r.editorOnly && (r.schema ?? '') === s && (!q || fuzzyScore(r.name, q) >= 0))
       if (q && tables.length === 0 && routines.length === 0) continue
       if (!q && tables.length === 0 && routines.length === 0 && s !== schema.defaultSchema) {
         if (multi) out.push({ kind: 'schema', key: `s:${s}`, name: s, count: 0, depth: 0 })

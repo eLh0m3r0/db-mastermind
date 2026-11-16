@@ -79,6 +79,18 @@ describe.skipIf(skip.has('postgres'))('PostgreSQL sessions', () => {
     }
   })
 
+  it("an extension's functions are in the snapshot for the editor, marked so the explorer leaves them out", async () => {
+    const out = await db.runScript(id, 'DROP SCHEMA IF EXISTS dbm_ext CASCADE; CREATE SCHEMA dbm_ext; CREATE EXTENSION "uuid-ossp" SCHEMA dbm_ext')
+    expect(out.filter((o) => o.error).map((o) => o.error?.message)).toEqual([])
+    try {
+      const snapshot = await db.schema(id, true)
+      const fn = snapshot.routines.find((r) => r.schema === 'dbm_ext' && r.name === 'uuid_generate_v4')
+      expect(fn).toMatchObject({ kind: 'function', editorOnly: true, returnType: 'uuid' })
+    } finally {
+      await db.runScript(id, 'DROP SCHEMA dbm_ext CASCADE')
+    }
+  })
+
   it('a type created after connecting has its name in results', async () => {
     await db.runScript(id, "DROP TYPE IF EXISTS dbm_mood_later; CREATE TYPE dbm_mood_later AS ENUM ('ok', 'meh')")
     const [o] = await db.runScript(id, "SELECT 'ok'::dbm_mood_later AS mood")

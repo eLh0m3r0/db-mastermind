@@ -238,6 +238,8 @@ export interface RoutineInfo {
   kind: 'function' | 'procedure'
   returnType?: string | null
   arguments?: string | null
+  /** Offered in the editor, not listed in the explorer: installed by an extension (uuid-ossp, pgcrypto, PostGIS), or an aggregate. */
+  editorOnly?: boolean
 }
 
 export interface SchemaSnapshot {
