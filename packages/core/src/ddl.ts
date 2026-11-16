@@ -1065,7 +1065,7 @@ function createIndexSql(name: string, table: TableRef, columns: string[], unique
   // The server's text only while it still names every plain column the index has now (a model may have changed them).
   const keyText = own?.slice(own.search(/\sON\s/i))
   const names = (c: string) => keyText!.includes(d.quoteIdent(c)) || new RegExp(`(^|[^\\w$"\`\\]])${c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\w$"\`\\[])`, 'i').test(keyText!)
-  if (own && columns.filter((c) => !/[()\s]/.test(c)).every(names)) return own
+  if (own && columns.filter((c) => !/[()\s<>]/.test(c)).every(names)) return own
   const cols = columns.map((c) => indexKey(c, d)).join(', ')
   // SQLite qualifies the index name, not the table.
   if (d.id === 'sqlite') {

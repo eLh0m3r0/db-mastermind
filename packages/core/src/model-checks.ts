@@ -51,7 +51,7 @@ const IDENT = String.raw`(?:"(?:[^"]|"")*"|` + '`(?:[^`]|``)*`' + String.raw`|\[
  */
 function indexShape(ix: IndexInfo): { plain: boolean; filtered: boolean; tail?: string } {
   const defaultMethod = !ix.method || /^(btree|nonclustered|clustered)$/i.test(ix.method)
-  const bareColumns = ix.columns.every((c) => !/[()\s]/.test(c))
+  const bareColumns = ix.columns.every((c) => !/[()\s<>]/.test(c))
   if (!ix.definition) return { plain: defaultMethod && bareColumns, filtered: false }
   const m = new RegExp(String.raw`\sON\s+(?:ONLY\s+)?(?:${IDENT}\s*\.\s*)?${IDENT}\s*`, 'i').exec(ix.definition)
   if (!m) return { plain: false, filtered: true }

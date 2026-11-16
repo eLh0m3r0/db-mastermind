@@ -495,6 +495,10 @@ describe('server index text', () => {
     expect(createScript([table(['a'], def)], getDialect('postgres'))).toContain(def)
     // The model moved the index to column c: the server's text would still index a.
     expect(createScript([table(['c'], def)], getDialect('postgres'))).toMatch(/CREATE INDEX "ix_t" ON "public"\."t" \("c"\)/)
+    // SQLite lists an expression key as "<expr>": no column name the text has to say.
+    const sqlite = { ...table(['<expr>'], 'CREATE INDEX ix_t ON t (lower(a)) WHERE b = 1'), schema: undefined }
+    sqlite.indexes[0]!.definitionDriver = 'sqlite'
+    expect(createScript([sqlite], getDialect('sqlite'))).toContain('CREATE INDEX ix_t ON t (lower(a)) WHERE b = 1')
     // CockroachDB's text carries no PostgreSQL marker: never used.
     expect(createScript([table(['a'], 'CREATE INDEX ix_t ON public.t (a) STORING (b)', null)], getDialect('postgres'))).not.toContain('STORING')
   })

@@ -77,6 +77,33 @@ for (const c of cases) {
  * A cancelled statement's KILL QUERY must not stop the statement queued after it on the tab's connection (01 finding
  * 7). The KILL is made to arrive late, after the cancelled SELECT finished on its own.
  */
+/**
+ * PostgreSQL's cancel goes out on a connection of its own: the cancelled statement's pool client must not run the
+ * next statement before the cancel arrived, or the cancel stops that one (a copy's DROP after Stop did).
+ */
+describe.skipIf(skip.has('postgres'))('cancel on postgres', () => {
+  it('hands the client of a cancelled statement to the next one only after the cancel landed', async () => {
+    const svc = new DatabaseService()
+    try {
+      const config = await setupEngine(svc, engines.find((e) => e.id === 'postgres')!)
+      const driver = svc.driver(config.id) as unknown as { cancelBackend: (pid: number) => Promise<void> }
+      const cancel = driver.cancelBackend.bind(driver)
+      driver.cancelBackend = async (pid) => {
+        await new Promise((r) => setTimeout(r, 400))
+        return cancel(pid)
+      }
+      const abort = new AbortController()
+      const first = svc.driver(config.id).execute('SELECT pg_sleep(0.2)', { signal: abort.signal })
+      setTimeout(() => abort.abort(), 50)
+      await first.catch(() => {})
+      const [r] = await svc.driver(config.id).execute('SELECT pg_sleep(0.6)::text, 42')
+      expect(r!.rows[0]![1]).toBe(42)
+    } finally {
+      await svc.disconnectAll()
+    }
+  })
+})
+
 describe.skipIf(skip.has('mysql'))('session statements on mysql', () => {
   it('starts the next statement of a session only after the cancelled one’s KILL QUERY landed', async () => {
     const svc = new DatabaseService()
