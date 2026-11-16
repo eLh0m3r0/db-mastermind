@@ -530,8 +530,9 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
                   }
                 >
                   <SquareSplitVertical size={12} className="shrink-0 text-accent" />
-                  <span className="truncate">{p.name}</span>
-                  <span className="ml-auto shrink-0 truncate pl-2 font-mono text-[10.5px] text-fg-faint">{p.bound.replace(/^FOR VALUES /, '')}</span>
+                  {/* The name stays whole; a long bound is cut (the tooltip has it all). */}
+                  <span className="shrink-0">{p.name}</span>
+                  <span className="ml-auto min-w-0 truncate pl-2 font-mono text-[10.5px] text-fg-faint">{p.bound.replace(/^FOR VALUES /, '')}</span>
                 </div>
               )
             }

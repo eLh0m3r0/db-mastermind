@@ -803,7 +803,7 @@ untested here).
 - ✅ `e2e/context-sweep.mjs`: every context-menu item (connection, schema, table, view, routine, column, cell, header)
   on nine engines — no defect found; it stays as a check for new menu items
 
-### 1.4 — PostgreSQL polish (the pilot team works on PostgreSQL only) 🚧
+### 1.4 — PostgreSQL polish (the pilot team works on PostgreSQL only) ✅ unreleased
 
 From a colleague's feedback (no random() in completions; columns like `id` not offered in SQLite) and a review of
 what a daily PostgreSQL user hits:
@@ -825,11 +825,26 @@ what a daily PostgreSQL user hits:
 - ✅ EXPLAIN plans INSERT / UPDATE / DELETE (ANALYZE always rolled back) on the tab's own session (its temp tables,
   SET and transaction); one statement at a time (`SELECT 1; DROP …` used to send the DROP along) — unreleased
 - ✅ `E'it\'s; ok'` no longer splits a script; types created after connecting (a new enum) are named in results — unreleased
-- ⬜ Partitions under their parent table in the explorer (now hidden)
-- ⬜ Enum columns: pick a value from the enum's labels when editing a cell
-- ⬜ Edit rows of tables without a primary key (through a unique index, or ctid as DataGrip does)
-- ⬜ Explorer: sequences, types / enums, triggers, policies, extensions; Refresh materialized view
-- ⬜ COPY … FROM stdin and psql commands (`\d`): a clear message instead of a server syntax error; LISTEN notifications
+- ✅ Explorer: partitions under their table (nested ones under theirs, opened and edited like the parent); each
+  schema's sequences, types (enum, domain, composite) and extensions, a click opens the SQL that creates them;
+  Refresh materialized view… — e2e/flow111 — unreleased
+- ✅ Structure tab: partitions, triggers (disabled ones marked), row-level security and its policies, the server's text
+  of indexes the column list can't describe; Definition (SQL) re-creates partitions, triggers, policies, serial
+  columns and GENERATED ALWAYS identities — unreleased
+- ✅ Enum and boolean cells offer their values when edited — unreleased
+- ✅ Tables without a primary key are edited through their narrowest unique index over NOT NULL columns (every
+  engine); a table with no unique key at all stays read-only (PostgreSQL's ctid would be the next step) — unreleased
+- ✅ `\d` and other psql commands, `COPY … FROM stdin`: a plain message instead of a syntax error (the data lines
+  are no longer run as SQL); LISTEN notifications show with the tab's next statement, as in psql — unreleased
+
+The same review on the other engines:
+
+- ✅ MySQL, MariaDB, Oracle: query tabs no longer starve the connection pool (they hung for good after a few tabs);
+  sessions.integration.test.ts runs nine tabs with open transactions plus a query and a Cancel on every engine — unreleased
+- ✅ Server messages: SQL Server PRINT / RAISERROR, MySQL and MariaDB warnings, Oracle DBMS_OUTPUT — unreleased
+- ✅ EXPLAIN of INSERT / UPDATE / DELETE on MySQL, MariaDB and SQLite (SQL Server and DuckDB stay SELECT-only) — unreleased
+- ✅ Index definitions on MySQL (prefixes such as `email(20)`, functional parts, DESC, FULLTEXT), SQL Server
+  (INCLUDE, filters, DESC) and SQLite (expressions, WHERE); a copy of the table keeps them — unreleased
 
 ## Backlog — what other tools have (review 2026-11-14) 💡
 
