@@ -192,6 +192,11 @@ export interface IndexInfo {
   method?: string
   /** Backs a UNIQUE constraint: drop it with ALTER TABLE … DROP CONSTRAINT, not DROP INDEX. */
   constraint?: boolean
+  /**
+   * The server's own CREATE INDEX (PostgreSQL's pg_get_indexdef): keeps what `columns` can't say — expressions,
+   * WHERE, INCLUDE, DESC, operator classes, the method.
+   */
+  definition?: string
 }
 
 /** A CHECK constraint of a table (a column's check is one that names only that column). */

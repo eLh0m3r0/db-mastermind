@@ -60,6 +60,8 @@ export interface DesignIndex {
   unique: boolean
   /** A UNIQUE constraint of the table rather than a unique index: created as one where the database has them. */
   constraint?: boolean
+  /** The server's CREATE INDEX text (IndexInfo.definition), used while name and table still match it. */
+  definition?: string
 }
 
 export interface DesignTable {
@@ -161,7 +163,7 @@ export function toDesignTable(t: TableInfo): DesignTable {
       .map((f) => ({ id: designId('f'), name: f.name, originalName: f.name, columns: [...f.columns], refSchema: f.refSchema, refTable: f.refTable, refColumns: [...f.refColumns], onDelete: f.onDelete, onUpdate: f.onUpdate, ...(f.cardinality ? { cardinality: f.cardinality } : {}), ...(f.subtype ? { subtype: true } : {}) })),
     indexes: t.indexes
       .filter((i) => !i.primary)
-      .map((i) => ({ id: designId('i'), name: i.name, originalName: i.name, columns: [...i.columns], unique: i.unique, ...(i.constraint ? { constraint: true } : {}) })),
+      .map((i) => ({ id: designId('i'), name: i.name, originalName: i.name, columns: [...i.columns], unique: i.unique, ...(i.constraint ? { constraint: true } : {}), ...(i.definition ? { definition: i.definition } : {}) })),
     ...(t.checks?.length ? { checks: t.checks.map((c) => ({ ...c })) } : {}),
     ...(t.remarks ? { remarks: t.remarks } : {}),
     ...(t.properties ? { properties: t.properties } : {}),
@@ -361,7 +363,11 @@ export function diffTable(original: TableInfo | undefined, draftIn: DesignTable,
   })
   draft.indexes.forEach((ix, i) => {
     const before = ix.originalName ? original.indexes.find((x) => x.name === ix.originalName) : undefined
-    if (!before || !same(ix.columns, before.columns) || ix.unique !== before.unique) changes.push({ kind: 'add_index', table: current, index: draftIn.indexes[i]! })
+    if (!before || !same(ix.columns, before.columns) || ix.unique !== before.unique) {
+      // An index changed in the designer is no longer what the server's text creates.
+      const { definition: _old, ...index } = draftIn.indexes[i]!
+      changes.push({ kind: 'add_index', table: current, index: before ? index : draftIn.indexes[i]! })
+    }
   })
 
   // Check constraints go by name. A database stores a condition rewritten its own way (`x IN ('A','B')` comes
@@ -712,7 +718,7 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
         }
         for (const ix of repeated) statements.push(`ALTER TABLE ${q(ref)} ADD CONSTRAINT ${id(given.get(ix) ?? fresh('ux', t.name, ix.columns))} UNIQUE (${ix.columns.map(id).join(', ')})`)
         for (const ix of t.indexes.filter((x) => !isConstraint(ref, x))) {
-          statements.push(createIndexSql(given.get(ix) ?? fresh(ix.unique ? 'ux' : 'ix', t.name, ix.columns), ref, ix.columns, ix.unique, d))
+          statements.push(createIndexSql(given.get(ix) ?? fresh(ix.unique ? 'ux' : 'ix', t.name, ix.columns), ref, ix.columns, ix.unique, d, ix.definition))
         }
         statements.push(...commentStatements(ref, t.comment ?? null, t.columns, d))
         rollback.unshift(`DROP TABLE ${q(ref)}`)
@@ -865,7 +871,7 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
           statements.push(`ALTER TABLE ${q(change.table)} ADD CONSTRAINT ${id(name)} UNIQUE (${ix.columns.map(id).join(', ')})`)
           rollback.unshift(isMy ? dropIndexSql(name, change.table, d) : `ALTER TABLE ${q(change.table)} DROP CONSTRAINT ${id(name)}`)
         } else {
-          statements.push(createIndexSql(name, change.table, ix.columns, ix.unique, d))
+          statements.push(createIndexSql(name, change.table, ix.columns, ix.unique, d, ix.definition))
           rollback.unshift(dropIndexSql(name, change.table, d))
         }
         if (ix.unique) warnings.push({ level: 'info', message: `Unique index ${name} fails if duplicates already exist.` })
@@ -877,7 +883,7 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
         rollback.unshift(
           change.before.constraint && constraints
             ? `ALTER TABLE ${q(change.table)} ADD CONSTRAINT ${id(change.name)} UNIQUE (${change.before.columns.map(id).join(', ')})`
-            : createIndexSql(change.name, change.table, change.before.columns, change.before.unique, d),
+            : createIndexSql(change.name, change.table, change.before.columns, change.before.unique, d, change.before.definition),
         )
         break
       }
@@ -1011,8 +1017,26 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
   return { statements, rollback, warnings, transactional }
 }
 
-function createIndexSql(name: string, table: TableRef, columns: string[], unique: boolean, d: Dialect): string {
-  const cols = columns.map((c) => d.quoteIdent(c)).join(', ')
+/** PostgreSQL's own CREATE INDEX text, when it still creates this index on this table (not a renamed or moved one). */
+function serverIndexSql(definition: string | undefined, name: string, table: TableRef, unique: boolean, d: Dialect): string | undefined {
+  if (!definition || d.id !== 'postgres') return undefined
+  const ident = String.raw`(?:"(?:[^"]|"")*"|[^\s."]+)`
+  const m = new RegExp(String.raw`^CREATE (?:UNIQUE )?INDEX (${ident}) ON (?:ONLY )?(?:(${ident})\.)?(${ident}) USING `).exec(definition)
+  if (!m || /^CREATE UNIQUE /.test(definition) !== unique) return undefined
+  const plain = (s: string | undefined) => (s?.startsWith('"') ? s.slice(1, -1).replaceAll('""', '"') : s)
+  if (plain(m[1]) !== name || plain(m[3]) !== table.name) return undefined
+  if (m[2] !== undefined && plain(m[2]) !== (table.schema ?? 'public')) return undefined
+  if (m[2] === undefined && table.schema && table.schema !== 'public') return undefined
+  return definition
+}
+
+/** An index key: a column name, quoted; an expression or `col DESC` as written (lower(email) is not a column). */
+const indexKey = (c: string, d: Dialect) => (/[()]|\s(?:ASC|DESC|NULLS)\b/i.test(c) ? c : d.quoteIdent(c))
+
+function createIndexSql(name: string, table: TableRef, columns: string[], unique: boolean, d: Dialect, definition?: string): string {
+  const own = serverIndexSql(definition, name, table, unique, d)
+  if (own) return own
+  const cols = columns.map((c) => indexKey(c, d)).join(', ')
   // SQLite qualifies the index name, not the table.
   if (d.id === 'sqlite') {
     const indexName = table.schema ? `${d.quoteIdent(table.schema)}.${d.quoteIdent(name)}` : d.quoteIdent(name)

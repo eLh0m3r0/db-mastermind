@@ -233,7 +233,9 @@ export async function objectDefinition(db: DatabaseService, id: string, object: 
 
 /** A table's CREATE statement generated from the catalog (with its indexes and foreign keys). */
 export function tableDefinition(table: TableInfo, driver: DriverId): string {
-  const script = createScript([table], getDialect(driver)).trim()
+  // The primary key keeps its own name (people_pkey), not a made-up pk_people_id.
+  const pkName = table.indexes.find((i) => i.primary)?.name
+  const script = createScript([table], getDialect(driver), pkName ? { primaryKeyName: () => pkName } : {}).trim()
   return `-- Generated from the catalog (not the server's own text): columns, keys, indexes and foreign keys.\n${script}\n`
 }
 

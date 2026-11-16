@@ -531,11 +531,13 @@ export class PostgresDriver implements DatabaseDriver {
         method: string
         is_constraint: boolean
         columns: string[]
+        definition: string | null
       }>(
         `SELECT n.nspname AS schema, t.relname AS table, i.relname AS name, ix.indisunique AS unique,
                 ix.indisprimary AS primary, am.amname AS method,
                 EXISTS (SELECT 1 FROM pg_constraint pc WHERE pc.conindid = ix.indexrelid AND pc.contype IN ('u','x')) AS is_constraint,
-                ARRAY(SELECT pg_get_indexdef(ix.indexrelid, k, true) FROM generate_series(1, ix.indnkeyatts) k ORDER BY k)::text[] AS columns
+                ARRAY(SELECT pg_get_indexdef(ix.indexrelid, k, true) FROM generate_series(1, ix.indnkeyatts) k ORDER BY k)::text[] AS columns,
+                pg_get_indexdef(ix.indexrelid) AS definition
            FROM pg_index ix
            JOIN pg_class i ON i.oid = ix.indexrelid
            JOIN pg_class t ON t.oid = ix.indrelid
@@ -627,6 +629,7 @@ export class PostgresDriver implements DatabaseDriver {
         primary: ix.primary,
         method: ix.method,
         constraint: ix.is_constraint,
+        ...(ix.definition ? { definition: ix.definition } : {}),
       })
     }
     // Check constraints, as conditions without their CHECK ( … ) wrapping. A catalog that can't tell leaves
