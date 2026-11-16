@@ -22,7 +22,14 @@ for (const engine of engines) {
         expect(nodes.filter((n) => n.object).length).toBeGreaterThanOrEqual(2)
         expect(plan.raw.length).toBeGreaterThan(10)
         // PostgreSQL plans writes too (see below); a second statement is never sent along.
-        if (engine.id !== 'postgres') await expect(explainQuery(svc, config.id, `DELETE FROM ${o}`)).rejects.toThrow(/Only SELECT/)
+        if (['mssql', 'duckdb'].includes(engine.id)) await expect(explainQuery(svc, config.id, `DELETE FROM ${o}`)).rejects.toThrow(/Only SELECT/)
+        else {
+          const count = async () => Number((await svc.runScript(config.id, `SELECT COUNT(*) FROM ${o}`))[0]!.results![0]!.rows[0]![0])
+          const before = await count()
+          const del = await explainQuery(svc, config.id, `DELETE FROM ${o} WHERE status = 'paid'`)
+          expect(del.raw.length).toBeGreaterThan(5)
+          expect(await count()).toBe(before)
+        }
         await expect(explainQuery(svc, config.id, `SELECT 1; DELETE FROM ${o}`)).rejects.toThrow(/one statement/)
         if (engine.id === 'postgres') {
           const analyzed = await explainQuery(svc, config.id, `SELECT * FROM ${o} WHERE total > 100`, true)

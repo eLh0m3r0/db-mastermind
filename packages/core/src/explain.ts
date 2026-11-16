@@ -219,8 +219,9 @@ export async function explainQuery(db: DatabaseService, connectionId: string, sq
   if (splitStatements(sql, driver).filter((s) => s.text.trim()).length !== 1) throw new Error('Explain one statement at a time')
   const kind = classifyStatement(sql)
   const cockroach = db.serverInfo(connectionId)?.product === 'CockroachDB'
-  // PostgreSQL plans INSERT / UPDATE / DELETE too; EXPLAIN alone doesn't run them, and ANALYZE is rolled back below.
-  const writable = driver === 'postgres' && !cockroach && kind === 'write'
+  // INSERT / UPDATE / DELETE are planned where EXPLAIN never runs them: PostgreSQL (its ANALYZE is rolled back
+  // below), MySQL / MariaDB and SQLite (no analyze there). Not SQL Server: a failed SET SHOWPLAN would let the write run.
+  const writable = kind === 'write' && ((driver === 'postgres' && !cockroach) || driver === 'mysql' || driver === 'mariadb' || driver === 'sqlite')
   if (kind !== 'read' && !writable) throw new Error('Only SELECT statements can be explained')
   const body = sql.trim().replace(/;\s*$/, '')
   // The tab's own session sees its temp tables, SET search_path and open transaction.
