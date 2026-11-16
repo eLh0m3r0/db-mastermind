@@ -547,12 +547,12 @@ export class PostgresDriver implements DatabaseDriver {
           ORDER BY n.nspname, t.relname, i.relname`,
         params,
       ),
-      pool.query<{ schema: string; name: string; kind: string; result: string | null; args: string | null }>(
+      pool.query<{ schema: string; name: string; kind: string; result: string | null; args: string | null; extension: boolean }>(
         `SELECT n.nspname AS schema, p.proname AS name, p.prokind::text AS kind,
-                pg_get_function_result(p.oid) AS result, pg_get_function_arguments(p.oid) AS args
+                pg_get_function_result(p.oid) AS result, pg_get_function_arguments(p.oid) AS args,
+                EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e') AS extension
            FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-          WHERE p.prokind IN ('f','p') AND ${SYSTEM_SCHEMA_FILTER}${schemaFilter}
-            AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = p.oid AND d.deptype = 'e')
+          WHERE p.prokind IN ('f','p','a','w') AND ${SYSTEM_SCHEMA_FILTER}${schemaFilter}
           ORDER BY n.nspname, p.proname`,
         params,
       ),
@@ -652,12 +652,14 @@ export class PostgresDriver implements DatabaseDriver {
     } catch {
       for (const t of byKey.values()) delete t.checks
     }
+    // Aggregates and window functions (an extension's, or CREATE AGGREGATE) are offered in the editor only.
     const routineInfos: RoutineInfo[] = routines.rows.map((r) => ({
       schema: r.schema,
       name: r.name,
       kind: r.kind === 'p' ? 'procedure' : 'function',
       returnType: r.result,
       arguments: r.args,
+      ...(r.extension || r.kind === 'a' || r.kind === 'w' ? { editorOnly: true } : {}),
     }))
 
     return {
