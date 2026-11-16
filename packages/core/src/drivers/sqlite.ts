@@ -439,7 +439,11 @@ export class SqliteDriver implements DatabaseDriver {
         for (const ix of idxs) {
           const ixName = String(ix.name)
           const ixCols = await this.rows(`SELECT name FROM pragma_index_info(?, ?) ORDER BY seqno`, [ixName, schema])
+          // The statement that made it (expressions, WHERE, COLLATE, DESC); none for automatic indexes.
+          const made = ix.origin === 'c' ? await this.rows(`SELECT sql FROM ${this.dialect.quoteIdent(schema)}.sqlite_master WHERE type = 'index' AND name = ?`, [ixName]) : []
+          const definition = made[0]?.sql ? String(made[0].sql) : undefined
           info.indexes.push({
+            ...(definition ? { definition, definitionDriver: 'sqlite' as const } : {}),
             name: ixName,
             columns: ixCols.map((c) => String(c.name ?? '<expr>')),
             unique: Number(ix.unique) === 1,

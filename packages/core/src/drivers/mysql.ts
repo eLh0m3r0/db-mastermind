@@ -24,6 +24,7 @@ import type {
   QueryOptions,
   QueryResult,
   ResultField,
+  IndexInfo,
   SchemaSnapshot,
   ServerInfo,
   TableInfo,
@@ -527,7 +528,8 @@ export class MysqlDriver implements DatabaseDriver {
         schemas,
       ),
       this.rows(
-        `SELECT TABLE_SCHEMA AS s, TABLE_NAME AS t, INDEX_NAME AS name, NON_UNIQUE AS non_unique,
+        // SELECT *: EXPRESSION (functional key parts) exists in MySQL 8 only, not in 5.7 or MariaDB.
+        `SELECT *, TABLE_SCHEMA AS s, TABLE_NAME AS t, INDEX_NAME AS name, NON_UNIQUE AS non_unique,
                 COLUMN_NAME AS col, INDEX_TYPE AS method
            FROM information_schema.STATISTICS WHERE TABLE_SCHEMA IN (${inList})
           ORDER BY TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX`,
@@ -574,6 +576,8 @@ export class MysqlDriver implements DatabaseDriver {
         comment: c.comment ? String(c.comment) : null,
       })
     }
+    // Each index's key parts as written, for its CREATE INDEX text.
+    const keyParts = new Map<IndexInfo, string[]>()
     for (const s of stats) {
       const t = byKey.get(key(s.s, s.t))
       if (!t) continue
@@ -589,8 +593,19 @@ export class MysqlDriver implements DatabaseDriver {
         }
         t.indexes.push(ix)
       }
+      // A key part is a column, a column prefix (TEXT columns need one: email(20)) or an expression ((lower(email))).
+      const expression = s.EXPRESSION === null || s.EXPRESSION === undefined ? undefined : String(s.EXPRESSION)
       if (s.col !== null && s.col !== undefined) ix.columns.push(String(s.col))
+      else if (expression) ix.columns.push(`(${expression})`)
       if (ix.primary) t.primaryKey = ix.columns
+      else {
+        const part = (expression ? `(${expression})` : `${this.dialect.quoteIdent(String(s.col))}${s.SUB_PART ? `(${Number(s.SUB_PART)})` : ''}`) + (s.COLLATION === 'D' ? ' DESC' : '')
+        const parts = [...(keyParts.get(ix) ?? []), part]
+        keyParts.set(ix, parts)
+        const kind = /^(FULLTEXT|SPATIAL)$/i.test(ix.method ?? '') ? `${String(ix.method).toUpperCase()} ` : ix.unique ? 'UNIQUE ' : ''
+        ix.definitionDriver = this.config.driver
+        ix.definition = `CREATE ${kind}INDEX ${this.dialect.quoteIdent(name)} ON ${this.dialect.quoteIdent(String(s.s))}.${this.dialect.quoteIdent(String(s.t))} (${parts.join(', ')})`
+      }
     }
     for (const fk of fks) {
       const t = byKey.get(key(fk.s, fk.t))

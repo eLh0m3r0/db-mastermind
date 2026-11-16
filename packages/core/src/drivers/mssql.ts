@@ -6,7 +6,7 @@ import { batchesFromEvents, ConnectionLostError, elapsed, messagesOnly, QueryCan
 import type { BuiltQuery } from '../filters.js'
 import { isReadOnlyScript } from '../sql-split.js'
 import { openSshTunnel, type SshTunnel } from '../ssh.js'
-import type { ConnectionConfig, QueryOptions, QueryResult, ResultField, SchemaSnapshot, ServerInfo, TableInfo, TransactionState } from '../types.js'
+import type { ConnectionConfig, IndexInfo, QueryOptions, QueryResult, ResultField, SchemaSnapshot, ServerInfo, TableInfo, TransactionState } from '../types.js'
 import { normalizeValue } from '../values.js'
 
 type RawRow = Record<string, unknown>
@@ -473,14 +473,15 @@ export class MssqlDriver implements DatabaseDriver {
         params,
       ),
       this.rows(
-        `SELECT s.name AS s, o.name AS t, i.name AS name, i.is_unique, i.is_primary_key, i.is_unique_constraint, i.type_desc AS method, c.name AS col
+        `SELECT s.name AS s, o.name AS t, i.name AS name, i.is_unique, i.is_primary_key, i.is_unique_constraint, i.type_desc AS method, c.name AS col,
+                ic.is_included_column AS included, ic.is_descending_key AS descending, i.filter_definition AS filter
            FROM sys.indexes i
            JOIN sys.objects o ON o.object_id = i.object_id
            JOIN sys.schemas s ON s.schema_id = o.schema_id
-           JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id AND ic.is_included_column = 0
+           JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
            JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
           WHERE o.is_ms_shipped = 0 AND i.name IS NOT NULL AND o.type IN ('U', 'V') AND ${userSchema}
-          ORDER BY s.name, o.name, i.name, ic.key_ordinal`,
+          ORDER BY s.name, o.name, i.name, ic.is_included_column, ic.key_ordinal, ic.index_column_id`,
         params,
       ),
       this.rows(
@@ -524,6 +525,8 @@ export class MssqlDriver implements DatabaseDriver {
         indexes: [],
       })
     }
+    // Each index's key and INCLUDE columns as written, for its CREATE INDEX text.
+    const shapes = new Map<IndexInfo, { keys: string[]; include: string[] }>()
     for (const ix of indexes) {
       const t = byKey.get(key(ix.s, ix.t))
       if (!t) continue
@@ -540,8 +543,20 @@ export class MssqlDriver implements DatabaseDriver {
         }
         t.indexes.push(entry)
       }
-      entry.columns.push(String(ix.col))
+      const q = (n: unknown) => this.dialect.quoteIdent(String(n))
+      const shape = shapes.get(entry) ?? { keys: [], include: [] }
+      shapes.set(entry, shape)
+      if (ix.included) shape.include.push(q(ix.col))
+      else {
+        entry.columns.push(String(ix.col))
+        shape.keys.push(`${q(ix.col)}${ix.descending ? ' DESC' : ''}`)
+      }
       if (entry.primary) t.primaryKey = entry.columns
+      // INCLUDE columns, DESC and a filter (WHERE) are what the column list can't say.
+      else if (!entry.constraint && /^(CLUSTERED|NONCLUSTERED)$/.test(String(ix.method))) {
+        entry.definitionDriver = 'mssql'
+        entry.definition = `CREATE ${entry.unique ? 'UNIQUE ' : ''}${String(ix.method)} INDEX ${q(name)} ON ${q(ix.s)}.${q(ix.t)} (${shape.keys.join(', ')})${shape.include.length ? ` INCLUDE (${shape.include.join(', ')})` : ''}${ix.filter ? ` WHERE ${String(ix.filter)}` : ''}`
+      }
     }
     for (const c of columns) {
       const t = byKey.get(key(c.s, c.t))

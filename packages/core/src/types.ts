@@ -195,10 +195,12 @@ export interface IndexInfo {
   /** Backs a UNIQUE constraint: drop it with ALTER TABLE … DROP CONSTRAINT, not DROP INDEX. */
   constraint?: boolean
   /**
-   * The server's own CREATE INDEX (PostgreSQL's pg_get_indexdef): keeps what `columns` can't say — expressions,
-   * WHERE, INCLUDE, DESC, operator classes, the method.
+   * The server's own CREATE INDEX (PostgreSQL's pg_get_indexdef, SQLite's sqlite_master; built from the catalog for
+   * MySQL and SQL Server): keeps what `columns` can't say — expressions, prefixes, WHERE, INCLUDE, DESC, the method.
    */
   definition?: string
+  /** The database `definition` is written for: it is used only when creating the index there. */
+  definitionDriver?: DriverId
 }
 
 /** A CHECK constraint of a table (a column's check is one that names only that column). */
