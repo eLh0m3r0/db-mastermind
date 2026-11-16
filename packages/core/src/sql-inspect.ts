@@ -46,9 +46,11 @@ function tokenize(sql: string, driver: DriverId, offset = 0): Token[] {
     }
     if (ch === "'") {
       const start = i
+      // PostgreSQL's E'…' takes backslash escapes (the E itself was read as a word just before).
+      const escapes = driver === 'mysql' || driver === 'mariadb' || ((driver === 'postgres' || driver === 'duckdb') && /[eE]/.test(sql[i - 1] ?? '') && !/[\w$]/.test(sql[i - 2] ?? ''))
       i++
       while (i < n) {
-        if (sql[i] === '\\' && (driver === 'mysql' || driver === 'mariadb')) i += 2
+        if (sql[i] === '\\' && escapes) i += 2
         else if (sql[i] === "'" && sql[i + 1] === "'") i += 2
         else if (sql[i] === "'") break
         else i++

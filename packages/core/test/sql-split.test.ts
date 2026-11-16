@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   changesSchema,
   classifyStatement,
+  extractParameters,
   isDangerousStatement,
   isReadOnlyCondition,
   isReadOnlyScript,
@@ -26,6 +27,15 @@ describe('splitStatements', () => {
     expect(parts).toHaveLength(2)
     expect(parts[0]).toContain('$body$ language plpgsql')
     expect(parts[1]).toContain('select 1')
+  })
+
+  it("PostgreSQL E'…' strings take backslash escapes, plain ones don't", () => {
+    expect(texts("SELECT E'it\\'s; ok' AS a; SELECT 2", 'postgres')).toEqual(["SELECT E'it\\'s; ok' AS a", 'SELECT 2'])
+    expect(texts("SELECT e'a\\\\'; SELECT 2", 'postgres')).toEqual(["SELECT e'a\\\\'", 'SELECT 2'])
+    // A backslash in a standard string is just a character; "name'" ending in e is not an E-string.
+    expect(texts("SELECT 'C:\\'; SELECT 2", 'postgres')).toEqual(["SELECT 'C:\\'", 'SELECT 2'])
+    expect(texts("SELECT * FROM t WHERE name='x\\'; SELECT 2", 'postgres')).toEqual(["SELECT * FROM t WHERE name='x\\'", 'SELECT 2'])
+    expect(extractParameters("SELECT E'a\\':b', :c", 'postgres').map((p) => p.name)).toEqual(['c'])
   })
 
   it('does not treat $1 parameters as dollar quotes', () => {
