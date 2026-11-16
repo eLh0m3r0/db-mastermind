@@ -115,7 +115,9 @@ export function splitStatements(
     }
     if (ch === "'" || ch === '"' || ch === '`' || (ch === '[' && driver === 'mssql')) {
       const close = ch === '[' ? ']' : ch
-      const backslashEscapes = (driver === 'mysql' || driver === 'mariadb') && ch !== '`'
+      // PostgreSQL's E'…' strings take backslash escapes (E'it\'s'); plain '…' ones don't.
+      const escapeString = ch === "'" && (driver === 'postgres' || driver === 'duckdb') && /[eE]/.test(script[i - 1] ?? '') && !isWordChar(script[i - 2])
+      const backslashEscapes = ((driver === 'mysql' || driver === 'mariadb') && ch !== '`') || escapeString
       i++
       while (i < n) {
         if (backslashEscapes && script[i] === '\\') {

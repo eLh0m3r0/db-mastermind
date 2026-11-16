@@ -39,9 +39,11 @@ export function extractParameters(sql: string, driver: DriverId): QueryParameter
     }
     if (ch === "'" || ch === '"' || ch === '`' || (ch === '[' && driver === 'mssql')) {
       const close = ch === '[' ? ']' : ch
+      // PostgreSQL's E'…' takes backslash escapes, like every MySQL string.
+      const escapes = (driver === 'mysql' || driver === 'mariadb') || (ch === "'" && (driver === 'postgres' || driver === 'duckdb') && /[eE]/.test(sql[i - 1] ?? '') && !/[\w$]/.test(sql[i - 2] ?? ''))
       i++
       while (i < n) {
-        if ((driver === 'mysql' || driver === 'mariadb') && sql[i] === '\\') {
+        if (escapes && sql[i] === '\\') {
           i += 2
           continue
         }
