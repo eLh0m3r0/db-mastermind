@@ -5,6 +5,10 @@ import {
   ChevronRight,
   Code2,
   Copy,
+  ListOrdered,
+  Puzzle,
+  Shapes,
+  SquareSplitVertical,
   Eye,
   EyeOff,
   FileText,
@@ -25,7 +29,7 @@ import {
   TerminalSquare,
   Trash2,
 } from 'lucide-react'
-import { definitionSupport, generateMigration, getDialect, incomingReferences, migrationScript, qualify, routineObject, toDesignTable, type RoutineInfo, type SchemaSnapshot, type TableInfo } from '@dbmastermind/core/browser'
+import { definitionSupport, generateMigration, getDialect, incomingReferences, migrationScript, qualify, routineObject, toDesignTable, type PartitionInfo, type RoutineInfo, type SchemaObject, type SchemaSnapshot, type TableInfo } from '@dbmastermind/core/browser'
 import type { StoredConnection } from '@shared/api'
 import { IconButton } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
@@ -48,6 +52,15 @@ type Node =
   | { kind: 'table'; key: string; table: TableInfo; depth: number }
   | { kind: 'column'; key: string; table: TableInfo; column: TableInfo['columns'][number]; depth: number }
   | { kind: 'routine'; key: string; routine: RoutineInfo; depth: number }
+  | { kind: 'partition'; key: string; partition: PartitionInfo; depth: number }
+  | { kind: 'object'; key: string; object: SchemaObject; depth: number }
+
+/** Sequences, types and extensions: their explorer group and icon. */
+const OBJECT_GROUPS: { kind: SchemaObject['kind']; label: string }[] = [
+  { kind: 'sequence', label: 'Sequences' },
+  { kind: 'type', label: 'Types' },
+  { kind: 'extension', label: 'Extensions' },
+]
 
 
 export function generateSql(kind: 'select' | 'insert' | 'update' | 'delete' | 'count', table: TableInfo, connection: StoredConnection): string {
@@ -150,8 +163,9 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
     for (const s of ordered) {
       const tables = schema.tables.filter((t) => (t.schema ?? '') === s && matches(t))
       const routines = schema.routines.filter((r) => !r.editorOnly && (r.schema ?? '') === s && (!q || fuzzyScore(r.name, q) >= 0))
-      if (q && tables.length === 0 && routines.length === 0) continue
-      if (!q && tables.length === 0 && routines.length === 0 && s !== schema.defaultSchema) {
+      const objects = (schema.objects ?? []).filter((o) => (o.schema ?? '') === s && (!q || fuzzyScore(o.name, q) >= 0))
+      if (q && tables.length === 0 && routines.length === 0 && objects.length === 0) continue
+      if (!q && tables.length === 0 && routines.length === 0 && objects.length === 0 && s !== schema.defaultSchema) {
         if (multi) out.push({ kind: 'schema', key: `s:${s}`, name: s, count: 0, depth: 0 })
         continue
       }
@@ -176,6 +190,14 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
           out.push({ kind: 'table', key, table: t, depth: base + 1 })
           if (expanded.has(key)) {
             for (const c of t.columns) out.push({ kind: 'column', key: `${key}.${c.name}`, table: t, column: c, depth: base + 2 })
+            // Partitions (and theirs) under their table.
+            const partitions = (list: PartitionInfo[] | undefined, depth: number) => {
+              for (const p of list ?? []) {
+                out.push({ kind: 'partition', key: `${key}:p:${p.schema ?? ''}.${p.name}`, partition: p, depth })
+                partitions(p.partitions, depth + 1)
+              }
+            }
+            partitions(t.partitions, base + 2)
           }
         }
       }
@@ -187,6 +209,14 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
             out.push({ kind: 'routine', key: `r:${s}.${r.name}.${r.arguments ?? ''}`, routine: r, depth: base + 1 })
           }
         }
+      }
+      for (const { kind, label } of OBJECT_GROUPS) {
+        const items = objects.filter((o) => o.kind === kind).sort((a, b) => naturalCompare(a.name, b.name))
+        if (!items.length) continue
+        const groupKey = `g:${s}:${label}`
+        out.push({ kind: 'group', key: groupKey, label, count: items.length, depth: base, groupKey })
+        if (expanded.has(`${groupKey}:collapsed`) && !q) continue
+        for (const o of items) out.push({ kind: 'object', key: `o:${s}.${kind}.${o.name}`, object: o, depth: base + 1 })
       }
     }
     if (hiddenCount) out.push({ kind: 'hidden', key: 'hidden', count: hiddenCount, depth: 0 })
@@ -216,6 +246,9 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
       { label: tr('Open structure'), icon: <Layers size={13} />, onClick: () => openTab({ kind: 'structure', connectionId: connection.id, table: { schema: t.schema, name: t.name }, title: tr('{name} · structure', { name: t.name }) }) },
       ...(t.type === 'table' || definitionSupport(connection.driver).views
         ? [{ label: tr('Definition (SQL)'), icon: <FileCode2 size={13} />, onClick: () => void openDefinition(connection.id, { schema: t.schema, name: t.name, kind: t.type === 'foreign_table' ? 'table' : t.type }) }]
+        : []),
+      ...(t.type === 'materialized_view' && connection.driver === 'postgres' && !connection.readOnly
+        ? [{ label: tr('Refresh materialized view…'), icon: <RefreshCw size={13} />, onClick: () => newQuery(connection.id, `REFRESH MATERIALIZED VIEW ${qualify(getDialect(connection.driver), t)};\n`, tr('Refresh {name}', { name: t.name })) }]
         : []),
       { label: tr('Show in diagram'), icon: <Network size={13} />, onClick: () => openTab({ kind: 'diagram', connectionId: connection.id, title: tr('Diagram: {name}', { name: t.name }), focus: t.name }) },
       { label: tr('Copy to another connection…'), icon: <Copy size={13} />, onClick: () => useUi.getState().set({ modal: { kind: 'copy', connectionId: connection.id, tables: [{ schema: t.schema, name: t.name }] } }) },
@@ -474,6 +507,56 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
                   )}
                   <span className={cn('truncate', c.isPrimaryKey && 'text-fg')}>{c.name}</span>
                   <span className="ml-auto shrink-0 truncate pl-2 font-mono text-[10.5px] text-fg-faint">{c.dataType}</span>
+                </div>
+              )
+            }
+            if (node.kind === 'partition') {
+              const p = node.partition
+              const ref = { schema: p.schema, name: p.name }
+              return (
+                <div
+                  key={node.key}
+                  data-node="partition"
+                  className={cn(rowClass, 'text-fg-muted')}
+                  style={style}
+                  title={`${p.schema ? `${p.schema}.` : ''}${p.name}\n${p.bound}${p.partitionBy ? `\nPARTITION BY ${p.partitionBy}` : ''}`}
+                  onClick={() => openTab({ kind: 'table', connectionId: connection.id, table: ref, title: p.name })}
+                  onContextMenu={(e) =>
+                    openMenu(e, [
+                      { label: tr('Open data'), icon: <Table2 size={13} />, onClick: () => openTab({ kind: 'table', connectionId: connection.id, table: ref, title: p.name }) },
+                      { label: tr('Definition (SQL)'), icon: <FileCode2 size={13} />, onClick: () => void openDefinition(connection.id, { ...ref, kind: 'table' }) },
+                      { label: tr('Copy name'), icon: <Copy size={13} />, onClick: () => void copyText(p.name) },
+                    ])
+                  }
+                >
+                  <SquareSplitVertical size={12} className="shrink-0 text-accent" />
+                  <span className="truncate">{p.name}</span>
+                  <span className="ml-auto shrink-0 truncate pl-2 font-mono text-[10.5px] text-fg-faint">{p.bound.replace(/^FOR VALUES /, '')}</span>
+                </div>
+              )
+            }
+            if (node.kind === 'object') {
+              const o = node.object
+              const ref = { schema: o.schema, name: o.name, kind: o.kind }
+              const Icon = o.kind === 'sequence' ? ListOrdered : o.kind === 'type' ? Shapes : Puzzle
+              return (
+                <div
+                  key={node.key}
+                  data-node={o.kind}
+                  className={cn(rowClass, 'cursor-pointer text-fg-muted')}
+                  style={style}
+                  title={`${o.definition}\n${tr('Click to open its definition')}`}
+                  onClick={() => void openDefinition(connection.id, ref)}
+                  onContextMenu={(e) =>
+                    openMenu(e, [
+                      { label: tr('Definition (SQL)'), icon: <FileCode2 size={13} />, onClick: () => void openDefinition(connection.id, ref) },
+                      { label: tr('Copy name'), icon: <Copy size={13} />, onClick: () => void copyText(o.name) },
+                    ])
+                  }
+                >
+                  <Icon size={12} className="shrink-0 text-fg-faint" />
+                  <span className="truncate">{o.name}</span>
+                  {o.detail ? <span className="ml-auto shrink-0 truncate pl-2 font-mono text-[10.5px] text-fg-faint">{o.detail}</span> : null}
                 </div>
               )
             }
