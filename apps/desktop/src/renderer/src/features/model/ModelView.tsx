@@ -31,6 +31,7 @@ import { remembered, stepTo, type ModelSteps } from './model-steps'
 import { layoutAfterRenames, movedKeys, portableLayout, sqlObjectsAfterRenames } from './rename-follow'
 import { withoutKeysTo } from '../diagram/drop-follow'
 import { viewName } from './drop-names'
+import { objectsAfterEdit } from './sql-objects'
 import type { DiagramRequest } from '../diagram/DiagramView'
 import { IssuesChip, IssuesPanel } from './ModelIssues'
 import { rememberModelDatabase } from '@/lib/files'
@@ -466,7 +467,7 @@ export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: bo
     if (JSON.stringify(objects) === JSON.stringify(tab.sqlObjects ?? [])) return
     // New ones get an id of the app's own, so they stay editable (a DeZign project gives them its own when saved).
     const kept = objects.map((o) => (o.id ? o : { ...o, id: `local:${crypto.randomUUID()}` }))
-    updateTab(tab.id, { sqlObjects: kept.length ? kept : undefined, dirty: true })
+    updateTab(tab.id, { sqlObjects: objectsAfterEdit(kept, tab.sqlObjects), dirty: true })
   }
 
   /** An empty model starts with one table open in the designer: nobody has to know DBML to begin. */

@@ -7,6 +7,7 @@ import { t, tp } from '@/lib/i18n'
 import { confirmAction } from '@/components/ui/ConfirmDialog'
 import { refreshTransaction, settleTransactions, useTransactions } from './transactions'
 import { persistedTabs } from './persisted-tabs'
+import { forgetSessionTables } from './session-tables'
 
 interface BaseTab {
   id: string
@@ -333,11 +334,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       else if (activeTabId === id) active = (next[index] ?? next[index - 1])?.id
       // A table tab with manual commit has a session too (releasing one that never ran anything is a no-op).
       if (tab.kind === 'query' || tab.kind === 'table') void api.releaseSession(tab.connectionId, tab.id).catch(() => {})
+      forgetSessionTables(tab.id)
       commit(next, active, { closed: [tab, ...closed].slice(0, 20) })
     },
     closeOthers(id) {
       const { tabs } = get()
       for (const t of tabs) if (t.id !== id && (t.kind === 'query' || t.kind === 'table')) void api.releaseSession(t.connectionId, t.id).catch(() => {})
+      for (const t of tabs) if (t.id !== id) forgetSessionTables(t.id)
       commit(
         tabs.filter((t) => t.id === id),
         id,

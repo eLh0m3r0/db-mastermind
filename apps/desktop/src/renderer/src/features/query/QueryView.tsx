@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { closeCompletion } from '@codemirror/autocomplete'
 import { format as formatSql, type SqlLanguage } from 'sql-formatter'
 import { Activity, BookmarkPlus, Hourglass, Play, PlayCircle, Sparkles, Square, Wand2 } from 'lucide-react'
-import { changesSchema, extractParameters, routineObject, supportsManualCommit, isDangerousStatement, splitStatements, type DriverId, type ExplainResult, type QueryParameter, type StatementOutcome } from '@dbmastermind/core/browser'
+import { changesSchema, createdTables, extractParameters, routineObject, supportsManualCommit, isDangerousStatement, splitStatements, type DriverId, type ExplainResult, type QueryParameter, type StatementOutcome } from '@dbmastermind/core/browser'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -24,6 +24,7 @@ import { SqlEditor, type SqlEditorHandle } from './SqlEditor'
 import { TransactionBar } from './TransactionBar'
 import { openDefinition } from '@/lib/definitions'
 import { endTransaction, refreshTransaction, useTransactions } from '@/store/transactions'
+import { rememberSessionTables, sessionTablesOf, useSessionTables } from '@/store/session-tables'
 import { useT } from '@/lib/i18n'
 import { confirmAction } from '@/components/ui/ConfirmDialog'
 
@@ -52,6 +53,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
   const settings = useSettings((s) => s.settings)
   const updateTab = useWorkspace((s) => s.update)
   const editor = useRef<SqlEditorHandle>(null)
+  const sessionTables = useSessionTables((s) => sessionTablesOf(s, tab.id))
   const [outcomes, setOutcomes] = useState<StatementOutcome[] | null>(null)
   const [running, setRunning] = useState(false)
   const [startedAt, setStartedAt] = useState<number | null>(null)
@@ -149,6 +151,8 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
         setPlan(null)
         const result = await api.runQuery({ connectionId: tab.connectionId, sql: target.sql, runId: id, session: tab.id, parameterValues })
         void refreshTransaction(tab.id, tab.connectionId, result)
+        // Temporary tables made here live in the tab's session: the warnings must know them.
+        rememberSessionTables(tab.id, tab.connectionId, result.filter((o) => !o.error).flatMap((o) => createdTables(o.sql, driver)))
         if (result.some((o) => o.note?.startsWith('This statement committed the open transaction'))) {
           toast({ kind: 'warning', message: t('The schema change committed the open transaction'), detail: t('The database commits before and after CREATE, ALTER and DROP.') })
         }
@@ -537,6 +541,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
           value={tab.sql}
           driver={driver}
           schema={schema}
+          sessionTables={sessionTables}
           dark={dark}
           onChange={(sql) => persistSql(tab.id, sql)}
           onRun={() => void run('current')}

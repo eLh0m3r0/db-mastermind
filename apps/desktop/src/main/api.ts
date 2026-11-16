@@ -84,7 +84,7 @@ import * as library from './library'
 import { getSettings, updateSettings } from './settings'
 import { checkSqlFilePath, LARGE_SQL_FILE, readSqlFile, rememberChosenSqlFile, sqlFileSize, sqlFileTime, writeSqlFile } from './sql-files'
 import { withCommandPassword } from './password-command'
-import { readParquet } from './parquet'
+import { parquetInsertBatches, readParquet } from './parquet'
 import { assertReachable, singleFlight } from './connect-guard'
 import { dismissProposal, listProposals } from './connection-proposals'
 import { notifyProposals, proposalsDir } from './proposals-watch'
@@ -808,11 +808,28 @@ export const api: MastermindApi = {
   },
   async importFile(request) {
     await ensureConnected(request.connectionId)
+    const dialect = db.driver(request.connectionId).dialect
+    const imported = (count: number) => {
+      library.addHistory({
+        connectionId: request.connectionId,
+        sql: `-- Imported ${count} rows from ${basename(request.path)} into ${qualify(dialect, request.table)}`,
+        executedAt: new Date().toISOString(),
+        durationMs: 0,
+        rowCount: count,
+        source: 'import',
+      })
+      return count
+    }
+    if (/\.parquet$/i.test(request.path)) {
+      // Streamed: one chunk of the file in memory at a time, all of it in one transaction.
+      const counted = { rows: 0 }
+      await db.transactionBatches(request.connectionId, parquetInsertBatches(request.path, { ...request, dialect }, counted))
+      return imported(counted.rows)
+    }
     const data = await readImportFile(request.path, request.delimiter)
     const rows = request.hasHeader ? data.rows.slice(1) : data.rows
     const used = request.mapping.map((target, i) => ({ target, i })).filter((m): m is { target: string; i: number } => !!m.target)
     if (!used.length) throw new Error('Map at least one column')
-    const dialect = db.driver(request.connectionId).dialect
     const statements = buildBatchInserts(
       request.table,
       used.map((m) => m.target),
@@ -822,15 +839,7 @@ export const api: MastermindApi = {
     )
     if (request.replace) statements.unshift({ sql: `DELETE FROM ${qualify(dialect, request.table)}`, params: [] })
     await db.transactionRaw(request.connectionId, statements)
-    library.addHistory({
-      connectionId: request.connectionId,
-      sql: `-- Imported ${rows.length} rows from ${basename(request.path)} into ${qualify(dialect, request.table)}`,
-      executedAt: new Date().toISOString(),
-      durationMs: 0,
-      rowCount: rows.length,
-      source: 'import',
-    })
-    return rows.length
+    return imported(rows.length)
   },
   async previewChanges(connectionId, table, changes) {
     const dialect = getDialect(connections.getConnection(connectionId).driver)

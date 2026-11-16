@@ -168,6 +168,12 @@ export function StorageSection({ connectionId }: { connectionId: string }) {
         {data && <span>{t('Largest first, as the database reports them; row counts are estimates.')}</span>}
       </Toolbar>
       {error && <div className="shrink-0 border-b border-line bg-danger-soft px-3 py-1.5 text-[12px] text-danger">{error}</div>}
+      {/* (SQL Server without VIEW DATABASE STATE: no sizes, the bars follow the row counts.) */}
+      {data?.sizesNote && (
+        <div className="shrink-0 border-b border-line bg-warning-soft px-3 py-1.5 text-[12px] text-fg-muted" data-testid="storage-sizes-note">
+          {t(data.sizesNote)}
+        </div>
+      )}
       {!data ? (
         !error && (
           <div className="flex items-center gap-2 p-4 text-[12.5px] text-fg-muted">

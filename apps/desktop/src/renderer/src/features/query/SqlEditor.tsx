@@ -60,6 +60,8 @@ interface Props {
   value: string
   driver: DriverId
   schema?: SchemaSnapshot
+  /** Tables earlier runs of the tab created in its session (temporary tables): not unknown to the warnings. */
+  sessionTables?: string[]
   dark: boolean
   fontSize?: number
   onChange: (value: string) => void
@@ -230,7 +232,7 @@ function toDiagnostic(w: SqlWarning): Diagnostic {
 const setObjectLink = StateEffect.define<{ from: number; to: number } | null>()
 const objectLinkField = rangeField(setObjectLink, 'cm-object-link', true)
 
-export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunAll, onFormat, onSave, onAskAi, onOpenObject, ref }: Props) {
+export function SqlEditor({ value, driver, schema, sessionTables, dark, onChange, onRun, onRunAll, onFormat, onSave, onAskAi, onOpenObject, ref }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const handlers = useRef({ onChange, onRun, onRunAll, onFormat, onSave, onAskAi, onOpenObject })
@@ -239,6 +241,8 @@ export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunA
   driverRef.current = driver
   const schemaRef = useRef(schema)
   schemaRef.current = schema
+  const sessionTablesRef = useRef(sessionTables)
+  sessionTablesRef.current = sessionTables
   const userSnippets = useSettings((s) => s.settings?.snippets)
   const snippetsRef = useRef(allSnippets(driver, userSnippets))
   snippetsRef.current = allSnippets(driver, userSnippets)
@@ -277,7 +281,7 @@ export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunA
           errorField,
           objectLinkField,
           // Re-checked 400 ms after typing stops; nothing before the schema has loaded.
-          linter((view) => (analysable(view.state.doc.length) ? inspectSql(view.state.doc.toString(), driverRef.current, schemaRef.current).map(toDiagnostic) : []), { delay: 400, needsRefresh: (u) => u.transactions.some((tr) => tr.effects.some((e) => e.is(schemaChanged))) }),
+          linter((view) => (analysable(view.state.doc.length) ? inspectSql(view.state.doc.toString(), driverRef.current, schemaRef.current, { sessionTables: sessionTablesRef.current }).map(toDiagnostic) : []), { delay: 400, needsRefresh: (u) => u.transactions.some((tr) => tr.effects.some((e) => e.is(schemaChanged))) }),
           EditorView.domEventHandlers({
             mousedown: (e, view) => {
               if (!(e.metaKey || e.ctrlKey) || e.button !== 0 || !schemaRef.current || !handlers.current.onOpenObject) return false
@@ -351,6 +355,11 @@ export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunA
       ],
     })
   }, [driver, schema])
+
+  // A run created temporary tables (or the session went away): check again.
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: schemaChanged.of(null) })
+  }, [sessionTables])
 
   useEffect(() => {
     viewRef.current?.dispatch({ effects: themeCompartment.current.reconfigure(editorTheme(dark)) })
