@@ -69,6 +69,8 @@ export function CopyTablesModal() {
   }, [run?.id])
 
   const tables = useMemo(() => (schema?.tables ?? []).filter((x) => x.type === 'table'), [schema])
+  // Only tables are copied: something else picked (a view) is not counted.
+  const pickedTables = tables.filter((x) => picked.has(key(x))).length
   const visible = tables.filter((x) => !filter || `${x.schema ?? ''}.${x.name}`.toLowerCase().includes(filter.toLowerCase()))
   const targets = list.filter((c) => c.id !== sourceId && !c.readOnly && !['clickhouse', 'bigquery', 'trino'].includes(c.driver))
   const close = () => {
@@ -123,8 +125,8 @@ export function CopyTablesModal() {
           <div className="flex-1" />
           <Button onClick={close}>{result ? t('Close') : t('Cancel')}</Button>
           {!result && (
-            <Button variant="primary" disabled={!targetId || !picked.size || !!run} loading={!!run} onClick={() => void start()} data-testid="copy-start">
-              {tp(picked.size, { one: 'Copy {n} table', many: 'Copy {n} tables' })}
+            <Button variant="primary" disabled={!targetId || !pickedTables || !!run} loading={!!run} onClick={() => void start()} data-testid="copy-start">
+              {tp(pickedTables, { one: 'Copy {n} table', many: 'Copy {n} tables' })}
             </Button>
           )}
         </>

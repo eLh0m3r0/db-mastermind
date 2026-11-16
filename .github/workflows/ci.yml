@@ -57,6 +57,16 @@ jobs:
           --health-cmd healthcheck.sh --health-interval 5s --health-retries 60 --health-start-period 20s
     steps:
       - uses: actions/checkout@v4
+      # A service container takes no command: pg_stat_statements (Server activity → Top queries,
+      # health.integration.test.ts) is preloaded through ALTER SYSTEM and a restart, as docker-compose.test.yml does
+      # with its command line.
+      - name: PostgreSQL with pg_stat_statements
+        run: |
+          docker exec ${{ job.services.postgres.id }} psql -U postgres -c "ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements'"
+          docker restart ${{ job.services.postgres.id }}
+          for i in $(seq 1 60); do docker exec ${{ job.services.postgres.id }} pg_isready -U postgres >/dev/null 2>&1 && break; sleep 2; done
+          docker exec ${{ job.services.postgres.id }} psql -U postgres -tAc 'SHOW shared_preload_libraries' | grep -q pg_stat_statements
+          echo "DBM_PGSS_PORT=54329" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -96,6 +106,8 @@ jobs:
       - name: sqlpackage (SQL Server's own scripting of a database, for the dump test)
         run: |
           for i in 1 2 3; do dotnet tool install --global microsoft.sqlpackage --version 170.5.96 && break; sleep $((i * 15)); done
+          # Three failed tries: say so here, not as an ENOENT in the dump test later.
+          if [ ! -x "$HOME/.dotnet/tools/sqlpackage" ]; then echo "::error::sqlpackage could not be installed"; exit 1; fi
           echo "DBM_SQLPACKAGE=$HOME/.dotnet/tools/sqlpackage" >> "$GITHUB_ENV"
       - run: npm run test:integration
       - name: Build desktop bundles

@@ -6,7 +6,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-export const SERIOUS = new Set(['pageerror', 'console', 'error-toast', 'english', 'sweep-failed', 'errorBox'])
+// `action-failed`: an item the sweep could not reach is an item nobody checked. `context-unreached`: a whole situation.
+export const SERIOUS = new Set(['pageerror', 'console', 'error-toast', 'english', 'sweep-failed', 'errorBox', 'action-failed', 'context-unreached', 'nothing-swept'])
 export const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
 
 export async function startSweep({ out, lang }) {
@@ -38,6 +39,8 @@ export async function startSweep({ out, lang }) {
 
   const findings = []
   const state = { context: 'start', current: '' }
+  /** Actions that ran, by context: a context that ran none was not swept, whatever else it reported. */
+  const swept = new Map()
   const note = (kind, detail) => findings.push({ context: state.context, command: state.current, kind, detail })
   win.on('pageerror', (e) => note('pageerror', e.message))
   win.on('console', (m) => m.type() === 'error' && note('console', m.text().slice(0, 300)))
@@ -96,6 +99,7 @@ export async function startSweep({ out, lang }) {
     const before = (await snapshot()).signature
     try {
       if ((await run()) === false) return
+      swept.set(state.context, (swept.get(state.context) ?? 0) + 1)
     } catch (err) {
       // The sweep couldn't reach the item (it moved, the menu closed): noted, and the sweep goes on.
       note('action-failed', String(err?.message ?? err).split('\n')[0].slice(0, 200))
@@ -111,8 +115,14 @@ export async function startSweep({ out, lang }) {
     await closeExtras(tabsBefore)
   }
 
-  /** One line per distinct finding with the contexts it happened in; exit code 1 under --strict when serious. */
-  function report(strict) {
+  /**
+   * One line per distinct finding with the contexts it happened in; exit code 1 under --strict when serious.
+   * `contexts`: the situations the sweep meant to cover; each must have run at least one action.
+   */
+  function report(strict, contexts = [...swept.keys()]) {
+    for (const context of contexts) if (!swept.get(context)) findings.push({ context, command: '', kind: 'nothing-swept', detail: 'no action ran in this context' })
+    if (![...swept.values()].some(Boolean)) findings.push({ context: 'all', command: '', kind: 'nothing-swept', detail: 'no action ran at all' })
+    console.log(`swept: ${[...swept].map(([c, n]) => `${c} ${n}`).join(', ') || 'nothing'}`)
     const grouped = new Map()
     for (const f of findings) {
       const key = `${f.kind}\t${f.command}\t${f.detail}`

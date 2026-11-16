@@ -2,9 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const quitAndInstall = vi.fn()
 const installMacUpdateNow = vi.fn()
+const releaseSingleInstanceLock = vi.fn()
 
 vi.mock('electron', () => ({
-  app: { isPackaged: true, getPath: () => '/nonexistent', getVersion: () => '1.0.0', on: () => undefined },
+  app: { isPackaged: true, getPath: () => '/nonexistent', getVersion: () => '1.0.0', on: () => undefined, releaseSingleInstanceLock },
   powerMonitor: { on: () => undefined },
 }))
 vi.mock('electron-updater', () => ({ autoUpdater: { quitAndInstall } }))
@@ -22,7 +23,7 @@ afterEach(() => {
 })
 
 describe('Restart now', () => {
-  for (const os of ['win32', 'darwin'] as const) {
+  for (const os of ['win32', 'darwin', 'linux'] as const) {
     it(`settles open transactions before the installer starts (${os})`, async () => {
       Object.defineProperty(process, 'platform', { value: os, configurable: true })
       const order: string[] = []
@@ -36,4 +37,14 @@ describe('Restart now', () => {
       expect(order).toEqual(['settle', 'settle', 'install'])
     })
   }
+
+  it('an AppImage lets go of the single-instance lock before the new one starts', async () => {
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
+    const order: string[] = []
+    releaseSingleInstanceLock.mockImplementation(() => order.push('release'))
+    quitAndInstall.mockImplementation(() => order.push('install'))
+    setBeforeInstall(async () => true)
+    await installUpdate()
+    expect(order).toEqual(['release', 'install'])
+  })
 })

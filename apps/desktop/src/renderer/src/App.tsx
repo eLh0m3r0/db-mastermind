@@ -237,8 +237,12 @@ export function App() {
         action: { label: t('Restart now'), run: () => void window.mastermind.api.installUpdate() },
       })
     })
+    const offFailed = bridge.on('update:failed', (info) =>
+      toast({ kind: 'error', message: t('DB Mastermind {version} could not be downloaded', { version: info.version }), detail: t(info.message), duration: 0 }),
+    )
     const uninstall = installKeymap()
     return () => {
+      offFailed()
       offTeam()
       offProposals()
       offOpened()

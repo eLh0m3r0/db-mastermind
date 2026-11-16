@@ -1,3 +1,4 @@
+import { analysable } from './analyse-limit'
 import { useEffect, useImperativeHandle, useRef, type Ref } from 'react'
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, type Completion } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab, toggleComment } from '@codemirror/commands'
@@ -276,7 +277,7 @@ export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunA
           errorField,
           objectLinkField,
           // Re-checked 400 ms after typing stops; nothing before the schema has loaded.
-          linter((view) => inspectSql(view.state.doc.toString(), driverRef.current, schemaRef.current).map(toDiagnostic), { delay: 400, needsRefresh: (u) => u.transactions.some((tr) => tr.effects.some((e) => e.is(schemaChanged))) }),
+          linter((view) => (analysable(view.state.doc.length) ? inspectSql(view.state.doc.toString(), driverRef.current, schemaRef.current).map(toDiagnostic) : []), { delay: 400, needsRefresh: (u) => u.transactions.some((tr) => tr.effects.some((e) => e.is(schemaChanged))) }),
           EditorView.domEventHandlers({
             mousedown: (e, view) => {
               if (!(e.metaKey || e.ctrlKey) || e.button !== 0 || !schemaRef.current || !handlers.current.onOpenObject) return false
@@ -290,7 +291,7 @@ export function SqlEditor({ value, driver, schema, dark, onChange, onRun, onRunA
             },
             mousemove: (e, view) => {
               const current = view.state.field(objectLinkField).size > 0
-              if (!(e.metaKey || e.ctrlKey) || !schemaRef.current || !handlers.current.onOpenObject) {
+              if (!(e.metaKey || e.ctrlKey) || !schemaRef.current || !handlers.current.onOpenObject || !analysable(view.state.doc.length)) {
                 if (current) view.dispatch({ effects: setObjectLink.of(null) })
                 return false
               }

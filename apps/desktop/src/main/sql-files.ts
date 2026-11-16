@@ -1,5 +1,6 @@
 import { readFile, stat, writeFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import { detectDezignEncoding, dezignDecoder } from '@dbmastermind/core'
 import type { SqlFile, SqlFileFormat } from '@shared/api'
 
@@ -143,6 +144,16 @@ export async function readSqlFile(path: string): Promise<SqlFile> {
   return { path, name: path.split(/[\\/]/).pop() ?? path, text, format, mtimeMs: info.mtimeMs }
 }
 
+/**
+ * Above this a .sql file opens only when the person agrees (a 300 MB dump is read, decoded and sent to the window
+ * whole), and its tab's text is not saved with the workspace.
+ */
+export const LARGE_SQL_FILE = 5 * 1024 * 1024
+
+export async function sqlFileSize(path: string): Promise<number> {
+  return (await stat(path)).size
+}
+
 export async function sqlFileTime(path: string): Promise<number | null> {
   try {
     return (await stat(path)).mtimeMs
@@ -181,10 +192,38 @@ export async function writeSqlFile(path: string, text: string, format: SqlFileFo
   return (await stat(path)).mtimeMs
 }
 
-/** Files picked in the Open / Save dialogs this session: any extension ("All files"). */
+/** Files picked in the Open / Save dialogs: any extension ("All files"). Kept in main's data folder for restored tabs. */
 const chosenSqlFiles = new Set<string>()
+/** The most recent ones are kept: enough for every tab anybody keeps open. */
+const CHOSEN_LIMIT = 500
+let chosenFile: string | undefined
+
+/** Where the list lives (main's data folder); read once from there. Main sets it, the renderer never can. */
+export function keepChosenSqlFilesIn(file: string): void {
+  chosenFile = file
+  chosenSqlFiles.clear()
+  try {
+    const list: unknown = JSON.parse(readFileSync(file, 'utf8'))
+    if (Array.isArray(list)) for (const p of list.slice(-CHOSEN_LIMIT)) if (typeof p === 'string') chosenSqlFiles.add(p)
+  } catch {
+    // None yet, or unreadable: dialogs fill it again.
+  }
+}
+
 export function rememberChosenSqlFile(path: string): void {
-  chosenSqlFiles.add(resolve(path))
+  const full = resolve(path)
+  chosenSqlFiles.delete(full)
+  chosenSqlFiles.add(full)
+  while (chosenSqlFiles.size > CHOSEN_LIMIT) chosenSqlFiles.delete(chosenSqlFiles.values().next().value!)
+  if (!chosenFile) return
+  try {
+    mkdirSync(dirname(chosenFile), { recursive: true })
+    const tmp = `${chosenFile}.${process.pid}.tmp`
+    writeFileSync(tmp, JSON.stringify([...chosenSqlFiles]), 'utf8')
+    renameSync(tmp, chosenFile)
+  } catch {
+    // Not kept for the next start; this session still knows it.
+  }
 }
 
 /**

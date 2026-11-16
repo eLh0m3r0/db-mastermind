@@ -391,6 +391,8 @@ export interface ExportTableRequest {
   table: TableRef
   filter?: FilterNode
   sort?: SortSpec[]
+  /** The table tab's session: the file has what the grid shows, uncommitted rows of its transaction too. */
+  session?: string
 }
 
 export interface RunQueryRequest {
@@ -739,7 +741,11 @@ export interface MastermindApi {
   /** Saves a SQL script (migrations); asks where, suggesting `name`. Returns the path or null. */
   saveSqlFile(text: string, name: string, defaultDir?: string): Promise<string | null>
   /** Reads a .sql file for a query tab; asks for it when `path` is omitted. Null when cancelled. */
-  openSqlFile(path?: string): Promise<SqlFile | null>
+  /**
+   * `large`: the person agreed to open a file above the size limit. Without it such a file is not read: the answer
+   * names it and its size (`tooLarge`, bytes) so the window can ask.
+   */
+  openSqlFile(path?: string, options?: { large?: boolean }): Promise<SqlFile | { path: string; name: string; tooLarge: number } | null>
   /**
    * Writes a query tab's text back to its file. A file changed on disk since `expectedMtimeMs` is refused
    * (code FILE_CHANGED) unless `force`; a missing one too (FILE_MISSING). Returns the new modification time.
@@ -852,6 +858,8 @@ export interface MainEvents {
   'update:available': { version: string; url: string }
   /** A self-updating install downloaded a new version; it installs on restart. */
   'update:ready': { version: string }
+  /** A download Check for Updates said was under way failed (macOS). */
+  'update:failed': { version: string; message: string }
   'connection:lost': { connectionId: string; message: string }
   /** Main opened a connection on its own (a query or export after the VPN came back): the sidebar shows it connected. */
   'connection:opened': { connectionId: string; serverInfo: ServerInfo }

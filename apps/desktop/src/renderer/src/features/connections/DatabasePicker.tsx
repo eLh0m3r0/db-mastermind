@@ -33,7 +33,15 @@ export function DatabasePicker() {
     setDatabases(null)
     setError(undefined)
     setFilter('')
-    api.listDatabases(connectionId).then(setDatabases, (err) => setError(errorMessage(err)))
+    // A slower answer for the server picked before (closed, reopened for another) must not replace this one.
+    let current = true
+    api.listDatabases(connectionId).then(
+      (list) => current && setDatabases(list),
+      (err) => current && setError(errorMessage(err)),
+    )
+    return () => {
+      current = false
+    }
   }, [connectionId])
 
   const shown = useMemo(() => {

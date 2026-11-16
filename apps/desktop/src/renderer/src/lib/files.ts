@@ -6,6 +6,7 @@ import { useConnections } from '@/store/connections'
 import { dismissToast, toast, useUi } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
 import { modelTabFromFile } from '@/features/model/open-model'
+import { confirmAction } from '@/components/ui/ConfirmDialog'
 
 export const MODEL_FILE = /\.(dbml|dez|dezproj)$/i
 
@@ -125,15 +126,27 @@ export async function openSqlFile(path?: string): Promise<void> {
     return
   }
   try {
-    const file = await api.openSqlFile(path)
-    if (!file) return
-    const again = useWorkspace.getState().tabs.find((x) => x.kind === 'query' && x.path === file.path)
+    let file = await api.openSqlFile(path)
+    let large = false
+    if (file && 'tooLarge' in file) {
+      const ok = await confirmAction({
+        title: t('Open {name} ({size} MB)?', { name: file.name, size: (file.tooLarge / 1024 / 1024).toFixed(0) }),
+        message: t('A file this large makes the editor slow. Its text is not kept with the open tabs: after a restart the tab reads the file again, and unsaved changes in it are lost.'),
+        confirmLabel: t('Open'),
+      })
+      if (!ok) return
+      large = true
+      file = await api.openSqlFile(file.path, { large: true })
+    }
+    if (!file || 'tooLarge' in file) return
+    const opened = file
+    const again = useWorkspace.getState().tabs.find((x) => x.kind === 'query' && x.path === opened.path)
     if (again) {
       useWorkspace.getState().activate(again.id)
       return
     }
     useWorkspace.getState().open(
-      { kind: 'query', connectionId, title: file.name, sql: file.text, savedSql: file.text, path: file.path, file: { format: file.format, mtimeMs: file.mtimeMs } },
+      { kind: 'query', connectionId, title: opened.name, sql: opened.text, savedSql: opened.text, path: opened.path, file: { format: opened.format, mtimeMs: opened.mtimeMs }, ...(large ? { large: true } : {}) },
       { reuse: false },
     )
   } catch (err) {

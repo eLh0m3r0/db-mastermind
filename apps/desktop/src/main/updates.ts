@@ -190,21 +190,27 @@ export type UpdateCheck =
   | { state: 'disabled' | 'development' | 'offline' }
 
 /** Help → Check for Updates: the same check, with an answer for the user. */
-export async function checkNow(ready: (info: { version: string }) => void): Promise<UpdateCheck> {
+export async function checkNow(ready: (info: { version: string }) => void, failed?: (info: { version: string; message: string }) => void): Promise<UpdateCheck> {
   if (!app.isPackaged) return { state: 'development' }
   if (disabled()) return { state: 'disabled' }
   if (isStoreInstall()) return { state: 'store', url: STORE_URL }
   try {
     if (canAutoUpdate() && process.platform === 'darwin') {
-      // Answers once the download starts; the restart prompt (`ready`) follows when it is done.
+      // Answers once the download starts; the restart prompt (`ready`) follows when it is done, or `failed` says why
+      // not (the answer "downloading" was already given, so a rejection would reach nobody).
+      let downloading: string | undefined
       return await new Promise<UpdateCheck>((resolve, reject) => {
-        downloadMacUpdate(app.getVersion(), newer, log, (version) => resolve({ state: 'downloading', version })).then(
+        downloadMacUpdate(app.getVersion(), newer, log, (version) => {
+          downloading = version
+          resolve({ state: 'downloading', version })
+        }).then(
           (version) => {
             if (version) ready({ version })
             resolve(version ? { state: 'ready', version } : { state: 'up-to-date', version: app.getVersion() })
           },
           (err: unknown) => {
             log('ERROR', 'Update download failed', err)
+            if (downloading !== undefined) failed?.({ version: downloading, message: err instanceof Error ? err.message : String(err) })
             reject(err)
           },
         )
@@ -239,5 +245,8 @@ export async function installUpdate(): Promise<void> {
   if (!(await beforeInstall())) return
   if (process.platform === 'darwin') return installMacUpdateNow()
   const autoUpdater = await loadAutoUpdater()
+  // The AppImage updater starts the new AppImage at once, while this process still quits: holding the single-
+  // instance lock, it would make the new one hand its arguments over and exit (Restart now ended as a plain quit).
+  if (process.platform === 'linux') app.releaseSingleInstanceLock()
   autoUpdater.quitAndInstall(false, true)
 }

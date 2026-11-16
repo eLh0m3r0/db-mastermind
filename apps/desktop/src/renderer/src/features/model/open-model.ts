@@ -3,6 +3,7 @@ import type { OpenedModelFile } from '@shared/api'
 import { t, tp } from '@/lib/i18n'
 import { toast } from '@/store/ui'
 import type { ModelTab } from '@/store/workspace'
+import { localLayout } from './rename-follow'
 
 const LEFT_OUT: [keyof NonNullable<OpenedModelFile['imported']>['leftOut'], string][] = [
   ['relationshipsWithoutColumns', 'relationships without columns: {n}'],
@@ -21,7 +22,9 @@ export function modelTabFromFile(file: OpenedModelFile, defaultSchema?: string, 
   if (!file.imported) {
     // A model of its own keeps its diagrams' layout in its file (see core/model-layout.ts).
     const { text, layout } = splitModelLayout(file.text)
-    const l = (layout ?? {}) as Partial<Pick<ModelTab, 'positions' | 'diagrams' | 'colors' | 'notes' | 'boxes' | 'display'>> & { objects?: DezignSqlObject[] }
+    const saved = (layout ?? {}) as Partial<Pick<ModelTab, 'positions' | 'diagrams' | 'colors' | 'notes' | 'boxes' | 'display'>> & { objects?: DezignSqlObject[] }
+    // Tables without a schema are keyed `.name` in the file (see portableLayout).
+    const l = { ...saved, ...localLayout(saved, defaultSchema) }
     return { ...NOTHING_PENDING, text, path: file.path, source: undefined, dirty: false, title: name, positions: l.positions, diagrams: l.diagrams?.length ? l.diagrams : undefined, colors: l.colors, notes: l.notes, boxes: l.boxes, display: l.display, removedDiagrams: undefined, sqlObjects: l.objects?.length ? l.objects : undefined, userProperties: undefined, labels: undefined, sqlDatabase: undefined, scripting: undefined }
   }
   // Tables without a schema land in the connection's default schema when the DBML is read.

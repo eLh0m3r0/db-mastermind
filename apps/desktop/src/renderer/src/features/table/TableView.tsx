@@ -68,6 +68,7 @@ import { ProfileModal } from './ProfileModal'
 import { SelectionStatsBar } from '@/components/grid/SelectionStatsBar'
 import { RowDetails } from './RowDetails'
 import { carryPending } from './pending'
+import { lockHolder } from './lock-holder'
 import { useAiAllowed } from '../ai/AiPermissions'
 import { tp, useT } from '@/lib/i18n'
 import { askText, confirmAction } from '@/components/ui/ConfirmDialog'
@@ -545,10 +546,15 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
       if (session) void refreshTransaction(tab.id, tab.connectionId)
       // Rows a query tab changed and hasn't committed yet: name the tab and offer to go there.
       if ((err as { code?: string }).code === 'ROW_LOCKED') {
-        const holders = Object.entries(useTransactions.getState()).filter(([, tx]) => tx.connectionId === tab.connectionId)
+        // Named only when it can be told: never this tab itself, never a guess among several.
+        const held = lockHolder(useTransactions.getState(), tab.connectionId, tab.id)
         const ws = useWorkspace.getState()
-        const holder = ws.tabs.find((x) => x.id === holders[0]?.[0])
-        const message = holder ? t('The rows are locked by the open transaction in “{tab}”. Commit or roll it back there, then save again.', { tab: holder.title }) : t(errorMessage(err))
+        const holder = held && !held.ai ? ws.tabs.find((x) => x.id === held.session) : undefined
+        const message = holder
+          ? t('The rows are locked by the open transaction in “{tab}”. Commit or roll it back there, then save again.', { tab: holder.title })
+          : held?.ai
+            ? t('The rows are locked by the AI assistant’s open transaction. Commit or roll it back in the AI panel, then save again.')
+            : t(errorMessage(err))
         if (preview !== null) setApplyError(message)
         toast({ kind: 'warning', message: t('Not saved: the rows are locked'), detail: message, action: holder ? { label: t('Go to the tab'), run: () => ws.activate(holder.id) } : undefined })
         return
@@ -732,7 +738,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
       try {
         const path =
           scope === 'all'
-            ? await api.exportTable({ format, connectionId: tab.connectionId, table: tab.table, filter: appliedFilter, sort })
+            ? await api.exportTable({ format, connectionId: tab.connectionId, table: tab.table, filter: appliedFilter, sort, session })
             : await api.exportResult({
                 format,
                 defaultName: tab.table.name,
