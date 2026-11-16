@@ -181,7 +181,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       if (!target?.sql.trim()) return
       setExplaining(true)
       try {
-        const next = await api.explainQuery(tab.connectionId, target.sql, analyze)
+        const next = await api.explainQuery(tab.connectionId, target.sql, analyze, tab.id)
         setPreviousPlan(latestPlan.current)
         latestPlan.current = next
         setPlan(next)
@@ -191,7 +191,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
         setExplaining(false)
       }
     },
-    [tab.connectionId, t],
+    [tab.connectionId, tab.id, t],
   )
 
   const cancel = useCallback(() => {

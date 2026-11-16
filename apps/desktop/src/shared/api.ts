@@ -693,7 +693,8 @@ export interface MastermindApi {
 
   runQuery(request: RunQueryRequest): Promise<StatementOutcome[]>
   cancelQuery(runId: string): Promise<void>
-  explainQuery(connectionId: string, sql: string, analyze?: boolean): Promise<ExplainResult>
+  /** `session`: the query tab's, so the plan sees its temp tables, settings and open transaction. */
+  explainQuery(connectionId: string, sql: string, analyze?: boolean, session?: string): Promise<ExplainResult>
   /** A view's, function's or procedure's SQL as the database keeps it, ready to run (a table: its generated CREATE). */
   objectDefinition(connectionId: string, object: DefinedObject): Promise<string>
   releaseSession(connectionId: string, session: string): Promise<void>
