@@ -184,10 +184,10 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
     setRunning(true)
     setStartedAt(Date.now())
     try {
-      // With no transaction open in the tab it reads in a read-only transaction of its own (a guard, not a guess);
-      // inside an open one it reads in the tab's session, so it sees the same uncommitted rows.
-      const open = !!useTransactions.getState()[tab.id]
-      const result = await api.runQuery({ connectionId: tab.connectionId, sql: target.sql, runId: id, session: open ? tab.id : undefined, readOnly: open ? undefined : true, parameterValues: lastRun.current?.parameterValues, maxRows: ALL_ROWS })
+      // In the tab's own session, as the editor runs the statement: its temporary tables, search_path and
+      // uncommitted rows are there.
+      const result = await api.runQuery({ connectionId: tab.connectionId, sql: target.sql, runId: id, session: tab.id, parameterValues: lastRun.current?.parameterValues, maxRows: ALL_ROWS })
+      void refreshTransaction(tab.id, tab.connectionId, result)
       if (runId.current !== id) return
       setOutcomes((now) => withReloaded(now, statement, result))
     } catch (err) {
@@ -297,8 +297,9 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
        */
       const reload = async (silent = false) => {
         const typed = editor.current?.getValue()
-        const file = await api.openSqlFile(now.path).catch(() => null)
-        if (!file || (silent && stopped)) return
+        const file = await api.openSqlFile(now.path, { large: now.large }).catch(() => null)
+        // (Grown past the size limit since it was opened: it stays as it is; the person opens it again to agree.)
+        if (!file || 'tooLarge' in file || (silent && stopped)) return
         if (editor.current?.getValue() !== typed) {
           if (!silent) toast({ kind: 'warning', message: t('“{name}” was not reloaded', { name: now.title }), detail: t('You typed in it while the file was being read. Reload again to take the file’s text.'), duration: 0, action: { label: t('Reload from disk'), run: () => void reload() } })
           return

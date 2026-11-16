@@ -4,7 +4,7 @@ import { app, BrowserWindow } from 'electron'
 import { jsonSchema, stepCountIs, streamText, tool, type ModelMessage, type ToolSet } from 'ai'
 import { buildSystemPrompt, DB_TOOLS, isReadOnlyScript, describeError, KnowledgeBase, loadSqlTools, type ToolContext } from '@dbmastermind/core'
 import type { AiChatRequest, AiEvent } from '@shared/api'
-import { db } from '../api'
+import { db, ensureConnected } from '../api'
 import { aiAccess } from '../ai-access'
 import { chatMcpEndpoint } from './chat-mcp'
 import { getConnection } from '../connections'
@@ -78,7 +78,8 @@ async function runChat(request: AiChatRequest): Promise<void> {
   const config = getConnection(connectionId)
   const access = aiAccess(config)
   if (access.access === 'off') throw new Error('AI is turned off for this connection (Settings → AI permissions)')
-  if (!db.isOpen(connectionId)) await db.connect(config)
+  // As every other request: the password command runs, and parallel connects share one attempt.
+  await ensureConnected(connectionId)
 
   const controller = new AbortController()
   running.get(chatId)?.abort()

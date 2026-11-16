@@ -14,15 +14,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # A manual run from a branch builds the apps (uploads are tag-only below) but must not make a release or a tag
+      # named after the branch.
       - name: Create release
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          # Notes written for the release (.github/release-notes/<tag>.md) go out with it; otherwise GitHub's list of commits.
-          NOTES=(--generate-notes)
-          [ -f ".github/release-notes/$TAG.md" ] && NOTES=(--notes-file ".github/release-notes/$TAG.md")
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "DB Mastermind ${TAG#v}" "${NOTES[@]}"
+          # The notes written for the release (.github/release-notes/<tag>.md) go out with it. GitHub's generated
+          # list lacks the Website / Privacy footer every release must carry: a tag without its notes fails instead.
+          NOTES=".github/release-notes/$TAG.md"
+          if [ ! -f "$NOTES" ]; then
+            echo "::error::$NOTES is missing: write the release notes before tagging."
+            exit 1
+          fi
+          if ! grep -q 'dbmastermind.app/privacy.html' "$NOTES"; then
+            echo "::error::$NOTES lacks the footer: Website: [dbmastermind.app](https://dbmastermind.app) · [Privacy](https://dbmastermind.app/privacy.html)"
+            exit 1
+          fi
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "DB Mastermind ${TAG#v}" --notes-file "$NOTES"
 
   desktop:
     needs: create-release

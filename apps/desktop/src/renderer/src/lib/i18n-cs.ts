@@ -1922,4 +1922,13 @@ export const cs: Record<string, string> = {
   'Run it again yourself to see every row.': 'Pro zobrazení všech řádků ho spusťte znovu sami.',
   'Could not load all rows': 'Všechny řádky nelze načíst',
   'Only .sql files can be opened or saved here': 'Tady lze otevřít nebo uložit jen soubory .sql',
+  'Open {name} ({size} MB)?': 'Otevřít {name} ({size} MB)?',
+  'A file this large makes the editor slow. Its text is not kept with the open tabs: after a restart the tab reads the file again, and unsaved changes in it are lost.': 'Takto velký soubor editor zpomalí. Jeho text se neukládá s otevřenými kartami: po restartu karta soubor načte znovu a neuložené změny v ní se ztratí.',
+  'DB Mastermind {version} could not be downloaded': 'DB Mastermind {version} se nepodařilo stáhnout',
+  'The rows are locked by the AI assistant’s open transaction. Commit or roll it back in the AI panel, then save again.': 'Řádky zamyká otevřená transakce AI asistenta. Potvrďte ji nebo ji vraťte zpět v panelu AI a pak uložte znovu.',
+  'The server did not allow reading its statement statistics: {error}. {hint}': 'Server nedovolil přečíst své statistiky příkazů: {error}. {hint}',
+  'It needs the VIEW SERVER STATE permission.': 'Potřebuje oprávnění VIEW SERVER STATE.',
+  'It needs SELECT on v$sqlstats (e.g. the SELECT_CATALOG_ROLE).': 'Potřebuje SELECT na v$sqlstats (např. roli SELECT_CATALOG_ROLE).',
+  'It needs SELECT on performance_schema.': 'Potřebuje SELECT na performance_schema.',
+  'It needs the pg_read_all_stats role to see other users’ statements.': 'Aby viděl příkazy ostatních uživatelů, potřebuje roli pg_read_all_stats.',
 }

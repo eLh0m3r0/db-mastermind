@@ -6,6 +6,7 @@ import { debounce, uid } from '@/lib/utils'
 import { t, tp } from '@/lib/i18n'
 import { confirmAction } from '@/components/ui/ConfirmDialog'
 import { refreshTransaction, settleTransactions, useTransactions } from './transactions'
+import { persistedTabs } from './persisted-tabs'
 
 interface BaseTab {
   id: string
@@ -25,6 +26,8 @@ export interface QueryTab extends BaseTab {
   file?: { format: SqlFileFormat; mtimeMs: number }
   /** The database object whose definition the tab was opened with (opening it again comes back here). */
   object?: { schema?: string; name: string; kind: string; arguments?: string | null }
+  /** A .sql file above the size limit: its text is read from the file again, never saved with the workspace. */
+  large?: boolean
 }
 
 export interface TableTab extends BaseTab {
@@ -251,7 +254,7 @@ export async function settleConnectionTransactions(connectionId: string): Promis
 const tabTitle = (id: string) => useWorkspace.getState().tabs.find((tab) => tab.id === id)?.title ?? (id.startsWith('ai-') ? t('AI assistant') : id)
 
 const persist = debounce((tabs: Tab[], activeTabId?: string) => {
-  void api.saveWorkspace({ tabs, activeTabId })
+  void api.saveWorkspace({ tabs: persistedTabs(tabs), activeTabId })
 }, 400)
 
 function sameTarget(a: Tab, b: NewTab): boolean {

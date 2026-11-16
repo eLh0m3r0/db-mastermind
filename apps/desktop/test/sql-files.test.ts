@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { checkSqlFilePath, decodeSqlFile, encodeSqlFile, fileBytes, keepLineEndings, readSqlFile, rememberChosenSqlFile, writeSqlFile } from '../src/main/sql-files'
+import { checkSqlFilePath, decodeSqlFile, encodeSqlFile, fileBytes, keepChosenSqlFilesIn, keepLineEndings, readSqlFile, rememberChosenSqlFile, writeSqlFile } from '../src/main/sql-files'
 
 const dir = mkdtempSync(join(tmpdir(), 'dbm-sqlfiles-'))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
@@ -130,5 +130,22 @@ describe('paths from the window', () => {
     expect(() => checkSqlFilePath(join(dir, 'notes.txt'))).toThrow(/Only .sql/)
     rememberChosenSqlFile(join(dir, 'notes.txt'))
     expect(checkSqlFilePath(join(dir, 'notes.txt'))).toBe(join(dir, 'notes.txt'))
+  })
+
+  it('a file picked in a dialog still opens after a restart (main keeps the list in its data folder)', () => {
+    const store = join(dir, 'data', 'chosen-sql-files.json')
+    keepChosenSqlFilesIn(store)
+    rememberChosenSqlFile(join(dir, 'kept.txt'))
+    // The next start reads it back.
+    keepChosenSqlFilesIn(join(dir, 'other.json'))
+    expect(() => checkSqlFilePath(join(dir, 'kept.txt'))).toThrow(/Only .sql/)
+    keepChosenSqlFilesIn(store)
+    expect(checkSqlFilePath(join(dir, 'kept.txt'))).toBe(join(dir, 'kept.txt'))
+    // Bounded: the oldest go first.
+    for (let i = 0; i < 520; i++) rememberChosenSqlFile(join(dir, `f${i}.txt`))
+    keepChosenSqlFilesIn(store)
+    expect(JSON.parse(readFileSync(store, 'utf8'))).toHaveLength(500)
+    expect(() => checkSqlFilePath(join(dir, 'kept.txt'))).toThrow(/Only .sql/)
+    expect(checkSqlFilePath(join(dir, 'f519.txt'))).toBe(join(dir, 'f519.txt'))
   })
 })

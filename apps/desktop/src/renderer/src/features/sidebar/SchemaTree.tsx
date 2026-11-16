@@ -251,7 +251,10 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
         ? [{ label: tr('Refresh materialized view…'), icon: <RefreshCw size={13} />, onClick: () => newQuery(connection.id, `REFRESH MATERIALIZED VIEW ${qualify(getDialect(connection.driver), t)};\n`, tr('Refresh {name}', { name: t.name })) }]
         : []),
       { label: tr('Show in diagram'), icon: <Network size={13} />, onClick: () => openTab({ kind: 'diagram', connectionId: connection.id, title: tr('Diagram: {name}', { name: t.name }), focus: t.name }) },
-      { label: tr('Copy to another connection…'), icon: <Copy size={13} />, onClick: () => useUi.getState().set({ modal: { kind: 'copy', connectionId: connection.id, tables: [{ schema: t.schema, name: t.name }] } }) },
+      // (The copy dialog copies tables: a view would end on an empty result.)
+      ...(t.type === 'table'
+        ? [{ label: tr('Copy to another connection…'), icon: <Copy size={13} />, onClick: () => useUi.getState().set({ modal: { kind: 'copy', connectionId: connection.id, tables: [{ schema: t.schema, name: t.name }] } }) }]
+        : []),
       {
         label: tr('Compare data with…'),
         icon: <Rows3 size={13} />,

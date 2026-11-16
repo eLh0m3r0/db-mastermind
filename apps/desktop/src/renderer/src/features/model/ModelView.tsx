@@ -28,6 +28,9 @@ import { ProjectScriptsModal } from './ProjectScripts'
 import { EnumsModal, GroupsModal } from './enums-groups'
 import { BatchRenameModal } from './batch-rename'
 import { remembered, stepTo, type ModelSteps } from './model-steps'
+import { layoutAfterRenames, movedKeys, portableLayout, sqlObjectsAfterRenames } from './rename-follow'
+import { withoutKeysTo } from '../diagram/drop-follow'
+import { viewName } from './drop-names'
 import type { DiagramRequest } from '../diagram/DiagramView'
 import { IssuesChip, IssuesPanel } from './ModelIssues'
 import { rememberModelDatabase } from '@/lib/files'
@@ -228,7 +231,8 @@ export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: bo
       // and keeps the text as it was typed.
       const selected = diagram?.name
       const { text: _saved, title: _title, dirty: _dirty, ...fresh } = modelTabFromFile(await api.openModelFile(source.path).then((f) => f!), liveSchema?.defaultSchema, { quiet: true })
-      updateTab(tab.id, { ...fresh, dirty: false, text, source: { ...source, hash: done.hash, layout: true }, domainRenames: undefined, domainRemovals: undefined, tableRenames: undefined, targetDatabase: undefined })
+      // (The generation directives chosen here are the person's choice for this project, not something saved.)
+      updateTab(tab.id, { ...fresh, dirty: false, text, source: { ...source, hash: done.hash, layout: true }, domainRenames: undefined, domainRemovals: undefined, tableRenames: undefined, targetDatabase: undefined, directives: tab.directives })
       if (diagram) setArea(fresh.diagrams?.find((d) => d.name === selected) ? `d:${fresh.diagrams.find((d) => d.name === selected)!.id}` : '')
       toast({ kind: 'success', message: t('Saved to {file}', { file: name }), detail: done.backup ? t('Backup of the previous files: {dir}', { dir: done.backup }) : undefined })
     } catch (err) {
@@ -258,14 +262,17 @@ export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: bo
     if (!as && !tab.path && tab.source) return saveToSource(tab.source)
     try {
       // A model of its own keeps its diagrams' layout at the end of its file (a comment DBML skips).
-      const path = await api.saveModelFile(withModelLayout(text, { positions: tab.positions, colors: tab.colors, notes: tab.notes, boxes: tab.boxes, display: tab.display, diagrams: tab.diagrams, objects: tab.sqlObjects }), as ? undefined : tab.path, connection?.knowledgeBasePath, { positions: tab.positions, defaultSchema: liveSchema?.defaultSchema, driver: connection?.driver, name: fileName })
+      // Keyed without the linked database's default schema, so the layout fits whatever database opens it.
+      const implicit = new Set(parseDbml(text).tables.filter((x) => !x.schema).map((x) => x.name))
+      const layout = { ...portableLayout(tab, implicit, liveSchema?.defaultSchema), notes: tab.notes, boxes: tab.boxes, objects: tab.sqlObjects }
+      const path = await api.saveModelFile(withModelLayout(text, layout), as ? undefined : tab.path, connection?.knowledgeBasePath, { positions: tab.positions, defaultSchema: liveSchema?.defaultSchema, driver: connection?.driver, name: fileName })
       if (!path) return
       // Saved as a DeZign project: the tab now follows that file, as if it had been opened from it.
       if (/\.dez(proj)?$/i.test(path)) {
         const file = await api.openModelFile(path)
         if (!file) return
         const { text: opened, ...patch } = modelTabFromFile(file, liveSchema?.defaultSchema, { quiet: true })
-        replaceText(opened, patch)
+        replaceText(opened, { ...patch, directives: tab.directives })
         if (connection) rememberModelDatabase(path, connection.id)
         return toast({ kind: 'success', message: t('Saved as a DeZign for Databases project'), detail: path })
       }
@@ -491,7 +498,7 @@ export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: bo
     const id = dezignDriver(tab.sqlDatabase) ?? connection?.driver ?? 'postgres'
     const d = DRIVERS.find((x) => x.id === id) ?? DRIVERS[0]!
     const named = tab.source?.kind === 'dezign' ? unquotedNames(model.tables, d.id) : model.tables
-    const views = (tab.sqlObjects ?? []).filter((o) => o.kind === 'view' && (!tab.source || dezignDriver(tab.sqlDatabase) === d.id)).map((o) => `DROP VIEW ${o.schema ? `${o.schema}.` : ''}${o.name};`)
+    const views = (tab.sqlObjects ?? []).filter((o) => o.kind === 'view' && (!tab.source || dezignDriver(tab.sqlDatabase) === d.id)).map((o) => `DROP VIEW ${viewName(o, getDialect(d.id))};`)
     const script = `-- ${t('Drops everything the model creates in {db}: run it only on a database you mean to empty.', { db: d.label })}\n${views.length ? `${views.join('\n')}\n\n` : ''}${dropScript(named, getDialect(d.id), dezignMigrationOptions(tab.scripting, d.id))}`
     deliver(script, `DROP · ${d.label}`, `${fileName.replace(/\.\w+$/, '') || 'model'}-drop-${d.id}.sql`)
   }
@@ -698,7 +705,8 @@ export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: bo
   }
   // The canvas keeps callbacks of earlier renders (frames, notes): the diagrams are read from the store when a patch
   // is made, or an old render's list would undo every diagram change since.
-  const latestDiagrams = () => (useWorkspace.getState().tabs.find((x) => x.id === tab.id) as ModelTab | undefined)?.diagrams ?? tab.diagrams
+  const latestTab = () => (useWorkspace.getState().tabs.find((x) => x.id === tab.id) as ModelTab | undefined) ?? tab
+  const latestDiagrams = () => latestTab().diagrams ?? tab.diagrams
   const patchDiagram = (id: string, patch: (d: NonNullable<ModelTab['diagrams']>[number]) => Partial<NonNullable<ModelTab['diagrams']>[number]>) =>
     updateTab(tab.id, { dirty: true, diagrams: latestDiagrams()?.map((d) => (d.id === id ? { ...d, ...patch(d) } : d)) })
 
@@ -816,14 +824,12 @@ export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: bo
             onClose={() => setRenameOpen(false)}
             onApply={(tables, renames) => {
               setRenameOpen(false)
-              // A renamed table keeps its place, colour and what it shows on every diagram.
-              const moved = new Map(renames.filter((r) => r.kind === 'table').map((r) => [`${r.schema ?? ''}.${r.from}`, `${r.schema ?? ''}.${r.to}`]))
-              const rekey = <T,>(map: Record<string, T> | undefined) => (map ? Object.fromEntries(Object.entries(map).map(([k, v]) => [moved.get(k) ?? k, v])) : map)
+              // A renamed table keeps its place, colour and what it shows on every diagram, and its triggers.
+              const moves = renames.filter((r) => r.kind === 'table').map((r) => ({ from: { schema: r.schema, name: r.from }, to: { schema: r.schema, name: r.to } }))
+              const moved = movedKeys(moves)
               editModel(toDbml(tables, { defaultSchema: snapshot.defaultSchema, enums: model.enums, groups: Object.fromEntries(Object.entries(model.groups).map(([g, names]) => [g, names.map((n) => renames.find((r) => r.kind === 'table' && r.from === n)?.to ?? n)])), extras: model.extras }), {
-                positions: rekey(tab.positions),
-                colors: rekey(tab.colors),
-                display: tab.display ? { ...tab.display, hidden: rekey(tab.display.hidden) } : tab.display,
-                diagrams: tab.diagrams?.map((d) => ({ ...d, tables: d.tables.map((k) => moved.get(k) ?? k), positions: rekey(d.positions) ?? {}, colors: rekey(d.colors), display: d.display ? { ...d.display, hidden: rekey(d.display.hidden) } : d.display })),
+                ...layoutAfterRenames(tab, moved),
+                sqlObjects: sqlObjectsAfterRenames(tab.sqlObjects, moves),
                 // Chained with earlier renames: the project's name → the name now.
                 tableRenames: Object.fromEntries([
                   ...Object.entries(tab.tableRenames ?? {}).map(([from, to]) => [from, moved.get(to) ?? to]),
@@ -957,13 +963,23 @@ export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: bo
                 // A group's canvas gets only the group's tables (the rest of the model is kept here); a named diagram's
                 // gets the whole model (its tables are picked by the canvas) and gives the whole model back. Tables
                 // added there join the area.
-                const others = diagram ? [] : followRenames(model.tables.filter((x) => !inArea(x)), renames)
+                // Renamed tables keep their layout and triggers in the same write (see rename-follow.ts).
+                const moved = movedKeys(renames)
+                // Tables of the area the canvas no longer gives back were dropped: keys elsewhere stop pointing at them.
+                const given = new Set(tables.map(keyOf))
+                const dropped = model.tables.filter((x) => inArea(x) && !given.has(keyOf(x)) && !moved.has(keyOf(x)))
+                const others = diagram ? [] : withoutKeysTo(followRenames(model.tables.filter((x) => !inArea(x)), renames), dropped)
+                const renamedTo = new Set(moved.values())
                 const before = new Set(model.tables.map(keyOf))
-                const added = tables.filter((x) => !before.has(keyOf(x)))
+                const added = tables.filter((x) => !before.has(keyOf(x)) && !renamedTo.has(keyOf(x)))
                 const groups = group ? { ...model.groups, [area.slice(2)]: [...new Set([...group, ...tables.map((x) => x.name)])] } : model.groups
-                const current = latestDiagrams()
-                const diagrams = diagram ? current?.map((d) => (d.id === diagram.id ? { ...d, tables: [...new Set([...d.tables, ...added.map(keyOf)])] } : d)) : current
-                replaceText(toDbml([...others, ...tables], { defaultSchema: snapshot.defaultSchema, enums: model.enums, groups, extras: model.extras }), { dirty: true, diagrams })
+                const layout = layoutAfterRenames({ ...latestTab(), diagrams: latestDiagrams() }, moved)
+                const diagrams = diagram ? layout.diagrams?.map((d) => (d.id === diagram.id ? { ...d, tables: [...new Set([...d.tables, ...added.map(keyOf)])] } : d)) : layout.diagrams
+                replaceText(toDbml([...others, ...tables], { defaultSchema: snapshot.defaultSchema, enums: model.enums, groups, extras: model.extras }), {
+                  dirty: true,
+                  ...(moved.size ? { ...layout, sqlObjects: sqlObjectsAfterRenames(tab.sqlObjects, renames) } : {}),
+                  diagrams,
+                })
               }}
             />
           ) : (

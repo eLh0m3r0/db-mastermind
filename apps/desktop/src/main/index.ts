@@ -16,6 +16,7 @@ import { isMcpMode, runMcpMode } from './mcp-mode'
 import { configureDataDir, dataPath, readJson, writeJson } from './storage'
 import { swapMacUpdateBeforeKill } from './mac-update'
 import { setBeforeInstall, startUpdateChecks } from './updates'
+import { keepChosenSqlFilesIn } from './sql-files'
 import { hasEditorSessions, settleTransactionsBeforeQuit } from './transactions'
 
 configureDataDir()
@@ -120,6 +121,7 @@ function startApp() {
     return
   }
   if (e2eBackground && process.platform === 'darwin') app.setActivationPolicy('accessory')
+  keepChosenSqlFilesIn(dataPath('chosen-sql-files.json'))
   ipcMain.handle(API_CHANNEL, async (_event, method: keyof MastermindApi, args: unknown[]): Promise<IpcResult<unknown>> => {
     const fn = api[method] as ((...a: unknown[]) => Promise<unknown>) | undefined
     if (typeof fn !== 'function') return { ok: false, error: { message: `Unknown method ${String(method)}` } }

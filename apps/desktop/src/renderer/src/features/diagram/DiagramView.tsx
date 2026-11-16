@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { canvasOwnsKey } from './canvas-keys'
+import { withoutKeysTo } from './drop-follow'
 import {
   Background,
   BackgroundVariant,
@@ -846,6 +847,8 @@ function DiagramInner({ tab, focused, model, modelDriver, domains, userPropertie
       else if (d.status !== 'dropped') whole.push(d.info)
     }
     for (const d of display) if (d.status === 'new') whole.push(d.info)
+    const keysKept = withoutKeysTo(whole, display.filter((d) => d.status === 'dropped').map((d) => d.info))
+    whole.splice(0, whole.length, ...keysKept)
     const renames: ModelRename[] = []
     for (const t of schema?.tables ?? []) {
       const draft = drafts[keyOf(t)]
@@ -1464,11 +1467,19 @@ function DiagramInner({ tab, focused, model, modelDriver, domains, userPropertie
     }
   }, [model, onApplyModel])
   // A request from the object browser: show the table (selected, in the middle), or open a dialog.
+  // (A request that came with a switch to the whole model arrives before the canvas has its tables: it waits for them.)
+  const handledRequest = useRef<number | undefined>(undefined)
   useEffect(() => {
-    if (!request) return
+    if (!request || handledRequest.current === request.n) return
     const target = nodes.find((n) => n.id === request.key)
     if (request.kind === 'locate') {
-      if (!target) return
+      if (!target) {
+        // In another schema than the one shown: show that schema, then find it there.
+        const table = schema?.tables.find((x) => keyOf(x) === request.key)
+        if (table && schemaFilter && (table.schema ?? '') !== schemaFilter) setSchemaFilter(table.schema ?? '')
+        return
+      }
+      handledRequest.current = request.n
       setNodes((list) => list.map((n) => (n.selected !== (n.id === request.key) ? { ...n, selected: n.id === request.key } : n)))
       flow.setCenter(target.position.x + WIDTH / 2, target.position.y + 80, { zoom: Math.max(flow.getZoom(), 0.8), duration: 300 })
       return
@@ -1476,11 +1487,12 @@ function DiagramInner({ tab, focused, model, modelDriver, domains, userPropertie
     if (!model || !onApplyModel) return
     const draft = draftFor(request.key)
     if (!draft) return
+    handledRequest.current = request.n
     // The table's details (and the relationship's, highlighted), in the panel.
     setSelected(request.key)
     setFocusFk(request.kind === 'relationship' ? request.fk : undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [request?.n])
+  }, [request?.n, nodes.length])
   /** Lines the selected tables up on their left or top edge, or spreads them evenly. */
   const arrange = (how: 'left' | 'top' | 'spread-x' | 'spread-y') => {
     const picked = nodes.filter((n) => n.selected && !isNote(n.id))

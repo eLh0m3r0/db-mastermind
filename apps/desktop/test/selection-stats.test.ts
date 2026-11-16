@@ -67,3 +67,17 @@ describe('parseDecimal / decimalText', () => {
     for (const x of ['', '.', 'abc', '1.2.3', 'Infinity', '1e999']) expect(parseDecimal(x)).toBeUndefined()
   })
 })
+
+describe('text columns whose type names contain tiny / long', () => {
+  it('codes in a MySQL longtext or tinytext column or an Oracle LONG column are counted as text', () => {
+    for (const dataType of ['longtext', 'tinytext', 'long', 'mediumtext']) {
+      const s = selectionStats([{ name: 'code', dataType }], [['00123'], ['00456']], { r0: 0, r1: 1, c0: 0, c1: 0 })
+      expect(s).toMatchObject({ distinct: 2 })
+      expect(s).not.toHaveProperty('sum')
+    }
+  })
+
+  it('MySQL BIGINT (longlong) as text still totals', () => {
+    expect(selectionStats([{ name: 'n', dataType: 'longlong' }], [['9007199254740993'], ['1']], { r0: 0, r1: 1, c0: 0, c1: 0 })).toMatchObject({ sum: '9007199254740994' })
+  })
+})

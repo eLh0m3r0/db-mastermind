@@ -33,8 +33,6 @@ import {
   parseDelimited,
   parseXlsx,
   parseJsonRows,
-  createDriver,
-  isBinaryValue,
   DatabaseService,
   getDialect,
   inlineParams,
@@ -84,8 +82,9 @@ import { buildMenu, setMenuContext } from './menu'
 import { forgetEditorSession, forgetEditorSessionsOf, openTransactions, trackEditorSession } from './transactions'
 import * as library from './library'
 import { getSettings, updateSettings } from './settings'
-import { checkSqlFilePath, readSqlFile, rememberChosenSqlFile, sqlFileTime, writeSqlFile } from './sql-files'
+import { checkSqlFilePath, LARGE_SQL_FILE, readSqlFile, rememberChosenSqlFile, sqlFileSize, sqlFileTime, writeSqlFile } from './sql-files'
 import { withCommandPassword } from './password-command'
+import { readParquet } from './parquet'
 import { assertReachable, singleFlight } from './connect-guard'
 import { dismissProposal, listProposals } from './connection-proposals'
 import { notifyProposals, proposalsDir } from './proposals-watch'
@@ -113,8 +112,12 @@ function track<T>(runId: string | undefined, fn: (signal?: AbortSignal) => Promi
  * Reads CSV/TSV (UTF-8, or Windows-1250 as Czech Excel saves it), the first sheet of an .xlsx file, JSON / JSON Lines,
  * or Parquet (through the built-in DuckDB).
  */
-async function readImportFile(path: string, delimiter?: string) {
-  if (/\.parquet$/i.test(path)) return { format: 'parquet' as const, rows: await readParquet(path) }
+async function readImportFile(path: string, delimiter?: string, previewRows?: number) {
+  if (/\.parquet$/i.test(path)) {
+    // The preview reads only what it shows; the row count comes from the file's metadata.
+    const read = await readParquet(path, previewRows)
+    return { format: 'parquet' as const, rows: read.rows, totalRows: read.total }
+  }
   const buffer = await readFile(path)
   if (/\.xlsx$/i.test(path)) return { format: 'xlsx' as const, rows: parseXlsx(buffer) }
   if (/\.(json|jsonl|ndjson)$/i.test(path)) return { format: 'json' as const, rows: parseJsonRows(new TextDecoder('utf-8').decode(buffer)) as string[][] }
@@ -130,24 +133,6 @@ async function readImportFile(path: string, delimiter?: string) {
   return { format: 'csv' as const, delimiter: d, encoding, rows: parseDelimited(text, d) }
 }
 
-/** A Parquet file's rows (header first) as text, read by an in-memory DuckDB. */
-async function readParquet(path: string): Promise<string[][]> {
-  const duck = createDriver({ id: 'parquet-import', name: 'parquet', driver: 'duckdb' })
-  await duck.connect()
-  try {
-    const [r] = await duck.execute(`SELECT * FROM read_parquet('${path.replaceAll("'", "''")}')`)
-    if (!r) return []
-    // Values as written (cellToText is for display: it shortens numbers and binary data).
-    const text = (v: unknown) => {
-      if (v === null) return null
-      if (isBinaryValue(v as never)) throw new Error('The Parquet file has binary columns, which can’t be imported')
-      return typeof v === 'object' ? JSON.stringify(v) : String(v)
-    }
-    return [r.fields.map((f) => f.name), ...r.rows.map((row) => row.map(text) as string[])]
-  } finally {
-    await duck.close().catch(() => {})
-  }
-}
 
 function knowledge(connectionId: string): KnowledgeBase {
   const path = connections.getConnection(connectionId).knowledgeBasePath
@@ -325,9 +310,14 @@ export const api: MastermindApi = {
     return restoreDatabase(connectionId)
   },
   async checkForUpdatesNow() {
-    return checkNow((info) => {
-      for (const w of BrowserWindow.getAllWindows()) w.webContents.send('update:ready', info)
-    })
+    return checkNow(
+      (info) => {
+        for (const w of BrowserWindow.getAllWindows()) w.webContents.send('update:ready', info)
+      },
+      (info) => {
+        for (const w of BrowserWindow.getAllWindows()) w.webContents.send('update:failed', info)
+      },
+    )
   },
   async listTeamTools(connectionId) {
     const config = connections.getConnection(connectionId)
@@ -645,7 +635,7 @@ export const api: MastermindApi = {
     await writeFile(r.filePath, text, 'utf8')
     return r.filePath
   },
-  async openSqlFile(path) {
+  async openSqlFile(path, options) {
     if (path === undefined) {
       const window = BrowserWindow.getFocusedWindow()
       const options = { title: 'Open SQL file', properties: ['openFile' as const], filters: [{ name: 'SQL', extensions: ['sql'] }, { name: 'All files', extensions: ['*'] }] }
@@ -654,7 +644,10 @@ export const api: MastermindApi = {
       path = r.filePaths[0]
       rememberChosenSqlFile(path)
     }
-    return readSqlFile(checkSqlFilePath(path))
+    const full = checkSqlFilePath(path)
+    const size = await sqlFileSize(full)
+    if (size > LARGE_SQL_FILE && !options?.large) return { path: full, name: basename(full), tooLarge: size }
+    return readSqlFile(full)
   },
   async writeSqlFile(path, text, format, expectedMtimeMs, force) {
     return writeSqlFile(checkSqlFilePath(path), text, format, { expectedMtimeMs, force })
@@ -810,8 +803,8 @@ export const api: MastermindApi = {
     )
   },
   async importPreview(path, delimiter) {
-    const data = await readImportFile(path, delimiter)
-    return { format: data.format, delimiter: data.delimiter, encoding: data.encoding, rows: data.rows.slice(0, 51), totalRows: data.rows.length }
+    const data = await readImportFile(path, delimiter, 50)
+    return { format: data.format, delimiter: data.delimiter, encoding: data.encoding, rows: data.rows.slice(0, 51), totalRows: ('totalRows' in data ? data.totalRows : undefined) ?? data.rows.length }
   },
   async importFile(request) {
     await ensureConnected(request.connectionId)
@@ -935,6 +928,7 @@ export const api: MastermindApi = {
         sort: request.sort,
         limit: batch,
         offset,
+        session: request.session,
       })
       writer ??= createExportWriter(path, request.format, page.result.fields, {
         tableName: qualify(dialect, request.table),

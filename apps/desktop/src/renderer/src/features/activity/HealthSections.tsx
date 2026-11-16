@@ -8,6 +8,7 @@ import { useT } from '@/lib/i18n'
 import { cn, errorMessage, formatBytes, formatCount, formatDuration } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useWorkspace } from '@/store/workspace'
+import { topQueriesReason } from './health-text'
 
 /** Loads on mount and on Refresh (these are cumulative numbers: no auto-refresh). */
 function useLoad<T>(load: () => Promise<T>) {
@@ -77,7 +78,7 @@ export function TopQueriesSection({ connectionId }: { connectionId: string }) {
       ) : !data.available ? (
         <div className="m-4 flex max-w-[720px] flex-col gap-2 rounded-lg border border-line p-4 text-[12.5px]" data-testid="top-queries-unavailable">
           <div className="font-semibold">{t('No statement statistics')}</div>
-          <div className="text-fg-muted">{t(data.reason)}</div>
+          <div className="text-fg-muted">{topQueriesReason(data.reason, t)}</div>
           {data.enableSql && (
             <div className="flex items-center gap-2">
               <code className="rounded bg-muted px-2 py-1 font-mono text-[12px]">{data.enableSql}</code>

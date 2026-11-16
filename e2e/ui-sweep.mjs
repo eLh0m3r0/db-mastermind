@@ -92,7 +92,21 @@ try {
   await win.keyboard.insertText('SELECT * FROM shop.orders')
   await win.keyboard.press(`${mod}+Enter`)
   await win.waitForTimeout(1500)
-  const tabAt = async (i) => win.locator('[role="tab"]').nth(i).click({ timeout: 2000 }).catch(() => {})
+  // A tab that can't be clicked means the context's actions would run on another tab: noted, never swallowed.
+  const tabAt = async (i) =>
+    win
+      .locator('[role="tab"]')
+      .nth(i)
+      .click({ timeout: 2000 })
+      .catch((err) => note('action-failed', `tab ${i}: ${String(err?.message ?? err).split('\n')[0].slice(0, 160)}`))
+  /** The new tab a context's setup opened, or undefined (noted) when it opened none. */
+  const opened = async (before, title) => {
+    const tabs = await win.locator('[role="tab"]').count()
+    const last = tabs > before ? ((await win.locator('[role="tab"]').nth(tabs - 1).innerText().catch(() => '')) ?? '') : ''
+    if (tabs > before && (!title || title.test(last))) return tabs - 1
+    note('context-unreached', `${state.context}: ${tabs > before ? `the new tab is “${last.trim()}”` : 'no tab opened'}`)
+    return undefined
+  }
 
   state.context = 'query-tab'
   state.current = 'setup'
@@ -102,28 +116,34 @@ try {
 
   state.context = 'table-tab'
   state.current = 'setup'
+  const beforeTable = await win.locator('[role="tab"]').count()
   await win.keyboard.press(`${mod}+p`)
   await win.keyboard.insertText('orders')
   await win.waitForTimeout(800)
   await win.keyboard.press('Enter')
   await win.waitForTimeout(2000)
   await checkScreen()
-  const tableTab = (await win.locator('[role="tab"]').count()) - 1
-  await sweepPalette(() => tabAt(tableTab))
-  await sweepMenu(() => tabAt(tableTab))
+  const tableTab = await opened(beforeTable, /orders/i)
+  if (tableTab !== undefined) {
+    await sweepPalette(() => tabAt(tableTab))
+    await sweepMenu(() => tabAt(tableTab))
+  }
 
   state.context = 'model-tab'
   state.current = 'setup'
+  const beforeModel = await win.locator('[role="tab"]').count()
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.send('menu:command', 'new-model'))
   await win.waitForTimeout(1500)
   await checkScreen()
-  const modelTab = (await win.locator('[role="tab"]').count()) - 1
-  await sweepPalette(() => tabAt(modelTab))
-  await sweepMenu(() => tabAt(modelTab))
+  const modelTab = await opened(beforeModel, /model/i)
+  if (modelTab !== undefined) {
+    await sweepPalette(() => tabAt(modelTab))
+    await sweepMenu(() => tabAt(modelTab))
+  }
 } catch (err) {
   note('sweep-failed', String(err?.stack ?? err).slice(0, 500))
   await win.screenshot({ path: join(out, 'failure.png') }).catch(() => {})
 } finally {
   await app.close().catch(() => {})
 }
-report(strict)
+report(strict, ['no-connection', 'query-tab', 'table-tab', 'model-tab'])

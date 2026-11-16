@@ -5,7 +5,9 @@ export const MAX_STAT_CELLS = 1_000_000
 /** Decimal places beyond which numbers are not totalled (they would not be shown faithfully). */
 const MAX_SCALE = 40
 
-const NUMERIC_TYPE = /(int|serial|numeric|decimal|float|double|real|money|number|longlong|newdecimal|tiny|short|long)/i
+// mysql2's protocol names `tiny`, `short` and `long` arrive as JS numbers and need no type; matched as words they
+// would also take MySQL's tinytext / longtext and Oracle's LONG (text) for numbers. `longlong` (BIGINT) is text.
+const NUMERIC_TYPE = /(int|serial|numeric|decimal|float|double|real|money|number|newdecimal|^longlong$)/i
 const NUMBER_TEXT = /^([-+]?)(\d*)(?:\.(\d*))?(?:[eE]([-+]?\d+))?$/
 
 /** Whether a column holds numbers (exact numerics arrive as text, e.g. PostgreSQL numeric and bigint). */
