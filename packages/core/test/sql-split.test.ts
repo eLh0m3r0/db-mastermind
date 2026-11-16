@@ -38,6 +38,16 @@ describe('splitStatements', () => {
     expect(extractParameters("SELECT E'a\\':b', :c", 'postgres').map((p) => p.name)).toEqual(['c'])
   })
 
+  it('psql meta-commands end at their line; COPY FROM STDIN keeps its data', () => {
+    expect(texts('\\d users\nselect 1;\n  \\timing on\nselect 2', 'postgres')).toEqual(['\\d users', 'select 1', '\\timing on', 'select 2'])
+    // Not at a statement's start: a backslash in a string or an expression stays where it is.
+    expect(texts("select 'a\n\\b'; select 2", 'postgres')).toEqual(["select 'a\n\\b'", 'select 2'])
+    expect(texts('COPY t (a, b) FROM stdin;\n1\tx;y\n2\tz\n\\.\nselect 3;', 'postgres')).toEqual(['COPY t (a, b) FROM stdin;\n1\tx;y\n2\tz\n\\.', 'select 3'])
+    expect(texts('COPY t TO STDOUT; select 4', 'postgres')).toEqual(['COPY t TO STDOUT', 'select 4'])
+    // Other engines: unchanged.
+    expect(texts('\\d users\nselect 1;', 'mysql')).toEqual(['\\d users\nselect 1'])
+  })
+
   it('does not treat $1 parameters as dollar quotes', () => {
     expect(texts('select $1; select $2', 'postgres')).toEqual(['select $1', 'select $2'])
   })

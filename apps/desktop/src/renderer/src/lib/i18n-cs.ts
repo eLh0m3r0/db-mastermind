@@ -243,6 +243,7 @@ export const cs: Record<string, string> = {
   'Port': 'Port',
   'Query timeout (seconds, 0 = none)': 'Časový limit dotazu (sekundy, 0 = bez limitu)',
   'Default schema (search_path)': 'Výchozí schéma (search_path)',
+  'COPY … FROM STDIN needs psql to send the data. Use Import data (CSV / Excel) on the table, or INSERT statements.': 'COPY … FROM STDIN potřebuje psql, které data posílá. Použijte u tabulky Importovat data (CSV / Excel) nebo příkazy INSERT.',
   'Unqualified names are looked up here, in every query tab. Several: app, public': 'Názvy bez schématu se hledají tady, ve všech dotazových záložkách. Více schémat: app, public',
   'Read-only': 'Jen pro čtení',
   'SSH host': 'SSH hostitel',

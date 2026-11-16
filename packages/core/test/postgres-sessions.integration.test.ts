@@ -91,6 +91,24 @@ describe.skipIf(skip.has('postgres'))('PostgreSQL sessions', () => {
     }
   })
 
+  it('psql commands and COPY FROM STDIN are explained; LISTEN shows notifications with the next statement', async () => {
+    const out = await db.runScript(id, '\\d shop.customers\nSELECT 1;\nCOPY shop.customers (id) FROM stdin;\n99\n\\.\nSELECT 2', { continueOnError: true })
+    expect(out.map((o) => o.error?.message ?? 'ok')).toEqual([
+      expect.stringMatching(/^\\d is a psql command, not SQL/),
+      'ok',
+      expect.stringMatching(/^COPY … FROM STDIN needs psql/),
+      'ok',
+    ])
+    await db.runScript(id, 'LISTEN dbm_channel', { session: 'listen-tab' })
+    await db.runScript(id, "NOTIFY dbm_channel, 'hello'")
+    await new Promise((r) => setTimeout(r, 200))
+    const [next] = await db.runScript(id, 'SELECT 1', { session: 'listen-tab' })
+    expect(next?.messages?.[0]).toMatch(/^Asynchronous notification "dbm_channel" with payload "hello" received from server process with PID \d+\.$/)
+    const [again] = await db.runScript(id, 'SELECT 1', { session: 'listen-tab' })
+    expect(again?.messages).toBeUndefined()
+    await db.releaseSession(id, 'listen-tab')
+  })
+
   it('a type created after connecting has its name in results', async () => {
     await db.runScript(id, "DROP TYPE IF EXISTS dbm_mood_later; CREATE TYPE dbm_mood_later AS ENUM ('ok', 'meh')")
     const [o] = await db.runScript(id, "SELECT 'ok'::dbm_mood_later AS mood")
