@@ -187,6 +187,24 @@ export class SessionTransactions {
   }
 }
 
+/** A grid row's change would have changed several rows: its key doesn't identify one row. */
+export class TooManyRowsError extends Error {
+  override name = 'TooManyRowsError'
+  readonly code = 'TOO_MANY_ROWS'
+  constructor(
+    readonly rows: number,
+    after = 'Nothing was saved.',
+  ) {
+    super(`This change would have changed ${rows} rows, not only the one edited: the table's key doesn't identify one row. ${after}`)
+  }
+}
+
+/** The rows a statement changed, after checking its `maxAffected`; more throws, so the transaction rolls back. */
+export function checkAffected(statement: BuiltQuery, rows: number): number {
+  if (statement.maxAffected !== undefined && rows > statement.maxAffected) throw new TooManyRowsError(rows)
+  return rows
+}
+
 /** The database gave up waiting for a lock another session holds (see `transaction`'s `lockTimeoutMs`). */
 export function isLockTimeout(err: unknown): boolean {
   const e = err as { code?: string | number; errno?: number; number?: number; message?: string } | undefined
@@ -225,7 +243,7 @@ export function elapsed(start: bigint): number {
  * drivers lend them a pooled connection. Editor tabs keep theirs until closed and get one outside the pool.
  */
 export function isShortLivedSession(session: string): boolean {
-  return /^(readonly|script|copy|explain)-/.test(session)
+  return /^(readonly|script|copy|explain|import)-/.test(session)
 }
 
 /**

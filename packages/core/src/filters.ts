@@ -310,6 +310,11 @@ export interface SelectSpec {
 export interface BuiltQuery {
   sql: string
   params: unknown[]
+  /**
+   * The most rows the statement may change (a grid row's UPDATE / DELETE: 1). More fails the transaction it runs in,
+   * before anything is committed: a key that doesn't identify one row must never change several.
+   */
+  maxAffected?: number
 }
 
 export function buildSelect(spec: SelectSpec, dialect: Dialect): BuiltQuery {

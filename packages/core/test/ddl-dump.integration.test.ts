@@ -103,8 +103,12 @@ for (const driver of ['postgres', 'mysql'] as const) {
             for (const [k, v] of Object.entries(shape)) report(`${model.label} SHAPE ${v}× ${k}`)
           }
           report(`${model.label} ${driver}: tables=${tables.length} created-failed=${failed} read=${read.tables.length} skipped=${read.skipped.length} differences=${JSON.stringify(kinds)}`)
-          if (model.label === 'shop') expect(changes.map((c) => `${c.kind} ${'column' in c ? c.column : ''}`)).toEqual([])
-          else if (failed === 0 && (read.skipped.length || changes.length)) failures.push(`${model.label}: skipped ${read.skipped.length}, differences ${JSON.stringify(kinds)}`)
+          if (model.label === 'shop') {
+            // Everything was created and read back, not only compared where compareSchemas looks (review finding).
+            expect(outcomes.filter((o) => o.error).map((o) => `${o.sql.slice(0, 120)} → ${o.error!.message}`)).toEqual([])
+            expect(read.skipped).toEqual([])
+            expect(changes.map((c) => `${c.kind} ${'column' in c ? c.column : ''}`)).toEqual([])
+          } else if (failed === 0 && (read.skipped.length || changes.length)) failures.push(`${model.label}: skipped ${read.skipped.length}, differences ${JSON.stringify(kinds)}`)
           await svc.disconnect(config.id)
           await svc.runScript(server.id, `DROP DATABASE IF EXISTS ${space}`)
         }

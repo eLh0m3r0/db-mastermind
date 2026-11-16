@@ -19,6 +19,9 @@ describe('connection settings', () => {
     // SQL Server named instances on one host are different servers.
     expect(sameServer({ ...pg, driver: 'mssql', port: undefined, options: { instanceName: 'DEV' } }, { ...pg, driver: 'mssql', port: undefined, options: { instanceName: 'PROD' } })).toBe(false)
     expect(sameServer(pg, { ...pg, ssh: { enabled: true, authMethod: 'password', host: 'bastion', port: 22, user: 'me' } })).toBe(false)
+    // A read-only connection's other database is no writable one (review finding).
+    expect(sameServer({ ...pg, readOnly: true }, { ...pg, id: 'b', database: 'crm' })).toBe(false)
+    expect(sameServer({ ...pg, readOnly: true }, { ...pg, id: 'b', database: 'crm', readOnly: true })).toBe(true)
   })
   it('offers other databases only where a server has several behind one login', () => {
     expect(['postgres', 'mysql', 'mariadb', 'mssql', 'clickhouse'].every((d) => supportsOtherDatabases(d as ConnectionConfig['driver']))).toBe(true)

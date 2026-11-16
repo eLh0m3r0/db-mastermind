@@ -22,9 +22,12 @@ export function supportsOtherDatabases(driver: ConnectionConfig['driver']): bool
   return ['postgres', 'mysql', 'mariadb', 'mssql', 'clickhouse'].includes(driver)
 }
 
-/** The same server and login (what `database` aside makes a connection): a database's connection is found by it. */
+/**
+ * The same server and login (what `database` aside makes a connection): a database's connection is found by it.
+ * Read-only counts too: another database of a read-only connection must never be a writable one.
+ */
 export function sameServer(a: ConnectionConfig, b: ConnectionConfig): boolean {
   const key = (c: ConnectionConfig) =>
-    JSON.stringify([c.driver, c.host ?? '', c.port ?? '', c.user ?? '', c.ssh?.host ?? '', c.ssh?.port ?? '', c.ssh?.user ?? '', c.options?.instanceName ?? '', c.options?.domain ?? ''])
+    JSON.stringify([c.driver, c.host ?? '', c.port ?? '', c.user ?? '', c.ssh?.host ?? '', c.ssh?.port ?? '', c.ssh?.user ?? '', c.options?.instanceName ?? '', c.options?.domain ?? '', !!c.readOnly])
   return key(a) === key(b)
 }

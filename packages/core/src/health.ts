@@ -37,6 +37,8 @@ export interface StorageReport {
   /** Since when the usage statistics count (server start or the last reset). */
   statsSince?: string
   unusedNote?: string
+  /** Why the tables come without sizes (only row counts from the schema), when the login may not read them. */
+  sizesNote?: string
 }
 
 const LIMIT = 50
@@ -194,7 +196,16 @@ export async function storageReport(db: DatabaseService, id: string): Promise<St
         WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_SCHEMA NOT IN ('mysql', 'sys', 'performance_schema', 'information_schema')
         ORDER BY DATA_LENGTH + INDEX_LENGTH DESC LIMIT 200`,
     )
-    const unused = await optional(() => rows(db, id, 'SELECT object_schema AS sch, object_name AS tbl, index_name AS idx FROM sys.schema_unused_indexes'))
+    // Never a unique index: it is a rule of the data, not a speed-up (MySQL 5.7 and MariaDB's view leaves out only PRIMARY).
+    const unused = await optional(() =>
+      rows(
+        db,
+        id,
+        `SELECT u.object_schema AS sch, u.object_name AS tbl, u.index_name AS idx FROM sys.schema_unused_indexes u
+          WHERE NOT EXISTS (SELECT 1 FROM information_schema.STATISTICS s
+                             WHERE s.TABLE_SCHEMA = u.object_schema AND s.TABLE_NAME = u.object_name AND s.INDEX_NAME = u.index_name AND s.NON_UNIQUE = 0)`,
+      ),
+    )
     const [since] = (await optional(() => rows(db, id, `SELECT DATE_SUB(NOW(), INTERVAL VARIABLE_VALUE SECOND) AS since FROM performance_schema.global_status WHERE VARIABLE_NAME = 'Uptime'`))) ?? []
     return {
       tables: tables.map((r) => ({ schema: text(r.sch), name: text(r.tbl), totalBytes: num(r.total), dataBytes: num(r.data), indexBytes: num(r.idx), rows: num(r.est) })),
@@ -204,7 +215,8 @@ export async function storageReport(db: DatabaseService, id: string): Promise<St
     }
   }
   if (driver === 'mssql') {
-    const tables = await rows(
+    // Sizes need VIEW DATABASE STATE; without it the row counts of the schema are still worth showing.
+    const sized = await optional(() => rows(
       db,
       id,
       `SELECT TOP 200 s.name AS sch, t.name AS tbl, SUM(ps.reserved_page_count) * 8192 AS total,
@@ -214,7 +226,8 @@ export async function storageReport(db: DatabaseService, id: string): Promise<St
          FROM sys.dm_db_partition_stats ps JOIN sys.tables t ON t.object_id = ps.object_id JOIN sys.schemas s ON s.schema_id = t.schema_id
         WHERE t.is_ms_shipped = 0
         GROUP BY s.name, t.name ORDER BY SUM(ps.reserved_page_count) DESC`,
-    )
+    ))
+    const tables = sized ?? []
     const unused = await optional(() =>
       rows(
         db,
@@ -231,7 +244,10 @@ export async function storageReport(db: DatabaseService, id: string): Promise<St
     )
     const [since] = (await optional(() => rows(db, id, 'SELECT CONVERT(varchar(19), sqlserver_start_time, 120) AS since FROM sys.dm_os_sys_info'))) ?? []
     return {
-      tables: tables.map((r) => ({ schema: text(r.sch), name: text(r.tbl), totalBytes: num(r.total), dataBytes: num(r.data), indexBytes: num(r.idx), rows: num(r.est) })),
+      tables: sized
+        ? tables.map((r) => ({ schema: text(r.sch), name: text(r.tbl), totalBytes: num(r.total), dataBytes: num(r.data), indexBytes: num(r.idx), rows: num(r.est) }))
+        : await schemaRowCounts(db, id),
+      ...(sized ? {} : { sizesNote: 'Table sizes need the VIEW DATABASE STATE permission: the row counts are estimates from the schema.' }),
       unusedIndexes: unused?.map((r) => ({ schema: text(r.sch), table: text(r.tbl), index: text(r.idx), bytes: num(r.bytes) })),
       statsSince: since ? text(since.since) : undefined,
       ...(unused ? {} : { unusedNote: 'Unused indexes need the VIEW SERVER STATE permission.' }),
@@ -252,12 +268,13 @@ export async function storageReport(db: DatabaseService, id: string): Promise<St
     }
   }
   // DuckDB, SQLite and the rest: row counts from the schema, no sizes.
+  return { tables: await schemaRowCounts(db, id), unusedNote: 'This database does not track how indexes are used.' }
+}
+
+async function schemaRowCounts(db: DatabaseService, id: string): Promise<TableSize[]> {
   const snapshot = await db.schema(id)
-  return {
-    tables: snapshot.tables
-      .filter((t) => t.type === 'table')
-      .map((t) => ({ schema: t.schema, name: t.name, rows: t.rowEstimate ?? undefined }))
-      .sort((a, b) => (b.rows ?? 0) - (a.rows ?? 0)),
-    unusedNote: 'This database does not track how indexes are used.',
-  }
+  return snapshot.tables
+    .filter((t) => t.type === 'table')
+    .map((t) => ({ schema: t.schema, name: t.name, rows: t.rowEstimate ?? undefined }))
+    .sort((a, b) => (b.rows ?? 0) - (a.rows ?? 0))
 }

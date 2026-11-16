@@ -1,6 +1,6 @@
 import { Worker } from 'node:worker_threads'
 import { sqliteDialect } from '../dialect.js'
-import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
+import { checkAffected, TooManyRowsError, elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import type { ConnectionConfig, QueryOptions, QueryResult, ResultField, SchemaSnapshot, ServerInfo, TableInfo, TransactionState } from '../types.js'
 import { isReadOnlyScript } from '../sql-split.js'
@@ -115,7 +115,11 @@ parentPort.on('message', (msg) => {
       if (inTransaction()) throw new Error(OTHER_TAB)
       db.exec('BEGIN')
       try {
-        const affected = msg.statements.map((s) => Number(db.prepare(s.sql).run(...bind(s.params)).changes))
+        const affected = msg.statements.map((s) => {
+          const n = Number(db.prepare(s.sql).run(...bind(s.params)).changes)
+          if (s.maxAffected != null && n > s.maxAffected) throw Object.assign(new Error('too many rows'), { code: 'DBM_TOO_MANY_ROWS', errcode: n })
+          return n
+        })
         db.exec('COMMIT')
         post({ id: msg.id, ok: true, result: affected })
       } catch (e) {
@@ -137,7 +141,7 @@ interface WorkerReply {
   ok: boolean
   inTx?: boolean
   result?: unknown
-  error?: { message: string; code?: string }
+  error?: { message: string; code?: string; errcode?: number }
 }
 
 interface RawResult {
@@ -188,7 +192,7 @@ export class SqliteDriver implements DatabaseDriver {
       if (!reply.inTx) this.txOwner = undefined
       else this.txOwner ??= p.session ?? ''
       if (reply.ok) p.resolve(reply.result)
-      else p.reject(Object.assign(new Error(reply.error?.message ?? 'SQLite error'), { code: reply.error?.code }))
+      else p.reject(Object.assign(new Error(reply.error?.message ?? 'SQLite error'), { code: reply.error?.code, errcode: reply.error?.errcode }))
     })
     return new Promise<void>((resolve, reject) => {
       const onError = (err: Error) => {
@@ -330,7 +334,13 @@ export class SqliteDriver implements DatabaseDriver {
 
   async transaction(statements: BuiltQuery[]): Promise<number[]> {
     if (this.txOwner !== undefined) throw new Error(OTHER_TAB_TRANSACTION)
-    return (await this.send({ type: 'tx', statements })) as number[]
+    try {
+      return (await this.send({ type: 'tx', statements })) as number[]
+    } catch (err) {
+      const e = err as { code?: string; errcode?: number }
+      if (e.code === 'DBM_TOO_MANY_ROWS') throw new TooManyRowsError(Number(e.errcode))
+      throw err
+    }
   }
 
   async *stream(sql: string, options: StreamOptions = {}): AsyncGenerator<StreamBatch> {

@@ -15,17 +15,19 @@ const literal = (s: string) => `'${s.replaceAll("'", "''")}'`
  */
 export async function readPostgresObjects(query: Query, where: string, params: unknown[], tables: Map<string, TableInfo>, key: (schema: string, name: string) => string): Promise<SchemaObject[]> {
   const objects: SchemaObject[] = []
-  const part = async (work: () => Promise<void>) => {
-    try {
-      await work()
-    } catch {
-      // Not in this catalog.
-    }
+  // The parts are read at the same time (each on a pool client of its own).
+  const running: Promise<void>[] = []
+  const part = (work: () => Promise<void>) => {
+    running.push(
+      work().catch(() => {
+        // Not in this catalog.
+      }),
+    )
   }
   const notFromExtension = (classid: string, oid: string) =>
     `NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = '${classid}'::regclass AND d.objid = ${oid} AND d.deptype = 'e')`
 
-  await part(async () => {
+  part(async () => {
     const keys = await query<{ schema: string; name: string; partition_by: string }>(
       `SELECT n.nspname AS schema, c.relname AS name, pg_get_partkeydef(c.oid) AS partition_by
          FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -58,7 +60,7 @@ export async function readPostgresObjects(query: Query, where: string, params: u
     }
   })
 
-  await part(async () => {
+  part(async () => {
     const rows = await query<{ schema: string; table: string; name: string; def: string; enabled: boolean }>(
       `SELECT n.nspname AS schema, c.relname AS table, t.tgname AS name, pg_get_triggerdef(t.oid, true) AS def, t.tgenabled <> 'D' AS enabled
          FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -70,14 +72,16 @@ export async function readPostgresObjects(query: Query, where: string, params: u
     for (const r of rows.rows) tables.get(key(r.schema, r.table))?.triggers?.push({ name: r.name, definition: `${r.def};${r.enabled ? '' : `\nALTER TABLE ${name(r.schema, r.table)} DISABLE TRIGGER ${q(r.name)};`}`, enabled: r.enabled })
   })
 
-  await part(async () => {
-    const secured = await query<{ schema: string; table: string }>(
-      `SELECT n.nspname AS schema, c.relname AS table FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relrowsecurity AND ${where}`,
+  part(async () => {
+    const secured = await query<{ schema: string; table: string; enabled: boolean; forced: boolean }>(
+      `SELECT n.nspname AS schema, c.relname AS table, c.relrowsecurity AS enabled, c.relforcerowsecurity AS forced FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE (c.relrowsecurity OR c.relforcerowsecurity) AND ${where}`,
       params,
     )
     for (const r of secured.rows) {
       const t = tables.get(key(r.schema, r.table))
-      if (t) t.rowSecurity = true
+      if (!t) continue
+      if (r.enabled) t.rowSecurity = true
+      if (r.forced) t.forceRowSecurity = true
     }
     const rows = await query<{ schema: string; table: string; name: string; permissive: boolean; cmd: string; roles: string[]; qual: string | null; check: string | null }>(
       `SELECT n.nspname AS schema, c.relname AS table, pol.polname AS name, pol.polpermissive AS permissive, pol.polcmd::text AS cmd,
@@ -102,7 +106,7 @@ export async function readPostgresObjects(query: Query, where: string, params: u
     }
   })
 
-  await part(async () => {
+  part(async () => {
     const rows = await query<{ schema: string; name: string; type: string; start: string; increment: string; min: string; max: string; cache: string; cycle: boolean; owned_by: string | null }>(
       `SELECT n.nspname AS schema, c.relname AS name, format_type(s.seqtypid, NULL) AS type, s.seqstart::text AS start,
               s.seqincrement::text AS increment, s.seqmin::text AS min, s.seqmax::text AS max, s.seqcache::text AS cache, s.seqcycle AS cycle,
@@ -129,7 +133,7 @@ export async function readPostgresObjects(query: Query, where: string, params: u
     }
   })
 
-  await part(async () => {
+  part(async () => {
     const rows = await query<{ schema: string; name: string; kind: string; labels: string[] | null; base: string | null; not_null: boolean; default: string | null; checks: string[] | null; attributes: string | null }>(
       `SELECT n.nspname AS schema, t.typname AS name, t.typtype::text AS kind,
               CASE WHEN t.typtype = 'e' THEN ARRAY(SELECT e.enumlabel::text FROM pg_enum e WHERE e.enumtypid = t.oid ORDER BY e.enumsortorder) END AS labels,
@@ -157,7 +161,7 @@ export async function readPostgresObjects(query: Query, where: string, params: u
     }
   })
 
-  await part(async () => {
+  part(async () => {
     const rows = await query<{ schema: string; name: string; version: string }>(
       `SELECT n.nspname AS schema, e.extname AS name, e.extversion AS version
          FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
@@ -170,5 +174,8 @@ export async function readPostgresObjects(query: Query, where: string, params: u
     }
   })
 
-  return objects
+  await Promise.all(running)
+  // In the order the parts are listed, as when they were read one after another.
+  const rank = { sequence: 0, type: 1, extension: 2 } as const
+  return objects.sort((a, b) => rank[a.kind] - rank[b.kind])
 }

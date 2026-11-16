@@ -6,7 +6,7 @@ import tls from 'node:tls'
 import { noTlsOnServer } from '../tls.js'
 import { mariadbDialect, mysqlDialect } from '../dialect.js'
 import {
-  batchesFromEvents,
+  checkAffected, batchesFromEvents,
   ConnectionLostError,
   elapsed,
   isShortLivedSession,
@@ -174,22 +174,32 @@ export class MysqlDriver implements DatabaseDriver {
     this.transactions.check(session)
     let conn = this.sessions.get(session)
     if (!conn) {
-      // Sessions core opens and releases within one call borrow from the bounded pool.
-      conn = isShortLivedSession(session) || !this.sessionPool ? await this.activePool.getConnection() : await this.sessionPool.getConnection()
-      const c = conn
-      ;(c.connection as unknown as CallbackConnection).on('error', () => {
-        if (this.sessions.get(session) !== c) return
-        this.sessions.delete(session)
-        this.serverInTransaction.delete(session)
-        this.transactions.dropped(session)
-        c.destroy()
-      })
-      // A new connection has no transaction, whatever the last one's OK packet said.
-      this.serverInTransaction.delete(session)
-      this.sessions.set(session, conn)
+      // Two first statements of a session at once share the one connection being opened (never two, one orphaned).
+      let opening = this.opening.get(session)
+      if (!opening) {
+        opening = (async () => {
+          // Sessions core opens and releases within one call borrow from the bounded pool.
+          const c = isShortLivedSession(session) || !this.sessionPool ? await this.activePool.getConnection() : await this.sessionPool.getConnection()
+          ;(c.connection as unknown as CallbackConnection).on('error', () => {
+            if (this.sessions.get(session) !== c) return
+            this.sessions.delete(session)
+            this.serverInTransaction.delete(session)
+            this.transactions.dropped(session)
+            c.destroy()
+          })
+          // A new connection has no transaction, whatever the last one's OK packet said.
+          this.serverInTransaction.delete(session)
+          this.sessions.set(session, c)
+          return c
+        })().finally(() => this.opening.delete(session))
+        this.opening.set(session, opening)
+      }
+      conn = await opening
     }
     return { conn, release: () => {} }
   }
+
+  private opening = new Map<string, Promise<PoolConnection>>()
 
   /**
    * SERVER_STATUS_IN_TRANS from the server's last OK packet per session: it follows implicit commits (DDL, LOCK
@@ -213,7 +223,9 @@ export class MysqlDriver implements DatabaseDriver {
     this.sessions.delete(session)
     if (!conn) return
     await conn.query('ROLLBACK').catch(() => {})
-    conn.release()
+    // A tab's connection carries its variables, SET options and temporary tables: closed, never lent to the next tab.
+    if (isShortLivedSession(session) || !this.sessionPool) conn.release()
+    else conn.destroy()
   }
 
   private async killQuery(threadId: number): Promise<void> {
@@ -272,7 +284,31 @@ export class MysqlDriver implements DatabaseDriver {
     }
   }
 
+  /** The last statement of each session: the next one starts only after it, and after its KILL QUERY landed. */
+  private sessionTail = new Map<string, Promise<void>>()
+
+  /**
+   * A tab's grid load, count, profile and save share its session connection. mysql2 would send a queued statement as
+   * soon as the cancelled one ends, and a KILL QUERY that arrives later stops that one instead: a session's statements
+   * run one after another, each after the previous one's KILL completed.
+   */
   private async executeOnce(sql: string, options: QueryOptions = {}): Promise<QueryResult[]> {
+    const session = options.session
+    if (!session) return this.executeOnceNow(sql, options)
+    const previous = this.sessionTail.get(session)
+    let done!: () => void
+    const tail = new Promise<void>((resolve) => (done = resolve))
+    this.sessionTail.set(session, tail)
+    try {
+      await previous
+      return await this.executeOnceNow(sql, options)
+    } finally {
+      done()
+      if (this.sessionTail.get(session) === tail) this.sessionTail.delete(session)
+    }
+  }
+
+  private async executeOnceNow(sql: string, options: QueryOptions = {}): Promise<QueryResult[]> {
     if (options.signal?.aborted) throw new QueryCancelledError()
     const { conn, release } = await this.acquire(options.session)
     const threadId = conn.threadId
@@ -455,7 +491,7 @@ export class MysqlDriver implements DatabaseDriver {
       const affected: number[] = []
       for (const s of statements) {
         const [r] = await conn.query<ResultSetHeader>(s.sql, s.params)
-        affected.push(r.affectedRows ?? 0)
+        affected.push(checkAffected(s, r.affectedRows ?? 0))
       }
       await conn.commit()
       return affected

@@ -722,7 +722,9 @@ export function generateMigration(changes: SchemaChange[], dialect: Dialect, tab
         }
         for (const ix of repeated) statements.push(`ALTER TABLE ${q(ref)} ADD CONSTRAINT ${id(given.get(ix) ?? fresh('ux', t.name, ix.columns))} UNIQUE (${ix.columns.map(id).join(', ')})`)
         for (const ix of t.indexes.filter((x) => !isConstraint(ref, x))) {
-          statements.push(createIndexSql(given.get(ix) ?? fresh(ix.unique ? 'ux' : 'ix', t.name, ix.columns), ref, ix.columns, ix.unique, d, ix))
+          // SQLite names the index of a UNIQUE constraint sqlite_autoindex_…, a name nobody else may give one.
+          const reserved = d.id === 'sqlite' && /^sqlite_/i.test(given.get(ix) ?? '')
+          statements.push(createIndexSql(reserved ? fresh(ix.unique ? 'ux' : 'ix', t.name, ix.columns) : (given.get(ix) ?? fresh(ix.unique ? 'ux' : 'ix', t.name, ix.columns)), ref, ix.columns, ix.unique, d, ix))
         }
         statements.push(...commentStatements(ref, t.comment ?? null, t.columns, d))
         rollback.unshift(`DROP TABLE ${q(ref)}`)
@@ -1060,7 +1062,10 @@ const indexKey = (c: string, d: Dialect) => (/[()]|\s(?:ASC|DESC|NULLS)\b/i.test
 
 function createIndexSql(name: string, table: TableRef, columns: string[], unique: boolean, d: Dialect, server: { definition?: string; definitionDriver?: DriverId } = {}): string {
   const own = serverIndexSql(server, name, table, unique, d)
-  if (own) return own
+  // The server's text only while it still names every plain column the index has now (a model may have changed them).
+  const keyText = own?.slice(own.search(/\sON\s/i))
+  const names = (c: string) => keyText!.includes(d.quoteIdent(c)) || new RegExp(`(^|[^\\w$"\`\\]])${c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\w$"\`\\[])`, 'i').test(keyText!)
+  if (own && columns.filter((c) => !/[()\s]/.test(c)).every(names)) return own
   const cols = columns.map((c) => indexKey(c, d)).join(', ')
   // SQLite qualifies the index name, not the table.
   if (d.id === 'sqlite') {
@@ -1466,9 +1471,15 @@ export function unquotedName<T extends string | undefined>(name: T, driver: Driv
 export function dropScript(tables: TableInfo[], dialect: Dialect, options: Pick<MigrationOptions, 'domains'> = {}): string {
   const real = tables.filter((t) => t.type === 'table')
   const migration = generateMigration(compareSchemas([], real), dialect, real)
-  const used = new Set(real.flatMap((t) => t.columns.map((c) => c.domain?.toLowerCase()).filter(Boolean)))
+  // The domains the CREATE script makes: only for a column whose type is the domain's (see generateMigration).
+  const byName = new Map((options.domains ?? []).map((d) => [d.name.toLowerCase(), d]))
+  const used = new Set(real.flatMap((t) => t.columns.flatMap((c) => {
+    const d = c.domain ? byName.get(c.domain.toLowerCase()) : undefined
+    return d && sameType(d.dataType, c.dataType) ? [d.name.toLowerCase()] : []
+  })))
   const domains = dialect.id === 'postgres' ? (options.domains ?? []).filter((d) => used.has(d.name.toLowerCase())) : []
-  const tail = domains.map((d) => `DROP DOMAIN ${/^[A-Za-z_][A-Za-z0-9_$]*$/.test(d.name) ? d.name.toLowerCase() : dialect.quoteIdent(d.name)};`)
+  // (migrationScript ends each statement itself.)
+  const tail = domains.map((d) => `DROP DOMAIN ${/^[A-Za-z_][A-Za-z0-9_$]*$/.test(d.name) ? d.name.toLowerCase() : dialect.quoteIdent(d.name)}`)
   return migrationScript({ ...migration, statements: [...migration.statements, ...tail] }, dialect)
 }
 

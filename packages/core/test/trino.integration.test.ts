@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { DatabaseService, explainQuery } from '../src/index.js'
+import { DatabaseService, explainQuery, objectDefinition } from '../src/index.js'
 
 // Trino (docker-compose.test.yml / CI step, port 18080) with its built-in memory and tpch catalogs.
 const db = new DatabaseService()
@@ -40,6 +40,15 @@ describe('Trino', () => {
     expect(orders.primaryKey).toEqual([])
     const [cats] = await db.runScript(id, 'SHOW CATALOGS')
     expect(cats!.results![0]!.rows.flat()).toEqual(expect.arrayContaining(['memory', 'tpch']))
+  })
+
+  it('gives a view’s definition, which runs again (review finding)', async () => {
+    const made = await db.runScript(id, "CREATE OR REPLACE VIEW shop.paid_orders AS SELECT id, total FROM shop.orders WHERE paid")
+    expect(made.filter((o) => o.error)).toEqual([])
+    const { sql } = await objectDefinition(db, id, { schema: 'shop', name: 'paid_orders', kind: 'view' })
+    expect(sql).toMatch(/^CREATE OR REPLACE VIEW .*paid_orders.* AS\n[\s\S]*paid/i)
+    expect((await db.runScript(id, sql)).filter((o) => o.error)).toEqual([])
+    await db.runScript(id, 'DROP VIEW shop.paid_orders')
   })
 
   it('filters typed columns with text values, counts and pages', async () => {

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { BigQuery, type BigQueryOptions, type Job, type Query, type TableField } from '@google-cloud/bigquery'
 import { bigqueryDialect } from '../dialect.js'
-import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
+import { checkAffected, elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import type { CellValue, ColumnInfo, ConnectionConfig, QueryOptions, QueryResult, SchemaSnapshot, ServerInfo, TableInfo } from '../types.js'
 import { normalizeValue } from '../values.js'
@@ -240,7 +240,7 @@ export class BigQueryDriver implements DatabaseDriver {
     const affected: number[] = []
     for (const s of statements) {
       const [r] = await this.execute(s.sql, { params: s.params })
-      affected.push(r?.affectedRows ?? 0)
+      affected.push(checkAffected(s, r?.affectedRows ?? 0))
     }
     return affected
   }

@@ -2,7 +2,7 @@ import { getDialect, qualify } from './dialect.js'
 import { createScript } from './ddl.js'
 import type { DatabaseService } from './engine.js'
 import { findPartition, findTable } from './schema-utils.js'
-import type { DriverId, PartitionInfo, RoutineInfo, TableInfo, TableRef } from './types.js'
+import type { DriverId, PartitionInfo, RoutineInfo, SchemaObject, TableInfo, TableRef } from './types.js'
 import { cellToText } from './values.js'
 
 /** A view, function or procedure (or a table, whose CREATE statement is generated) whose SQL definition is wanted. */
@@ -125,7 +125,7 @@ export async function objectDefinition(db: DatabaseService, id: string, object: 
   if (object.kind === 'table') {
     const snapshot = await db.schema(id)
     const table = findTable(snapshot, { schema: object.schema, name: object.name })
-    if (table) return { sql: tableDefinition(table, config.driver) }
+    if (table) return { sql: tableDefinition(table, config.driver, snapshot.objects) }
     const partition = findPartition(snapshot, { schema: object.schema, name: object.name })
     if (partition) return { sql: partitionDefinition(partition.partition, partitionParent(partition.parent, partition.partition)) }
     throw new Error(`Table ${object.name} not found`)
@@ -252,15 +252,34 @@ export async function objectDefinition(db: DatabaseService, id: string, object: 
 }
 
 /** A table's CREATE statement generated from the catalog (with its indexes and foreign keys). */
-export function tableDefinition(table: TableInfo, driver: DriverId): string {
+export function tableDefinition(table: TableInfo, driver: DriverId, objects: SchemaObject[] = []): string {
   // The primary key keeps its own name (people_pkey), not a made-up pk_people_id.
   const pkName = table.indexes.find((i) => i.primary)?.name
-  // A PostgreSQL column filled by nextval() of its own sequence was declared serial: say so (an identity column
-  // would be another thing, and the sequence would be left behind).
+  // A PostgreSQL column filled by nextval() of a sequence it owns (`objects`: the snapshot's sequences) was declared
+  // serial: say so (an identity column would be another thing, and the sequence would be left behind). One that
+  // takes its values from a shared sequence keeps its default: serial would give it a new sequence of its own.
   const SERIAL: Record<string, string> = { integer: 'serial', bigint: 'bigserial', smallint: 'smallserial' }
+  const plain = (s: string) => s.replace(/"((?:[^"]|"")*)"/g, (_, n: string) => n.replaceAll('""', '"'))
+  const ownsSequence = (column: string, defaultValue: string) => {
+    const m = /^nextval\('((?:[^']|'')+)'(?:::regclass)?\)$/i.exec(defaultValue.trim())
+    if (!m) return false
+    const parts = plain(m[1]!.replaceAll("''", "'")).split('.')
+    const [schema, name] = parts.length > 1 ? [parts[0]!, parts.slice(1).join('.')] : [table.schema ?? 'public', parts[0]!]
+    const sequence = objects.find((o) => o.kind === 'sequence' && o.name === name && (o.schema ?? 'public') === schema)
+    const owner = sequence && /\bOWNED BY (.+);/.exec(sequence.definition)?.[1]
+    return !!owner && plain(owner) === `${table.schema ?? 'public'}.${table.name}.${column}`
+  }
   const shown =
     driver === 'postgres'
-      ? { ...table, columns: table.columns.map((c) => (c.isIdentity && /^nextval\(/i.test(c.defaultValue ?? '') && SERIAL[c.dataType] ? { ...c, dataType: SERIAL[c.dataType]!, defaultValue: null } : c)) }
+      ? {
+          ...table,
+          columns: table.columns.map((c) => {
+            if (!c.isIdentity || !/^nextval\(/i.test(c.defaultValue ?? '')) return c
+            if (SERIAL[c.dataType] && ownsSequence(c.name, c.defaultValue!)) return { ...c, dataType: SERIAL[c.dataType]!, defaultValue: null }
+            // Not its own sequence: the default as it is (an identity would make a new sequence too).
+            return { ...c, isIdentity: false }
+          }),
+        }
       : table
   let script = createScript([shown], getDialect(driver), pkName ? { primaryKeyName: () => pkName } : {}).trim()
   const d = getDialect(driver)
@@ -282,6 +301,7 @@ export function tableDefinition(table: TableInfo, driver: DriverId): string {
   partitions(table.partitions, table)
   for (const t of table.triggers ?? []) extra.push(t.definition)
   if (table.rowSecurity) extra.push(`ALTER TABLE ${name} ENABLE ROW LEVEL SECURITY;`)
+  if (table.forceRowSecurity) extra.push(`ALTER TABLE ${name} FORCE ROW LEVEL SECURITY;`)
   for (const p of table.policies ?? []) extra.push(p.definition)
   const what = ['columns', 'keys', 'indexes', 'foreign keys', ...(table.partitions?.length ? ['partitions'] : []), ...(table.triggers?.length ? ['triggers'] : []), ...(table.policies?.length || table.rowSecurity ? ['row-level security'] : [])]
   const list = what.length > 1 ? `${what.slice(0, -1).join(', ')} and ${what.at(-1)}` : what[0]

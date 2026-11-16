@@ -213,6 +213,8 @@ function declaredColumn(definition: string): (DeclaredColumn & { name: string })
   const m = /^("[^"]+"|[\w$]+)\s+([\s\S]+)$/.exec(definition)
   if (!m) return undefined
   const rest = m[2]!
+  // A SQL Server computed column (`Total AS (Qty * Price)`) declares no type.
+  if (/^AS\s*\(/i.test(rest)) return undefined
   let depth = 0
   let end = rest.length
   for (let i = 0; i < rest.length; i++) {
@@ -260,7 +262,11 @@ function declaredColumn(definition: string): (DeclaredColumn & { name: string })
     identity = true
   }
   const quotedNumber = defaultValue && /^(tinyint|smallint|mediumint|int|integer|bigint|decimal|numeric|float|double|real)\b/.test(type) ? /^'(-?\d+(?:\.\d+)?)'$/.exec(defaultValue) : null
-  if (quotedNumber) defaultValue = String(Number(quotedNumber[1]))
+  if (quotedNumber) {
+    // Written as a number ('0.00' → 0), unless a double would round it: '18446744073709551615' keeps its digits.
+    const text = quotedNumber[1]!
+    defaultValue = text.replace(/[-.]/g, '').replace(/^0+/, '').length <= 15 ? String(Number(text)) : text
+  }
   return type ? { name: unquote(m[1]!), type, identity, ...(comment ? { comment: mySqlLiteral(comment) } : {}), ...(defaultValue ? { defaultValue } : {}) } : undefined
 }
 
@@ -543,7 +549,9 @@ export async function tablesFromDdl(script: string): Promise<DdlImportResult> {
             }
             const type = /Type with name "?([\w$.]+)"? does not exist/i.exec(message)?.[1]
             if (!type) break
-            sql = sql.replace(new RegExp(`(?<![\\w$"])${type.replace(/[.$]/g, '\\$&')}(?![\\w$"])(\\s*\\([^)]*\\))?`, 'gi'), 'VARCHAR')
+            // (Quoted too: a type of another schema is written "app__dbm__order_status" here.)
+            const name = type.replace(/[.$]/g, '\\$&')
+            sql = sql.replace(new RegExp(`(?:"${name}"|(?<![\\w$"])${name}(?![\\w$"]))(\\s*\\([^)]*\\))?`, 'gi'), 'VARCHAR')
           }
         }
         if (sql) failed.push(sql)

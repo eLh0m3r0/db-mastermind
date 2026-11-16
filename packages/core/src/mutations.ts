@@ -42,6 +42,10 @@ export function checkCellExpression(expression: string, driver?: DriverId): stri
   const bare = expression.replace(quoted, '_')
   if (/['"`]/.test(bare) || (driver === 'mssql' && /[[\]]/.test(bare))) return 'A quote or bracket is not closed'
   if (/;/.test(bare)) return 'One expression only: no semicolons'
+  // The statement's own values are `?` placeholders there: MySQL's client fills every `?`, also one in quotes, and
+  // SQLite takes a bare one for another parameter.
+  if ((driver === 'mysql' || driver === 'mariadb') && /\?/.test(expression)) return 'No ? in an expression here (it is taken for a value to fill in): write CHAR(63) for the character'
+  if (driver === 'sqlite' && /\?/.test(bare)) return 'No ? outside quotes in an expression (it is taken for a value to fill in)'
   // `#` starts a comment everywhere but PostgreSQL and DuckDB (operators there); `//` in ClickHouse (DuckDB: division).
   if (/--|\/\*|\*\//.test(bare) || ((driver === undefined || driver === 'clickhouse') && /\/\//.test(bare)) || (driver !== 'postgres' && driver !== 'duckdb' && /#/.test(bare))) return 'No comments in an expression'
   let depth = 0
@@ -97,10 +101,10 @@ export function buildChangeStatements(table: TableRef, changes: RowChange[], dia
         const cols = Object.keys(change.values)
         if (cols.length === 0) throw new MutationError('Update without changed columns')
         const set = cols.map((c) => `${dialect.quoteIdent(c)} = ${valueSql(change.values[c]!, params, dialect.id)}`).join(', ')
-        return { sql: `UPDATE ${target} SET ${set} WHERE ${whereKey(change.key, dialect, params)}`, params: params.values }
+        return { sql: `UPDATE ${target} SET ${set} WHERE ${whereKey(change.key, dialect, params)}`, params: params.values, maxAffected: 1 }
       }
       case 'delete':
-        return { sql: `DELETE FROM ${target} WHERE ${whereKey(change.key, dialect, params)}`, params: params.values }
+        return { sql: `DELETE FROM ${target} WHERE ${whereKey(change.key, dialect, params)}`, params: params.values, maxAffected: 1 }
     }
   })
 }

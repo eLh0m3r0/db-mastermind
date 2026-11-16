@@ -186,7 +186,7 @@ export function rowKey(table: TableInfo): string[] {
   if (table.primaryKey.length) return table.primaryKey
   const notNull = new Set(table.columns.filter((c) => !c.nullable).map((c) => c.name))
   const candidates = table.indexes.filter(
-    (ix) => ix.unique && ix.columns.length > 0 && ix.columns.every((c) => notNull.has(c)) && !/\bWHERE\b/i.test(ix.definition ?? ''),
+    (ix) => ix.unique && !ix.notEnforced && ix.columns.length > 0 && ix.columns.every((c) => notNull.has(c)) && !/\bWHERE\b/i.test(ix.definition ?? ''),
   )
   candidates.sort((a, b) => a.columns.length - b.columns.length)
   return candidates[0]?.columns ?? []

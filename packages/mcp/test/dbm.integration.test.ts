@@ -37,10 +37,15 @@ describe.skipIf(skip)('dbm diff on PostgreSQL', () => {
     return path
   }
 
-  it('finds a check whose condition changed under the same name, on its read-only connection (review finding)', async () => {
-    expect(await dbm('diff', model('qty > 0'), '--url', PG_URL)).toMatchObject({ code: 0, stderr: expect.stringMatching(/matches/) })
-    const r = await dbm('diff', model('qty >= 0'), '--url', PG_URL)
+  it('compares a check whose condition changed under the same name with --allow-writes, and says when it could not (review finding)', async () => {
+    expect(await dbm('diff', model('qty > 0'), '--url', PG_URL, '--allow-writes')).toMatchObject({ code: 0, stderr: expect.stringMatching(/matches/) })
+    const r = await dbm('diff', model('qty >= 0'), '--url', PG_URL, '--allow-writes')
     expect(r.code).toBe(2)
     expect(r.stdout).toMatch(/DROP CONSTRAINT "qty_positive"[\s\S]*ADD CONSTRAINT "qty_positive" CHECK \(qty >= 0\)/)
+    // Read-only (the default): nothing is written, and it does not claim the database matches.
+    const ro = await dbm('diff', model('qty >= 0'), '--url', PG_URL)
+    expect(ro.code).toBe(0)
+    expect(ro.stderr).not.toMatch(/matches/)
+    expect(ro.stderr).toMatch(/No differences were found, but 1 check condition .* could not be compared on a read-only connection/)
   })
 })

@@ -203,6 +203,11 @@ export interface IndexInfo {
   definition?: string
   /** The database `definition` is written for: it is used only when creating the index there. */
   definitionDriver?: DriverId
+  /**
+   * Unique, but not to be trusted as a row's key right now: PostgreSQL's invalid (a failed CREATE INDEX CONCURRENTLY)
+   * or deferrable ones, SQL Server's disabled ones.
+   */
+  notEnforced?: boolean
 }
 
 /** A CHECK constraint of a table (a column's check is one that names only that column). */
@@ -243,6 +248,8 @@ export interface TableInfo {
   triggers?: TriggerInfo[]
   /** PostgreSQL row-level security: whether it is on, and the table's policies. */
   rowSecurity?: boolean
+  /** FORCE ROW LEVEL SECURITY: the policies apply to the table's owner too. */
+  forceRowSecurity?: boolean
   policies?: PolicyInfo[]
 }
 
@@ -291,11 +298,15 @@ export interface RoutineInfo {
   arguments?: string | null
   /** Offered in the editor, not listed in the explorer: installed by an extension (uuid-ossp, pgcrypto, PostGIS), or an aggregate. */
   editorOnly?: boolean
+  /** An aggregate (PostgreSQL CREATE AGGREGATE): it has no definition pg_get_functiondef could show. */
+  aggregate?: boolean
 }
 
 export interface SchemaSnapshot {
   database?: string
   defaultSchema?: string
+  /** Names a statement may use besides the tables listed (SQL Server synonyms and system-shipped tables). */
+  otherNames?: { schema?: string; name: string }[]
   schemas: string[]
   tables: TableInfo[]
   routines: RoutineInfo[]

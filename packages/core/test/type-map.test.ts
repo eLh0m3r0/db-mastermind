@@ -48,6 +48,13 @@ describe('type translation', () => {
     expect(translateTables(tables, 'oracle', 'postgres')[0]!.checks!.map((c) => c.name)).toEqual(['positive'])
   })
 
+  it('gives MySQL TEXT columns their default as an expression (review finding)', () => {
+    const { tables } = parseDbml("Table t {\n  id integer [pk]\n  note text [default: 'none']\n  body varchar(20000) [default: 'x']\n  code varchar(10) [default: 'a']\n}\n")
+    const my = translateTables(tables, 'mysql', 'postgres')[0]!
+    expect(my.columns.slice(1).map((c) => [c.dataType, c.defaultValue])).toEqual([['text', "('none')"], ['mediumtext', "('x')"], ['varchar(10)', "'a'"]])
+    expect(translateTables(tables, 'mariadb', 'postgres')[0]!.columns[1]!.defaultValue).toBe("'none'")
+  })
+
   it('drops only checks that call a nondeterministic function, not ones that mention its name', () => {
     const { tables } = parseDbml(
       "Table t {\n  id integer [pk]\n  role text\n  uuid text\n  at timestamp\n\n  checks {\n    `role IN ('user','admin')` [name: 'role_ok']\n    `uuid <> ''` [name: 'uuid_set']\n    `\"user\" IS NULL OR role <> 'now()'` [name: 'quoted']\n    `at <= now()` [name: 'past']\n    `role <> current_user` [name: 'not_me']\n    `uuid <> uuid()` [name: 'called']\n  }\n}\n",

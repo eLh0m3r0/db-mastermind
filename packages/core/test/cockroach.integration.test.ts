@@ -31,6 +31,8 @@ describe('CockroachDB', () => {
     const orders = snap.tables.find((t) => t.name === 'dbm_orders')!
     expect(orders.foreignKeys).toMatchObject([{ columns: ['customer_id'], refTable: 'dbm_customers' }])
     expect(orders.indexes.map((i) => i.name)).toContain('dbm_orders_customer')
+    // Its CREATE INDEX text (STORING, hash-sharded) is kept but never marked as PostgreSQL's (review finding).
+    expect(orders.indexes.find((i) => i.name === 'dbm_orders_customer')!.definitionDriver).toBeUndefined()
     expect(orders.columns.find((c) => c.name === 'total')!.dataType).toBe('numeric(10,2)')
   })
 

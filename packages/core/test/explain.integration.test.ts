@@ -69,4 +69,44 @@ describe.skipIf(skip.has('postgres'))('explain on postgres: writes and the tab s
       await svc.disconnectAll()
     }
   })
+
+  it('undoes what ANALYZE of a SELECT wrote, and refuses in a failed transaction without ending it (review findings)', async () => {
+    const svc = new DatabaseService()
+    const engine = engines.find((e) => e.id === 'postgres')!
+    try {
+      const config = await setupEngine(svc, engine)
+      const run = async (sql: string, session?: string) => (await svc.runScript(config.id, sql, { session }))[0]!
+      await run('CREATE TABLE IF NOT EXISTS shop.dbm_explain_log (n int)')
+      await run('DELETE FROM shop.dbm_explain_log')
+      await run('CREATE OR REPLACE FUNCTION shop.dbm_log() RETURNS int LANGUAGE sql AS $$ INSERT INTO shop.dbm_explain_log VALUES (1) RETURNING n $$')
+      await explainQuery(svc, config.id, 'SELECT shop.dbm_log()', true)
+      expect(Number((await run('SELECT count(*) FROM shop.dbm_explain_log')).results![0]!.rows[0]![0])).toBe(0)
+      await run('BEGIN', 'tab-f')
+      await run('SELECT 1/0', 'tab-f')
+      expect(await svc.transactionState(config.id, 'tab-f')).toBe('failed')
+      await expect(explainQuery(svc, config.id, 'DELETE FROM shop.orders', true, { session: 'tab-f' })).rejects.toThrow(/roll it back first/)
+      expect(await svc.transactionState(config.id, 'tab-f')).toBe('failed')
+      await run('ROLLBACK', 'tab-f')
+      await run('DROP FUNCTION shop.dbm_log()')
+      await run('DROP TABLE shop.dbm_explain_log')
+    } finally {
+      await svc.disconnectAll()
+    }
+  })
+})
+
+describe.skipIf(skip.has('mssql'))('explain on SQL Server: the tab session after a failed plan (review finding)', () => {
+  it('turns SHOWPLAN_XML off again when the statement does not compile', async () => {
+    const svc = new DatabaseService()
+    const engine = engines.find((e) => e.id === 'mssql')!
+    try {
+      const config = await setupEngine(svc, engine)
+      await expect(explainQuery(svc, config.id, 'SELECT * FROM dbo.no_such_table_here', false, { session: 'tab-ms' })).rejects.toThrow()
+      const [o] = await svc.runScript(config.id, 'SELECT 1 AS one', { session: 'tab-ms' })
+      expect(o!.results![0]!.fields.map((f) => f.name)).toEqual(['one'])
+      expect(o!.results![0]!.rows).toEqual([[1]])
+    } finally {
+      await svc.disconnectAll()
+    }
+  })
 })

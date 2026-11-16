@@ -29,6 +29,12 @@ describe('generation directives', () => {
     expect(generationDirectivesIn(code, 'x {$IFDEF Audit} y {$ENDIF Audit}')).toEqual(['SQL2008', 'Audit'])
   })
 
+  it('takes {$ENDIF} without a name (review finding)', () => {
+    expect(applyGenerationDirectives('a {$IFDEF A}b {$ENDIF}c', [])).toBe('a c')
+    expect(applyGenerationDirectives('x\n{$IFDEF A}\ny\n{$ENDIF}\nz', [])).toBe('x\nz')
+    expect(generationDirectivesIn('a {$IFDEF A}b {$ENDIF}c')).toEqual(['A'])
+  })
+
   it('nests, and works inside one line', () => {
     const nested = 'a {$IFDEF A}b {$IFDEF B}c {$ENDIF B}d {$ENDIF A}e'
     expect(applyGenerationDirectives(nested, ['A', 'B'])).toBe('a b c d e')

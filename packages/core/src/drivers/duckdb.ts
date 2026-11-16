@@ -1,6 +1,6 @@
 import type { DuckDBConnection, DuckDBInstance, DuckDBResultReader } from '@duckdb/node-api'
 import { duckdbDialect } from '../dialect.js'
-import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
+import { checkAffected, elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import type { CellValue, ConnectionConfig, QueryOptions, QueryResult, SchemaSnapshot, ServerInfo, TableInfo, TransactionState } from '../types.js'
 import { normalizeValue } from '../values.js'
@@ -183,7 +183,7 @@ export class DuckDBDriver implements DatabaseDriver {
       const affected: number[] = []
       for (const s of statements) {
         const r = await conn.run(s.sql, s.params as Parameters<DuckDBConnection['run']>[1])
-        affected.push(Number(r.rowsChanged))
+        affected.push(checkAffected(s, Number(r.rowsChanged)))
       }
       await conn.run('COMMIT')
       return affected

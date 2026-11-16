@@ -834,10 +834,12 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
   const domainsByName = new Map(project.list('DOMAIN').map((d) => [lower(text(d.el, 'NAME')), d.el]))
   // Domains first: the columns that follow one take its type from it.
   // A column follows a domain by its id: renaming one is its name only; one no column follows can go.
-  const followed = new Set(project.list('ENT').flatMap((e) => kids(kid(e.el, 'ATTRIBUTES'), 'ATTR').map((a) => text(a, 'DOMAINID')).filter(Boolean)))
+  // Followed in the model as saved: a column taken off the domain in this same save no longer keeps it. (A column
+  // the file still ties to it would be a dangling reference, which the check of the result refuses.)
+  const followed = new Set(wanted.flatMap((t) => t.columns.map((c) => c.domain && lower(c.domain)).filter(Boolean)))
   for (const name of options.removeDomains ?? []) {
     const slot = project.list('DOMAIN').find((d) => lower(text(d.el, 'NAME')) === lower(name))
-    if (!slot || followed.has(text(slot.el, 'ID'))) continue
+    if (!slot || followed.has(lower(text(slot.el, 'NAME')))) continue
     project.remove('DOMAIN', slot)
     domainsByName.delete(lower(name))
     changes.push({ kind: 'drop_domain', table: text(slot.el, 'NAME') })
@@ -856,9 +858,10 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
   for (const wanted of options.domains ?? []) {
     if (!wanted.name.trim() || !wanted.dataType.trim()) continue
     const existing = domainsByName.get(lower(wanted.name))
+    // As the reader spells it: an ENUM or SET domain with its values (ITMS).
     const typeOf = (el: El) => {
       const dt = kid(el, 'DT')
-      return (text(dt, 'DTLISTNAME').toLowerCase() + (text(dt, 'LE') ? `(${text(dt, 'LE')}${text(dt, 'PR') ? `,${text(dt, 'PR')}` : ''})` : '')).trim()
+      return (text(dt, 'DTLISTNAME').toLowerCase() + (text(dt, 'LE') ? `(${text(dt, 'LE')}${text(dt, 'PR') ? `,${text(dt, 'PR')}` : ''})` : text(dt, 'ITMS') ? `(${text(dt, 'ITMS')})` : '')).trim()
     }
     if (existing) {
       let changed = false
@@ -1615,9 +1618,18 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
     const existing = project.list('DIAGRAM')
     const known = existing.find((d) => text(d.el, 'ID') === key)
     if (known && wanted.remove && text(known.el, 'ISMAINDIAGRAM') !== '1' && key !== layout.diagramId) {
-      // Everything drawn on it goes with it; the tables, notes and frames themselves stay in the project.
+      // Everything drawn on it goes with it; the tables stay in the project, and so do notes and frames another
+      // diagram still shows (one shown nowhere else goes, as when it is taken off its last diagram).
       const name = text(known.el, 'NAME')
+      const drawn = (kind: 'TEXTC' | 'GROUPBOXC') => new Set(project.list(kind).filter((c) => text(c.el, 'DIAGRAMID') === key).map((c) => text(c.el, 'ID')))
+      const [notes, frames] = [drawn('TEXTC'), drawn('GROUPBOXC')]
       for (const kind of ['ENTC', 'RELC', 'TEXTC', 'SUBCATC', 'SUBCONNC', 'VIEWCONNC', 'GROUPBOXC'] as const) for (const c of project.list(kind)) if (text(c.el, 'DIAGRAMID') === key) project.remove(kind, c)
+      for (const [kind, control, ids] of [['TEXTAR', 'TEXTC', notes], ['GROUPBOX', 'GROUPBOXC', frames]] as const) {
+        for (const id of ids) {
+          const object = project.list(kind).find((x) => text(x.el, 'ID') === id)
+          if (object && !project.list(control).some((c) => text(c.el, 'ID') === id)) project.remove(kind, object)
+        }
+      }
       project.removeDiagramObjects(key)
       project.remove('DIAGRAM', known)
       changes.push({ kind: 'drop_diagram', table: name })
@@ -2248,7 +2260,7 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       let id: string
       if (mine.some((x) => styledTrg.test(x)) || (!mine.length && (siblings.some((t) => styledTrg.test(text(t, 'ID'))) || styledAttrs))) {
         idToken ||= randomId().replace(/[^0-9A-Za-z]/g, '').slice(0, 16)
-        id = `TRG-${entity.id}-${Math.max(1, ...mine.filter((x) => styledTrg.test(x)).map((x) => Number(styledTrg.exec(x)![1]))) + 1}-${idToken}`
+        id = `TRG-${entity.id}-${Math.max(0, ...mine.filter((x) => styledTrg.test(x)).map((x) => Number(styledTrg.exec(x)![1]))) + 1}-${idToken}`
       } else if (numbered || mine.every((x) => /^\d+$/.test(x))) {
         const next = Math.max(0, ...mine.filter((x) => /^\d+$/.test(x)).map(Number), /^\d+$/.test(text(entity.el, 'TRGLASTID')) ? Number(text(entity.el, 'TRGLASTID')) : 0) + 1
         id = String(next)

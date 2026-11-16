@@ -235,7 +235,9 @@ export async function explainQuery(db: DatabaseService, connectionId: string, sq
   try {
     switch (driver) {
       case 'postgres': {
-        if (writable && analyze) return await analyzeAndUndo(db, connectionId, session, body)
+        // A SELECT can write too (a function that inserts): every ANALYZE runs where it is undone. (A read-only
+        // connection's session refuses writes by itself, and takes no BEGIN from here.)
+        if (analyze && !cockroach && !db.config(connectionId).readOnly) return await analyzeAndUndo(db, connectionId, session, body)
         if (cockroach) {
           const [r] = await run(`EXPLAIN${analyze ? ' ANALYZE' : ''} ${body}`)
           const lines = (r?.rows ?? []).map((row) => cellToText(row[0] ?? ''))
@@ -261,7 +263,14 @@ export async function explainQuery(db: DatabaseService, connectionId: string, sq
         return { root: indentedPlan(lines), raw: lines.join('\n'), format: 'text' }
       }
       case 'mssql': {
-        const results = await run(`SET SHOWPLAN_XML ON\nGO\n${body}\nGO\nSET SHOWPLAN_XML OFF`)
+        // OFF in its own batch whatever happens: left ON, every later statement of the tab would only be planned.
+        let results: Awaited<ReturnType<typeof run>>
+        await run('SET SHOWPLAN_XML ON')
+        try {
+          results = await run(body)
+        } finally {
+          await db.runScript(connectionId, 'SET SHOWPLAN_XML OFF', { session })
+        }
         const raw = results.map((r) => cellToText(r.rows[0]?.[0] ?? '')).join('\n')
         return { root: mssqlPlan(raw), raw, format: 'xml' }
       }
@@ -324,9 +333,13 @@ export async function explainQuery(db: DatabaseService, connectionId: string, sq
 
 /** EXPLAIN ANALYZE of a write runs it: inside a transaction (a savepoint in an open one) that is always undone. */
 async function analyzeAndUndo(db: DatabaseService, connectionId: string, session: string, body: string): Promise<ExplainResult> {
-  const open = (await db.transactionState(connectionId, session)) === 'open'
+  const state = await db.transactionState(connectionId, session)
+  // BEGIN would fail there, and the ROLLBACK after it would end the person's transaction behind their back.
+  if (state === 'failed') throw new Error('The tab’s transaction failed: roll it back first.')
+  const open = state === 'open'
   const [begin, undo] = open ? ['SAVEPOINT dbm_explain', 'ROLLBACK TO SAVEPOINT dbm_explain; RELEASE SAVEPOINT dbm_explain'] : ['BEGIN', 'ROLLBACK']
-  await db.runScript(connectionId, begin, { session })
+  const [started] = await db.runScript(connectionId, begin, { session })
+  if (started?.error) throw new Error(started.error.message)
   try {
     const outcomes = await db.runScript(connectionId, `EXPLAIN (FORMAT JSON, ANALYZE, BUFFERS) ${body}`, { session, maxRows: 10_000 })
     const failed = outcomes.find((o) => o.error)

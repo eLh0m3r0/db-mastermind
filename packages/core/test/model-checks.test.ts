@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkModel, fixModelIssue, parseDbml, suggestRelationships, toDbml, typeFamily } from '../src/index.js'
+import { checkModel, fixModelIssue, parseDbml, suggestRelationships, toDbml, typeFamily, type TableInfo } from '../src/index.js'
 
 const model = (dbml: string) => parseDbml(dbml).tables
 const kinds = (dbml: string) => checkModel(model(dbml)).map((i) => `${i.kind} ${i.table}${i.column ? `.${i.column}` : ''}${i.detail ? ` → ${i.detail}` : ''}`)
@@ -95,6 +95,27 @@ Table orders {
     expect(tables[1]!.indexes.filter((ix) => !ix.primary).map((ix) => ix.columns.join(','))).toEqual(['placed,id', 'customer_id'])
     // The fixed model is still valid DBML.
     expect(parseDbml(toDbml(tables)).errors).toEqual([])
+  })
+
+  it('never calls indexes the same that differ in more than their columns (review finding)', () => {
+    const ix = (name: string, columns: string[], definition?: string, extra: Partial<TableInfo['indexes'][number]> = {}) => ({ name, columns, unique: false, primary: false, ...(definition ? { definition, definitionDriver: 'postgres' as const } : {}), ...extra })
+    const table = (indexes: TableInfo['indexes']): TableInfo[] => [
+      { schema: 'shop', name: 'orders', type: 'table', columns: ['id', 'status', 'placed'].map((name, i) => ({ name, dataType: 'text', ordinal: i + 1, nullable: true, isPrimaryKey: name === 'id', isIdentity: false })), primaryKey: ['id'], foreignKeys: [], indexes },
+    ]
+    const found = (indexes: TableInfo['indexes']) => checkModel(table(indexes)).filter((i) => /index/.test(i.kind)).map((i) => `${i.kind} ${i.detail}`)
+    // Partial, another method, INCLUDE, an expression: not the same as the plain one.
+    expect(found([ix('a', ['status'], 'CREATE INDEX a ON shop.orders USING btree (status)'), ix('b', ['status'], "CREATE INDEX b ON shop.orders USING btree (status) WHERE (status = 'open'::text)")])).toEqual([])
+    expect(found([ix('a', ['status'], 'CREATE INDEX a ON shop.orders USING btree (status)'), ix('b', ['status'], 'CREATE INDEX b ON shop.orders USING hash (status)', { method: 'hash' })])).toEqual([])
+    expect(found([ix('a', ['status'], 'CREATE INDEX a ON shop.orders USING btree (status)'), ix('b', ['status'], 'CREATE INDEX b ON shop.orders USING btree (status) INCLUDE (placed)')])).toEqual([])
+    expect(found([ix('a', ['status'], 'CREATE INDEX a ON shop.orders USING btree (status)'), ix('b', ['status'], 'CREATE INDEX b ON shop.orders USING btree (status DESC)')])).toEqual([])
+    // A partial index is covered by nothing, and covers nothing.
+    expect(found([ix('a', ['status'], "CREATE INDEX a ON shop.orders USING btree (status) WHERE (placed IS NULL)"), ix('c', ['status', 'placed'], 'CREATE INDEX c ON shop.orders USING btree (status, placed)')])).toEqual([])
+    expect(found([ix('a', ['status'], 'CREATE INDEX a ON shop.orders USING btree (status)'), ix('c', ['status', 'placed'], "CREATE INDEX c ON shop.orders USING btree (status, placed) WHERE (placed IS NULL)")])).toEqual([])
+    // A partial index on the key's columns is no copy of the key.
+    expect(found([ix('k', ['id'], 'CREATE INDEX k ON shop.orders USING btree (id) WHERE (id > 0)')])).toEqual([])
+    // The same text under another name still is the same index; so are two plain ones (one from the model).
+    expect(found([ix('a', ['status'], 'CREATE INDEX a ON shop.orders USING btree (status)'), ix('b', ['status'], 'CREATE INDEX b ON shop.orders USING btree (status)')])).toEqual(['duplicate_index a'])
+    expect(found([ix('a', ['status'], 'CREATE INDEX a ON shop.orders USING btree (status)'), ix('b', ['status'])])).toEqual(['duplicate_index a'])
   })
 
   it('suggests relationships the names imply and adds them', () => {

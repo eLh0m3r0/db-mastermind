@@ -136,16 +136,11 @@ for (const engine of engines.filter((e) => e.id !== 'duckdb')) {
           expect(compareSchemas([respelled], [added], { checkChanged: await findChangedChecks([respelled], [added], (items) => svc.canonicalChecks(config.id, items)) })).toEqual([])
           const edited: TableInfo = { ...model, checks: model.checks!.map((c) => (c.name === 'dbm_name_filled' ? { ...c, expression: "name <> '' AND name <> 'x'" } : c)) }
           const changed = await findChangedChecks([edited], [added], (items) => svc.canonicalChecks(config.id, items))
-          // A read-only connection (dbm diff) tells too; a model condition that would run as its own statement is
-          // never probed there (review finding).
+          // A read-only connection never writes, not even the probe's temporary table: it can't say (null).
           {
             const ro = { ...config, id: `${config.id}-ro`, readOnly: true }
             await svc.connect(ro)
-            // (MySQL refuses temporary tables in a read-only session: it can't say, and dbm diff says so.)
-            expect((await findChangedChecks([edited], [added], (items) => svc.canonicalChecks(ro.id, items)))({ schema: added.schema, name: 'customers' }, 'dbm_name_filled')).toBe(engine.id !== 'mysql')
-            expect((await findChangedChecks([model], [added], (items) => svc.canonicalChecks(ro.id, items)))({ schema: added.schema, name: 'customers' }, 'dbm_name_filled')).toBe(false)
-            const sneaky = await svc.canonicalChecks(ro.id, [{ table: { schema: added.schema, name: 'customers' }, check: { name: 'dbm_name_filled', expression: "name <> ''); DELETE FROM customers WHERE (1 = 1" } }])
-            expect(sneaky).toEqual([null])
+            expect(await svc.canonicalChecks(ro.id, [{ table: { schema: added.schema, name: 'customers' }, check: edited.checks!.find((c) => c.name === 'dbm_name_filled')! }])).toEqual([null])
             await svc.disconnect(ro.id)
           }
           const migration = generateMigration(compareSchemas([edited], [added], { checkChanged: changed }), dialect, [added])

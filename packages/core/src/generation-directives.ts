@@ -5,7 +5,8 @@ import type { TableInfo } from './types.js'
  * `{$IFNOTDEF name}`) and `{$ENDIF name}`, nested as needed. A script is made with the directives that apply; in
  * trigger, view and procedure code, check constraints and the scripts around a project's scripts.
  */
-const TOKEN = /\{\$(IFDEF|IFNOTDEF|ENDIF)\s+([^}]*?)\s*\}/gi
+// (`{$ENDIF}` may come without the name.)
+const TOKEN = /\{\$(IFDEF|IFNOTDEF|ENDIF)(?:\s+([^}]*?))?\s*\}/gi
 
 /** The directives a text names (as written, the first spelling of each). */
 export function generationDirectivesIn(...texts: (string | undefined | null)[]): string[] {
@@ -39,7 +40,7 @@ export function applyGenerationDirectives(text: string, defined: string[]): stri
     at = end
     const kind = m[1]!.toUpperCase()
     if (kind === 'ENDIF') stack.pop()
-    else stack.push(kind === 'IFDEF' ? on.has(m[2]!.toLowerCase()) : !on.has(m[2]!.toLowerCase()))
+    else stack.push(kind === 'IFDEF' ? on.has((m[2] ?? '').toLowerCase()) : !on.has((m[2] ?? '').toLowerCase()))
   }
   if (keeping()) out += text.slice(at)
   return out

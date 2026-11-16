@@ -153,7 +153,7 @@ export function translateTables(tables: TableInfo[], to: DriverId, from?: Driver
   })
     .map((t) => (t.checks ? { ...t, checks: t.checks.map((c) => ({ ...c, expression: translateCondition(c.expression, to) })).filter((c) => !((to === 'oracle' || to === 'mysql' || to === 'mariadb') && NOT_IN_MYSQL_CHECK.test(c.expression))) } : t))
     .map((t) => (['mysql', 'mariadb', 'mssql', 'oracle'].includes(to) ? oneIdentity(t) : t))
-    .map((t) => (to === 'mysql' || to === 'mariadb' ? forMySql(t) : t))
+    .map((t) => (to === 'mysql' || to === 'mariadb' ? forMySql(t, to) : t))
 }
 
 /** MySQL, SQL Server and Oracle number one column per table: the key's, if it is one of them. */
@@ -189,7 +189,7 @@ const NOT_IN_MYSQL_CHECK = { test: (expression: string) => NONDETERMINISTIC.test
  * that are not keys become TEXT), an auto-increment column that does not lead a key (it gets a unique constraint),
  * and checks that ask for the time or a random value.
  */
-function forMySql(t: TableInfo): TableInfo {
+function forMySql(t: TableInfo, to: 'mysql' | 'mariadb'): TableInfo {
   const keyed = new Set([...t.primaryKey, ...t.indexes.flatMap((i) => i.columns), ...t.foreignKeys.flatMap((f) => f.columns)])
   const columns = [...t.columns]
   let width = columns.reduce((sum, c) => sum + mySqlBytes(c.dataType), 0)
@@ -205,6 +205,14 @@ function forMySql(t: TableInfo): TableInfo {
   const indexes = [...t.indexes]
   for (const c of columns) {
     if (c.isIdentity && !leads.has(c.name.toLowerCase())) indexes.push({ name: `${t.name}_${c.name}_ai`.slice(0, 64), columns: [c.name], unique: true, primary: false, constraint: true })
+  }
+  // MySQL takes no literal default on TEXT, BLOB, JSON or spatial columns, only an expression: ('x') (8.0.13+).
+  // MariaDB takes the literal.
+  if (to === 'mysql') {
+    for (const [i, c] of columns.entries()) {
+      const d = c.defaultValue?.trim()
+      if (d && !/^\(/.test(d) && !/^null$/i.test(d) && /^((tiny|medium|long)?(text|blob)|json|geometry|point|linestring|polygon)\b/i.test(c.dataType.trim())) columns[i] = { ...c, defaultValue: `(${d})` }
+    }
   }
   const checks = t.checks?.filter((ch) => !NOT_IN_MYSQL_CHECK.test(ch.expression))
   return { ...t, columns, indexes, ...(t.checks ? { checks } : {}) }

@@ -1,6 +1,6 @@
 import { rmSync } from 'node:fs'
 import { afterAll, describe, expect, it } from 'vitest'
-import { DatabaseService, objectDefinition, type DefinedObject } from '../src/index.js'
+import { DatabaseService, objectDefinition, sameType, tableDefinition, type DefinedObject } from '../src/index.js'
 import { engines, setupEngine, skip, tmp } from './fixtures.js'
 
 afterAll(() => rmSync(tmp, { recursive: true, force: true }))
@@ -138,6 +138,31 @@ for (const engine of engines) {
         expect(sql.startsWith('-- Generated from the catalog')).toBe(true)
         expect(sql).toMatch(/CREATE TABLE/i)
         expect(sql).toMatch(/email/)
+        // The same generator, run: the table made under a scratch schema (database in MySQL, attached file in
+        // SQLite) has the same columns, types, NOT NULLs and key (review finding).
+        const scratch = 'dbm_scratch'
+        const run = async (statement: string) => {
+          const outcomes = await svc.runScript(config.id, statement)
+          expect(outcomes.filter((o) => o.error).map((o) => `${o.sql}\n→ ${o.error!.message}`)).toEqual([])
+        }
+        const setup: Record<string, [string[], string[]]> = {
+          postgres: [[`DROP SCHEMA IF EXISTS ${scratch} CASCADE`, `CREATE SCHEMA ${scratch}`], [`DROP SCHEMA ${scratch} CASCADE`]],
+          mssql: [[`IF OBJECT_ID('${scratch}.customers') IS NOT NULL DROP TABLE ${scratch}.customers`, `IF SCHEMA_ID('${scratch}') IS NULL EXEC('CREATE SCHEMA ${scratch}')`], [`DROP TABLE ${scratch}.customers`, `DROP SCHEMA ${scratch}`]],
+          mysql: [[`DROP DATABASE IF EXISTS ${scratch}`, `CREATE DATABASE ${scratch}`], [`DROP DATABASE ${scratch}`]],
+          duckdb: [[`DROP SCHEMA IF EXISTS ${scratch} CASCADE`, `CREATE SCHEMA ${scratch}`], [`DROP SCHEMA ${scratch} CASCADE`]],
+          sqlite: [[`ATTACH DATABASE ':memory:' AS ${scratch}`], [`DETACH DATABASE ${scratch}`]],
+        }
+        setup.mariadb = setup.mysql!
+        const [before, after] = setup[engine.id]!
+        for (const statement of before) await run(statement)
+        const original = (await svc.schema(config.id, true)).tables.find((t) => t.name === 'customers' && (schema === undefined || t.schema === schema))!
+        await run(tableDefinition({ ...original, schema: scratch }, engine.id))
+        const copy = (await svc.driver(config.id).introspect({ schemas: [scratch] })).tables.find((t) => t.schema === scratch && t.name === 'customers')!
+        const shape = (t: typeof original) => t.columns.map((c) => [c.name, c.nullable])
+        expect(shape(copy)).toEqual(shape(original))
+        for (const [i, c] of copy.columns.entries()) expect(sameType(c.dataType, original.columns[i]!.dataType), `${c.name}: ${c.dataType} / ${original.columns[i]!.dataType}`).toBe(true)
+        expect(copy.primaryKey).toEqual(original.primaryKey)
+        for (const statement of after) await run(statement)
       } finally {
         await svc.disconnectAll()
       }
