@@ -102,10 +102,11 @@ export function StructureView({ tab }: { tab: StructureTab }) {
                   return (
                     <tr key={c.name} className="hover:bg-hover">
                       <td className={`${td} w-10 text-fg-faint`}>{c.ordinal}</td>
-                      <td className={`${td} font-medium`}>{c.name}</td>
-                      <td className={`${td} font-mono text-[12px] text-fg-muted`}>{c.dataType}</td>
+                      {/* (data-value: the database's own names and text, not UI text: the Czech UI sweep skips them) */}
+                      <td className={`${td} font-medium`} data-value>{c.name}</td>
+                      <td className={`${td} font-mono text-[12px] text-fg-muted`} data-value>{c.dataType}</td>
                       <td className={td}>{c.nullable ? t('yes') : <span className="text-fg-faint">NOT NULL</span>}</td>
-                      <td className={`${td} max-w-[220px] truncate font-mono text-[12px] text-fg-muted`}>{c.defaultValue ?? ''}</td>
+                      <td className={`${td} max-w-[220px] truncate font-mono text-[12px] text-fg-muted`} data-value>{c.defaultValue ?? ''}</td>
                       <td className={td}>
                         <div className="flex items-center gap-1">
                           {c.isPrimaryKey && (
@@ -122,7 +123,7 @@ export function StructureView({ tab }: { tab: StructureTab }) {
                           )}
                         </div>
                       </td>
-                      <td className={`${td} text-fg-muted`}>{c.comment}</td>
+                      <td className={`${td} text-fg-muted`} data-value>{c.comment}</td>
                     </tr>
                   )
                 })}
@@ -138,12 +139,12 @@ export function StructureView({ tab }: { tab: StructureTab }) {
               {table.indexes.map((ix) => (
                 <div key={ix.name} className="rounded-md border border-line px-3 py-2">
                   <div className="flex items-center gap-2 text-[12.5px] font-medium">
-                    {ix.name}
+                    <span data-value>{ix.name}</span>
                     {ix.primary && <Badge tone="warning">{t('primary')}</Badge>}
                     {ix.unique && !ix.primary && <Badge tone="accent">{t('unique')}</Badge>}
                     {ix.method && <span className="text-[11px] text-fg-faint">{ix.method}</span>}
                   </div>
-                  <div className="font-mono text-[12px] text-fg-muted">{ix.columns.join(', ')}</div>
+                  <div className="font-mono text-[12px] text-fg-muted" data-value>{ix.columns.join(', ')}</div>
                   {/* Expressions, WHERE, INCLUDE, DESC: the server's own text says what the columns can't. */}
                   {ix.definition && !ix.primary && /\bWHERE\b|\bINCLUDE\b|\bDESC\b|\(\(|USING (?!btree)/i.test(ix.definition) && (
                     <div className="mt-0.5 font-mono text-[11px] break-all text-fg-faint" data-index-definition>{ix.definition}</div>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { canvasOwnsKey } from '../src/renderer/src/features/diagram/canvas-keys'
+import { keepMeasured } from '../src/renderer/src/features/diagram/keep-measured'
 import { nameProblem } from '../src/renderer/src/features/diagram/names'
 import { remembered, stepTo, type ModelSteps } from '../src/renderer/src/features/model/model-steps'
 
@@ -20,9 +21,13 @@ describe('keys on the model canvas', () => {
     expect(canvasOwnsKey(body as EventTarget, canvas(), { focused: true, dialogOpen: true, body })).toBe(false)
   })
 
-  it('never when focus is in a list, on a button or in a text field, inside the canvas or outside it', () => {
+  it('a button of the diagram itself (Align, Auto layout) counts as the diagram: ⌘Z after it undoes', () => {
+    expect(canvasOwnsKey(el() as unknown as EventTarget, canvas(), { focused: true, dialogOpen: false, body })).toBe(true)
+  })
+
+  it('never when focus is in a list, the table panel or a text field, or on anything outside the diagram', () => {
     expect(canvasOwnsKey(el([], false) as unknown as EventTarget, canvas(), { focused: true, dialogOpen: false, body })).toBe(false)
-    for (const where of ['button', 'input', '.cm-editor', '[role="listbox"]', '[role="tree"]'])
+    for (const where of ['input', '.cm-editor', '[role="listbox"]', '[role="tree"]', '[data-testid="table-panel"]'])
       expect(canvasOwnsKey(el([where]) as unknown as EventTarget, canvas(), { focused: true, dialogOpen: false, body })).toBe(false)
   })
 })
@@ -61,5 +66,28 @@ describe('model undo', () => {
     const steps = remembered<Tab>({ past: [], future: [] }, 'a', { sqlDatabase: 'pg' })
     expect(stepTo(steps, 'undo', 'b', { sqlDatabase: 'my' })).toEqual({ text: 'a' })
     expect(steps.future).toEqual([{ text: 'b' }])
+  })
+})
+
+describe('nodes made again by a layout', () => {
+  it('keep the size the canvas measured, so a table never stays unmeasured (and invisible)', () => {
+    const previous = [
+      { id: 'shop.invoice', measured: { width: 240, height: 120 } },
+      { id: 'shop.payment', measured: { width: 240, height: 98 } },
+      { id: 'shop.half', measured: { width: 240 } },
+    ]
+    const next = keepMeasured<{ id: string; measured?: { width?: number; height?: number } }>(previous, [
+      { id: 'shop.payment' },
+      { id: 'shop.customer' },
+      { id: 'shop.half' },
+      { id: 'shop.invoice', measured: { width: 1, height: 2 } },
+    ])
+    expect(next).toEqual([
+      { id: 'shop.payment', measured: { width: 240, height: 98 } },
+      // A new table, and one never fully measured, are measured by the canvas when they appear.
+      { id: 'shop.customer' },
+      { id: 'shop.half' },
+      { id: 'shop.invoice', measured: { width: 1, height: 2 } },
+    ])
   })
 })

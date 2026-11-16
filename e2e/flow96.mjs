@@ -66,6 +66,8 @@ try {
 
   await win.getByRole('button', { name: 'Save', exact: true }).click()
   await win.getByText(/Write these changes into shop\.dez\?/).waitFor({ timeout: 10000 })
+  // An earlier save's toast stays for 4.5 s: wait it out, or the wait below takes it for this save's and the file is read too early.
+  await win.waitForFunction(() => !document.body.innerText.includes('Saved to shop.dez'), null, { timeout: 10000 })
   await win.getByRole('button', { name: 'Write to the DeZign file' }).click()
   await win.getByText(/Saved to shop\.dez/).waitFor({ timeout: 10000 })
   const saved = readFileSync(dez, 'latin1')
@@ -90,6 +92,8 @@ try {
   const boxRows = await win.locator('.react-flow__node[data-id="shop.customer"] .border-t').count()
   await win.getByRole('button', { name: 'Save', exact: true }).click()
   await win.getByText(/Write these changes into shop\.dez\?/).waitFor({ timeout: 10000 })
+  // An earlier save's toast stays for 4.5 s: wait it out, or the wait below takes it for this save's and the file is read too early.
+  await win.waitForFunction(() => !document.body.innerText.includes('Saved to shop.dez'), null, { timeout: 10000 })
   await win.getByRole('button', { name: 'Write to the DeZign file' }).click()
   await win.getByText(/Saved to shop\.dez/).last().waitFor({ timeout: 10000 })
   console.log('hidden column:', boxRows === 3, /<HIDDENATTR>A2<\/HIDDENATTR>/.test(readFileSync(dez, 'latin1')))
@@ -117,6 +121,8 @@ try {
   const withDomain = await win.locator('.cm-content:visible').first().innerText()
   await win.getByRole('button', { name: 'Save', exact: true }).click()
   await win.getByText(/Write these changes into shop\.dez\?/).waitFor({ timeout: 10000 })
+  // An earlier save's toast stays for 4.5 s: wait it out, or the wait below takes it for this save's and the file is read too early.
+  await win.waitForFunction(() => !document.body.innerText.includes('Saved to shop.dez'), null, { timeout: 10000 })
   await win.getByRole('button', { name: 'Write to the DeZign file' }).click()
   await win.getByText(/Saved to shop\.dez/).last().waitFor({ timeout: 10000 })
   const domainFile = readFileSync(dez, 'latin1')
@@ -174,6 +180,8 @@ try {
   await win.getByRole('button', { name: 'Save', exact: true }).click()
   await win.getByText(/Write these changes into shop\.dez\?/).waitFor({ timeout: 10000 })
   const listedScripts = await win.locator('[role="dialog"]').last().innerText()
+  // An earlier save's toast stays for 4.5 s: wait it out, or the wait below takes it for this save's and the file is read too early.
+  await win.waitForFunction(() => !document.body.innerText.includes('Saved to shop.dez'), null, { timeout: 10000 })
   await win.getByRole('button', { name: 'Write to the DeZign file' }).click()
   await win.getByText(/Saved to shop\.dez/).last().waitFor({ timeout: 10000 })
   await win.getByRole('button', { name: /^SQL DDL/ }).click()
@@ -191,6 +199,8 @@ try {
     await win.getByRole('button', { name: 'Save', exact: true }).click()
     await win.getByText(/Write these changes into shop\.dez\?/).waitFor({ timeout: 10000 })
     const listed = await win.locator('[role="dialog"]').last().innerText()
+    // An earlier save's toast stays for 4.5 s: wait it out, or the wait below takes it for this save's and the file is read too early.
+    await win.waitForFunction(() => !document.body.innerText.includes('Saved to shop.dez'), null, { timeout: 10000 })
     await win.getByRole('button', { name: 'Write to the DeZign file' }).click()
     await win.getByText(/Saved to shop\.dez/).last().waitFor({ timeout: 10000 })
     return listed

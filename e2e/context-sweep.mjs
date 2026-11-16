@@ -26,7 +26,7 @@ const chosen = (process.argv.find((a) => a.startsWith('--engines='))?.slice('--e
 // Never run, whatever the menu says: they change or remove things and ask first anyway.
 const DANGEROUS = /drop|delete|truncate|remove|empty|smazat|odstranit|vyprázdnit|zahodit|forget|zapomenout/i
 
-const { app, win, api, state, note, checkScreen, act, report } = await startSweep({ out, lang })
+const { app, win, api, state, note, checkScreen, act, closeLastTab, report } = await startSweep({ out, lang })
 
 /** The items of the open menu (the last one, a submenu when it is open). */
 const menuItems = () =>
@@ -34,9 +34,18 @@ const menuItems = () =>
     .locator('[role="menu"]')
     .last()
     .locator('[role="menuitem"], [role="menuitemcheckbox"]')
-    .evaluateAll((els) => els.map((e) => ({ label: e.innerText.trim().split('\n')[0], disabled: e.disabled, danger: e.className.includes('text-danger'), submenu: e.getAttribute('aria-haspopup') === 'menu' })))
+    .evaluateAll((els) => els.map((e, index) => ({ index, label: e.innerText.trim().split('\n')[0], disabled: e.disabled, danger: e.className.includes('text-danger'), submenu: e.getAttribute('aria-haspopup') === 'menu' })))
 
-const clickItem = (label) => win.locator('[role="menu"]').last().locator('[role="menuitem"], [role="menuitemcheckbox"]').filter({ hasText: label }).first().click({ timeout: 3000 })
+/**
+ * Clicks an item by its label; an item whose label shows data that changed since the menu was listed (a system
+ * table's live values) is found again at the same place in the menu.
+ */
+const clickItem = async (label, index) => {
+  const items = win.locator('[role="menu"]').last().locator('[role="menuitem"], [role="menuitemcheckbox"]')
+  const byLabel = items.filter({ hasText: label })
+  if ((await byLabel.count()) || index === undefined) return byLabel.first().click({ timeout: 3000 })
+  return items.nth(index).click({ timeout: 3000 })
+}
 
 /** Every item of the context menu `open` shows, each run on a freshly opened menu. */
 async function sweepMenuOf(what, open) {
@@ -52,14 +61,14 @@ async function sweepMenuOf(what, open) {
     if (!item.submenu) {
       await act(`${what}: ${item.label}`, async () => {
         await open()
-        await clickItem(item.label)
+        await clickItem(item.label, item.index)
       })
       continue
     }
     let children = []
     try {
       await open()
-      await clickItem(item.label)
+      await clickItem(item.label, item.index)
       await win.waitForTimeout(300)
       children = (await win.locator('[role="menu"]').count()) > 1 ? await menuItems() : []
     } catch (err) {
@@ -71,9 +80,9 @@ async function sweepMenuOf(what, open) {
       if (child.disabled || child.danger || DANGEROUS.test(child.label)) continue
       await act(`${what}: ${item.label} › ${child.label}`, async () => {
         await open()
-        await clickItem(item.label)
+        await clickItem(item.label, item.index)
         await win.waitForTimeout(300)
-        await clickItem(child.label)
+        await clickItem(child.label, child.index)
       })
     }
   }
@@ -85,12 +94,8 @@ const rightClick = (locator) => async () => {
 }
 
 async function closeAllTabs() {
-  for (let i = 0; i < 30 && (await win.locator('[role="tab"]').count()) > 0; i++) {
-    await win.locator('[role="tab"]').last().click({ timeout: 2000 }).catch(() => {})
-    await win.keyboard.press(process.platform === 'darwin' ? 'Meta+w' : 'Control+w')
-    await win.waitForTimeout(200)
-    await win.keyboard.press('Escape')
-  }
+  // (closeLastTab answers "Discard N pending changes?": Set NULL or Clone row on the previous item left an edit.)
+  for (let i = 0; i < 30 && (await win.locator('[role="tab"]').count()) > 0; i++) await closeLastTab()
 }
 
 try {
@@ -139,7 +144,10 @@ try {
     await win.waitForTimeout(800)
     await checkScreen()
     await sweepMenuOf('schema', rightClick(win.locator('[data-node="schema"]')))
-    const table = win.locator('[data-node="table"]').filter({ hasText: /customers|orders/ }).or(win.locator('[data-node="table"]')).first()
+    // The fixtures' tables when the tree shows them (`.or()` would take whichever comes first in the tree: a system
+    // table of CockroachDB, whose live values change between two opens of the same menu).
+    const fixture = win.locator('[data-node="table"]').filter({ hasText: /customers|orders/ })
+    const table = (await fixture.count()) ? fixture.first() : win.locator('[data-node="table"]').first()
     await sweepMenuOf('table', rightClick(table))
     if (await win.locator('[data-node="view"]').count()) await sweepMenuOf('view', rightClick(win.locator('[data-node="view"]')))
     if (await win.locator('[data-routine]').count()) await sweepMenuOf('routine', rightClick(win.locator('[data-routine]')))

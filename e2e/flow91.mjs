@@ -351,7 +351,9 @@ try {
     }
   }
 } catch (err) {
-  console.log('FLOW ERROR', err.message.split('\n')[0])
+  // The call log says which locator it waited for.
+  console.log('FLOW ERROR', err.message.split('\n').slice(0, 14).join(' | '))
+  if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow91-error.png') }).catch(() => {})
 } finally {
   await app.close()
 }

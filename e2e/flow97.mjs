@@ -80,6 +80,11 @@ try {
   await win.waitForTimeout(500)
   const [e, f] = [await node('shop.invoice').boundingBox(), await node('shop.line').boundingBox()]
   console.log('undo and redo of the move:', Math.abs(c.x - d.x) > 2, Math.abs(e.x - f.x) < 2)
+  // Lined up on the left edge, the two tables lie on top of each other (their tops are 22 px apart): put them back
+  // side by side, or the columns of the invoice renamed below are under the line table. (The rename used to throw
+  // the renamed table into a column of its own, which is what kept them apart before.)
+  await win.keyboard.press('Meta+z')
+  await win.waitForTimeout(500)
 
   // A table's details (double-click): its columns one line each, the SQL it makes, in the panel next to the diagram.
   await win.keyboard.press('Escape')
@@ -311,7 +316,8 @@ try {
   console.log('written as made, undone with ⌘Z:', /Table shop\.line_item /.test(renamed), /Table shop\.line /.test(undone) && !/Table shop\.line_item /.test(undone))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow97.png') })
 } catch (err) {
-  console.log('FLOW ERROR', err.message.split('\n')[0])
+  // The call log says which locator it waited for.
+  console.log('FLOW ERROR', err.message.split('\n').slice(0, 12).join(' | '))
   if (process.argv[2]) await win.screenshot({ path: join(process.argv[2], 'flow97-error.png') })
 } finally {
   await app.close()

@@ -37,6 +37,9 @@ try {
   await win.getByRole('button', { name: /New table/ }).click()
   await win.waitForTimeout(400)
   await win.keyboard.type('p2_receipts')
+  // The panel's Name field gives the name on Enter (or on leaving it), not on every keystroke.
+  await win.keyboard.press('Enter')
+  await win.waitForTimeout(300)
   console.log('typing names the new table:', (await win.locator('.react-flow__node-table', { hasText: 'p2_receipts' }).count()) === 1)
   await win.getByText('Foreign keys', { exact: true }).locator('xpath=..').getByRole('button', { name: /Add/ }).click()
   const targets = await win.locator('select.h-6').nth(1).locator('option').allInnerTexts()

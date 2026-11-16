@@ -98,7 +98,10 @@ try {
     await win.keyboard.press(`${mod}+k`)
   })
   await step('tree-table-menu', async () => {
-    await win.locator('[data-node="table"]').first().click({ button: 'right' })
+    // The palette of the previous step is still open over the tree, and a small window hides the sidebar.
+    await win.keyboard.press('Escape')
+    if (!(await win.locator('[data-node="table"]:visible').count())) await menu('toggle-sidebar')
+    await win.locator('[data-node="table"]:visible').first().click({ button: 'right' })
   })
   console.log(errors.length ? `page errors: ${errors.join(' | ')}` : 'page errors: none')
   console.log(`screenshots: ${n} in ${out}`)
