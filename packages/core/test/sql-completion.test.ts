@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sqlFunctions, tablesInScope, type DriverId, type SchemaSnapshot, type TableInfo } from '../src/index.js'
+import { columnChoices, sqlFunctions, tablesInScope, type DriverId, type SchemaSnapshot, type TableInfo } from '../src/index.js'
 
 const col = (name: string) => ({ name, dataType: 'text', ordinal: 0, nullable: true, isPrimaryKey: false, isIdentity: false })
 const table = (schema: string | undefined, name: string, columns: string[]): TableInfo => ({ schema, name, type: 'table', columns: columns.map(col), primaryKey: [], foreignKeys: [], indexes: [] })
@@ -68,5 +68,28 @@ describe('tablesInScope: columns completed without a qualifier', () => {
   it('CTEs and unknown tables are left out', () => {
     expect(scope('WITH osoby AS (SELECT 1 AS x) SELECT | FROM osoby')).toEqual([])
     expect(scope('SELECT | FROM nowhere')).toEqual([])
+  })
+})
+
+describe('columnChoices: values a cell editor offers', () => {
+  const snap: SchemaSnapshot = {
+    schemas: ['public', 'Sales'],
+    tables: [],
+    routines: [],
+    capturedAt: '',
+    objects: [
+      { schema: 'public', name: 'mood', kind: 'type', detail: 'enum', labels: ['ok', 'bad'], definition: '' },
+      { schema: 'Sales', name: 'Stage', kind: 'type', detail: 'enum', labels: ['lead', 'won'], definition: '' },
+      { schema: 'public', name: 'positive', kind: 'type', detail: 'domain', definition: '' },
+    ],
+  }
+  it('enums by name or qualified name, booleans; nothing for other types', () => {
+    expect(columnChoices(snap, 'mood')).toEqual(['ok', 'bad'])
+    expect(columnChoices(snap, 'public.mood')).toEqual(['ok', 'bad'])
+    expect(columnChoices(snap, '"Sales"."Stage"')).toEqual(['lead', 'won'])
+    expect(columnChoices(snap, 'boolean')).toEqual(['true', 'false'])
+    expect(columnChoices(snap, 'positive')).toBeUndefined()
+    expect(columnChoices(snap, 'mood[]')).toBeUndefined()
+    expect(columnChoices(undefined, 'text')).toBeUndefined()
   })
 })

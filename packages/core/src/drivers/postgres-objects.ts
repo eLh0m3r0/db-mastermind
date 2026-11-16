@@ -147,7 +147,7 @@ export async function readPostgresObjects(query: Query, where: string, params: u
     for (const r of rows.rows) {
       const full = name(r.schema, r.name)
       if (r.kind === 'e') {
-        objects.push({ schema: r.schema, name: r.name, kind: 'type', detail: 'enum', definition: `CREATE TYPE ${full} AS ENUM (${(r.labels ?? []).map(literal).join(', ')});` })
+        objects.push({ schema: r.schema, name: r.name, kind: 'type', detail: 'enum', labels: r.labels ?? [], definition: `CREATE TYPE ${full} AS ENUM (${(r.labels ?? []).map(literal).join(', ')});` })
       } else if (r.kind === 'd') {
         const parts = [`CREATE DOMAIN ${full} AS ${r.base}`, ...(r.default ? [`DEFAULT ${r.default}`] : []), ...(r.not_null ? ['NOT NULL'] : []), ...(r.checks ?? [])]
         objects.push({ schema: r.schema, name: r.name, kind: 'type', detail: 'domain', definition: `${parts.join('\n  ')};` })

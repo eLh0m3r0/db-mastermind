@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { DatabaseService, findTableOrPartition, objectDefinition, rowKey, tableDefinition, type SchemaSnapshot } from '../src/index.js'
+import { columnChoices, DatabaseService, findTableOrPartition, objectDefinition, rowKey, tableDefinition, type SchemaSnapshot } from '../src/index.js'
 import { engines, skip } from './fixtures.js'
 
 /**
@@ -62,6 +62,9 @@ describe.skipIf(skip.has('postgres'))('PostgreSQL objects in the explorer', () =
     expect(events.partitions?.[0]?.partitionBy).toBe('LIST (region)')
     expect(events.partitions?.[0]?.partitions?.map((p) => p.name)).toEqual(['events_2026_eu'])
     expect(snapshot.tables.some((t) => t.name.startsWith('events_'))).toBe(false)
+    // An enum column offers its labels when edited.
+    const mood = events.columns.find((c) => c.name === 'mood')!
+    expect(columnChoices(snapshot, mood.dataType)).toEqual(['ok', "it's fine", 'bad'])
     // A partition's data tab: the parent's columns and key.
     const eu = findTableOrPartition(snapshot, { schema: 'dbm_obj', name: 'events_2026_eu' })!
     expect(eu.name).toBe('events_2026_eu')

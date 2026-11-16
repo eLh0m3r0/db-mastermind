@@ -191,3 +191,18 @@ export function rowKey(table: TableInfo): string[] {
   candidates.sort((a, b) => a.columns.length - b.columns.length)
   return candidates[0]?.columns ?? []
 }
+
+/**
+ * The values a cell editor offers for a column: an enum's labels (PostgreSQL types the snapshot lists, found by the
+ * column's type name, with or without its schema), true / false for a boolean. Undefined: anything can be typed.
+ */
+export function columnChoices(snapshot: SchemaSnapshot | undefined, dataType: string | undefined): string[] | undefined {
+  if (!dataType) return undefined
+  const type = dataType.trim()
+  if (/^(boolean|bool)$/i.test(type)) return ['true', 'false']
+  const plain = (s: string) => (s.startsWith('"') ? s.slice(1, -1).replaceAll('""', '"') : s)
+  const enums = (snapshot?.objects ?? []).filter((o) => o.kind === 'type' && o.labels)
+  const m = /^("(?:[^"]|"")*"|[^."]+)\.("(?:[^"]|"")*"|[^."]+)$/.exec(type)
+  const found = m ? enums.find((o) => o.schema === plain(m[1]!) && o.name === plain(m[2]!)) : enums.find((o) => o.name === plain(type))
+  return found?.labels
+}
