@@ -502,9 +502,9 @@ export const api: MastermindApi = {
     }
     return outcomes
   },
-  async explainQuery(connectionId, sql, analyze) {
+  async explainQuery(connectionId, sql, analyze, session) {
     await ensureConnected(connectionId)
-    return explainQuery(db, connectionId, sql, analyze)
+    return explainQuery(db, connectionId, sql, analyze, { session })
   },
   async objectDefinition(connectionId, object) {
     await ensureConnected(connectionId)

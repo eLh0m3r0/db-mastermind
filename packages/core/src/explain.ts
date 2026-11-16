@@ -1,5 +1,5 @@
 import type { DatabaseService } from './engine.js'
-import { classifyStatement } from './sql-split.js'
+import { classifyStatement, splitStatements } from './sql-split.js'
 import { cellToText } from './values.js'
 
 /** One operator of an execution plan, normalized across databases. */
@@ -37,7 +37,8 @@ function pgNode(p: Record<string, unknown>): PlanNode {
     .map((v) => (Array.isArray(v) ? v.join(', ') : String(v)))
     .join(' · ')
   return {
-    operation: [p['Node Type'], p['Join Type'] ? `(${p['Join Type']})` : ''].filter(Boolean).join(' '),
+    // ModifyTable says what it modifies in Operation (Update, Delete, Insert, Merge).
+    operation: [p['Node Type'] === 'ModifyTable' && p['Operation'] ? p['Operation'] : p['Node Type'], p['Join Type'] ? `(${p['Join Type']})` : ''].filter(Boolean).join(' '),
     object: relation ? `${p['Schema'] ? `${p['Schema']}.` : ''}${relation}${p['Alias'] && p['Alias'] !== relation ? ` ${p['Alias']}` : ''}` : undefined,
     detail: detail || undefined,
     cost: num(p['Total Cost']),
@@ -212,11 +213,18 @@ export function cockroachPlan(lines: string[]): PlanNode {
   return root.children.length === 1 ? root.children[0]! : root
 }
 
-export async function explainQuery(db: DatabaseService, connectionId: string, sql: string, analyze = false): Promise<ExplainResult> {
-  if (classifyStatement(sql) !== 'read') throw new Error('Only SELECT statements can be explained')
+export async function explainQuery(db: DatabaseService, connectionId: string, sql: string, analyze = false, options: { session?: string } = {}): Promise<ExplainResult> {
   const driver = db.config(connectionId).driver
+  // One statement only: `EXPLAIN SELECT 1; DROP TABLE t` would run the DROP.
+  if (splitStatements(sql, driver).filter((s) => s.text.trim()).length !== 1) throw new Error('Explain one statement at a time')
+  const kind = classifyStatement(sql)
+  const cockroach = db.serverInfo(connectionId)?.product === 'CockroachDB'
+  // PostgreSQL plans INSERT / UPDATE / DELETE too; EXPLAIN alone doesn't run them, and ANALYZE is rolled back below.
+  const writable = driver === 'postgres' && !cockroach && kind === 'write'
+  if (kind !== 'read' && !writable) throw new Error('Only SELECT statements can be explained')
   const body = sql.trim().replace(/;\s*$/, '')
-  const session = `explain-${Date.now()}`
+  // The tab's own session sees its temp tables, SET search_path and open transaction.
+  const session = options.session ?? `explain-${Date.now()}`
   const run = async (script: string) => {
     const outcomes = await db.runScript(connectionId, script, { session, maxRows: 10_000 })
     const failed = outcomes.find((o) => o.error)
@@ -226,7 +234,8 @@ export async function explainQuery(db: DatabaseService, connectionId: string, sq
   try {
     switch (driver) {
       case 'postgres': {
-        if (db.serverInfo(connectionId)?.product === 'CockroachDB') {
+        if (writable && analyze) return await analyzeAndUndo(db, connectionId, session, body)
+        if (cockroach) {
           const [r] = await run(`EXPLAIN${analyze ? ' ANALYZE' : ''} ${body}`)
           const lines = (r?.rows ?? []).map((row) => cellToText(row[0] ?? ''))
           return { root: cockroachPlan(lines), raw: lines.join('\n'), format: 'text' }
@@ -306,7 +315,25 @@ export async function explainQuery(db: DatabaseService, connectionId: string, sq
         return { root: sqliteTree(rows), raw: rows.map((x) => cellToText(x[3] ?? '')).join('\n'), format: 'text' }
       }
     }
+    throw new Error('Explain is not available for this database')
   } finally {
-    await db.releaseSession(connectionId, session)
+    if (!options.session) await db.releaseSession(connectionId, session)
+  }
+}
+
+/** EXPLAIN ANALYZE of a write runs it: inside a transaction (a savepoint in an open one) that is always undone. */
+async function analyzeAndUndo(db: DatabaseService, connectionId: string, session: string, body: string): Promise<ExplainResult> {
+  const open = (await db.transactionState(connectionId, session)) === 'open'
+  const [begin, undo] = open ? ['SAVEPOINT dbm_explain', 'ROLLBACK TO SAVEPOINT dbm_explain; RELEASE SAVEPOINT dbm_explain'] : ['BEGIN', 'ROLLBACK']
+  await db.runScript(connectionId, begin, { session })
+  try {
+    const outcomes = await db.runScript(connectionId, `EXPLAIN (FORMAT JSON, ANALYZE, BUFFERS) ${body}`, { session, maxRows: 10_000 })
+    const failed = outcomes.find((o) => o.error)
+    if (failed) throw new Error(failed.error!.message)
+    const raw = cellToText(outcomes[0]?.results?.[0]?.rows[0]?.[0] ?? '[]')
+    const plan = (JSON.parse(raw) as { Plan: Record<string, unknown> }[])[0]!.Plan
+    return { root: pgNode(plan), raw, format: 'json' }
+  } finally {
+    await db.runScript(connectionId, undo, { session })
   }
 }
