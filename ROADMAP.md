@@ -803,7 +803,7 @@ untested here).
 - ✅ `e2e/context-sweep.mjs`: every context-menu item (connection, schema, table, view, routine, column, cell, header)
   on nine engines — no defect found; it stays as a check for new menu items
 
-### 1.4 — PostgreSQL polish (the pilot team works on PostgreSQL only) ✅ 1.4.0 (prepared 2026-11-16)
+### 1.4 — PostgreSQL polish (the pilot team works on PostgreSQL only) ✅ released 1.4.0 (2026-11-16)
 
 From a colleague's feedback (no random() in completions; columns like `id` not offered in SQLite) and a review of
 what a daily PostgreSQL user hits:
@@ -846,7 +846,7 @@ The same review on the other engines:
 - ✅ Index definitions on MySQL (prefixes such as `email(20)`, functional parts, DESC, FULLTEXT), SQL Server
   (INCLUDE, filters, DESC) and SQLite (expressions, WHERE); a copy of the table keeps them — 1.4.0
 
-### 1.4.0 — review of everything since 1.1 ✅ 1.4.0 (prepared 2026-11-16)
+### 1.4.0 — review of everything since 1.1 ✅ released 1.4.0 (2026-11-16)
 
 Two read-only passes over `edf1e75..a43133e` (1.1.0 – 1.3.2: eight areas, every changed file) and one over the
 PostgreSQL polish above found about a hundred defects; all are fixed, each with a test that fails without the fix

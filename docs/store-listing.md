@@ -38,11 +38,13 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 > EVERYDAY WORK, DONE WELL
 > • Data browser for millions of rows with advanced filters: nested AND/OR groups, 25+ operators, raw SQL conditions.
 > • Inline editing with a reviewed change set, paste from Excel, copy as CSV, JSON, Markdown or SQL.
-> • SQL editor with schema-aware autocomplete that writes whole JOINs from foreign keys, snippets, history, saved queries and execution plans.
+> • SQL editor with schema-aware autocomplete that writes whole JOINs from foreign keys and knows every function of the database (extensions too), snippets, history, saved queries and execution plans, also for INSERT, UPDATE and DELETE.
 > • Export everything to CSV, Excel, JSON or SQL, and query CSV, Parquet, JSON and Excel files with SQL.
 > • Transactions you can see: commit changes yourself, per connection; every open transaction and every lock is shown.
 > • Open a view, function or table as SQL and change it; open and save .sql files; warnings while you type (unknown table, UPDATE or DELETE without WHERE).
 > • Totals of selected cells, find a value anywhere in a database, value profile of a column.
+> • Messages from the server next to the results (PostgreSQL NOTICE and RAISE, SQL Server PRINT, MySQL warnings, Oracle DBMS_OUTPUT); tables without a primary key are edited through a unique index.
+> • PostgreSQL in depth: partitions, sequences, types, triggers and row-level security in the explorer, and definitions that re-create what the server has.
 >
 > MODEL, UNDERSTAND AND REDESIGN
 > • Model a new database without one: draw tables and relationships, rename and retype right on the diagram; models are DBML text files you can keep in Git, with SQL for any supported database.
@@ -92,6 +94,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 15. Server activity: sessions, slowest queries, storage and unused indexes
 16. Copy tables between databases and run a script on several connections
 17. Passwords from 1Password, Bitwarden or Vault; SSH jump hosts
+18. PostgreSQL in depth: every function in completions, partitions, triggers, row-level security, server messages
 
 **Search terms** (7): `database client` · `SQL editor` · `PostgreSQL` · `SQL Server` · `data modeling` · `ER diagram` · `database AI`
 
@@ -130,11 +133,13 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 > KAŽDODENNÍ PRÁCE
 > • Prohlížení milionů řádků s pokročilými filtry: vnořené skupiny AND/OR, přes 25 operátorů, vlastní SQL podmínka.
 > • Úpravy přímo v tabulce s kontrolou změn před uložením, vkládání z Excelu, kopírování jako CSV, JSON, Markdown nebo SQL.
-> • SQL editor s našeptávačem, který z cizích klíčů napíše celý JOIN, šablony, historie, uložené dotazy a prováděcí plány.
+> • SQL editor s našeptávačem, který z cizích klíčů napíše celý JOIN a zná všechny funkce databáze (i z rozšíření), šablony, historie, uložené dotazy a prováděcí plány, také pro INSERT, UPDATE a DELETE.
 > • Export do CSV, Excelu, JSON nebo SQL a dotazy SQL přímo nad soubory CSV, Parquet, JSON a Excel.
 > • Transakce pod kontrolou: změny potvrzujete sami, pro každé připojení zvlášť; každá otevřená transakce i zámek jsou vidět.
 > • Pohled, funkci nebo tabulku otevřete jako SQL a upravíte; soubory .sql otevřete i uložíte; upozornění už při psaní (neznámá tabulka, UPDATE nebo DELETE bez WHERE).
 > • Součty vybraných buněk, hledání hodnoty v celé databázi, profil hodnot sloupce.
+> • Zprávy serveru hned u výsledků (PostgreSQL NOTICE a RAISE, SQL Server PRINT, varování MySQL, Oracle DBMS_OUTPUT); tabulky bez primárního klíče upravíte přes unikátní index.
+> • PostgreSQL do hloubky: partitions, sekvence, typy, triggery a zabezpečení na úrovni řádků v průzkumníku a definice, které znovu vytvoří to, co server má.
 >
 > DATOVÝ MODEL
 > • Interaktivní ER diagramy s automatickým rozložením, uloženými pohledy a cestou JOIN mezi libovolnými tabulkami.
@@ -185,6 +190,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 15. Aktivita serveru: relace, nejnáročnější dotazy, úložiště a nepoužívané indexy
 16. Kopírování tabulek mezi databázemi a skript na více připojeních
 17. Hesla z 1Password, Bitwardenu nebo Vaultu; SSH přes jump host
+18. PostgreSQL do hloubky: všechny funkce v našeptávači, partitions, triggery, zabezpečení řádků, zprávy serveru
 
 **Search terms:** `databázový klient` · `SQL editor` · `PostgreSQL` · `SQL Server` · `datové modelování` · `ER diagram` · `databáze AI`
 
