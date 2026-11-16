@@ -112,6 +112,8 @@ export interface QueryResult {
   /** True when the driver stopped reading after maxRows. */
   truncated?: boolean
   durationMs: number
+  /** What the server said along the way (PostgreSQL NOTICE / RAISE …), on the statement's first result. */
+  messages?: string[]
 }
 
 export interface QueryOptions {
@@ -257,6 +259,8 @@ export interface StatementOutcome {
   durationMs: number
   /** Extra information shown with the outcome (e.g. automatic rollback). */
   note?: string
+  /** Server messages (NOTICE, WARNING, RAISE INFO …), also from a statement that then failed. */
+  messages?: string[]
 }
 
 export interface TablePage {

@@ -384,6 +384,7 @@ export class DatabaseService {
             end: statement.end,
             results,
             durationMs: Date.now() - started,
+            ...(results.some((r) => r.messages?.length) ? { messages: results.flatMap((r) => r.messages ?? []) } : {}),
             ...(committed ? { note: 'This statement committed the open transaction: the database commits before and after a schema change.' } : {}),
           })
           if (classifyStatement(statement.text) === 'transaction') inTransaction = /^\s*(BEGIN|START)\b/i.test(statement.text)
@@ -396,6 +397,7 @@ export class DatabaseService {
             end: statement.end,
             error: describeError(err),
             durationMs: Date.now() - started,
+            ...((err as { notices?: string[] }).notices?.length ? { messages: (err as { notices: string[] }).notices } : {}),
             ...((err as { undoneOnly?: boolean }).undoneOnly ? { note: 'Only this statement was undone: the transaction stays open with the earlier changes.' } : {}),
           })
           if (!options.continueOnError || options.signal?.aborted) {

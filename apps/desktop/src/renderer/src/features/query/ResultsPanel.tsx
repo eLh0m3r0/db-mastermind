@@ -130,6 +130,7 @@ export function ResultsPanel({
   }, [outcomes, language, tr, pinned])
 
   const hasError = outcomes?.some((o) => o.error && !cancelled(o))
+  const messageCount = outcomes?.reduce((n, o) => n + (o.messages?.length ?? 0), 0) ?? 0
   const wasCancelled = outcomes?.some(cancelled)
   const activeKey =
     active !== 'auto' && (active === 'messages' || tabs.some((t) => t.key === active))
@@ -313,6 +314,11 @@ export function ResultsPanel({
         >
           {hasError && <XCircle size={12} className="text-danger" />}
           {tr('Messages')}
+          {messageCount > 0 && (
+            <span className="rounded-full bg-accent-soft px-1.5 text-[11px] text-accent" title={tr('Messages from the server (NOTICE, RAISE …)')} data-server-messages>
+              {messageCount}
+            </span>
+          )}
         </button>
         <div className="flex-1" />
         {running && (
@@ -419,6 +425,11 @@ export function ResultsPanel({
                   <span className="shrink-0 text-fg-faint">{formatDuration(o.durationMs)}</span>
                 </div>
                 {o.note && <div className="mt-1 pl-5 text-fg-muted">{tr(o.note)}</div>}
+                {o.messages?.map((m, mi) => (
+                  <div key={mi} className="mt-1 pl-5 whitespace-pre-wrap text-fg" data-server-message>
+                    {m}
+                  </div>
+                ))}
                 {cancelled(o) ? (
                   <div className="mt-1.5 pl-5 text-fg-muted">{tr('Cancelled')}</div>
                 ) : o.error ? (
