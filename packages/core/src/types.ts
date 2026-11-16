@@ -277,6 +277,8 @@ export interface SchemaObject {
   detail?: string
   /** The SQL that creates it, generated from the catalog. */
   definition: string
+  /** An enum's values, in their order. */
+  labels?: string[]
 }
 
 export interface RoutineInfo {

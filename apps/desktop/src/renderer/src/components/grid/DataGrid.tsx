@@ -1,5 +1,5 @@
 import { useCompact } from '@/store/settings'
-import { memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from 'react'
+import { memo, useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ArrowDown, ArrowUp, ArrowUpRight, KeyRound, Link2 } from 'lucide-react'
 import { cellToText, isBinaryValue, type CellValue, type ResultField, type SortSpec } from '@dbmastermind/core/browser'
@@ -20,6 +20,8 @@ export interface GridColumnMeta {
   foreignKey?: string
   comment?: string | null
   nullable?: boolean
+  /** Values the cell editor offers (an enum's labels, true / false); others can still be typed. */
+  choices?: string[]
 }
 
 export interface CellPos {
@@ -638,6 +640,7 @@ export function DataGrid({
       left={(offsets[editing.pos.col] ?? 0) + (editing.pos.col < pinned ? (scrollRef.current?.scrollLeft ?? 0) : 0)}
       width={widths[editing.pos.col] ?? 120}
       nullable={columnMeta?.[editing.pos.col]?.nullable !== false}
+      choices={columnMeta?.[editing.pos.col]?.choices}
       onCommit={commitEdit}
       onCancel={() => {
         setEditing(null)
@@ -744,6 +747,7 @@ function CellEditor({
   left,
   width,
   nullable,
+  choices,
   onCommit,
   onCancel,
 }: {
@@ -752,12 +756,14 @@ function CellEditor({
   left: number
   width: number
   nullable: boolean
+  choices?: string[]
   onCommit: (value: string | null, move?: 'down' | 'right' | 'left') => void
   onCancel: () => void
 }) {
   const ROW_HEIGHT = rowHeight(useCompact())
   const [value, setValue] = useState(initial)
-  const multiline = initial.includes('\n') || initial.length > 120
+  const multiline = !choices && (initial.includes('\n') || initial.length > 120)
+  const listId = useId()
   const ref = useRef<HTMLTextAreaElement & HTMLInputElement>(null)
   useEffect(() => {
     const el = ref.current
@@ -805,6 +811,15 @@ function CellEditor({
       className={cn(common.className, 'resize py-1')}
     />
   ) : (
-    <input ref={ref} {...common} style={{ top, left, width: Math.max(width, 120), height: ROW_HEIGHT }} />
+    <>
+      <input ref={ref} {...common} list={choices ? listId : undefined} style={{ top, left, width: Math.max(width, 120), height: ROW_HEIGHT }} data-cell-editor />
+      {choices && (
+        <datalist id={listId}>
+          {choices.map((c) => (
+            <option key={c} value={c} />
+          ))}
+        </datalist>
+      )}
+    </>
   )
 }

@@ -29,6 +29,7 @@ import {
   checkCellExpression,
   countActiveConditions,
   displayName,
+  columnChoices,
   findTableOrPartition,
   rowKey,
   incomingReferences,
@@ -359,9 +360,10 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
           nullable: col?.nullable,
           comment: col?.comment,
           foreignKey: fk ? `${fk.refTable}.${fk.refColumns[0]}` : undefined,
+          choices: columnChoices(schema, col?.dataType ?? f.dataType),
         }
       }),
-    [fields, table],
+    [fields, table, schema],
   )
 
   const baseCount = result?.rows.length ?? 0
