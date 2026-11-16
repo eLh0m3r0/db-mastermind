@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { canvasOwnsKey } from './canvas-keys'
 import { withoutKeysTo } from './drop-follow'
+import { keepMeasured } from './keep-measured'
 import {
   Background,
   BackgroundVariant,
@@ -559,11 +560,13 @@ function DiagramInner({ tab, focused, model, modelDriver, domains, userPropertie
   const schema = model ?? runtime?.schema
   const flow = useReactFlow()
   const wrapper = useRef<HTMLDivElement>(null)
+  /** The whole diagram: its toolbar and the canvas (a key after clicking Align or Auto layout acts here). */
+  const root = useRef<HTMLDivElement>(null)
   const focusedRef = useRef(focused)
   focusedRef.current = focused
   /** Keys and clipboard events that act on this canvas (see canvasOwnsKey). */
   const ownsKey = (e: Event) =>
-    canvasOwnsKey(e.target, wrapper.current, { focused: focusedRef.current, dialogOpen: !!document.querySelector('[role="dialog"], [role="menu"]'), body: document.body })
+    canvasOwnsKey(e.target, root.current, { focused: focusedRef.current, dialogOpen: !!document.querySelector('[role="dialog"], [role="menu"]'), body: document.body })
 
   const [schemaFilter, setSchemaFilter] = useState<string>('')
   const [focusName, setFocusName] = useState<string | undefined>(tab.focus)
@@ -1055,7 +1058,7 @@ function DiagramInner({ tab, focused, model, modelDriver, domains, userPropertie
         }
         positions[d.key] = position ?? { x: Math.round(laid?.x ?? 0), y: Math.round(laid?.y ?? 0) }
       }
-      setNodes(display.map((d) => ({ id: d.key, type: 'table', position: positions[d.key]!, data: nodeData(d) })))
+      setNodes((previous) => keepMeasured(previous, display.map((d) => ({ id: d.key, type: 'table', position: positions[d.key]!, data: nodeData(d) }))))
       // The view is fitted to where the tables are, not to the ones already drawn: a large diagram draws only the
       // tables in view, and fitting to those left a third of a 300-table model outside the window.
       const boxes = display.map((d) => ({ ...positions[d.key]!, bottom: positions[d.key]!.y + HEADER + ROW * d.info.columns.length }))
@@ -1700,7 +1703,7 @@ function DiagramInner({ tab, focused, model, modelDriver, domains, userPropertie
   if (schema.tables.length === 0) return <EmptyState icon={<Network size={26} />} title={tr('No tables to show')} />
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div ref={root} className="flex h-full min-h-0 flex-col">
       <div className="@container flex min-h-10 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-2 py-1 whitespace-nowrap">
         {modelMode && (
           // A model is always edited: what adds to it and the steps back and forth come first.

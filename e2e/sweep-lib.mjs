@@ -20,6 +20,29 @@ export async function startSweep({ out, lang }) {
     env: { ...process.env, HOME: join(dir, 'home'), DBM_USER_DATA: join(dir, 'data'), DBM_NO_UPDATE_CHECK: '1', DBM_LANGUAGE: lang, DBM_E2E_BACKGROUND: '1' },
   })
   const win = await app.firstWindow()
+
+  // A hard limit: an action that leaves the app waiting on a question the sweep never answers used to make the run
+  // blink on that dialog for many minutes. No progress for SWEEP_STALL_MIN minutes (or SWEEP_LIMIT_MIN in all)
+  // ends the app; the script then reports what it reached and exits.
+  const stallMs = Number(process.env.SWEEP_STALL_MIN ?? 3) * 60_000
+  const limitMs = Number(process.env.SWEEP_LIMIT_MIN ?? 45) * 60_000
+  const started = Date.now()
+  let progress = Date.now()
+  const watchdog = setInterval(() => {
+    const stalled = Date.now() - progress > stallMs
+    if (!stalled && Date.now() - started < limitMs) return
+    clearInterval(watchdog)
+    findings.push({ context: state.context, command: state.current, kind: 'sweep-failed', detail: stalled ? `no progress for ${stallMs / 60_000} min: stopped` : `over ${limitMs / 60_000} min: stopped` })
+    try {
+      app.process().kill('SIGKILL')
+    } catch {}
+    // Whatever still waits gives up; the report is printed by the script's own finally block before this.
+    setTimeout(() => {
+      report(true)
+      process.exit(1)
+    }, 60_000).unref()
+  }, 10_000)
+  watchdog.unref()
   await win.setViewportSize({ width: 1400, height: 900 }).catch(() => {})
   await app.evaluate(({ dialog, shell }) => {
     globalThis.__calls = []
@@ -56,7 +79,9 @@ export async function startSweep({ out, lang }) {
       for (let n = walker.nextNode(); n; n = walker.nextNode()) {
         const el = n.parentElement
         // Data (cells, rows, the editor, diagrams, the schema tree's names) is not UI text.
-        if (!el || el.closest('.cm-content, [role="gridcell"], [role="row"], [role="columnheader"], pre, code, .react-flow, [data-node], [data-routine]')) continue
+        // (data-value: names and values from the database, such as a column called "created" or
+        // ClickHouse's database "default".)
+        if (!el || el.closest('.cm-content, [role="gridcell"], [role="row"], [role="columnheader"], pre, code, .react-flow, [data-node], [data-routine], [data-value]')) continue
         const r = el.getBoundingClientRect()
         if (!r.width || !r.height || getComputedStyle(el).visibility === 'hidden') continue
         const t = n.textContent.trim()
@@ -81,19 +106,34 @@ export async function startSweep({ out, lang }) {
   }
 
   /** Closes what an action opened: dialogs, menus, extra tabs. */
+  /**
+   * Closing a table tab with unsaved cell edits (Set NULL, Clone row) asks "Discard N pending changes?": Escape keeps
+   * the tab, so a sweep that only pressed Escape tried again and again on the same question. Discard is the answer.
+   */
+  async function answerDiscard() {
+    const discard = win.getByRole('dialog').getByRole('button', { name: /^(Discard|Zahodit)$/ })
+    if (await discard.count().catch(() => 0)) await discard.first().click({ timeout: 2000 }).catch(() => {})
+  }
+
+  /** Closes the last tab, answering the question about its unsaved edits. */
+  async function closeLastTab() {
+    await win.locator('[role="tab"]').last().click({ timeout: 2000 }).catch(() => {})
+    await win.keyboard.press(`${mod}+w`)
+    await win.waitForTimeout(200)
+    await answerDiscard()
+    await win.waitForTimeout(100)
+    for (let j = 0; j < 2; j++) await win.keyboard.press('Escape')
+  }
+
   async function closeExtras(tabsBefore) {
     for (let i = 0; i < 3; i++) await win.keyboard.press('Escape')
     const tabs = await win.locator('[role="tab"]').count()
-    for (let i = tabs; i > tabsBefore; i--) {
-      await win.locator('[role="tab"]').last().click({ timeout: 2000 }).catch(() => {})
-      await win.keyboard.press(`${mod}+w`)
-      await win.waitForTimeout(200)
-      for (let j = 0; j < 2; j++) await win.keyboard.press('Escape')
-    }
+    for (let i = tabs; i > tabsBefore; i--) await closeLastTab()
   }
 
   /** Runs one action and records what it left on the screen. */
   async function act(label, run, { screenshot } = {}) {
+    progress = Date.now()
     state.current = label
     const tabsBefore = await win.locator('[role="tab"]').count()
     const before = (await snapshot()).signature
@@ -140,5 +180,5 @@ export async function startSweep({ out, lang }) {
     }
   }
 
-  return { app, win, api, state, note, calls, snapshot, checkScreen, closeExtras, act, report }
+  return { app, win, api, state, note, calls, snapshot, checkScreen, closeExtras, closeLastTab, act, report }
 }

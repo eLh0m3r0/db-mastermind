@@ -893,6 +893,15 @@ where a test can reach it.
   `ui-sweep --strict` (a context not reached or nothing swept fails), `ui-coverage` (real command handlers); CI's
   PostgreSQL loads pg_stat_statements; a release needs its notes file with the footer, and a tag
 
+- ✅ Found by the e2e run on the finished tree: a table could stay invisible on a diagram after another one was added
+  (a layout made its nodes again without their measured size, and React Flow never measured them again: flow91
+  failed about one run in thirteen, 40 of 40 pass with `keepMeasured`); ⌘Z after a click on the diagram's own toolbar
+  did nothing (the new key guard took the toolbar for "elsewhere")
+- ✅ Checked on the finished tree: typecheck, 2,537 unit tests, the whole integration suite file by file on every
+  engine (SQL Server with the other containers stopped), every e2e flow that runs here (AI flows left out),
+  `ui-sweep --strict` and `context-sweep --strict` in the Czech UI; the sweeps end themselves after 3 minutes
+  without progress
+
 Left as it is, for the owner to decide: Linux builds still start with `--no-sandbox` (see 1.3.1).
 
 ## Backlog — what other tools have (review 2026-11-14) 💡

@@ -109,7 +109,7 @@ export function DatabasePicker() {
                   className={cn('flex w-full items-center gap-2 border-b border-line px-2.5 py-1.5 text-left text-[12.5px] last:border-b-0 hover:bg-hover', current && 'bg-accent-soft')}
                 >
                   {busy === database ? <Spinner size={13} /> : <Database size={13} className={cn('shrink-0', current ? 'text-accent' : 'text-fg-faint')} />}
-                  <span className="min-w-0 flex-1 truncate font-medium">{database}</span>
+                  <span className="min-w-0 flex-1 truncate font-medium" data-value>{database}</span>
                   {current ? (
                     <span className="flex items-center gap-1 text-[11px] text-accent">
                       <Check size={12} />
