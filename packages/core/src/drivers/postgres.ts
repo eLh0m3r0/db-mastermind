@@ -44,6 +44,9 @@ const typeOverrides = {
 
 const SYSTEM_SCHEMA_FILTER = `n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg\\_toast%' AND n.nspname NOT LIKE 'pg\\_temp\\_%'`
 
+/** Sessions core opens and releases within one call: they borrow from the pool instead of opening a connection. */
+const SHORT_LIVED_SESSION = /^(readonly|script|copy|explain)-/
+
 export class PostgresDriver implements DatabaseDriver {
   readonly dialect = postgresDialect
   private pool?: pg.Pool
@@ -61,29 +64,30 @@ export class PostgresDriver implements DatabaseDriver {
       port = this.tunnel.localPort
     }
     const serverHost = this.config.host ?? 'localhost'
-    const makePool = (ssl: false | ConnectionOptions) =>
-      new pg.Pool({
-        host,
-        port,
-        database: this.config.database || 'postgres',
-        user: this.config.user,
-        password: this.config.password,
-        ssl,
-        application_name: 'DB Mastermind',
-        connectionTimeoutMillis: 15_000,
-        idleTimeoutMillis: 60_000,
-        max: 6,
-        keepAlive: true,
-        types: typeOverrides,
-        options: this.config.readOnly ? '-c default_transaction_read_only=on' : undefined,
-      })
-    this.pool = makePool(tlsOptions(this.config.ssl, serverHost))
+    const clientOptions = (ssl: false | ConnectionOptions): pg.ClientConfig => ({
+      host,
+      port,
+      database: this.config.database || 'postgres',
+      user: this.config.user,
+      password: this.config.password,
+      ssl,
+      application_name: 'DB Mastermind',
+      connectionTimeoutMillis: 15_000,
+      keepAlive: true,
+      types: typeOverrides,
+      options: this.config.readOnly ? '-c default_transaction_read_only=on' : undefined,
+    })
+    // The pool serves short work (grid, explorer, EXPLAIN, AI); editor tabs get their own clients (sessionClient).
+    const makePool = (options: pg.ClientConfig) => new pg.Pool({ ...options, idleTimeoutMillis: 60_000, max: 6 })
+    this.clientOptions = clientOptions(tlsOptions(this.config.ssl, serverHost))
+    this.pool = makePool(this.clientOptions)
     try {
       await this.pool.query('SELECT 1')
     } catch (err) {
       if (this.config.ssl?.mode !== 'prefer' || !noTlsOnServer(err)) throw err
       await this.pool.end().catch(() => {})
-      this.pool = makePool(false)
+      this.clientOptions = clientOptions(false)
+      this.pool = makePool(this.clientOptions)
     }
     // Idle clients can error when the server goes away; without a listener this crashes the process.
     this.pool.on('error', () => {})
@@ -104,6 +108,7 @@ export class PostgresDriver implements DatabaseDriver {
     this.sessions.clear()
     await this.pool?.end()
     this.pool = undefined
+    this.clientOptions = undefined
     await this.tunnel?.close()
     this.tunnel = undefined
   }
@@ -129,6 +134,36 @@ export class PostgresDriver implements DatabaseDriver {
     return client
   }
 
+  private clientOptions?: pg.ClientConfig
+
+  /**
+   * An editor tab keeps its connection until it closes (BEGIN … COMMIT across runs, temp tables, SET). Those come from
+   * outside the pool: with them in it, the seventh tab — and every grid, explorer refresh and cancel after it — waited
+   * for a free pool client that never came.
+   */
+  private async sessionClient(): Promise<pg.PoolClient> {
+    if (!this.clientOptions) throw new Error('Not connected')
+    const client = new pg.Client(this.clientOptions)
+    client.on('error', () => {})
+    await client.connect()
+    return Object.assign(client, {
+      dbmGuarded: true,
+      release: () => void client.end().catch(() => {}),
+    }) as unknown as pg.PoolClient
+  }
+
+  /** Cancels on a connection of its own, so a busy pool never delays it. */
+  private cancelBackend(pid: number): void {
+    if (!this.clientOptions) return
+    const client = new pg.Client({ ...this.clientOptions, connectionTimeoutMillis: 10_000 })
+    client.on('error', () => {})
+    void client
+      .connect()
+      .then(() => client.query('SELECT pg_cancel_backend($1)', [pid]))
+      .catch(() => {})
+      .finally(() => void client.end().catch(() => {}))
+  }
+
   /** Sticky client per editor session so BEGIN … COMMIT across executions works. */
   private async acquire(
     session?: string,
@@ -141,7 +176,7 @@ export class PostgresDriver implements DatabaseDriver {
     this.transactions.check(session)
     let client = this.sessions.get(session)
     if (!client) {
-      client = await this.checkout()
+      client = SHORT_LIVED_SESSION.test(session) ? await this.checkout() : await this.sessionClient()
       const c = client
       c.on('error', () => {
         if (this.sessions.get(session) !== c) return
@@ -232,7 +267,7 @@ export class PostgresDriver implements DatabaseDriver {
     let cancelled = false
     const onAbort = () => {
       cancelled = true
-      this.activePool.query('SELECT pg_cancel_backend($1)', [pid]).catch(() => {})
+      this.cancelBackend(pid)
     }
     if (options.signal?.aborted) throw new QueryCancelledError()
     options.signal?.addEventListener('abort', onAbort, { once: true })
@@ -247,6 +282,7 @@ export class PostgresDriver implements DatabaseDriver {
         })
         const results = (Array.isArray(res) ? res : [res]) as pg.QueryArrayResult[]
         const durationMs = elapsed(start)
+        await this.learnTypes(results)
         return results.map((r) => this.toResult(r, r.rows, false, durationMs))
       }
       const cursor = client.query(new Cursor(sql, options.params, { rowMode: 'array', types: typeOverrides }))
@@ -258,6 +294,7 @@ export class PostgresDriver implements DatabaseDriver {
         },
       )
       await cursor.close().catch(() => {})
+      await this.learnTypes([result])
       const truncated = rows.length > options.maxRows
       return [
         this.toResult(result, truncated ? rows.slice(0, options.maxRows) : rows, truncated, elapsed(start)),
@@ -279,7 +316,7 @@ export class PostgresDriver implements DatabaseDriver {
     let cancelled = false
     const onAbort = () => {
       cancelled = true
-      this.activePool.query('SELECT pg_cancel_backend($1)', [pid]).catch(() => {})
+      this.cancelBackend(pid)
     }
     options.signal?.addEventListener('abort', onAbort, { once: true })
     const cursor = client.query(new Cursor(sql, options.params, { rowMode: 'array', types: typeOverrides }))
@@ -308,6 +345,22 @@ export class PostgresDriver implements DatabaseDriver {
       options.signal?.removeEventListener('abort', onAbort)
       await cursor.close().catch(() => {})
       client.release()
+    }
+  }
+
+  /** Types created after connecting (a new enum, a composite) are looked up the first time a result has one. */
+  private async learnTypes(results: pg.QueryArrayResult[]): Promise<void> {
+    const unknown = [...new Set(results.flatMap((r) => (r.fields ?? []).map((f) => f.dataTypeID)).filter((oid) => oid && !this.typeNames.has(oid)))]
+    if (!unknown.length) return
+    try {
+      const r = await this.activePool.query<{ oid: number; name: string }>({
+        text: 'SELECT oid::int AS oid, format_type(oid, NULL) AS name FROM pg_type WHERE oid = ANY($1::oid[])',
+        values: [unknown],
+        types: pg.types,
+      })
+      for (const t of r.rows) this.typeNames.set(Number(t.oid), t.name)
+    } catch {
+      // The column just shows no type, as before.
     }
   }
 
