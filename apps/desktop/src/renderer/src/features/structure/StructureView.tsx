@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, ArrowRight, BookOpen, Eye, KeyRound, Link2, Table2, TerminalSquare } from 'lucide-react'
-import { displayName, findTable, incomingReferences, mentionsTable } from '@dbmastermind/core/browser'
+import { displayName, findTableOrPartition, incomingReferences, mentionsTable, type PartitionInfo } from '@dbmastermind/core/browser'
 import type { KnowledgeFileInfo, SavedQuery } from '@shared/api'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/Button'
@@ -14,7 +14,7 @@ export function StructureView({ tab }: { tab: StructureTab }) {
   const schema = useConnections((s) => s.runtime[tab.connectionId]?.schema)
   const openTab = useWorkspace((s) => s.open)
   const t = useT()
-  const table = schema ? findTable(schema, tab.table) : undefined
+  const table = schema ? findTableOrPartition(schema, tab.table) : undefined
   const connection = useConnections((s) => s.list.find((c) => c.id === tab.connectionId))
   // Where else the table is used: views, saved queries and knowledge base notes (loaded once per tab).
   const [saved, setSaved] = useState<SavedQuery[]>([])
@@ -144,6 +144,10 @@ export function StructureView({ tab }: { tab: StructureTab }) {
                     {ix.method && <span className="text-[11px] text-fg-faint">{ix.method}</span>}
                   </div>
                   <div className="font-mono text-[12px] text-fg-muted">{ix.columns.join(', ')}</div>
+                  {/* Expressions, WHERE, INCLUDE, DESC: the server's own text says what the columns can't. */}
+                  {ix.definition && !ix.primary && /\bWHERE\b|\bINCLUDE\b|\bDESC\b|\(\(|USING (?!btree)/i.test(ix.definition) && (
+                    <div className="mt-0.5 font-mono text-[11px] break-all text-fg-faint" data-index-definition>{ix.definition}</div>
+                  )}
                 </div>
               ))}
               {table.indexes.length === 0 && <div className="text-[12px] text-fg-faint">{t('No indexes')}</div>}
@@ -184,6 +188,59 @@ export function StructureView({ tab }: { tab: StructureTab }) {
               {table.foreignKeys.length + incoming.length === 0 && <div className="text-[12px] text-fg-faint">{t('No relationships')}</div>}
             </div>
           </section>
+          {!!table.partitions?.length && (
+            <section className="col-span-full" data-testid="partitions">
+              <h2 className="mb-2 text-[13px] font-semibold">
+                {t('Partitions')} {table.partitionBy && <span className="ml-1 font-mono text-[11.5px] font-normal text-fg-faint">PARTITION BY {table.partitionBy}</span>}
+              </h2>
+              <div className="flex flex-col gap-1.5">
+                {flattenPartitions(table.partitions).map(({ partition: p, depth }) => (
+                  <button
+                    type="button"
+                    key={`${p.schema}.${p.name}`}
+                    style={{ marginLeft: depth * 16 }}
+                    className="flex items-center gap-2 rounded-md border border-line px-3 py-2 text-left text-[12.5px] hover:bg-hover"
+                    onClick={() => openTab({ kind: 'table', connectionId: tab.connectionId, table: { schema: p.schema, name: p.name }, title: p.name })}
+                  >
+                    <b>{p.name}</b>
+                    <span className="truncate font-mono text-[11.5px] text-fg-muted">{p.bound}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+          {!!table.triggers?.length && (
+            <section className="col-span-full" data-testid="triggers">
+              <h2 className="mb-2 text-[13px] font-semibold">{t('Triggers')}</h2>
+              <div className="flex flex-col gap-1.5">
+                {table.triggers.map((tr) => (
+                  <div key={tr.name} className="rounded-md border border-line px-3 py-2">
+                    <div className="flex items-center gap-2 text-[12.5px] font-medium">
+                      {tr.name}
+                      {!tr.enabled && <Badge tone="warning">{t('disabled')}</Badge>}
+                    </div>
+                    <div className="font-mono text-[11.5px] break-all whitespace-pre-wrap text-fg-muted">{tr.definition}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+          {(table.rowSecurity || !!table.policies?.length) && (
+            <section className="col-span-full" data-testid="policies">
+              <h2 className="mb-2 text-[13px] font-semibold">
+                {t('Row-level security')} <span className="ml-1 text-[11.5px] font-normal text-fg-faint">{table.rowSecurity ? t('Enabled') : t('Not enabled')}</span>
+              </h2>
+              <div className="flex flex-col gap-1.5">
+                {(table.policies ?? []).map((p) => (
+                  <div key={p.name} className="rounded-md border border-line px-3 py-2">
+                    <div className="text-[12.5px] font-medium">{p.name}</div>
+                    <div className="font-mono text-[11.5px] break-all whitespace-pre-wrap text-fg-muted">{p.definition}</div>
+                  </div>
+                ))}
+                {!table.policies?.length && <div className="text-[12px] text-fg-faint">{t('No policies: only the owner sees rows')}</div>}
+              </div>
+            </section>
+          )}
           <section className="col-span-full" data-testid="used-by">
             <h2 className="mb-2 text-[13px] font-semibold">{t('Used by')}</h2>
             <div className="flex flex-col gap-1.5">
@@ -222,4 +279,9 @@ export function StructureView({ tab }: { tab: StructureTab }) {
       </div>
     </div>
   )
+}
+
+/** Partitions with the nested ones after their parent, for an indented list. */
+function flattenPartitions(list: PartitionInfo[], depth = 0): { partition: PartitionInfo; depth: number }[] {
+  return list.flatMap((partition) => [{ partition, depth }, ...flattenPartitions(partition.partitions ?? [], depth + 1)])
 }
