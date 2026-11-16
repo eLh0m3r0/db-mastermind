@@ -303,7 +303,7 @@ export function App() {
                 {tab.kind === 'query' && <QueryView tab={tab} active={focused} />}
                 {tab.kind === 'table' && <TableView tab={tab} active={visible} focused={focused} />}
                 {tab.kind === 'structure' && <StructureView tab={tab} />}
-                {tab.kind === 'diagram' && visible && <DiagramView tab={tab} />}
+                {tab.kind === 'diagram' && visible && <DiagramView tab={tab} focused={focused} />}
                 {tab.kind === 'knowledge' && <KnowledgeView tab={tab} active={visible} focused={focused} />}
                 {tab.kind === 'compare' && <CompareView tab={tab} />}
                 {tab.kind === 'activity' && <ActivityView tab={tab} />}

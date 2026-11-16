@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type InputHTMLAttributes } from 'react'
 import {
   ArrowDown,
   ArrowRight,
@@ -33,6 +33,8 @@ import { Button, IconButton } from '@/components/ui/Button'
 import { Checkbox, Input, Select, Textarea } from '@/components/ui/Input'
 import { cn } from '@/lib/utils'
 import { useT } from '@/lib/i18n'
+import { toast } from '@/store/ui'
+import { nameProblem } from './names'
 
 const FK_ACTIONS = ['NO ACTION', 'CASCADE', 'SET NULL', 'RESTRICT', 'SET DEFAULT']
 /** How many child rows one parent row has (DeZign's relationship cardinality); none: zero or more. */
@@ -170,11 +172,11 @@ export function TableEditor({
           <div className="mb-3 flex gap-2">
             <label className="flex flex-1 flex-col gap-1">
               <span className="text-[11.5px] font-medium text-fg-muted">{tr('Name')}</span>
-              <Input
+              <NameInput
                 ref={nameInput}
-                inputSize="sm"
                 value={table.name}
-                onChange={(e) => set({ name: e.target.value })}
+                problem={(name) => nameProblem(name, table.name, everything.filter((t) => (t.schema ?? '') === (table.schema ?? '')).map((t) => t.name))}
+                onCommit={(name) => set({ name })}
               />
             </label>
             {(table.schema || model) && (
@@ -255,11 +257,12 @@ export function TableEditor({
                   >
                     <KeyRound size={12} />
                   </button>
-                  <Input
-                    inputSize="sm"
+                  <NameInput
+                    column
                     className="h-6 min-w-0 flex-1 font-mono text-[12px]"
                     value={c.name}
-                    onChange={(e) => setColumn(c.id, { name: e.target.value })}
+                    problem={(name) => nameProblem(name, c.name, table.columns.filter((x) => x.id !== c.id).map((x) => x.name))}
+                    onCommit={(name) => setColumn(c.id, { name })}
                     aria-label={`${tr('Column name')}: ${c.name}`}
                     data-testid={`column-name-${c.name}`}
                   />
@@ -1047,3 +1050,57 @@ function Section({
     </div>
   )
 }
+
+/**
+ * A table's or column's name, given when typing is done (Enter, leaving the field, closing the panel): renaming on
+ * every keystroke passed through other tables' names, and relationships follow a renamed table. An empty name or
+ * one another table (column) has is refused, as the inline rename on the canvas refuses it.
+ */
+const NameInput = forwardRef<
+  HTMLInputElement,
+  Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'size'> & { value: string; column?: boolean; problem: (name: string) => 'empty' | 'taken' | undefined; onCommit: (name: string) => void }
+>(function NameInput({ value, column, problem, onCommit, ...rest }, ref) {
+  const tr = useT()
+  const [typed, setTyped] = useState(value)
+  const input = useRef<HTMLInputElement>(null)
+  useImperativeHandle(ref, () => input.current!)
+  // Renamed elsewhere (undo, the canvas): the field shows it.
+  useEffect(() => setTyped(value), [value])
+  const latest = useRef({ typed, value, problem, onCommit })
+  latest.current = { typed, value, problem, onCommit }
+  const commit = (quiet = false) => {
+    const { typed, value, problem, onCommit } = latest.current
+    const name = typed.trim()
+    if (name === value) return
+    const why = problem(name)
+    if (why) {
+      setTyped(value)
+      if (!quiet)
+        toast({
+          kind: 'warning',
+          message:
+            why === 'empty'
+              ? column ? tr('A column needs a name') : tr('A table needs a name')
+              : column ? tr('The table already has a column {name}', { name }) : tr('A table named {name} already exists', { name }),
+        })
+      return
+    }
+    onCommit(name)
+  }
+  // The panel closes (Escape, another table) while a name is being typed: it is given then.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => () => commit(true), [])
+  return (
+    <Input
+      {...rest}
+      ref={input}
+      inputSize="sm"
+      value={typed}
+      onChange={(e) => setTyped(e.target.value)}
+      onBlur={() => commit()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') commit()
+      }}
+    />
+  )
+})

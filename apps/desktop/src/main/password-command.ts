@@ -20,7 +20,10 @@ export async function runPasswordCommand(command: string, timeoutMs = TIMEOUT_MS
   return new Promise((resolve, reject) => {
     exec(command, { timeout: timeoutMs, maxBuffer: 64 * 1024, windowsHide: true, encoding: 'utf8', env }, (err, stdout, stderr) => {
       if (err) {
-        const why = (err as { killed?: boolean }).killed ? `it did not finish within ${Math.round(timeoutMs / 1000)} s` : (stderr.trim().split(/\r?\n/)[0] ?? '') || err.message
+        // Never err.message: it repeats the whole command line, which may carry a token, and the text reaches agents.
+        const code = (err as { code?: unknown }).code
+        const exit = typeof code === 'number' ? `it exited with code ${code}` : 'it could not be started'
+        const why = (err as { killed?: boolean }).killed ? `it did not finish within ${Math.round(timeoutMs / 1000)} s` : (stderr.trim().split(/\r?\n/)[0] ?? '') || exit
         reject(new PasswordCommandError(`The password command failed: ${why}`))
         return
       }

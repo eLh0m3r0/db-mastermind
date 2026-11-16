@@ -1,20 +1,13 @@
 import { create } from 'zustand'
-import { classifyStatement, type StatementOutcome, type TransactionState } from '@dbmastermind/core/browser'
+import type { StatementOutcome, TransactionState } from '@dbmastermind/core/browser'
+import { stepsAfterRun, type TransactionStep } from './transaction-steps'
 import { askChoice, confirmAction } from '@/components/ui/ConfirmDialog'
 import { api } from '@/lib/api'
 import { t, tp } from '@/lib/i18n'
 import { errorMessage } from '@/lib/utils'
 import { toast } from './ui'
 
-/** A statement that ran inside the open transaction: what Commit makes permanent and Roll back undoes. */
-export interface TransactionStep {
-  sql: string
-  /** Rows the statement changed, when the database says. */
-  rows?: number
-  /** A schema change (the explorer reloads after Commit / Roll back). */
-  ddl?: boolean
-  failed?: boolean
-}
+export type { TransactionStep }
 
 export interface TabTransaction {
   connectionId: string
@@ -37,17 +30,6 @@ const set = (tabId: string, tx: TabTransaction | undefined) =>
     return next
   }, true)
 
-function stepsOf(outcomes: StatementOutcome[]): TransactionStep[] {
-  return outcomes
-    .filter((o) => o.sql.trim() && !['read', 'transaction'].includes(classifyStatement(o.sql)) && !/^\s*(SET|USE|SHOW|PRINT)\b/i.test(o.sql))
-    .map((o) => {
-      const rows = o.results?.reduce<number | undefined>((n, r) => (r.affectedRows === undefined ? n : (n ?? 0) + r.affectedRows), undefined)
-      const ddl = classifyStatement(o.sql) === 'ddl'
-      // DDL reports 0 rows: "schema" says more.
-      return { sql: o.sql.trim(), rows: ddl ? undefined : rows, ddl: ddl || undefined, failed: !!o.error || undefined }
-    })
-}
-
 /**
  * Asks the database for the tab's transaction after a run (or when the tab opens). `ran` are the statements that
  * just ran; they join the list when a transaction is open after them.
@@ -59,14 +41,7 @@ export async function refreshTransaction(tabId: string, connectionId: string, ra
     if (current) set(tabId, undefined)
     return
   }
-  // Statements that ran without errors before a BEGIN in the same run committed on their own: only what follows
-  // the last BEGIN belongs to the transaction when it just started.
-  let fresh = ran
-  if (!current) {
-    const lastBegin = ran.map((o) => /^\s*(BEGIN|START\s+TRANSACTION|SET\s+TRANSACTION)\b/i.test(o.sql)).lastIndexOf(true)
-    fresh = lastBegin >= 0 ? ran.slice(lastBegin + 1) : ran
-  }
-  set(tabId, { connectionId, state, steps: [...(current?.steps ?? []), ...stepsOf(fresh)], since: current?.since ?? Date.now() })
+  set(tabId, { connectionId, state, ...stepsAfterRun(current, ran) })
 }
 
 /** Commit or Roll back from the tab; resolves true when the transaction ended. */

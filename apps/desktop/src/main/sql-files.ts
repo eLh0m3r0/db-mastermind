@@ -1,4 +1,5 @@
 import { readFile, stat, writeFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import { detectDezignEncoding, dezignDecoder } from '@dbmastermind/core'
 import type { SqlFile, SqlFileFormat } from '@shared/api'
 
@@ -13,6 +14,16 @@ export const legacyCodePage = (locale = Intl.DateTimeFormat().resolvedOptions().
  * Windows code page whose letters the file uses (the system language decides when the bytes don't tell).
  */
 export function decodeSqlFile(buffer: Uint8Array, fallback = legacyCodePage()): { text: string; format: SqlFileFormat } {
+  const { raw, encoding, bom } = decodeRaw(buffer, fallback)
+  // The editor works with \n; the file keeps its own line endings when written back (see `keepLineEndings`).
+  const crlf = raw.match(/\r\n/g)?.length ?? 0
+  const lf = (raw.match(/\n/g)?.length ?? 0) - crlf
+  const eol = crlf > lf ? '\r\n' : '\n'
+  return { text: raw.replace(/\r\n/g, '\n'), format: { encoding, bom, eol } }
+}
+
+/** The file's text with its own line endings, without the BOM. */
+function decodeRaw(buffer: Uint8Array, fallback: 'windows-1250' | 'windows-1252'): { raw: string; encoding: SqlFileFormat['encoding']; bom: boolean } {
   let text: string
   let encoding: SqlFileFormat['encoding'] = 'utf-8'
   if (buffer[0] === 0xff && buffer[1] === 0xfe) {
@@ -33,16 +44,58 @@ export function decodeSqlFile(buffer: Uint8Array, fallback = legacyCodePage()): 
   // A UTF-16 file's byte order mark was taken off its bytes above.
   const inText = text.startsWith(BOM)
   if (inText) text = text.slice(1)
-  const bom = inText || encoding.startsWith('utf-16')
-  // The editor works with \n; the file keeps its own line endings when written back.
-  const eol = /\r\n/.test(text) ? '\r\n' : '\n'
-  return { text: text.replace(/\r\n/g, '\n'), format: { encoding, bom, eol } }
+  return { raw: text, encoding, bom: inText || encoding.startsWith('utf-16') }
 }
 
-/** The file's text for the editor's text: its own line endings and BOM (see `fileBytes` for the encoding). */
-export function encodeSqlFile(text: string, format: Pick<SqlFileFormat, 'bom' | 'eol'>): string {
-  const body = text.replace(/\r\n/g, '\n').replace(/\n/g, format.eol)
+/**
+ * The file's text for the editor's text: its own line endings and BOM (see `fileBytes` for the encoding). `previous`:
+ * the file's text as it is on disk; when its line endings are mixed, lines the editor did not change keep their own.
+ */
+export function encodeSqlFile(text: string, format: Pick<SqlFileFormat, 'bom' | 'eol'>, previous?: string): string {
+  const lines = text.replace(/\r\n/g, '\n')
+  const mixed = previous !== undefined && /\r\n/.test(previous) && /(^|[^\r])\n/.test(previous)
+  const body = mixed ? keepLineEndings(previous, lines, format.eol) : lines.replace(/\n/g, format.eol)
   return (format.bom ? BOM : '') + body
+}
+
+/** Changed regions larger than this (lines × lines) give their lines the file's usual ending instead of matching. */
+const MATCH_LIMIT = 4_000_000
+
+/** `text` (\n only) with the endings of `previous`: an unchanged line keeps its own, a new or edited one gets `eol`. */
+export function keepLineEndings(previous: string, text: string, eol: string): string {
+  const old = previous.split('\n')
+  const oldEnds = old.map((l) => (l.endsWith('\r') ? '\r\n' : '\n'))
+  const oldLines = old.map((l, i) => (i < old.length - 1 && l.endsWith('\r') ? l.slice(0, -1) : l))
+  const lines = text.split('\n')
+  // ends[i]: the ending after line i (the last line has none).
+  const ends: (string | undefined)[] = new Array(lines.length).fill(undefined)
+  const n = lines.length - 1
+  const m = oldLines.length - 1
+  // Unchanged lines at the start and at the end, then the longest common subsequence of the region between.
+  let head = 0
+  while (head < n && head < m && lines[head] === oldLines[head]) ends[head] = oldEnds[head++]
+  let tail = 0
+  while (tail < n - head && tail < m - head && lines[n - 1 - tail] === oldLines[m - 1 - tail]) {
+    ends[n - 1 - tail] = oldEnds[m - 1 - tail]
+    tail++
+  }
+  const a = lines.slice(head, n - tail)
+  const b = oldLines.slice(head, m - tail)
+  if (a.length && b.length && a.length * b.length <= MATCH_LIMIT) {
+    const width = b.length + 1
+    const lcs = new Uint32Array((a.length + 1) * width)
+    for (let i = a.length - 1; i >= 0; i--)
+      for (let j = b.length - 1; j >= 0; j--)
+        lcs[i * width + j] = a[i] === b[j] ? lcs[(i + 1) * width + j + 1]! + 1 : Math.max(lcs[(i + 1) * width + j]!, lcs[i * width + j + 1]!)
+    let i = 0
+    let j = 0
+    while (i < a.length && j < b.length) {
+      if (a[i] === b[j]) ends[head + i++] = oldEnds[head + j++]
+      else if (lcs[(i + 1) * width + j]! >= lcs[i * width + j + 1]!) i++
+      else j++
+    }
+  }
+  return lines.map((l, i) => l + (i < n ? (ends[i] ?? eol) : '')).join('')
 }
 
 const codePages = new Map<string, Map<string, number>>()
@@ -67,8 +120,8 @@ function codePage(encoding: 'windows-1250' | 'windows-1252'): Map<string, number
  * code page (ù and ů are both 0xF9). Only text the code page can't hold (an emoji, letters of another script) is
  * written as UTF-8 instead: changing it is still better than losing what was typed.
  */
-export function fileBytes(text: string, format: SqlFileFormat): Buffer {
-  const encoded = encodeSqlFile(text, { ...format, bom: format.encoding.startsWith('utf-16') || format.bom })
+export function fileBytes(text: string, format: SqlFileFormat, previous?: string): Buffer {
+  const encoded = encodeSqlFile(text, { ...format, bom: format.encoding.startsWith('utf-16') || format.bom }, previous)
   if (format.encoding === 'utf-16le') return Buffer.from(encoded, 'utf16le')
   if (format.encoding === 'utf-16be') return Buffer.from(encoded, 'utf16le').swap16()
   if (format.encoding === 'windows-1250' || format.encoding === 'windows-1252') {
@@ -122,6 +175,24 @@ export async function writeSqlFile(path: string, text: string, format: SqlFileFo
   const current = await sqlFileTime(path)
   if (current === null && !options.force) throw new SqlFileMissingError()
   if (!options.force && options.expectedMtimeMs !== undefined && current !== null && Math.abs(current - options.expectedMtimeMs) > 1) throw new SqlFileChangedError()
-  await writeFile(path, fileBytes(text, format))
+  // Mixed line endings: each line the editor didn't change is written with its own (Git shows only the edits).
+  const previous = current === null ? undefined : decodeRaw(await readFile(path), format.encoding === 'windows-1250' || format.encoding === 'windows-1252' ? format.encoding : legacyCodePage()).raw
+  await writeFile(path, fileBytes(text, format, previous))
   return (await stat(path)).mtimeMs
+}
+
+/** Files picked in the Open / Save dialogs this session: any extension ("All files"). */
+const chosenSqlFiles = new Set<string>()
+export function rememberChosenSqlFile(path: string): void {
+  chosenSqlFiles.add(resolve(path))
+}
+
+/**
+ * A path that came from the renderer: only .sql files, or a file the user picked in a dialog. The renderer must not
+ * be able to read or write anything else (~/.zshrc, keys, the app's own data).
+ */
+export function checkSqlFilePath(path: string): string {
+  const full = resolve(path)
+  if (/\.sql$/i.test(full) || chosenSqlFiles.has(full)) return full
+  throw new Error('Only .sql files can be opened or saved here')
 }
