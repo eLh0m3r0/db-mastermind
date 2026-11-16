@@ -243,7 +243,14 @@ export async function objectDefinition(db: DatabaseService, id: string, object: 
 export function tableDefinition(table: TableInfo, driver: DriverId): string {
   // The primary key keeps its own name (people_pkey), not a made-up pk_people_id.
   const pkName = table.indexes.find((i) => i.primary)?.name
-  let script = createScript([table], getDialect(driver), pkName ? { primaryKeyName: () => pkName } : {}).trim()
+  // A PostgreSQL column filled by nextval() of its own sequence was declared serial: say so (an identity column
+  // would be another thing, and the sequence would be left behind).
+  const SERIAL: Record<string, string> = { integer: 'serial', bigint: 'bigserial', smallint: 'smallserial' }
+  const shown =
+    driver === 'postgres'
+      ? { ...table, columns: table.columns.map((c) => (c.isIdentity && /^nextval\(/i.test(c.defaultValue ?? '') && SERIAL[c.dataType] ? { ...c, dataType: SERIAL[c.dataType]!, defaultValue: null } : c)) }
+      : table
+  let script = createScript([shown], getDialect(driver), pkName ? { primaryKeyName: () => pkName } : {}).trim()
   const d = getDialect(driver)
   const name = qualify(d, table)
   // PostgreSQL: partitioning, partitions, triggers and row-level security, which the generated CREATE TABLE lacks.
