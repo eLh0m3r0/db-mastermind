@@ -3,6 +3,7 @@ import pg from 'pg'
 import Cursor from 'pg-cursor'
 import type { ConnectionOptions } from 'node:tls'
 import { postgresDialect } from '../dialect.js'
+import { readPostgresObjects } from './postgres-objects.js'
 import { noTlsOnServer, tlsOptions } from '../tls.js'
 import { classifyStatement } from '../sql-split.js'
 import {
@@ -661,6 +662,13 @@ export class PostgresDriver implements DatabaseDriver {
     } catch {
       for (const t of byKey.values()) delete t.checks
     }
+    const objects = await readPostgresObjects(
+      <R,>(text: string, values: unknown[] = []) => pool.query<R & pg.QueryResultRow>(text, values),
+      `${SYSTEM_SCHEMA_FILTER}${schemaFilter}`,
+      params,
+      byKey,
+      key,
+    )
     // Aggregates and window functions (an extension's, or CREATE AGGREGATE) are offered in the editor only.
     const routineInfos: RoutineInfo[] = routines.rows.map((r) => ({
       schema: r.schema,
@@ -677,6 +685,7 @@ export class PostgresDriver implements DatabaseDriver {
       schemas: schemas.rows.map((s) => s.nspname),
       tables: [...byKey.values()],
       routines: routineInfos,
+      objects,
       capturedAt: new Date().toISOString(),
     }
   }

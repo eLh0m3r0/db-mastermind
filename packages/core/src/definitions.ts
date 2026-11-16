@@ -1,15 +1,15 @@
 import { getDialect, qualify } from './dialect.js'
 import { createScript } from './ddl.js'
 import type { DatabaseService } from './engine.js'
-import { findTable } from './schema-utils.js'
-import type { DriverId, RoutineInfo, TableInfo } from './types.js'
+import { findPartition, findTable } from './schema-utils.js'
+import type { DriverId, PartitionInfo, RoutineInfo, TableInfo, TableRef } from './types.js'
 import { cellToText } from './values.js'
 
 /** A view, function or procedure (or a table, whose CREATE statement is generated) whose SQL definition is wanted. */
 export interface DefinedObject {
   schema?: string
   name: string
-  kind: 'table' | 'view' | 'materialized_view' | 'function' | 'procedure'
+  kind: 'table' | 'view' | 'materialized_view' | 'function' | 'procedure' | 'sequence' | 'type' | 'extension'
   /** A routine's arguments as the explorer lists them (tells PostgreSQL overloads apart). */
   arguments?: string | null
 }
@@ -123,9 +123,17 @@ export async function objectDefinition(db: DatabaseService, id: string, object: 
   const config = db.config(id)
   const dialect = getDialect(config.driver)
   if (object.kind === 'table') {
-    const table = findTable(await db.schema(id), { schema: object.schema, name: object.name })
-    if (!table) throw new Error(`Table ${object.name} not found`)
-    return { sql: tableDefinition(table, config.driver) }
+    const snapshot = await db.schema(id)
+    const table = findTable(snapshot, { schema: object.schema, name: object.name })
+    if (table) return { sql: tableDefinition(table, config.driver) }
+    const partition = findPartition(snapshot, { schema: object.schema, name: object.name })
+    if (partition) return { sql: partitionDefinition(partition.partition, partitionParent(partition.parent, partition.partition)) }
+    throw new Error(`Table ${object.name} not found`)
+  }
+  if (object.kind === 'sequence' || object.kind === 'type' || object.kind === 'extension') {
+    const found = (await db.schema(id)).objects?.find((o) => o.kind === object.kind && o.name === object.name && (o.schema ?? '') === (object.schema ?? ''))
+    if (!found) throw new Error(`${object.name} was not found; refresh the explorer`)
+    return { sql: `-- Generated from the catalog.\n${found.definition}\n` }
   }
   const driver = db.driver(id)
   const first = async (sql: string, params: unknown[]): Promise<Record<string, unknown> | undefined> => {
@@ -235,8 +243,49 @@ export async function objectDefinition(db: DatabaseService, id: string, object: 
 export function tableDefinition(table: TableInfo, driver: DriverId): string {
   // The primary key keeps its own name (people_pkey), not a made-up pk_people_id.
   const pkName = table.indexes.find((i) => i.primary)?.name
-  const script = createScript([table], getDialect(driver), pkName ? { primaryKeyName: () => pkName } : {}).trim()
-  return `-- Generated from the catalog (not the server's own text): columns, keys, indexes and foreign keys.\n${script}\n`
+  let script = createScript([table], getDialect(driver), pkName ? { primaryKeyName: () => pkName } : {}).trim()
+  const d = getDialect(driver)
+  const name = qualify(d, table)
+  // PostgreSQL: partitioning, partitions, triggers and row-level security, which the generated CREATE TABLE lacks.
+  if (table.partitionBy) {
+    const head = `CREATE TABLE ${name} (`
+    const at = script.indexOf(head)
+    const close = at === -1 ? -1 : script.indexOf('\n)', at)
+    if (close !== -1) script = `${script.slice(0, close + 2)} PARTITION BY ${table.partitionBy}${script.slice(close + 2)}`
+  }
+  const extra: string[] = []
+  const partitions = (list: PartitionInfo[] | undefined, parent: TableRef) => {
+    for (const p of list ?? []) {
+      extra.push(partitionDefinition(p, parent).trim())
+      partitions(p.partitions, p)
+    }
+  }
+  partitions(table.partitions, table)
+  for (const t of table.triggers ?? []) extra.push(t.definition)
+  if (table.rowSecurity) extra.push(`ALTER TABLE ${name} ENABLE ROW LEVEL SECURITY;`)
+  for (const p of table.policies ?? []) extra.push(p.definition)
+  const what = ['columns', 'keys', 'indexes', 'foreign keys', ...(table.partitions?.length ? ['partitions'] : []), ...(table.triggers?.length ? ['triggers'] : []), ...(table.policies?.length || table.rowSecurity ? ['row-level security'] : [])]
+  const list = what.length > 1 ? `${what.slice(0, -1).join(', ')} and ${what.at(-1)}` : what[0]
+  return `-- Generated from the catalog (not the server's own text): ${list}.\n${script}${extra.length ? `\n\n${extra.join('\n\n')}` : ''}\n`
+}
+
+/** The table (or partition) a partition belongs to. */
+function partitionParent(table: TableInfo, partition: PartitionInfo): TableRef {
+  const within = (list: PartitionInfo[] | undefined, parent: TableRef): TableRef | undefined => {
+    for (const p of list ?? []) {
+      if (p === partition) return parent
+      const inner = within(p.partitions, p)
+      if (inner) return inner
+    }
+    return undefined
+  }
+  return within(table.partitions, table) ?? table
+}
+
+/** CREATE TABLE … PARTITION OF parent FOR VALUES … (PostgreSQL). */
+function partitionDefinition(p: PartitionInfo, parent: TableRef): string {
+  const d = getDialect('postgres')
+  return `CREATE TABLE ${qualify(d, p)} PARTITION OF ${qualify(d, parent)} ${p.bound}${p.partitionBy ? ` PARTITION BY ${p.partitionBy}` : ''};\n`
 }
 
 /** The explorer row of a routine as the object to define. */

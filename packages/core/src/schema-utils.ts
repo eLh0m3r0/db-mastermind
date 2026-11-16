@@ -1,4 +1,4 @@
-import type { ForeignKeyInfo, SchemaSnapshot, TableInfo, TableRef } from './types.js'
+import type { ForeignKeyInfo, PartitionInfo, SchemaSnapshot, TableInfo, TableRef } from './types.js'
 
 export function findTable(snapshot: SchemaSnapshot, ref: TableRef): TableInfo | undefined {
   const name = ref.name
@@ -145,4 +145,49 @@ export function joinPathSql(path: JoinStep[], quote: (s: string) => string, defa
     lines.push(`JOIN ${name(step.to)} ${b} ON ${on}`)
   }
   return lines.join('\n')
+}
+
+/** A partition (at any depth) of one of the snapshot's partitioned tables, with the table it belongs to. */
+export function findPartition(snapshot: SchemaSnapshot, ref: TableRef): { partition: PartitionInfo; parent: TableInfo } | undefined {
+  const same = (p: PartitionInfo) => p.name === ref.name && (ref.schema === undefined || p.schema === ref.schema)
+  const search = (list: PartitionInfo[] | undefined): PartitionInfo | undefined => {
+    for (const p of list ?? []) {
+      if (same(p)) return p
+      const inner = search(p.partitions)
+      if (inner) return inner
+    }
+    return undefined
+  }
+  for (const parent of snapshot.tables) {
+    const partition = search(parent.partitions)
+    if (partition) return { partition, parent }
+  }
+  return undefined
+}
+
+/**
+ * The table a data tab shows: a table of the snapshot, or a partition, which has its parent's columns and keys (a
+ * partition's rows can be edited like the parent's).
+ */
+export function findTableOrPartition(snapshot: SchemaSnapshot, ref: TableRef): TableInfo | undefined {
+  const table = findTable(snapshot, ref)
+  if (table) return table
+  const found = findPartition(snapshot, ref)
+  if (!found) return undefined
+  const { partition, parent } = found
+  return { ...parent, schema: partition.schema, name: partition.name, partitions: partition.partitions, partitionBy: partition.partitionBy, triggers: [], policies: [], rowEstimate: null }
+}
+
+/**
+ * The columns that identify a row for editing: the primary key, or else the narrowest unique index over NOT NULL
+ * columns (not partial, no expressions) — DataGrip and DBeaver edit such tables too. Empty: the rows can't be told apart.
+ */
+export function rowKey(table: TableInfo): string[] {
+  if (table.primaryKey.length) return table.primaryKey
+  const notNull = new Set(table.columns.filter((c) => !c.nullable).map((c) => c.name))
+  const candidates = table.indexes.filter(
+    (ix) => ix.unique && ix.columns.length > 0 && ix.columns.every((c) => notNull.has(c)) && !/\bWHERE\b/i.test(ix.definition ?? ''),
+  )
+  candidates.sort((a, b) => a.columns.length - b.columns.length)
+  return candidates[0]?.columns ?? []
 }
