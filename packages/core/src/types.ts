@@ -234,6 +234,49 @@ export interface TableInfo {
   labels?: string[]
   /** What is still to be done about the table (DeZign's to-do item); never in a script. */
   todo?: string
+  /** PostgreSQL: how a partitioned table splits its rows (`RANGE (created)`), and its partitions. */
+  partitionBy?: string
+  partitions?: PartitionInfo[]
+  /** Triggers, each with the server's own CREATE TRIGGER (live databases that report them). */
+  triggers?: TriggerInfo[]
+  /** PostgreSQL row-level security: whether it is on, and the table's policies. */
+  rowSecurity?: boolean
+  policies?: PolicyInfo[]
+}
+
+/** A partition of a partitioned table; not a table of the snapshot (compare and migrations treat it with its parent). */
+export interface PartitionInfo {
+  schema?: string
+  name: string
+  /** `FOR VALUES FROM ('2026-01-01') TO ('2026-02-01')`, or `DEFAULT`. */
+  bound: string
+  /** A partition that is partitioned again. */
+  partitionBy?: string
+  partitions?: PartitionInfo[]
+}
+
+export interface TriggerInfo {
+  name: string
+  /** CREATE TRIGGER … as the server prints it. */
+  definition: string
+  enabled: boolean
+}
+
+export interface PolicyInfo {
+  name: string
+  /** CREATE POLICY … built from the catalog. */
+  definition: string
+}
+
+/** Database objects besides tables and routines the explorer lists (PostgreSQL). */
+export interface SchemaObject {
+  schema?: string
+  name: string
+  kind: 'sequence' | 'type' | 'extension'
+  /** A word or two shown next to the name: enum, domain, composite; a sequence's type; an extension's version. */
+  detail?: string
+  /** The SQL that creates it, generated from the catalog. */
+  definition: string
 }
 
 export interface RoutineInfo {
@@ -252,6 +295,8 @@ export interface SchemaSnapshot {
   schemas: string[]
   tables: TableInfo[]
   routines: RoutineInfo[]
+  /** Sequences, types and extensions (PostgreSQL). */
+  objects?: SchemaObject[]
   capturedAt: string
 }
 
