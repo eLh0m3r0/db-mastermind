@@ -105,6 +105,12 @@ export function parseConnectionString(input: string): Parsed {
     config.database = catalog || undefined
     if (schema) config.options = { schema }
   }
+  // PostgreSQL's default schema: JDBC's currentSchema, or libpq's options=-c search_path=….
+  if (driver === 'postgres') {
+    const fromOptions = /(?:^|\s)-c\s*search_path=((?:\\.|\S)+)/.exec(params.get('options') ?? '')?.[1]?.replace(/\\(.)/g, '$1')
+    const searchPath = params.get('currentSchema') ?? params.get('search_path') ?? fromOptions
+    if (searchPath) config.options = { ...config.options, searchPath }
+  }
   return config
 }
 

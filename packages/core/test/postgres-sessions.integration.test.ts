@@ -63,6 +63,22 @@ describe.skipIf(skip.has('postgres'))('PostgreSQL sessions', () => {
     await db.releaseSession(id, 'notice-tab')
   })
 
+  it("the connection's default schema and statement timeout apply to tabs and the pool", async () => {
+    const other = 'pg-search-path'
+    await db.connect({ ...pg.config, id: other, options: { searchPath: 'shop, public', statementTimeout: 500 } })
+    try {
+      const [tab] = await db.runScript(other, 'SELECT current_schema(), count(*) > 0 FROM customers', { session: 'sp-tab' })
+      expect(tab?.error).toBeUndefined()
+      expect(tab?.results?.[0]?.rows[0]).toEqual(['shop', true])
+      expect((await db.schema(other, true)).defaultSchema).toBe('shop')
+      const [slow] = await db.runScript(other, 'SELECT pg_sleep(3)')
+      expect(slow?.error?.message).toMatch(/statement timeout/)
+      await db.releaseSession(other, 'sp-tab')
+    } finally {
+      await db.disconnect(other)
+    }
+  })
+
   it('a type created after connecting has its name in results', async () => {
     await db.runScript(id, "DROP TYPE IF EXISTS dbm_mood_later; CREATE TYPE dbm_mood_later AS ENUM ('ok', 'meh')")
     const [o] = await db.runScript(id, "SELECT 'ok'::dbm_mood_later AS mood")

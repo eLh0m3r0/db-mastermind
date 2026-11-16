@@ -55,13 +55,27 @@ async function openConsole(name, switchFrom) {
 
 try {
   await win.waitForTimeout(800)
-  await api('saveConnection', { id: '', name: 'Shop PG', driver: 'postgres', host: '127.0.0.1', port: 54329, user: 'postgres', password: 'mastermind', database: 'mastermind' })
+  // The PostgreSQL form's default schema (search_path) field.
+  await win.getByRole('button', { name: 'New connection' }).first().click()
+  await win.waitForTimeout(500)
+  await win.getByRole('button', { name: 'PostgreSQL', exact: true }).click()
+  await win.getByRole('button', { name: 'Advanced', exact: true }).click()
+  await win.getByTestId('pg-search-path').fill('shop, public')
+  await win.screenshot({ path: `${out}/r110-search-path.png` })
+  check('search_path field in Advanced', (await win.getByTestId('pg-search-path').inputValue()) === 'shop, public')
+  await win.keyboard.press('Escape')
+
+  await api('saveConnection', { id: '', name: 'Shop PG', driver: 'postgres', host: '127.0.0.1', port: 54329, user: 'postgres', password: 'mastermind', database: 'mastermind', options: { searchPath: 'shop' } })
   await api('saveConnection', { id: '', name: 'Lite', driver: 'sqlite', filePath: liteFile })
   await win.reload()
   await win.waitForTimeout(1000)
 
   await openConsole('Shop PG')
-  let labels = await complete('select * from shop.customers order by rand')
+  // With search_path shop, its tables need no schema.
+  let labels = await complete('select * from custo')
+  check(`default schema's tables unqualified: ${labels.slice(0, 3).join(', ')}`, labels[0] === 'customers')
+  await win.keyboard.press('Escape')
+  labels = await complete('select * from shop.customers order by rand')
   check(`"order by rand" offers random: ${labels.slice(0, 5).join(', ')}`, labels[0] === 'random')
   await win.screenshot({ path: `${out}/r110-random.png` })
   await win.keyboard.press('Enter')

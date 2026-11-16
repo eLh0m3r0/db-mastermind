@@ -672,6 +672,25 @@ export function ConnectionForm() {
                     <Input value={config.host ?? ''} onChange={(e) => set({ host: e.target.value.trim() || undefined })} placeholder="https://bigquery.googleapis.com" />
                   </Field>
                 )}
+                {config.driver === 'postgres' && (
+                  <>
+                    <Field label={t('Default schema (search_path)')} hint={t('Unqualified names are looked up here, in every query tab. Several: app, public')}>
+                      <Input
+                        value={String(config.options?.searchPath ?? '')}
+                        onChange={(e) => setOption('searchPath', e.target.value || undefined)}
+                        placeholder="public"
+                        spellCheck={false}
+                        data-testid="pg-search-path"
+                      />
+                    </Field>
+                    <Field label={t('Query timeout (seconds, 0 = none)')}>
+                      <Input
+                        value={Number(config.options?.statementTimeout ?? 0) / 1000}
+                        onChange={(e) => setOption('statementTimeout', Number(e.target.value.replace(/\D/g, '') || 0) ? String(Number(e.target.value.replace(/\D/g, '')) * 1000) : undefined)}
+                      />
+                    </Field>
+                  </>
+                )}
                 {config.driver === 'mssql' && (
                   <Field label={t('Query timeout (seconds, 0 = none)')}>
                     <Input
