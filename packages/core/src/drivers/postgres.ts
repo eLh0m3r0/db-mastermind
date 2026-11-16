@@ -627,7 +627,7 @@ export class PostgresDriver implements DatabaseDriver {
         primary: ix.primary,
         method: ix.method,
         constraint: ix.is_constraint,
-        ...(ix.definition ? { definition: ix.definition } : {}),
+        ...(ix.definition ? { definition: ix.definition, definitionDriver: 'postgres' as const } : {}),
       })
     }
     // Check constraints, as conditions without their CHECK ( … ) wrapping. A catalog that can't tell leaves
