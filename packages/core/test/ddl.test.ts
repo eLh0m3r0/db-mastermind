@@ -141,6 +141,10 @@ describe('dropScript', () => {
     expect(order.every((x, i) => x > -1 && (i === 0 || x > order[i - 1]!))).toBe(true)
     expect(sql).not.toContain('unused')
     expect(dropScript(tables, getDialect('mysql'), { domains: [{ name: 'Code_T', dataType: 'varchar(3)' }] })).not.toContain('DOMAIN')
+    // One semicolon, and no DROP of a domain the CREATE did not make (the column's type differs from it).
+    expect(sql).toMatch(/DROP DOMAIN code_t;\n/)
+    expect(sql).not.toContain(';;')
+    expect(dropScript(tables, getDialect('postgres'), { domains: [{ name: 'Code_T', dataType: 'varchar(10)' }] })).not.toContain('DOMAIN')
   })
 })
 
@@ -473,5 +477,25 @@ Ref: orders.client_id > clients.id
     // No BEGIN / COMMIT of our own: Liquibase runs the changeset in its transaction.
     expect(changelog).not.toMatch(/^(BEGIN|COMMIT)/m)
     expect(liquibaseChangelog({ ...migration, transactional: false }, { id: 'x' })).toContain('--changeset dbmastermind:x runInTransaction:false')
+  })
+})
+
+describe('server index text', () => {
+  const table = (columns: string[], definition: string, definitionDriver: 'postgres' | null = 'postgres'): TableInfo => ({
+    schema: 'public',
+    name: 't',
+    type: 'table',
+    columns: ['a', 'b', 'c'].map((name, i) => ({ name, dataType: 'integer', nullable: true, ordinal: i + 1, isPrimaryKey: false, isIdentity: false })),
+    primaryKey: [],
+    foreignKeys: [],
+    indexes: [{ name: 'ix_t', columns, unique: false, primary: false, definition, ...(definitionDriver ? { definitionDriver } : {}) }],
+  })
+  it('is used only while it names every column the index has now, and only for the database it was written for (review finding)', () => {
+    const def = 'CREATE INDEX ix_t ON public.t USING gin (a) WHERE (b > 0)'
+    expect(createScript([table(['a'], def)], getDialect('postgres'))).toContain(def)
+    // The model moved the index to column c: the server's text would still index a.
+    expect(createScript([table(['c'], def)], getDialect('postgres'))).toMatch(/CREATE INDEX "ix_t" ON "public"\."t" \("c"\)/)
+    // CockroachDB's text carries no PostgreSQL marker: never used.
+    expect(createScript([table(['a'], 'CREATE INDEX ix_t ON public.t (a) STORING (b)', null)], getDialect('postgres'))).not.toContain('STORING')
   })
 })

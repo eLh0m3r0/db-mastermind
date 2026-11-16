@@ -3,7 +3,7 @@ import { lockRowsFirst } from '../mutations.js'
 import oracledb, { type Connection, type Metadata, type Pool } from 'oracledb'
 import { oracleDialect } from '../dialect.js'
 import { classifyStatement } from '../sql-split.js'
-import { ConnectionLostError, elapsed, isShortLivedSession, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
+import { checkAffected, ConnectionLostError, elapsed, isShortLivedSession, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import { openSshTunnel, type SshTunnel } from '../ssh.js'
 import type { ConnectionConfig, QueryOptions, QueryResult, SchemaSnapshot, ServerInfo, TableInfo, TransactionState } from '../types.js'
@@ -131,15 +131,26 @@ export class OracleDriver implements DatabaseDriver {
     }
     let conn = this.sessions.get(session)
     if (!conn) {
-      conn = isShortLivedSession(session) ? await this.activePool.getConnection() : await this.sessionConnection()
-      this.sessions.set(session, conn)
-      // Server activity names sessions "sid,serial#"; reading v$session needs the same privilege activity does.
-      const r = await conn.execute<[string]>(`SELECT sid || ',' || serial# FROM v$session WHERE sid = SYS_CONTEXT('USERENV', 'SID')`, [], { outFormat: oracledb.OUT_FORMAT_ARRAY }).catch(() => undefined)
-      const id = r?.rows?.[0]?.[0]
-      if (id) this.sids.set(session, String(id))
+      // Two first statements of a session at once share the one connection being opened (never two, one orphaned).
+      let opening = this.opening.get(session)
+      if (!opening) {
+        opening = (async () => {
+          const c = isShortLivedSession(session) ? await this.activePool.getConnection() : await this.sessionConnection()
+          // Server activity names sessions "sid,serial#"; reading v$session needs the same privilege activity does.
+          const r = await c.execute<[string]>(`SELECT sid || ',' || serial# FROM v$session WHERE sid = SYS_CONTEXT('USERENV', 'SID')`, [], { outFormat: oracledb.OUT_FORMAT_ARRAY }).catch(() => undefined)
+          const id = r?.rows?.[0]?.[0]
+          if (id) this.sids.set(session, String(id))
+          this.sessions.set(session, c)
+          return c
+        })().finally(() => this.opening.delete(session))
+        this.opening.set(session, opening)
+      }
+      conn = await opening
     }
     return { conn, release: async () => {} }
   }
+
+  private opening = new Map<string, Promise<Connection>>()
 
   /**
    * An editor tab keeps its connection until it closes: a standalone one, set up like the pool's, so nine tabs never
@@ -240,7 +251,7 @@ export class OracleDriver implements DatabaseDriver {
       // Oracle commits before and after DDL; ROLLBACK TO SAVEPOINT keeps the transaction.
       if (options.session && (/^\s*(COMMIT|ROLLBACK)\b(?!\s+(WORK\s+)?TO\b)/i.test(sql) || classifyStatement(sql) === 'ddl')) this.manualTx.delete(options.session)
       const durationMs = elapsed(start)
-      const output = await this.serverOutput(conn)
+      const output = await this.serverOutput(conn).catch(() => [])
       const withOutput = (results: QueryResult[]) => {
         if (output.length) results[0]!.messages = output
         return results
@@ -317,7 +328,7 @@ export class OracleDriver implements DatabaseDriver {
         const lock = options.lockTimeoutMs ? lockRowsFirst(s, Math.max(1, Math.round(options.lockTimeoutMs / 1000))) : undefined
         if (lock) await conn.execute(lock.sql, lock.params, { autoCommit: false })
         const r = await conn.execute(s.sql, s.params, { autoCommit: false })
-        affected.push(r.rowsAffected ?? 0)
+        affected.push(checkAffected(s, r.rowsAffected ?? 0))
       }
       await conn.commit()
       return affected

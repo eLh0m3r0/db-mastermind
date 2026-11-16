@@ -1,6 +1,6 @@
 import { createClient, type ClickHouseClient, type ClickHouseSettings } from '@clickhouse/client'
 import { clickhouseDialect } from '../dialect.js'
-import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
+import { checkAffected, elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import type { CellValue, ConnectionConfig, QueryOptions, QueryResult, ResultField, SchemaSnapshot, ServerInfo, TableInfo } from '../types.js'
 import { normalizeValue } from '../values.js'
@@ -155,7 +155,7 @@ export class ClickHouseDriver implements DatabaseDriver {
     const affected: number[] = []
     for (const s of statements) {
       const [r] = await this.execute(s.sql, { params: s.params })
-      affected.push(r?.affectedRows ?? 0)
+      affected.push(checkAffected(s, r?.affectedRows ?? 0))
     }
     return affected
   }

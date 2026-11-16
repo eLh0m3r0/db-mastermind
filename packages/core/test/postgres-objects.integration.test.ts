@@ -34,6 +34,7 @@ CREATE TABLE dbm_obj.notes (code text NOT NULL, body text, owner text);
 CREATE UNIQUE INDEX notes_code ON dbm_obj.notes (code);
 CREATE TRIGGER notes_touch BEFORE INSERT OR UPDATE ON dbm_obj.notes FOR EACH ROW EXECUTE FUNCTION dbm_obj.touch();
 ALTER TABLE dbm_obj.notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE dbm_obj.notes FORCE ROW LEVEL SECURITY;
 CREATE POLICY own_notes ON dbm_obj.notes FOR SELECT TO PUBLIC USING (owner = current_user);
 INSERT INTO dbm_obj.notes VALUES ('a', 'first', 'postgres');
 INSERT INTO dbm_obj.events (happened, region) VALUES ('2026-03-01', 'eu');
@@ -99,8 +100,9 @@ describe.skipIf(skip.has('postgres'))('PostgreSQL objects in the explorer', () =
     const notes = snapshot.tables.find((t) => t.schema === 'dbm_obj' && t.name === 'notes')!
     expect(notes.triggers?.map((t) => t.name)).toEqual(['notes_touch'])
     expect(notes.rowSecurity).toBe(true)
+    expect(notes.forceRowSecurity).toBe(true)
     expect(notes.policies?.[0]?.definition).toContain('AS PERMISSIVE FOR SELECT TO public')
-    const eventsSql = tableDefinition(events, 'postgres')
+    const eventsSql = tableDefinition(events, 'postgres', snapshot.objects)
     expect(eventsSql).toContain(') PARTITION BY RANGE (happened)')
     // Identity kinds and serial columns as declared.
     expect(eventsSql).toContain('"id" bigint GENERATED ALWAYS AS IDENTITY NOT NULL')
@@ -117,6 +119,7 @@ describe.skipIf(skip.has('postgres'))('PostgreSQL objects in the explorer', () =
     const notes2 = again.tables.find((t) => t.schema === 'dbm_obj' && t.name === 'notes')!
     expect(notes2.triggers?.map((t) => t.definition)).toEqual(notes.triggers?.map((t) => t.definition))
     expect(notes2.policies).toEqual(notes.policies)
+    expect(notes2.forceRowSecurity).toBe(true)
     const events2 = again.tables.find((t) => t.schema === 'dbm_obj' && t.name === 'events')!
     expect(JSON.stringify(events2.partitions)).toBe(JSON.stringify(events.partitions))
   })
@@ -130,5 +133,27 @@ describe.skipIf(skip.has('postgres'))('PostgreSQL objects in the explorer', () =
     expect(affected).toEqual([1])
     const [r] = await db.runScript(id, "SELECT body FROM dbm_obj.notes WHERE code = 'b'")
     expect(r?.results?.[0]?.rows).toEqual([['changed']])
+  })
+
+  it('a column fed by a shared sequence keeps its default instead of becoming serial (review finding)', async () => {
+    for (const sql of ['DROP TABLE IF EXISTS dbm_obj.shared_seq', "CREATE TABLE dbm_obj.shared_seq (n integer NOT NULL DEFAULT nextval('dbm_obj.invoice_no'::regclass))"]) {
+      const [o] = await db.runScript(id, sql)
+      expect(o?.error?.message).toBeUndefined()
+    }
+    const { sql } = await objectDefinition(db, id, { schema: 'dbm_obj', name: 'shared_seq', kind: 'table' })
+    expect(sql).not.toMatch(/serial/)
+    expect(sql).toMatch(/nextval\('dbm_obj\.invoice_no'::regclass\)/)
+    await db.runScript(id, 'DROP TABLE dbm_obj.shared_seq')
+  })
+
+  it('a deferrable unique constraint is no row key (review finding)', async () => {
+    for (const sql of ['DROP TABLE IF EXISTS dbm_obj.deferred', 'CREATE TABLE dbm_obj.deferred (code text NOT NULL, body text, CONSTRAINT deferred_code UNIQUE (code) DEFERRABLE)']) {
+      const [o] = await db.runScript(id, sql)
+      expect(o?.error?.message).toBeUndefined()
+    }
+    const deferred = (await db.schema(id, true)).tables.find((t) => t.schema === 'dbm_obj' && t.name === 'deferred')!
+    expect(deferred.indexes.find((i) => i.name === 'deferred_code')).toMatchObject({ unique: true, notEnforced: true })
+    expect(rowKey(deferred)).toEqual([])
+    await db.runScript(id, 'DROP TABLE dbm_obj.deferred')
   })
 })

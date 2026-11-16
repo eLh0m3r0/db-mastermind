@@ -483,12 +483,19 @@ describe('saving back into a DeZign project', () => {
     expect(out).not.toMatch(new RegExp(`<DIAGRAMID>${d2.id}</DIAGRAMID>`))
     expect(readDezign(out).tables).toEqual(readDezign(dez).tables)
     expect(dezignIntegrity(out)).toEqual(dezignIntegrity(dez))
-    // A folder project loses the diagram's files.
-    const fd = readDezign(assembleDezignProject(folder)).diagrams
-    if (fd.length > 1) {
-      const f = saveToDezign(folder, model(folder), model(folder), { normalize: viaDbml, diagrams: { [fd.find((d) => !d.main)!.id]: { remove: true } } })
-      expect(f.deleted.length).toBeGreaterThan(0)
-    }
+    // A folder project loses the diagram's files (a folder made of the model, which has the second diagram).
+    const twoDiagrams = dezignAsFolder(dez, 'Shop')
+    const fd = readDezign(assembleDezignProject(twoDiagrams)).diagrams
+    expect(fd.length).toBeGreaterThan(1)
+    const f = saveToDezign(twoDiagrams, model(twoDiagrams), model(twoDiagrams), { normalize: viaDbml, diagrams: { [fd.find((d) => !d.main)!.id]: { remove: true } } })
+    expect(f.deleted.some((p) => p.startsWith('diagrams/'))).toBe(true)
+    expect(readDezign(assembleDezignProject(applyDezignSave(twoDiagrams, f))).diagrams.map((d) => d.id)).toEqual(fd.filter((d) => d.main).map((d) => d.id))
+    // A note shown only on the diagram goes with it, not left behind in the dictionary (review finding).
+    const noted = saveToDezign(single, model(single), model(single), { normalize: viaDbml, newId: () => 'TA-ONLY', diagrams: { [d2.id]: { notes: [{ id: 'new', text: 'Only here', x: 10, y: 10 }] } } })
+    expect(noted.files[0]!.text).toContain('Only here')
+    const without = saveToDezign(noted.files, model(noted.files), model(noted.files), { normalize: viaDbml, diagrams: { [d2.id]: { remove: true } } })
+    expect(without.files[0]!.text).not.toContain('Only here')
+    expect(dezignIntegrity(without.files[0]!.text)).toEqual(dezignIntegrity(dez))
   })
 
   it('saves group boxes: moved, resized and renamed, a new one, and one taken away', () => {
@@ -617,6 +624,22 @@ describe('saving back into a DeZign project', () => {
     const gone = saveToDezign(added.files, model(added.files), model(added.files), { normalize: viaDbml, removeDomains: ['spare_t', 'iso_country'] })
     expect(gone.changes.map((c) => `${c.kind} ${c.table}`)).toEqual(['drop_domain spare_t'])
     expect(readDezign(gone.files[0]!.text).domains.map((d) => d.name)).toEqual(['iso_country'])
+    // Its last column taken off it in the same save: the domain goes too (review finding).
+    const off = viaDbml(model(added.files).map((x) => ({ ...x, columns: x.columns.map((c) => (c.domain === 'iso_country' ? { ...c, domain: undefined } : c)) })))
+    const both = saveToDezign(added.files, model(added.files), off, { normalize: viaDbml, removeDomains: ['iso_country'] })
+    expect(both.changes.map((c) => `${c.kind} ${c.table}`)).toContain('drop_domain iso_country')
+    const left = readDezign(both.files[0]!.text)
+    expect(left.domains.map((d) => d.name)).not.toContain('iso_country')
+    expect(dezignIntegrity(both.files[0]!.text)).toEqual(dezignIntegrity(added.files[0]!.text))
+  })
+
+  it('an ENUM domain with its values is no change when saved again (review finding)', () => {
+    const files: DezignFile[] = [{ path: 'shop.dez', text: dez.replace('<DBID>postgresql16</DBID>', '<DBID>mysql80</DBID>') }]
+    const withEnum = saveToDezign(files, model(files), model(files), { normalize: viaDbml, domains: [{ name: 'state_t', dataType: "enum('new','paid')" }] })
+    const domains = readDezign(withEnum.files[0]!.text).domains
+    expect(domains.find((d) => d.name === 'state_t')?.dataType).toBe("enum('new','paid')")
+    const again = saveToDezign(withEnum.files, model(withEnum.files), model(withEnum.files), { normalize: viaDbml, domains: domains.map((d) => ({ name: d.name, dataType: d.dataType })) })
+    expect(again.changes).toEqual([])
   })
 
   it('a batch rename of whole tables (and all their columns) keeps the tables, told which table is which', () => {
@@ -752,6 +775,12 @@ describe('saving back into a DeZign project', () => {
     expect(dezignObjectEdits(before, [{ ...before[0]!, name: 'trg_b' }, { ...before[1]!, name: 'q' }, before[2]!, before[3]!]).code).toEqual([
       { id: 'T1', kind: 'trigger', name: 'trg_b' },
       { id: 'P1', kind: 'procedure', name: 'q' },
+    ])
+    // An empty list (the last one removed in the tab) removes them all; views are not managed here.
+    expect(dezignObjectEdits(before, []).remove).toEqual([
+      { kind: 'trigger', id: 'T1' },
+      { kind: 'procedure', id: 'P1' },
+      { kind: 'sequence', id: 'S1' },
     ])
     // An object is its kind and its id: a procedure numbered like a sequence is not that sequence.
     const twins = [before[1]!, { ...before[2]!, id: 'P1' }]
@@ -1066,6 +1095,10 @@ describe('saving back into a DeZign project', () => {
     expect(out).toMatch(new RegExp(`<FOREIGNKEYID>ATTR-${payment}-2-\\w+</FOREIGNKEYID>`))
     expect(out).toMatch(/<INDEX>\s*<NAME>customer_note<\/NAME>[\s\S]*?<ID>IDX-10-\d+-\w+<\/ID>/)
     expect(readDezign(out).tables.find((t) => t.name === 'payment')!.foreignKeys).toHaveLength(1)
+    // A table's first trigger is number 1, as its first column and index are (review finding).
+    const base = model(styled)
+    const trg = saveToDezign(styled, base, base, { normalize: viaDbml, objects: { triggers: [{ table: 'shop.customer', name: 'trg_first', code: 'CREATE TRIGGER %triggername%' }] } })
+    expect(trg.files[0]!.text).toMatch(new RegExp(`<NAME>trg_first</NAME>\\n<ID>TRG-10-1-\\w+</ID>`))
   })
 
   it('does not hand a copied column or table the labels, custom properties or character set of its neighbour', () => {

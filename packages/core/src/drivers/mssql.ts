@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import sql from 'mssql'
 import { mssqlDialect } from '../dialect.js'
-import { batchesFromEvents, ConnectionLostError, elapsed, messagesOnly, QueryCancelledError, SessionTransactions, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
+import { checkAffected, batchesFromEvents, ConnectionLostError, elapsed, messagesOnly, QueryCancelledError, SessionTransactions, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import { isReadOnlyScript } from '../sql-split.js'
 import { openSshTunnel, type SshTunnel } from '../ssh.js'
@@ -421,7 +421,7 @@ export class MssqlDriver implements DatabaseDriver {
         const request = new this.sql.Request(tx)
         s.params.forEach((value, i) => request.input(`p${i + 1}`, value))
         const r = await request.query(s.sql)
-        affected.push(r.rowsAffected.reduce((a, b) => a + b, 0))
+        affected.push(checkAffected(s, r.rowsAffected.reduce((a, b) => a + b, 0)))
       }
       await resetLockTimeout()
       await tx.commit()
@@ -495,7 +495,7 @@ export class MssqlDriver implements DatabaseDriver {
         params,
       ),
       this.rows(
-        `SELECT s.name AS s, o.name AS t, i.name AS name, i.is_unique, i.is_primary_key, i.is_unique_constraint, i.type_desc AS method, c.name AS col,
+        `SELECT s.name AS s, o.name AS t, i.name AS name, i.is_unique, i.is_primary_key, i.is_unique_constraint, i.type_desc AS method, i.is_disabled AS disabled, c.name AS col,
                 ic.is_included_column AS included, ic.is_descending_key AS descending, i.filter_definition AS filter
            FROM sys.indexes i
            JOIN sys.objects o ON o.object_id = i.object_id
@@ -562,6 +562,7 @@ export class MssqlDriver implements DatabaseDriver {
           primary: Boolean(ix.is_primary_key),
           method: String(ix.method).toLowerCase(),
           constraint: Boolean(ix.is_unique_constraint),
+          ...(ix.disabled && ix.is_unique ? { notEnforced: true } : {}),
         }
         t.indexes.push(entry)
       }
@@ -580,6 +581,8 @@ export class MssqlDriver implements DatabaseDriver {
         entry.definition = `CREATE ${entry.unique ? 'UNIQUE ' : ''}${String(ix.method)} INDEX ${q(name)} ON ${q(ix.s)}.${q(ix.t)} (${shape.keys.join(', ')})${shape.include.length ? ` INCLUDE (${shape.include.join(', ')})` : ''}${ix.filter ? ` WHERE ${String(ix.filter)}` : ''}`
       }
     }
+    // An index with only included columns (columnstore) has no key a script could name.
+    for (const t of byKey.values()) t.indexes = t.indexes.filter((i) => i.columns.length)
     for (const c of columns) {
       const t = byKey.get(key(c.s, c.t))
       if (!t) continue
@@ -636,9 +639,16 @@ export class MssqlDriver implements DatabaseDriver {
       for (const t of byKey.values()) delete t.checks
     }
 
+    // Synonyms and tables shipped with SQL Server (msdb's dbo.sysjobs): statements name them, the explorer doesn't list them.
+    const otherNames = await this.rows(
+      `SELECT s.name AS s, o.name AS name FROM sys.objects o JOIN sys.schemas s ON s.schema_id = o.schema_id
+        WHERE (o.type = 'SN' OR (o.is_ms_shipped = 1 AND o.type IN ('U', 'V'))) AND ${userSchema}`,
+      params,
+    ).catch(() => [])
     return {
       database: meta[0]?.db ? String(meta[0].db) : undefined,
       defaultSchema: meta[0]?.sch ? String(meta[0].sch) : 'dbo',
+      ...(otherNames.length ? { otherNames: otherNames.map((r) => ({ schema: String(r.s), name: String(r.name) })) } : {}),
       schemas: schemas.map((s) => String(s.name)),
       tables: [...byKey.values()],
       routines: routines.map((r) => ({

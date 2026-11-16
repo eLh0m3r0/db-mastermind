@@ -5,6 +5,7 @@ import {
   extractParameters,
   isDangerousStatement,
   isReadOnlyCondition,
+  isCopyFromStdin,
   isReadOnlyScript,
   stripLiterals,
   opensTransaction,
@@ -47,6 +48,22 @@ describe('splitStatements', () => {
     expect(texts('COPY t TO STDOUT; select 4', 'postgres')).toEqual(['COPY t TO STDOUT', 'select 4'])
     // Other engines: unchanged.
     expect(texts('\\d users\nselect 1;', 'mysql')).toEqual(['\\d users\nselect 1'])
+  })
+
+  it('takes COPY … FROM stdin data after pg_dump’s comments, and only for the real form (review findings)', () => {
+    const dump = '--\n-- Data for Name: users\n--\n\nCOPY public.users (id, name) FROM stdin;\n1\tAlice\n2\tBob; DROP\n\\.\n\nSELECT 1;'
+    const parts = texts(dump, 'postgres')
+    expect(parts).toHaveLength(2)
+    expect(parts[0]).toMatch(/COPY public\.users[\s\S]*Bob; DROP\n\\\.$/)
+    expect(parts[1]).toBe('SELECT 1')
+    expect(texts("COPY (SELECT * FROM stdin) TO '/tmp/x';\nDELETE FROM a;\nSELECT 2;", 'postgres')).toEqual(["COPY (SELECT * FROM stdin) TO '/tmp/x'", 'DELETE FROM a', 'SELECT 2'])
+    expect(texts("COPY t (a) FROM '/tmp/stdin';\nSELECT 3;", 'postgres')).toEqual(["COPY t (a) FROM '/tmp/stdin'", 'SELECT 3'])
+    expect(isCopyFromStdin('/* x */ COPY "My Table" FROM STDIN WITH (FORMAT csv)')).toBe(true)
+  })
+
+  it('skips pg_dump’s \\restrict and \\unrestrict lines', () => {
+    expect(texts('\\restrict AbC123\n\nSET x = 1;\nSELECT 1;\n\\unrestrict AbC123\n', 'postgres')).toEqual(['SET x = 1', 'SELECT 1'])
+    expect(texts('\\timing\nSELECT 1;', 'postgres')).toEqual(['\\timing', 'SELECT 1'])
   })
 
   it('does not treat $1 parameters as dollar quotes', () => {

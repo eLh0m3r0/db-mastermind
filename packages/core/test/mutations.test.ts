@@ -16,8 +16,8 @@ describe('buildChangeStatements', () => {
       sql: 'INSERT INTO "public"."users" ("name", "created_at", "note") VALUES ($1, DEFAULT, NULL)',
       params: ['Ann'],
     })
-    expect(upd).toEqual({ sql: 'UPDATE "public"."users" SET "name" = $1 WHERE "id" = $2', params: ["O'Hara", '7'] })
-    expect(del).toEqual({ sql: 'DELETE FROM "public"."users" WHERE "id" = $1 AND "tenant" IS NULL', params: ['8'] })
+    expect(upd).toEqual({ sql: 'UPDATE "public"."users" SET "name" = $1 WHERE "id" = $2', params: ["O'Hara", '7'], maxAffected: 1 })
+    expect(del).toEqual({ sql: 'DELETE FROM "public"."users" WHERE "id" = $1 AND "tenant" IS NULL', params: ['8'], maxAffected: 1 })
   })
 
   it('refuses keyless updates', () => {
@@ -53,8 +53,17 @@ describe('SQL expressions in cells', () => {
       ],
       postgresDialect,
     )
-    expect(u).toEqual({ sql: 'UPDATE "shop"."orders" SET "status" = $1, "paid_at" = (now()) WHERE "id" = $2', params: ['paid', 7] })
+    expect(u).toEqual({ sql: 'UPDATE "shop"."orders" SET "status" = $1, "paid_at" = (now()) WHERE "id" = $2', params: ['paid', 7], maxAffected: 1 })
     expect(i!.sql).toBe(`INSERT INTO "shop"."orders" ("total") VALUES ((price * 1.21 + length('a;b')))`)
+  })
+
+  it('refuses a ? that the driver would take for a parameter (review finding)', () => {
+    expect(checkCellExpression("REPLACE(url, '?', '')", 'mysql')).toMatch(/CHAR\(63\)/)
+    expect(checkCellExpression("REPLACE(url, '?', '')", 'mariadb')).toMatch(/\?/)
+    expect(checkCellExpression("REPLACE(url, '?', '')", 'sqlite')).toBeNull()
+    expect(checkCellExpression('coalesce(?, 1)', 'sqlite')).toMatch(/\?/)
+    expect(checkCellExpression("REPLACE(url, '?', '')", 'postgres')).toBeNull()
+    expect(() => buildChangeStatements({ name: 't' }, [{ type: 'update', key: { id: '1' }, values: { url: { $sql: "REPLACE(url, '?', '')" } } }], mysqlDialect)).toThrow(/CHAR\(63\)/)
   })
 
   it('refuses anything that could be a second statement or hide one', () => {

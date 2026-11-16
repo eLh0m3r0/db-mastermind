@@ -1,5 +1,5 @@
 import { splitStatements, statementAtOffset } from './sql-split.js'
-import type { DriverId, RoutineInfo, SchemaSnapshot, TableInfo } from './types.js'
+import type { DriverId, PartitionInfo, RoutineInfo, SchemaSnapshot, TableInfo } from './types.js'
 
 /**
  * A light reading of SQL text for the editor: which names are tables (after FROM, JOIN, UPDATE, INTO), which are
@@ -120,6 +120,17 @@ const isName = (t: Token | undefined): t is Token => !!t && (t.kind === 'word' |
 const isWord = (t: Token | undefined, ...words: string[]) => !!t && t.kind === 'word' && words.includes(t.value.toUpperCase())
 const isPunct = (t: Token | undefined, ch: string) => !!t && t.kind === 'punct' && t.value === ch
 
+/** Statements whose FROM / INTO is no table: REVOKE … FROM role, COPY … FROM STDIN, FETCH … FROM cursor, SHOW … FROM db. */
+const NOT_READING = new Set(['REVOKE', 'GRANT', 'COPY', 'FETCH', 'MOVE', 'SHOW', 'DESCRIBE', 'DESC', 'UPDATE STATISTICS', 'DEALLOCATE', 'CLOSE', 'LISTEN', 'NOTIFY'])
+
+/** Columns every row has without the table declaring them. */
+const SYSTEM_COLUMNS: Partial<Record<DriverId, Set<string>>> = {
+  postgres: new Set(['ctid', 'xmin', 'xmax', 'cmin', 'cmax', 'tableoid']),
+  sqlite: new Set(['rowid', 'oid', '_rowid_']),
+  duckdb: new Set(['rowid']),
+  mssql: new Set(['$action', '$identity', '$rowguid', '%%physloc%%']),
+}
+
 /** Words that can follow a table name and are not its alias. */
 const NOT_ALIAS = new Set(
   'WHERE ON USING JOIN INNER LEFT RIGHT FULL OUTER CROSS NATURAL GROUP ORDER HAVING LIMIT OFFSET FETCH UNION INTERSECT EXCEPT MINUS SET VALUES SELECT FROM WINDOW FOR WITH RETURNING OUTPUT AS TABLESAMPLE PIVOT UNPIVOT LATERAL APPLY OPTION INTO DEFAULT KEY STRAIGHT_JOIN USE IGNORE FORCE PARTITION CONNECT START QUALIFY'.split(' '),
@@ -174,7 +185,15 @@ function readName(tokens: Token[], i: number): { parts: Token[]; next: number } 
   if (!isName(tokens[i])) return null
   const parts = [tokens[i]!]
   let j = i + 1
-  while (isPunct(tokens[j], '.') && isName(tokens[j + 1]) && tokens[j]!.start === parts.at(-1)!.end && tokens[j + 1]!.start === tokens[j]!.end) {
+  for (;;) {
+    if (!isPunct(tokens[j], '.') || tokens[j]!.start !== parts.at(-1)!.end) break
+    // T-SQL `tempdb..sysobjects`: the schema left out (the database's default) is a part of its own.
+    if (isPunct(tokens[j + 1], '.') && isName(tokens[j + 2]) && tokens[j + 1]!.start === tokens[j]!.end && tokens[j + 2]!.start === tokens[j + 1]!.end) {
+      parts.push({ kind: 'word', value: '', start: tokens[j + 1]!.start, end: tokens[j + 1]!.start }, tokens[j + 2]!)
+      j += 3
+      continue
+    }
+    if (!isName(tokens[j + 1]) || tokens[j + 1]!.start !== tokens[j]!.end) break
     parts.push(tokens[j + 1]!)
     j += 2
   }
@@ -193,6 +212,8 @@ function readStatement(text: string, start: number, driver: DriverId): Statement
     else if (depth === 0 && t.kind === 'word' && (i === 0 || !isWord(tokens[0], 'WITH') || /^(SELECT|INSERT|UPDATE|DELETE|MERGE)$/i.test(t.value))) {
       if (i === 0 && isWord(t, 'WITH')) continue
       reading.verb = t.value.toUpperCase()
+      // T-SQL UPDATE STATISTICS t: maintenance, no UPDATE of rows.
+      if (reading.verb === 'UPDATE' && isWord(tokens[i + 1], 'STATISTICS')) reading.verb = 'UPDATE STATISTICS'
       reading.verbStart = t.start
       reading.verbEnd = t.end
       break
@@ -238,6 +259,9 @@ function readStatement(text: string, start: number, driver: DriverId): Statement
     }
     const intro = isWord(t, 'FROM', 'JOIN', 'UPDATE', 'INTO', 'APPLY')
     if (!intro || !queryLevel) continue
+    // REVOKE … FROM a role, COPY t FROM STDIN, FETCH … FROM a cursor, SHOW TABLES FROM a database: no table follows
+    // there (a query in parentheses inside them is read as one).
+    if (levels.length === 0 && NOT_READING.has(reading.verb)) continue
     if (isWord(t, 'FROM') && isWord(tokens[i - 1], 'DISTINCT')) continue
     // ON CONFLICT DO UPDATE SET, ON DUPLICATE KEY UPDATE, FOR UPDATE, MERGE … THEN UPDATE SET: no table follows.
     if (isWord(t, 'UPDATE') && (isWord(tokens[i - 1], 'DO', 'KEY', 'FOR', 'THEN') || isWord(tokens[i + 1], 'SET'))) continue
@@ -246,6 +270,22 @@ function readStatement(text: string, start: number, driver: DriverId): Statement
     // Statements that never name an existing table there: CREATE TABLE … FROM? DROP … FROM? (none), DELETE alias FROM.
     const fromList = isWord(t, 'FROM')
     let j = i + 1
+    // UPDATE TOP (100) t, UPDATE LOW_PRIORITY IGNORE t (MySQL), UPDATE OR REPLACE t (SQLite).
+    if (isWord(t, 'UPDATE')) {
+      for (;;) {
+        if (isWord(tokens[j], 'TOP') && isPunct(tokens[j + 1], '(')) {
+          let d = 0
+          for (j++; j < tokens.length; j++) {
+            if (isPunct(tokens[j], '(')) d++
+            else if (isPunct(tokens[j], ')') && --d === 0) break
+          }
+          j++
+          if (isWord(tokens[j], 'PERCENT')) j++
+        } else if (isWord(tokens[j], 'LOW_PRIORITY', 'IGNORE')) j++
+        else if (isWord(tokens[j], 'OR') && isWord(tokens[j + 1], 'REPLACE', 'IGNORE', 'ABORT', 'FAIL', 'ROLLBACK')) j += 2
+        else break
+      }
+    }
     for (;;) {
       while (isWord(tokens[j], 'ONLY', 'LATERAL')) j++
       if (isPunct(tokens[j], '(')) break
@@ -316,13 +356,20 @@ const lower = (s: string) => s.toLowerCase()
 export function resolveTable(ref: Pick<TableReference, 'parts'>, schema: SchemaSnapshot): TableInfo | null | undefined {
   if (ref.parts.length > 2) return undefined
   const name = lower(ref.parts.at(-1)!)
+  // Names a statement may use that are no table of the snapshot: partitions (under their parent), sequences
+  // (SELECT last_value FROM s), SQL Server synonyms and system-shipped tables.
+  const partitions = (t: { partitions?: PartitionInfo[] }): PartitionInfo[] => (t.partitions ?? []).flatMap((p) => [p, ...partitions(p)])
+  const elsewhere = (s: string | undefined) =>
+    schema.tables.some((t) => partitions(t).some((p) => lower(p.name) === name && (s === undefined || lower(p.schema ?? t.schema ?? '') === s))) ||
+    (schema.objects ?? []).some((o) => o.kind === 'sequence' && lower(o.name) === name && (s === undefined || lower(o.schema ?? '') === s)) ||
+    (schema.otherNames ?? []).some((o) => lower(o.name) === name && (s === undefined || lower(o.schema ?? '') === s))
   if (ref.parts.length === 2) {
     const s = lower(ref.parts[0]!)
     if (!schema.schemas.some((x) => lower(x) === s)) return undefined
-    return schema.tables.find((t) => lower(t.schema ?? '') === s && lower(t.name) === name) ?? null
+    return schema.tables.find((t) => lower(t.schema ?? '') === s && lower(t.name) === name) ?? (elsewhere(s) ? undefined : null)
   }
   if (/^[#@]/.test(name) || SYSTEM_NAME.test(name)) return undefined
-  return schema.tables.find((t) => lower(t.name) === name) ?? null
+  return schema.tables.find((t) => lower(t.name) === name) ?? (elsewhere(undefined) ? undefined : null)
 }
 
 export type SqlWarning =
@@ -358,10 +405,12 @@ export function closestName(name: string, names: string[]): string | undefined {
  * What the editor underlines: tables that don't exist, `alias.column` where the table has no such column, and
  * UPDATE / DELETE without WHERE. Only what is certain (see `resolveTable`).
  */
-export function inspectSql(script: string, driver: DriverId, schema: SchemaSnapshot | undefined): SqlWarning[] {
+export function inspectSql(script: string, driver: DriverId, schema: SchemaSnapshot | undefined, options: { sessionTables?: Iterable<string> } = {}): SqlWarning[] {
   const out: SqlWarning[] = []
   const statements = readSql(script, driver)
-  const created = new Set<string>()
+  // Tables made by this script, and (`sessionTables`, see `createdTables`) by earlier runs in the tab's session:
+  // temporary tables the snapshot never lists.
+  const created = new Set<string>([...(options.sessionTables ?? [])].map(lower))
   for (const s of statements) {
     if ((s.verb === 'UPDATE' || s.verb === 'DELETE') && !s.hasWhere && s.tables.length) {
       const target = s.tables.find((t) => (s.verb === 'UPDATE' ? t.updateTarget : true)) ?? s.tables[0]!
@@ -392,12 +441,19 @@ export function inspectSql(script: string, driver: DriverId, schema: SchemaSnaps
       const table = byQualifier.get(qualifier)
       // Unknown or column-less (a view the driver couldn't describe): nothing to check against.
       if (!table || table.columns.length === 0) continue
-      if (table.columns.some((col) => (c.quoted ? col.name === c.column : lower(col.name) === lower(c.column)))) continue
+      // Only PostgreSQL tells quoted names by their case (MySQL `Total`, SQL Server [OrderId] find total, OrderID).
+      if (table.columns.some((col) => (c.quoted && driver === 'postgres' ? col.name === c.column : lower(col.name) === lower(c.column)))) continue
+      if (SYSTEM_COLUMNS[driver]?.has(lower(c.column)) && !c.quoted) continue
       out.push({ kind: 'unknown-column', from: c.start, to: c.end, column: c.column, table: table.name, suggestion: closestName(c.column, table.columns.map((col) => col.name)) })
     }
     for (const d of s.defines) created.add(d)
   }
   return out
+}
+
+/** The tables a script makes (CREATE [TEMP] TABLE / VIEW): an editor tab keeps them for `inspectSql`'s `sessionTables`. */
+export function createdTables(script: string, driver: DriverId): string[] {
+  return readSql(script, driver).flatMap((s) => (s.verb === 'CREATE' ? s.defines : []))
 }
 
 export type SqlObjectAt = { kind: 'table'; table: TableInfo; from: number; to: number } | { kind: 'routine'; routine: RoutineInfo; schema?: string; name: string; from: number; to: number }
@@ -415,7 +471,8 @@ export function objectAt(script: string, offset: number, driver: DriverId, schem
   if (fn) {
     const name = lower(fn.parts.at(-1)!)
     const owner = fn.parts.length === 2 ? lower(fn.parts[0]!) : undefined
-    const routine = schema.routines.find((r) => lower(r.name) === name && (owner === undefined || lower(r.schema ?? '') === owner))
+    // (An aggregate has no definition to open.)
+    const routine = schema.routines.find((r) => lower(r.name) === name && (owner === undefined || lower(r.schema ?? '') === owner) && !r.aggregate)
     return routine ? { kind: 'routine', routine, schema: routine.schema, name: routine.name, from: fn.start, to: fn.end } : undefined
   }
   // alias.column or table.column → the table.

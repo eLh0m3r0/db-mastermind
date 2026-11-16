@@ -26,7 +26,7 @@ Usage:
   dbm query      --url <url> --file script.sql …
   dbm dictionary --url <url> [--format html|markdown] [--schema s] [--out file]
   dbm check      model.dbml [--strict]
-  dbm diff       model.dbml --url <url> [--out migration.sql] [--drop-extra]
+  dbm diff       model.dbml --url <url> [--out migration.sql] [--drop-extra] [--allow-writes]
 
 Connections:
   --url <url>          postgres://…, mysql://…, sqlserver://…, sqlite:///path, JDBC or ADO.NET; \${ENV_VAR} is expanded
@@ -38,6 +38,8 @@ Exit codes:
   2  diff: the database differs from the model (the migration is printed)
 
 Read-only unless --allow-writes: the database itself refuses writes where it can.
+diff never changes the database. To compare the conditions of checks that keep their name, it needs a writable
+connection (--allow-writes): it puts them on a temporary table, which a read-only connection may not create.
 `
 
 export interface DbmIo {
@@ -259,7 +261,8 @@ function check(o: Options, io: DbmIo): number {
 }
 
 async function diff(o: Options, db: DatabaseService, io: DbmIo): Promise<number> {
-  const config = pickConnection({ ...o, allowWrites: false })
+  // Writable only when asked: the check probe makes a temporary table (diff itself writes nothing).
+  const config = pickConnection(o)
   await db.connect(config)
   const live = await db.schema(config.id, true)
   const model = readModel(o.positional[0], live.defaultSchema, config.driver)
@@ -270,10 +273,12 @@ async function diff(o: Options, db: DatabaseService, io: DbmIo): Promise<number>
     uncompared = answers.filter((a) => a === null).length
     return answers
   }).catch(() => undefined)
-  const note = uncompared ? `(${uncompared} check condition${uncompared === 1 ? '' : 's'} with the same name in both could not be compared here.)\n` : ''
+  const conditions = `${uncompared} check condition${uncompared === 1 ? '' : 's'} with the same name in both`
+  const where = config.readOnly ? 'on a read-only connection (--allow-writes lets diff compare them)' : 'on this database'
+  const note = uncompared ? `(${conditions} could not be compared ${where}.)\n` : ''
   const changes = compareSchemas(model.tables, live.tables, { keepExtra: !o.dropExtra, model: true, checkChanged })
   if (!changes.length) {
-    io.stderr(`The database matches the model.\n${note}`)
+    io.stderr(uncompared ? `No differences were found, but ${conditions} could not be compared ${where}.\n` : 'The database matches the model.\n')
     return 0
   }
   const dialect = getDialect(config.driver)

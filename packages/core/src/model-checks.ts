@@ -1,4 +1,4 @@
-import type { DriverId, ForeignKeyInfo, TableInfo } from './types.js'
+import type { DriverId, ForeignKeyInfo, IndexInfo, TableInfo } from './types.js'
 
 /**
  * Checks a model for the things reviewers always look for: tables without a key, foreign keys that cannot work
@@ -42,6 +42,41 @@ export interface ModelIssue {
 }
 
 const lower = (s: string) => s.toLowerCase()
+
+const IDENT = String.raw`(?:"(?:[^"]|"")*"|` + '`(?:[^`]|``)*`' + String.raw`|\[(?:[^\]]|\]\])*\]|[^\s."` + '`' + String.raw`[(]+)`
+/**
+ * What makes an index more than its columns, from the server's CREATE INDEX (`IndexInfo.definition`): the access
+ * method, the key's expressions and order, INCLUDE and a WHERE. `tail` is that text after the table's name, the same
+ * for the same index under another name; `plain` says it is a B-tree on bare columns with no condition.
+ */
+function indexShape(ix: IndexInfo): { plain: boolean; filtered: boolean; tail?: string } {
+  const defaultMethod = !ix.method || /^(btree|nonclustered|clustered)$/i.test(ix.method)
+  const bareColumns = ix.columns.every((c) => !/[()\s]/.test(c))
+  if (!ix.definition) return { plain: defaultMethod && bareColumns, filtered: false }
+  const m = new RegExp(String.raw`\sON\s+(?:ONLY\s+)?(?:${IDENT}\s*\.\s*)?${IDENT}\s*`, 'i').exec(ix.definition)
+  if (!m) return { plain: false, filtered: true }
+  const tail = ix.definition.slice(m.index + m[0].length).replace(/\s+/g, ' ').trim().toLowerCase()
+  const method = /^using\s+(\w+)/.exec(tail)?.[1]
+  const filtered = /\bwhere\b/.test(tail)
+  const keys = /\(([^]*?)\)/.exec(tail)?.[1] ?? ''
+  const plain = (!method || method === 'btree') && defaultMethod && bareColumns && !filtered && !/\binclude\b/.test(tail) && !/\b(desc|collate|nulls)\b|\(/.test(keys)
+  return { plain, filtered, tail }
+}
+
+/** A wider index that serves its leading columns as a plain one would: a B-tree without a condition. */
+function coversLike(ix: IndexInfo): boolean {
+  const shape = indexShape(ix)
+  if (shape.filtered) return false
+  if (ix.method && !/^(btree|nonclustered|clustered)$/i.test(ix.method)) return false
+  return !shape.tail || /^(using btree )?\(/.test(shape.tail)
+}
+
+/** Two indexes on the same columns do the same work: only when nothing else about them differs, or can't be told. */
+function sameIndex(a: IndexInfo, b: IndexInfo): boolean {
+  const [x, y] = [indexShape(a), indexShape(b)]
+  if (x.tail !== undefined && y.tail !== undefined) return x.tail.replace(/^using btree /, '') === y.tail.replace(/^using btree /, '')
+  return x.plain && y.plain
+}
 const sameTable = (t: TableInfo, schema: string | undefined, name: string) => lower(t.name) === lower(name) && (!schema || !t.schema || lower(t.schema) === lower(schema))
 
 /** Types that hold the same values under different names: a foreign key between them is fine. */
@@ -168,14 +203,15 @@ export function checkModel(tables: TableInfo[], options: { /** The database the 
     const pkKey = columnsKey(table.primaryKey)
     indexes.forEach((ix, i) => {
       const key = columnsKey(ix.columns)
-      const twin = indexes.slice(0, i).find((other) => columnsKey(other.columns) === key && (other.unique || !ix.unique))
-      if (twin || (key === pkKey && pkKey)) {
+      const twin = indexes.slice(0, i).find((other) => columnsKey(other.columns) === key && (other.unique || !ix.unique) && sameIndex(ix, other))
+      if (twin || (key === pkKey && pkKey && indexShape(ix).plain)) {
         // An index on the key's own columns is what some databases build the key from: worth a look, not an error.
         issues.push({ kind: 'duplicate_index', severity: twin ? 'warning' : 'info', ...at, column: ix.columns.join(', '), detail: twin ? twin.name : 'primary key', fixable: true })
         return
       }
       // A plain index on (a) adds nothing next to one on (a, b).
-      const covering = indexes.find((other) => other !== ix && other.columns.length > ix.columns.length && columnsKey(other.columns.slice(0, ix.columns.length)) === key)
+      // (Only between B-trees without a condition: a partial index, another method or an expression is no cover.)
+      const covering = indexShape(ix).plain ? indexes.find((other) => other !== ix && other.columns.length > ix.columns.length && columnsKey(other.columns.slice(0, ix.columns.length)) === key && coversLike(other)) : undefined
       if (covering && !ix.unique) issues.push({ kind: 'redundant_index', severity: 'info', ...at, column: ix.columns.join(', '), detail: covering.name, fixable: true })
     })
 
@@ -222,7 +258,12 @@ export function fixModelIssue(tables: TableInfo[], issue: ModelIssue): TableInfo
   let next: TableInfo
   if (issue.kind === 'duplicate_index' || issue.kind === 'redundant_index') {
     // The later of two equal indexes goes; of a covered one, the covered one.
-    const last = table.indexes.map((ix, i) => (!ix.primary && same(ix.columns) && (issue.kind === 'duplicate_index' || !ix.unique) ? i : -1)).filter((i) => i !== -1).pop()
+    // (Only one the check calls the same: a partial or other kind of index on those columns stays.)
+    const repeats = (ix: (typeof table.indexes)[number], i: number) =>
+      issue.kind === 'duplicate_index'
+        ? (issue.detail === 'primary key' && indexShape(ix).plain) || table.indexes.slice(0, i).some((other) => !other.primary && same(other.columns) && sameIndex(ix, other))
+        : !ix.unique && indexShape(ix).plain
+    const last = table.indexes.map((ix, i) => (!ix.primary && same(ix.columns) && repeats(ix, i) ? i : -1)).filter((i) => i !== -1).pop()
     if (last === undefined) return null
     next = { ...table, indexes: table.indexes.filter((_, i) => i !== last) }
   } else if (issue.kind === 'fk_without_index') {

@@ -49,6 +49,27 @@ describe('DDL import', () => {
     expect([t('items').schema, t('items').columns.map((c) => c.dataType), t('items').columns[0]!.isIdentity]).toEqual([undefined, ['int', 'tinyint(1)', 'text', 'varchar(50)'], true])
   })
 
+  it('reads tables typed by a user type of a schema of their own (pg_dump; review finding)', async () => {
+    const { tables, skipped } = await tablesFromDdl(`
+      CREATE SCHEMA app;
+      CREATE DOMAIN app.email AS text CHECK (VALUE LIKE '%@%');
+      CREATE TYPE app.order_status AS ENUM ('new', 'paid');
+      CREATE TABLE app.orders (id integer PRIMARY KEY, status app.order_status NOT NULL, contact app.email);
+    `)
+    expect(skipped).toEqual([])
+    const orders = tables.find((t) => t.name === 'orders')!
+    expect(orders.schema).toBe('app')
+    expect(orders.columns.map((c) => [c.name, c.dataType])).toEqual([['id', 'integer'], ['status', 'app.order_status'], ['contact', 'app.email']])
+  })
+
+  it('keeps a long numeric default whole, and gives a computed column no made-up type (review findings)', async () => {
+    const my = await tablesFromDdl("CREATE TABLE `caps` (`id` int NOT NULL, `big` bigint unsigned DEFAULT '18446744073709551615', `price` decimal(10,2) DEFAULT '0.00', PRIMARY KEY (`id`));")
+    expect(my.tables[0]!.columns.slice(1).map((c) => c.defaultValue)).toEqual(['18446744073709551615', '0'])
+    const ms = await tablesFromDdl('CREATE TABLE [dbo].[lines] ([Qty] [int] NOT NULL, [Price] [decimal](10, 2) NOT NULL, [Total] AS ([Qty]*[Price]))\nGO')
+    const total = ms.tables.find((t) => t.name === 'lines')!.columns.find((c) => c.name.toLowerCase() === 'total')
+    expect(total?.dataType ?? '').not.toMatch(/^as/i)
+  })
+
   it('reads comments inside a CREATE TABLE body (review finding)', async () => {
     const { tables, skipped } = await tablesFromDdl(`
       CREATE TABLE customers (id int PRIMARY KEY);

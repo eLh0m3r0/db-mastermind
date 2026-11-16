@@ -1,6 +1,6 @@
 import { checkCondition } from './ddl.js'
 import { qualify } from './dialect.js'
-import { isLockTimeout, ReadOnlyViolationError, RowLockedError, type DatabaseDriver, type StreamBatch, type StreamOptions } from './driver.js'
+import { checkAffected, isLockTimeout, QueryCancelledError, ReadOnlyViolationError, TooManyRowsError, RowLockedError, type DatabaseDriver, type StreamBatch, type StreamOptions } from './driver.js'
 import { BigQueryDriver } from './drivers/bigquery.js'
 import { TrinoDriver } from './drivers/trino.js'
 import { ClickHouseDriver } from './drivers/clickhouse.js'
@@ -16,7 +16,7 @@ import { bindParameters, extractParameters } from './parameters.js'
 import { KnowledgeBase, relationToForeignKey } from './knowledge.js'
 import { findTable } from './schema-utils.js'
 import { profileQueries, type ColumnProfile } from './profile.js'
-import { classifyStatement, fitsReadOnlyTransaction, isReadOnlyCondition, isReadOnlyScript, opensTransaction, splitStatements, stripLiterals } from './sql-split.js'
+import { classifyStatement, fitsReadOnlyTransaction, isCopyFromStdin, isReadOnlyCondition, isReadOnlyScript, opensTransaction, splitStatements, stripLiterals } from './sql-split.js'
 import type { CheckInfo, ConnectionConfig, QueryResult, SchemaSnapshot, ServerInfo, StatementOutcome, TableInfo, TablePage, TableRef, TransactionState } from './types.js'
 
 export function createDriver(config: ConnectionConfig): DatabaseDriver {
@@ -57,12 +57,6 @@ const SESSION_LOCK_TIMEOUT: Partial<Record<ConnectionConfig['driver'], { read: s
   mariadb: { read: 'SELECT @@SESSION.innodb_lock_wait_timeout', set: `SET SESSION innodb_lock_wait_timeout = ${GRID_LOCK_TIMEOUT_MS / 1000}`, restore: (p) => `SET SESSION innodb_lock_wait_timeout = ${digits(p) ?? 'DEFAULT'}` },
   mssql: { read: 'SELECT @@LOCK_TIMEOUT', set: `SET LOCK_TIMEOUT ${GRID_LOCK_TIMEOUT_MS}`, restore: (p) => `SET LOCK_TIMEOUT ${digits(p) ?? -1}` },
 }
-
-/**
- * canonicalChecks' own probe script, which writes only a temporary table it drops again: it may run on a read-only
- * connection. Not part of RunScriptOptions, so nothing outside this file can set it.
- */
-const PROBE = Symbol('check probe')
 
 export interface RunScriptOptions {
   session?: string
@@ -138,7 +132,7 @@ function refusePsqlOnly(sql: string): void {
     const hint = /^d[a-zA-Z+]*$/.test(meta[1]!) ? ' The explorer shows tables, columns, indexes and definitions (right-click → Definition).' : ''
     throw new Error(`\\${meta[1]} is a psql command, not SQL: the server can't run it.${hint}`)
   }
-  if (/^COPY\b[\s\S]*\bFROM\s+STDIN\b/i.test(sql)) {
+  if (isCopyFromStdin(sql)) {
     throw new Error('COPY … FROM STDIN needs psql to send the data. Use Import data (CSV / Excel) on the table, or INSERT statements.')
   }
 }
@@ -252,9 +246,8 @@ export class DatabaseService {
     const d = entry.driver.dialect
     const out: ({ definition: string; current?: string } | { missingColumn: true } | null)[] = []
     if (driver !== 'postgres' && driver !== 'mysql' && driver !== 'mssql') return items.map(() => null)
-    // A read-only MySQL session refuses even temporary tables (and making it writable for a moment could leak a
-    // writable connection back into the pool).
-    if (driver === 'mysql' && entry.config.readOnly) return items.map(() => null)
+    // The probe writes a temporary table: a read-only connection never writes, so it can't say.
+    if (entry.config.readOnly) return items.map(() => null)
     for (const { table, check } of items) {
       try {
         const live = await this.findTable(id, table)
@@ -269,12 +262,6 @@ export class DatabaseService {
         }
         const source = `${live.schema ? `${d.quoteIdent(live.schema)}.` : ''}${d.quoteIdent(live.name)}`
         const model = checkCondition(check, live.columns, d)
-        // On a read-only connection (dbm diff) the probe still writes its temporary table, so the model's condition
-        // must be only a condition: nothing of it may run as a statement of its own.
-        if (entry.config.readOnly && !isReadOnlyCondition(model, driver)) {
-          out.push(null)
-          continue
-        }
         // Names nobody else has: check names are per schema in MySQL and SQL Server, also for temporary tables.
         const tag = Math.random().toString(36).slice(2, 10)
         const [m, c] = [`dbm_m_${tag}`, `dbm_c_${tag}`]
@@ -282,11 +269,11 @@ export class DatabaseService {
         const add = (name: string, condition: string) => `ALTER TABLE ${probe} ADD CONSTRAINT ${name} CHECK (${condition})`
         const script =
           driver === 'postgres'
-            ? [entry.config.readOnly ? 'BEGIN READ WRITE' : 'BEGIN', `CREATE TEMP TABLE ${probe} (LIKE ${source}) ON COMMIT DROP`, add(m, model), ...(twin ? [add(c, twin.expression)] : []), `SELECT conname, pg_get_constraintdef(oid, true) FROM pg_constraint WHERE conrelid = '${probe}'::regclass AND conname IN ('${m}', '${c}')`, 'ROLLBACK']
+            ? ['BEGIN', `CREATE TEMP TABLE ${probe} (LIKE ${source}) ON COMMIT DROP`, add(m, model), ...(twin ? [add(c, twin.expression)] : []), `SELECT conname, pg_get_constraintdef(oid, true) FROM pg_constraint WHERE conrelid = '${probe}'::regclass AND conname IN ('${m}', '${c}')`, 'ROLLBACK']
             : driver === 'mysql'
               ? [`CREATE TEMPORARY TABLE ${probe} LIKE ${source}`, add(m, model), ...(twin ? [add(c, twin.expression)] : []), `SHOW CREATE TABLE ${probe}`, `DROP TEMPORARY TABLE IF EXISTS ${probe}`]
               : [`SELECT TOP 0 * INTO ${probe} FROM ${source}`, add(m, model), ...(twin ? [add(c, twin.expression)] : []), `SELECT name, definition FROM tempdb.sys.check_constraints WHERE name IN ('${m}', '${c}')`, `DROP TABLE ${probe}`]
-        const outcomes = await this.runScript(id, script.join(';\n'), { continueOnError: true, [PROBE]: true } as RunScriptOptions)
+        const outcomes = await this.runScript(id, script.join(';\n'), { continueOnError: true })
         // The model's condition is the second statement after the copy; the last is the clean-up, which always runs.
         // (SQL Server takes the script as one batch: one outcome with a result set per statement that has one.)
         const modelFailed = driver === 'mssql' ? outcomes.find((o) => o.error)?.error : outcomes[driver === 'postgres' ? 2 : 1]?.error
@@ -332,11 +319,10 @@ export class DatabaseService {
   /** Splits and runs a script statement by statement, collecting per-statement outcomes. */
   async runScript(id: string, script: string, options: RunScriptOptions = {}): Promise<StatementOutcome[]> {
     const entry = this.get(id)
-    const probe = (options as { [PROBE]?: true })[PROBE] === true
     // ApplicationIntent=ReadOnly only binds on read replicas, and T-SQL needs no semicolons (`SELECT 1 DELETE …`):
     // a read-only SQL Server connection also runs everything in a transaction that is rolled back.
     // (`readOnly: false` is the guarded inner run.)
-    if (entry.config.readOnly && entry.config.driver === 'mssql' && options.readOnly === undefined && !probe) {
+    if (entry.config.readOnly && entry.config.driver === 'mssql' && options.readOnly === undefined) {
       // Same per-statement error as other read-only connections, without running any of the script.
       if (!fitsReadOnlyTransaction(script, entry.config.driver)) return [{ sql: script, start: 0, end: script.length, error: describeError(new ReadOnlyViolationError()), durationMs: 0 }]
       options = { ...options, readOnly: true }
@@ -377,7 +363,7 @@ export class DatabaseService {
         const started = Date.now()
         try {
           if (entry.config.driver === 'postgres') refusePsqlOnly(statement.text)
-          if (!probe) this.assertAllowed(entry, statement.text)
+          this.assertAllowed(entry, statement.text)
           let text = statement.text
           let params = statements.length === 1 ? options.params : undefined
           if (options.parameterValues && extractParameters(text, entry.config.driver).length) {
@@ -675,7 +661,8 @@ export class DatabaseService {
     if (state === 'failed') throw new Error('The tab’s transaction failed: roll it back first.')
     if (state === 'none') await exec(entry.driver.dialect.begin)
     // One save stays all or nothing inside the longer transaction (DuckDB has no savepoints; an error aborts it anyway).
-    const savepoint = driver === 'duckdb' ? undefined : driver === 'mssql' ? ['SAVE TRANSACTION dbm_grid', 'ROLLBACK TRANSACTION dbm_grid'] : ['SAVEPOINT dbm_grid', 'ROLLBACK TO SAVEPOINT dbm_grid']
+    // (Redshift has no savepoints either.)
+    const savepoint = driver === 'duckdb' || entry.serverInfo?.product === 'Redshift' ? undefined : driver === 'mssql' ? ['SAVE TRANSACTION dbm_grid', 'ROLLBACK TRANSACTION dbm_grid'] : ['SAVEPOINT dbm_grid', 'ROLLBACK TO SAVEPOINT dbm_grid']
     const lock = this.lockTimeoutApplies(entry) ? SESSION_LOCK_TIMEOUT[driver] : undefined
     // The user's own lock timeout in this session comes back afterwards (not the server's default).
     const prior = lock ? await exec(lock.read).then((r) => r[0]?.rows[0]?.[0] ?? null, () => null) : null
@@ -687,11 +674,17 @@ export class DatabaseService {
         const rows = driver === 'oracle' ? lockRowsFirst(s, GRID_LOCK_TIMEOUT_MS / 1000) : undefined
         if (rows) await exec(rows.sql, rows.params)
         const [r] = await exec(s.sql, s.params)
-        affected.push(r?.affectedRows ?? r?.rowCount ?? 0)
+        affected.push(checkAffected(s, r?.affectedRows ?? r?.rowCount ?? 0))
       }
       return affected
     } catch (err) {
       if (savepoint) await exec(savepoint[1]!).catch(() => {})
+      // DuckDB and Redshift have no savepoint to undo the rows just changed: a failing statement aborts the tab's
+      // transaction, so they can't be committed; only Roll back ends it.
+      if (!savepoint && err instanceof TooManyRowsError) {
+        await exec(driver === 'duckdb' ? "SELECT error('several rows changed')" : 'SELECT 1 / 0').catch(() => {})
+        throw new TooManyRowsError(err.rows, 'Roll back the tab’s transaction: it can no longer be committed.')
+      }
       if (!isLockTimeout(err)) throw err
       const others = (await this.openEditorTransactions(id)).filter((s) => s !== session)
       throw new RowLockedError(
@@ -728,6 +721,42 @@ export class DatabaseService {
     const entry = this.get(id)
     if (entry.config.readOnly) throw new ReadOnlyViolationError()
     return entry.driver.transaction(statements)
+  }
+
+  /**
+   * Runs batches of statements in one transaction on a session of its own (an import that streams its rows): the next
+   * batch is pulled only after the previous one ran, so one batch is held in memory. An error or an abort rolls
+   * everything back. Returns the rows the statements reported.
+   */
+  async transactionBatches(id: string, batches: AsyncIterable<BuiltQuery[]>, options: { signal?: AbortSignal } = {}): Promise<number> {
+    const entry = this.get(id)
+    if (entry.config.readOnly) throw new ReadOnlyViolationError()
+    const { driver } = entry
+    const session = `import-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const aborted = () => {
+      if (options.signal?.aborted) throw new QueryCancelledError()
+    }
+    let rows = 0
+    try {
+      aborted()
+      // (ClickHouse has no transactions: its dialect's begin and commit are empty.)
+      if (driver.dialect.begin) await driver.execute(driver.dialect.begin, { session })
+      for await (const batch of batches) {
+        aborted()
+        for (const q of batch) {
+          const results = await driver.execute(q.sql, { params: q.params, session, signal: options.signal })
+          rows += results.reduce((n, r) => n + (r.affectedRows ?? 0), 0)
+        }
+      }
+      aborted()
+      if (driver.dialect.commit) await driver.execute(driver.dialect.commit, { session })
+      return rows
+    } catch (err) {
+      if (driver.dialect.rollback) await driver.execute(driver.dialect.rollback, { session }).catch(() => {})
+      throw err
+    } finally {
+      await driver.releaseSession(session).catch(() => {})
+    }
   }
 
   qualifiedName(id: string, ref: TableRef): string {

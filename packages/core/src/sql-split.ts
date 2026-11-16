@@ -40,7 +40,7 @@ export function splitStatements(
     const text = raw.trim()
     if (text && !isOnlyComments(text)) {
       out.push({ text, start: stmtStart + leading, end: endIncl })
-      if (driver === 'postgres' && /^COPY\b[\s\S]*\bFROM\s+STDIN\b/i.test(text)) copyData = true
+      if (driver === 'postgres' && isCopyFromStdin(text)) copyData = true
     }
     stmtStart = endIncl
     blockDepth = 0
@@ -71,6 +71,11 @@ export function splitStatements(
     // psql meta-commands (\d users, \timing) end at the end of their line, without a semicolon.
     if (driver === 'postgres' && ch === '\\' && atLineStart(i) && isOnlyComments(script.slice(stmtStart, i).trim() || '--')) {
       const lineEnd = script.indexOf('\n', i)
+      // pg_dump (current minor releases) wraps a plain dump in \restrict <token> … \unrestrict <token>: nothing to run.
+      if (/^\\(un)?restrict\b/.test(script.slice(i, i + 12))) {
+        i = stmtStart = lineEnd === -1 ? n : lineEnd + 1
+        continue
+      }
       stmtStart = i
       push(lineEnd === -1 ? n : lineEnd, lineEnd === -1 ? n : lineEnd + 1)
       i = stmtStart
@@ -208,6 +213,17 @@ export function splitStatements(
   }
   push(n, n)
   return out
+}
+
+const NAME_PART = String.raw`(?:"(?:[^"]|"")+"|[\p{L}_][\p{L}\p{N}_$]*)`
+
+/**
+ * PostgreSQL `COPY table [(columns)] FROM STDIN`, whose data lines follow it (also after the comments pg_dump writes
+ * before it). Not `COPY (query) TO …`, nor a table or a literal that happens to say stdin.
+ */
+export function isCopyFromStdin(text: string): boolean {
+  const body = text.replace(/^(?:\s+|--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)*/, '')
+  return new RegExp(String.raw`^COPY\s+${NAME_PART}(?:\s*\.\s*${NAME_PART})*(?:\s*\([^)]*\))?\s+FROM\s+STDIN\b`, 'iu').test(body)
 }
 
 function isOnlyComments(text: string): boolean {

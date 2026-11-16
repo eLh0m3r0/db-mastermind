@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { closestName, inspectSql, mentionsTable, objectAt, readSql, type SchemaSnapshot, type TableInfo } from '../src/index.js'
+import { closestName, createdTables, inspectSql, mentionsTable, objectAt, readSql, type SchemaSnapshot, type TableInfo } from '../src/index.js'
 
 const col = (name: string) => ({ name, dataType: 'text', ordinal: 0, nullable: true, isPrimaryKey: false, isIdentity: false })
 const table = (schema: string, name: string, columns: string[], type: TableInfo['type'] = 'table'): TableInfo => ({ schema, name, type, columns: columns.map(col), primaryKey: [], foreignKeys: [], indexes: [] })
@@ -78,6 +78,67 @@ describe('inspectSql: what is never underlined', () => {
     expect(inspectSql('SELECT * FROM nope', 'postgres', undefined)).toEqual([])
     expect(inspectSql('SELECT * FROM nope; DELETE FROM nope', 'trino', snapshot).map((w) => w.kind)).toEqual(['no-where'])
     expect(inspectSql('SELECT * FROM nope', 'oracle', snapshot)).toEqual([])
+  })
+})
+
+describe('inspectSql: never cry wolf (review findings)', () => {
+  it('reads a name after FROM as a table only where a statement reads tables', () => {
+    expect(warn('REVOKE SELECT ON shop.orders FROM alice')).toEqual([])
+    expect(warn('GRANT SELECT ON shop.orders TO alice')).toEqual([])
+    expect(warn('COPY shop.orders FROM STDIN')).toEqual([])
+    expect(warn('FETCH NEXT FROM cur')).toEqual([])
+    expect(warn('SHOW TABLES FROM shop', 'mysql')).toEqual([])
+    // A query inside them is still read.
+    expect(warn('COPY (SELECT * FROM shop.oders) TO STDOUT')).toEqual(['table shop.oders → orders'])
+  })
+
+  it('the word after UPDATE is the table only past TOP, IGNORE, OR REPLACE; UPDATE STATISTICS is no UPDATE', () => {
+    expect(warn('UPDATE TOP (100) shop.orders SET status = 1 WHERE id > 1', 'mssql')).toEqual([])
+    expect(warn('UPDATE STATISTICS shop.orders', 'mssql')).toEqual([])
+    expect(warn('UPDATE IGNORE shop.orders SET status = 1 WHERE id = 1', 'mysql')).toEqual([])
+    expect(warn('UPDATE OR REPLACE shop.orders SET status = 1 WHERE id = 1')).toEqual([])
+    expect(warn('UPDATE TOP (5) shop.oders SET status = 1 WHERE id = 1', 'mssql')).toEqual(['table shop.oders → orders'])
+    expect(warn('SELECT * FROM tempdb..sysobjects', 'mssql')).toEqual([])
+  })
+
+  it('partitions, sequences and SQL Server synonyms are names the snapshot knows', () => {
+    const more: SchemaSnapshot = {
+      ...snapshot,
+      tables: [...snapshot.tables, { ...table('shop', 'events', ['id']), partitions: [{ schema: 'shop', name: 'events_2024', bound: 'DEFAULT', partitions: [{ schema: 'shop', name: 'events_2024_q1', bound: 'DEFAULT' }] }] }],
+      objects: [{ schema: 'shop', name: 'invoice_no', kind: 'sequence', definition: '' }],
+      otherNames: [{ schema: 'shop', name: 'customer_alias' }],
+    }
+    const w = (sql: string) => inspectSql(sql, 'postgres', more).map((x) => x.kind)
+    expect(w('SELECT * FROM shop.events_2024')).toEqual([])
+    expect(w('SELECT * FROM events_2024_q1')).toEqual([])
+    expect(w('SELECT last_value FROM shop.invoice_no')).toEqual([])
+    expect(w('SELECT * FROM shop.customer_alias')).toEqual([])
+    expect(w('SELECT * FROM shop.events_2025')).toEqual(['unknown-table'])
+  })
+
+  it('quoted column names are case-sensitive only in PostgreSQL; system columns are columns', () => {
+    const mixed: SchemaSnapshot = { ...snapshot, tables: [table('shop', 'orders', ['OrderID', 'total'])] }
+    const w = (sql: string, driver: 'postgres' | 'mssql' | 'mysql' | 'sqlite' | 'duckdb') => inspectSql(sql, driver, mixed).map((x) => x.kind)
+    expect(w('SELECT o.[OrderId] FROM shop.orders o', 'mssql')).toEqual([])
+    expect(w('SELECT o.`Total` FROM shop.orders o', 'mysql')).toEqual([])
+    expect(w('SELECT o."Total" FROM shop.orders o', 'postgres')).toEqual(['unknown-column'])
+    expect(w('SELECT o.ctid, o.xmin FROM shop.orders o', 'postgres')).toEqual([])
+    expect(w('SELECT t.rowid FROM shop.orders t', 'sqlite')).toEqual([])
+    expect(w('SELECT t.rowid FROM shop.orders t', 'duckdb')).toEqual([])
+    expect(w('SELECT o.ctid FROM shop.orders o', 'mysql')).toEqual(['unknown-column'])
+  })
+
+  it('temporary tables made by earlier runs of the session are known', () => {
+    const made = createdTables('CREATE TEMP TABLE scratch AS SELECT 1 AS n; WITH x AS (SELECT 1) SELECT * FROM x', 'postgres')
+    expect(made).toEqual(['scratch'])
+    expect(inspectSql('SELECT * FROM scratch', 'postgres', snapshot)).toHaveLength(1)
+    expect(inspectSql('SELECT * FROM scratch', 'postgres', snapshot, { sessionTables: made })).toEqual([])
+  })
+
+  it('⌘-click offers no definition for an aggregate', () => {
+    const withAggregate: SchemaSnapshot = { ...snapshot, routines: [{ schema: 'shop', name: 'median', kind: 'function', editorOnly: true, aggregate: true }] }
+    const sql = 'SELECT shop.median(total) FROM shop.orders'
+    expect(objectAt(sql, sql.indexOf('median') + 1, 'postgres', withAggregate)).toBeUndefined()
   })
 })
 

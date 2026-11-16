@@ -1,5 +1,5 @@
 import { trinoDialect } from '../dialect.js'
-import { elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
+import { checkAffected, elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import type { CellValue, ConnectionConfig, QueryOptions, QueryResult, ResultField, SchemaSnapshot, ServerInfo, TableInfo } from '../types.js'
 import { normalizeValue } from '../values.js'
@@ -227,7 +227,7 @@ export class TrinoDriver implements DatabaseDriver {
     const affected: number[] = []
     for (const s of statements) {
       const [r] = await this.execute(s.sql, { params: s.params })
-      affected.push(r?.affectedRows ?? 0)
+      affected.push(checkAffected(s, r?.affectedRows ?? 0))
     }
     return affected
   }
@@ -250,13 +250,15 @@ export class TrinoDriver implements DatabaseDriver {
     if (!this.catalog) throw new Error('Enter a catalog (the connection\'s "Catalog" field) to browse its schemas')
     const info = `${this.dialect.quoteIdent(this.catalog)}.information_schema`
     const wanted = options.schemas?.length ? ` AND table_schema IN (${options.schemas.map(trinoLiteral).join(', ')})` : ''
-    const [schemaRows, tableRows, columnRows] = await Promise.all([
+    const [schemaRows, tableRows, columnRows, viewRows] = await Promise.all([
       this.rows(`SELECT schema_name FROM ${info}.schemata WHERE schema_name <> 'information_schema' ORDER BY schema_name`),
       this.rows(`SELECT table_schema, table_name, table_type FROM ${info}.tables WHERE table_schema <> 'information_schema'${wanted}`),
       this.rows(
         `SELECT table_schema, table_name, column_name, ordinal_position, data_type, is_nullable, column_default FROM ${info}.columns
           WHERE table_schema <> 'information_schema'${wanted} ORDER BY table_schema, table_name, ordinal_position`,
       ),
+      // A view's query, for Definition (SQL); a connector without the table gives none.
+      this.rows(`SELECT table_schema, table_name, view_definition FROM ${info}.views WHERE table_schema <> 'information_schema'${wanted}`).catch(() => []),
     ])
     const tables = new Map<string, TableInfo>()
     const key = (s: unknown, n: unknown) => `${String(s)}.${String(n)}`
@@ -271,6 +273,10 @@ export class TrinoDriver implements DatabaseDriver {
         foreignKeys: [],
         indexes: [],
       })
+    }
+    for (const v of viewRows) {
+      const t = tables.get(key(v.table_schema, v.table_name))
+      if (t && v.view_definition) t.definition = String(v.view_definition)
     }
     for (const c of columnRows) {
       const t = tables.get(key(c.table_schema, c.table_name))

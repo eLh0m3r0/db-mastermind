@@ -7,7 +7,7 @@ import { readPostgresObjects } from './postgres-objects.js'
 import { noTlsOnServer, tlsOptions } from '../tls.js'
 import { classifyStatement } from '../sql-split.js'
 import {
-  ConnectionLostError,
+  checkAffected, ConnectionLostError,
   elapsed,
   isShortLivedSession,
   QueryCancelledError,
@@ -83,6 +83,7 @@ export class PostgresDriver implements DatabaseDriver {
     try {
       await this.pool.query('SELECT 1')
     } catch (err) {
+      if (this.clientOptions.options && /unsupported startup parameter:? options/i.test(String((err as Error)?.message))) throw pgBouncerOptions(err)
       if (this.config.ssl?.mode !== 'prefer' || !noTlsOnServer(err)) throw err
       await this.pool.end().catch(() => {})
       this.clientOptions = clientOptions(false)
@@ -171,6 +172,8 @@ export class PostgresDriver implements DatabaseDriver {
       .finally(() => void client.end().catch(() => {}))
   }
 
+  private opening = new Map<string, Promise<pg.PoolClient>>()
+
   /** Sticky client per editor session so BEGIN … COMMIT across executions works. */
   private async acquire(
     session?: string,
@@ -183,15 +186,23 @@ export class PostgresDriver implements DatabaseDriver {
     this.transactions.check(session)
     let client = this.sessions.get(session)
     if (!client) {
-      client = isShortLivedSession(session) ? await this.checkout() : await this.sessionClient()
-      const c = client
-      c.on('error', () => {
-        if (this.sessions.get(session) !== c) return
-        this.sessions.delete(session)
-        this.transactions.dropped(session)
-        c.release(true)
-      })
-      this.sessions.set(session, client)
+      // Two first statements of a session at once share the one connection being opened (never two, one orphaned).
+      let opening = this.opening.get(session)
+      if (!opening) {
+        opening = (async () => {
+          const c = isShortLivedSession(session) ? await this.checkout() : await this.sessionClient()
+          c.on('error', () => {
+            if (this.sessions.get(session) !== c) return
+            this.sessions.delete(session)
+            this.transactions.dropped(session)
+            c.release(true)
+          })
+          this.sessions.set(session, c)
+          return c
+        })().finally(() => this.opening.delete(session))
+        this.opening.set(session, opening)
+      }
+      client = await opening
     }
     const c = client
     return {
@@ -371,8 +382,10 @@ export class PostgresDriver implements DatabaseDriver {
   }
 
   /** Types created after connecting (a new enum, a composite) are looked up the first time a result has one. */
+  private unknownTypes = new Set<number>()
+
   private async learnTypes(results: pg.QueryArrayResult[]): Promise<void> {
-    const unknown = [...new Set(results.flatMap((r) => (r.fields ?? []).map((f) => f.dataTypeID)).filter((oid) => oid && !this.typeNames.has(oid)))]
+    const unknown = [...new Set(results.flatMap((r) => (r.fields ?? []).map((f) => f.dataTypeID)).filter((oid) => oid && !this.typeNames.has(oid) && !this.unknownTypes.has(oid)))]
     if (!unknown.length) return
     try {
       const r = await this.activePool.query<{ oid: number; name: string }>({
@@ -381,6 +394,8 @@ export class PostgresDriver implements DatabaseDriver {
         types: pg.types,
       })
       for (const t of r.rows) this.typeNames.set(Number(t.oid), t.name)
+      // (A type pg_type doesn't have is not asked for again with every result.)
+      for (const oid of unknown) if (!this.typeNames.has(oid)) this.unknownTypes.add(oid)
     } catch {
       // The column just shows no type, as before.
     }
@@ -414,7 +429,7 @@ export class PostgresDriver implements DatabaseDriver {
       const affected: number[] = []
       for (const s of statements) {
         const r = await client.query(s.sql, s.params)
-        affected.push(r.rowCount ?? 0)
+        affected.push(checkAffected(s, r.rowCount ?? 0))
       }
       await client.query('COMMIT')
       return affected
@@ -447,7 +462,10 @@ export class PostgresDriver implements DatabaseDriver {
     return r.rows.map((x) => x.datname)
   }
 
+  private product?: Promise<string | undefined>
+
   async introspect(options: IntrospectOptions = {}): Promise<SchemaSnapshot> {
+    const product = await (this.product ??= this.serverInfo().then((i) => i.product, () => undefined))
     const active = this.activePool
     // Catalog queries use pg's default parsers (text[] → string[]), unlike user queries.
     const pool = {
@@ -542,11 +560,12 @@ export class PostgresDriver implements DatabaseDriver {
         primary: boolean
         method: string
         is_constraint: boolean
+        not_enforced: boolean
         columns: string[]
         definition: string | null
       }>(
         `SELECT n.nspname AS schema, t.relname AS table, i.relname AS name, ix.indisunique AS unique,
-                ix.indisprimary AS primary, am.amname AS method,
+                ix.indisprimary AS primary, am.amname AS method, NOT (ix.indisvalid AND ix.indimmediate) AS not_enforced,
                 EXISTS (SELECT 1 FROM pg_constraint pc WHERE pc.conindid = ix.indexrelid AND pc.contype IN ('u','x')) AS is_constraint,
                 ARRAY(SELECT pg_get_indexdef(ix.indexrelid, k, true) FROM generate_series(1, ix.indnkeyatts) k ORDER BY k)::text[] AS columns,
                 pg_get_indexdef(ix.indexrelid) AS definition
@@ -642,7 +661,9 @@ export class PostgresDriver implements DatabaseDriver {
         primary: ix.primary,
         method: ix.method,
         constraint: ix.is_constraint,
-        ...(ix.definition ? { definition: ix.definition, definitionDriver: 'postgres' as const } : {}),
+        ...(ix.not_enforced && ix.unique ? { notEnforced: true } : {}),
+        // CockroachDB's text (STORING, hash-sharded) is no PostgreSQL CREATE INDEX: kept, but never run elsewhere.
+        ...(ix.definition ? { definition: ix.definition, ...(product === 'PostgreSQL' ? { definitionDriver: 'postgres' as const } : {}) } : {}),
       })
     }
     // Check constraints, as conditions without their CHECK ( … ) wrapping. A catalog that can't tell leaves
@@ -680,6 +701,7 @@ export class PostgresDriver implements DatabaseDriver {
       returnType: r.result,
       arguments: r.args,
       ...(r.extension || r.kind === 'a' || r.kind === 'w' ? { editorOnly: true } : {}),
+      ...(r.kind === 'a' ? { aggregate: true } : {}),
     }))
 
     return {
@@ -692,6 +714,16 @@ export class PostgresDriver implements DatabaseDriver {
       capturedAt: new Date().toISOString(),
     }
   }
+}
+
+/** PgBouncer refuses the `options` startup parameter that carries the default schema, the timeout and read-only. */
+export function pgBouncerOptions(err: unknown): Error {
+  return Object.assign(
+    new Error(
+      `${(err as Error)?.message ?? String(err)}. This server (likely PgBouncer) doesn't take session settings when connecting: clear the default schema and the statement timeout of this connection, or add "ignore_startup_parameters = options" (a read-only connection needs it too) to PgBouncer's configuration.`,
+    ),
+    { code: (err as { code?: string })?.code },
+  )
 }
 
 /**

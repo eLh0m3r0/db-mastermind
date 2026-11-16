@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseConnectionString, parseDataGrip } from '../src/index.js'
-import { startupOptions } from '../src/drivers/postgres.js'
+import { pgBouncerOptions, startupOptions } from '../src/drivers/postgres.js'
 
 describe('PostgreSQL default schema and session settings', () => {
   it('reads currentSchema (JDBC) and options=-c search_path from URLs', () => {
@@ -14,6 +14,12 @@ describe('PostgreSQL default schema and session settings', () => {
     expect(startupOptions({ readOnly: true })).toBe('-c default_transaction_read_only=on')
     expect(startupOptions({ options: { searchPath: ' app , public ', statementTimeout: 30000 } })).toBe('-c search_path=app,public -c statement_timeout=30000')
     expect(startupOptions({ options: { searchPath: '"My Schema"' } })).toBe('-c search_path="My\\ Schema"')
+  })
+
+  it('says what to do when PgBouncer refuses them (review finding)', () => {
+    const err = pgBouncerOptions(Object.assign(new Error('unsupported startup parameter: options'), { code: '08P01' }))
+    expect(err.message).toMatch(/unsupported startup parameter: options\. .*clear the default schema and the statement timeout.*ignore_startup_parameters = options/)
+    expect((err as Error & { code?: string }).code).toBe('08P01')
   })
 })
 

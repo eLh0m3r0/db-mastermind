@@ -247,6 +247,10 @@ describe.skipIf(skip)('oracle', () => {
     expect(storage.tables.find((t) => t.name === 'ORDERS')!.totalBytes).toBeGreaterThan(0)
     const top = await topQueries(svc, 'ora')
     if (top.available) expect(top.queries.length).toBeGreaterThan(0)
-    else expect(top.reason).toMatch(/v\$sqlstats/)
+    else {
+      expect(top.reason).toMatch(/v\$sqlstats/)
+      // A pass on this path ran no query: say so in the output.
+      console.warn('NOT EXERCISED: Oracle top queries (the test user may not read v$sqlstats)')
+    }
   })
 })

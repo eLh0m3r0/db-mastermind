@@ -219,7 +219,7 @@ export async function copyTables(db: DatabaseService, sourceId: string, targetId
     }
   }
   try {
-    for (const [i, t] of duckReplace.entries()) await exec({ sql: `CREATE TEMP TABLE ${backup(i)} AS SELECT * FROM ${qualify(dialect, targetRef(t))}`, params: [] })
+    for (const [i, t] of duckReplace.entries()) await exec({ sql: `CREATE OR REPLACE TEMP TABLE ${backup(i)} AS SELECT * FROM ${qualify(dialect, targetRef(t))}`, params: [] })
     for (const t of [...duckReplace].reverse()) {
       await exec({ sql: `DELETE FROM ${qualify(dialect, targetRef(t))}`, params: [] })
       emptied++
@@ -276,6 +276,8 @@ export async function copyTables(db: DatabaseService, sourceId: string, targetId
     if (left && err instanceof Error) err.message += left
     throw err
   } finally {
+    // (Also when the session's connection is reused: an earlier copy's backups never linger.)
+    for (const i of duckReplace.keys()) await driver.execute(`DROP TABLE IF EXISTS ${backup(i)}`, { session }).catch(() => {})
     await driver.releaseSession(session).catch(() => {})
   }
   return out
