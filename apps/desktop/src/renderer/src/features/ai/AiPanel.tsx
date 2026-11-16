@@ -370,6 +370,7 @@ export function AiPanel() {
             void useChats.getState().open(connectionId, id)
             setShowHistory(false)
           }}
+          leaveCurrent={() => leaveChat(connectionId)}
           onDeletedCurrent={() => reset(connectionId)}
         />
       ) : (
@@ -517,7 +518,20 @@ function ToolCall({ part }: { part: Extract<Part, { type: 'tool' }> }) {
 }
 
 /** The connection's saved chats: open, rename, delete. */
-function ChatHistory({ connectionId, currentId, onOpen, onDeletedCurrent }: { connectionId: string; currentId?: string; onOpen: (id: string) => void; onDeletedCurrent: () => void }) {
+function ChatHistory({
+  connectionId,
+  currentId,
+  onOpen,
+  leaveCurrent,
+  onDeletedCurrent,
+}: {
+  connectionId: string
+  currentId?: string
+  onOpen: (id: string) => void
+  /** The current chat's open transaction is settled before it is deleted (false: the user kept it). */
+  leaveCurrent: () => Promise<boolean>
+  onDeletedCurrent: () => void
+}) {
   const t = useT()
   const [chats, setChats] = useState<AiChatSummary[] | null>(null)
   const [query, setQuery] = useState('')
@@ -545,6 +559,7 @@ function ChatHistory({ connectionId, currentId, onOpen, onDeletedCurrent }: { co
   }
   const remove = async (c: AiChatSummary) => {
     if (!(await confirmAction({ title: t('Delete this chat?'), message: c.title, confirmLabel: t('Delete'), danger: true }))) return
+    if (c.id === currentId && !(await leaveCurrent())) return
     await api.deleteAiChat(c.id)
     if (c.id === currentId) onDeletedCurrent()
     load()

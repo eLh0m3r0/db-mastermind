@@ -49,6 +49,7 @@ import {
   parseConnectionString,
   qualify,
   type ConnectionConfig,
+  type ServerInfo,
   DB_TOOLS,
   loadSqlTools,
   TOOLS_FOLDER,
@@ -83,8 +84,9 @@ import { buildMenu, setMenuContext } from './menu'
 import { forgetEditorSession, forgetEditorSessionsOf, openTransactions, trackEditorSession } from './transactions'
 import * as library from './library'
 import { getSettings, updateSettings } from './settings'
-import { readSqlFile, sqlFileTime, writeSqlFile } from './sql-files'
+import { checkSqlFilePath, readSqlFile, rememberChosenSqlFile, sqlFileTime, writeSqlFile } from './sql-files'
 import { withCommandPassword } from './password-command'
+import { assertReachable, singleFlight } from './connect-guard'
 import { dismissProposal, listProposals } from './connection-proposals'
 import { notifyProposals, proposalsDir } from './proposals-watch'
 
@@ -168,11 +170,17 @@ async function csvOptions(path: string): Promise<string> {
   }
 }
 
+/** Parallel requests on a closed connection (a restored tab's data, count and schema) open it once. */
+const connectOnce = singleFlight<ServerInfo>()
+
 export async function ensureConnected(id: string) {
   if (db.isOpen(id)) return
-  const serverInfo = await db.connect(await withCommandPassword(connections.getConnection(id)))
-  // The window may still show the connection as failed (it was unreachable when it tried).
-  for (const w of BrowserWindow.getAllWindows()) w.webContents.send('connection:opened', { connectionId: id, serverInfo })
+  await connectOnce(id, async () => {
+    const serverInfo = await db.connect(await withCommandPassword(connections.getConnection(id)))
+    // The window may still show the connection as failed (it was unreachable when it tried).
+    for (const w of BrowserWindow.getAllWindows()) w.webContents.send('connection:opened', { connectionId: id, serverInfo })
+    return serverInfo
+  })
 }
 
 const FORMAT_NAMES: Record<ExportFormat, string> = {
@@ -265,7 +273,7 @@ export const api: MastermindApi = {
     // The form's own command (the user typed it here); a team or managed connection's never runs.
     return db.test(await withCommandPassword(config as ConnectionConfig))
   },
-  async connect(id, password) {
+  async connect(id, password, options) {
     // Already open (another database's connection opened with a typed password): nothing to ask again.
     const open = !password && db.isOpen(id) ? db.serverInfo(id) : undefined
     if (open) {
@@ -273,14 +281,20 @@ export const api: MastermindApi = {
       return { serverInfo: open }
     }
     const stored = connections.getConnection(id)
+    // The background retry must not run a password manager (and its prompt) every minute while the server is away.
+    if (options?.quiet && !password && !stored.password && stored.passwordCommand?.trim()) await assertReachable(stored)
     // No saved password for PostgreSQL: use ~/.pgpass (PGPASSFILE) like psql and pgAdmin do.
     const pgpass = !password && !stored.password && stored.driver === 'postgres' ? readPgpassPassword(stored) : undefined
     // A typed password, then the connection's own password command, then ~/.pgpass (the same order everywhere).
-    const fromCommand = password ? stored : await withCommandPassword(stored)
-    const config = password ? { ...stored, password: password.value } : fromCommand.password ? fromCommand : pgpass ? { ...stored, password: pgpass } : stored
+    const openIt = async () => {
+      const fromCommand = password ? stored : await withCommandPassword(stored)
+      const config = password ? { ...stored, password: password.value } : fromCommand.password ? fromCommand : pgpass ? { ...stored, password: pgpass } : stored
+      return db.connect(config)
+    }
     let serverInfo
     try {
-      serverInfo = await db.connect(config)
+      // Without a typed password this joins a connect already under way (one command run, one driver).
+      serverInfo = password ? await openIt() : await connectOnce(id, openIt)
     } catch (err) {
       // No saved password (imports leave them out) or a wrong one: the window asks for it.
       // (Entra ID with the signed-in account has no password to ask for: its error says what to do.)
@@ -638,11 +652,12 @@ export const api: MastermindApi = {
       const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
       if (r.canceled || !r.filePaths[0]) return null
       path = r.filePaths[0]
+      rememberChosenSqlFile(path)
     }
-    return readSqlFile(path)
+    return readSqlFile(checkSqlFilePath(path))
   },
   async writeSqlFile(path, text, format, expectedMtimeMs, force) {
-    return writeSqlFile(path, text, format, { expectedMtimeMs, force })
+    return writeSqlFile(checkSqlFilePath(path), text, format, { expectedMtimeMs, force })
   },
   async saveSqlFileAs(text, name) {
     const window = BrowserWindow.getFocusedWindow()
@@ -650,6 +665,7 @@ export const api: MastermindApi = {
     const r = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
     if (r.canceled || !r.filePath) return null
     const format = { encoding: 'utf-8' as const, bom: false, eol: (process.platform === 'win32' ? '\r\n' : '\n') as '\n' | '\r\n' }
+    rememberChosenSqlFile(r.filePath)
     const mtimeMs = await writeSqlFile(r.filePath, text, format, { force: true })
     return { path: r.filePath, name: basename(r.filePath), format, mtimeMs }
   },

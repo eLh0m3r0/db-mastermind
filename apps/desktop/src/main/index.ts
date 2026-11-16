@@ -15,7 +15,7 @@ import { applyMcpHttp } from './mcp-http'
 import { isMcpMode, runMcpMode } from './mcp-mode'
 import { configureDataDir, dataPath, readJson, writeJson } from './storage'
 import { swapMacUpdateBeforeKill } from './mac-update'
-import { startUpdateChecks } from './updates'
+import { setBeforeInstall, startUpdateChecks } from './updates'
 import { hasEditorSessions, settleTransactionsBeforeQuit } from './transactions'
 
 configureDataDir()
@@ -182,6 +182,7 @@ function startApp() {
     })
   })
 
+  setBeforeInstall(settleTransactions)
   app.on('before-quit', (event) => {
     flushHistory()
     if (quitting) return

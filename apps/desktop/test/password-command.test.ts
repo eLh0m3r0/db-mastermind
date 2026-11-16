@@ -18,6 +18,12 @@ describe('password command', () => {
     await expect(runPasswordCommand(node('setTimeout(() => {}, 5000)'), 300)).rejects.toThrow(/did not finish/)
   })
 
+  it('never repeats the command line, which may carry a token', async () => {
+    const err = await runPasswordCommand(node("const token = 'X-Vault-Token-s.abc'; process.exit(4)")).catch((e: Error) => e)
+    expect(String(err)).toMatch(/exited with code 4/)
+    expect(String(err)).not.toContain('X-Vault-Token')
+  })
+
   it('a saved password wins; team and managed connections never run a command', async () => {
     const marker = node("console.log('ran')")
     expect((await withCommandPassword({ ...base, password: 'typed', passwordCommand: marker })).password).toBe('typed')

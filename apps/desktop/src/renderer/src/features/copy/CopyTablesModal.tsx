@@ -4,6 +4,7 @@ import type { CopiedTable, CopyProgress, TableRef } from '@dbmastermind/core/bro
 import { Button } from '@/components/ui/Button'
 import { Checkbox, Input, Segmented, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
+import { confirmAction } from '@/components/ui/ConfirmDialog'
 import { api, bridge } from '@/lib/api'
 import { tp, useT } from '@/lib/i18n'
 import { cn, errorMessage, formatCount, uid } from '@/lib/utils'
@@ -45,6 +46,8 @@ export function CopyTablesModal() {
     setError(null)
     setRun(null)
     setFilter('')
+    // Replace empties the target tables: never carried over from an earlier copy to another target.
+    setMode('append')
     // Opening the dialog is asking for these connections: a disconnected one connects again.
     if (!schema) void useConnections.getState().connect(sourceId).then(() => loadSchema(sourceId))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -74,12 +77,26 @@ export function CopyTablesModal() {
   }
 
   const start = async () => {
+    const chosenTables = tables.filter((x) => picked.has(key(x)))
+    if (mode === 'replace') {
+      const targetName = list.find((c) => c.id === targetId)?.name ?? ''
+      const ok = await confirmAction({
+        title: tp(chosenTables.length, { one: 'Replace the rows of {n} table in “{target}”?', many: 'Replace the rows of {n} tables in “{target}”?' }, { target: targetName }),
+        message: t('Every row these tables have in the target is deleted before the copy.'),
+        items: chosenTables.map((x) => (x.schema ? `${x.schema}.${x.name}` : x.name)),
+        warning: list.find((c) => c.id === targetId)?.environment === 'production' ? t('PRODUCTION connection') : undefined,
+        confirmLabel: t('Replace the rows'),
+        danger: true,
+        focusCancel: true,
+      })
+      if (!ok) return
+    }
     const id = uid('copy')
     setRun({ id })
     setError(null)
     setResult(null)
     try {
-      const chosen = tables.filter((x) => picked.has(key(x))).map((x) => ({ schema: x.schema, name: x.name }))
+      const chosen = chosenTables.map((x) => ({ schema: x.schema, name: x.name }))
       setResult(await api.copyTables({ sourceId, targetId, tables: chosen, targetSchema: targetSchema || undefined, mode, runId: id }))
       void loadSchema(targetId, true)
     } catch (err) {

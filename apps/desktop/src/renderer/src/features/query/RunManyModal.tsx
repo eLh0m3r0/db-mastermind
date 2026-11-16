@@ -1,24 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Square, TerminalSquare, XCircle } from 'lucide-react'
-import { isDangerousStatement, splitStatements, type StatementOutcome } from '@dbmastermind/core/browser'
+import { isDangerousStatement, splitStatements } from '@dbmastermind/core/browser'
 import { Button, IconButton } from '@/components/ui/Button'
 import { confirmAction } from '@/components/ui/ConfirmDialog'
 import { Checkbox, Input, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { api } from '@/lib/api'
 import { tp, useT } from '@/lib/i18n'
-import { cn, errorMessage, formatCount, uid } from '@/lib/utils'
+import { cn, formatCount, uid } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useUi } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
-
-interface Outcome {
-  connectionId: string
-  state: 'waiting' | 'running' | 'ok' | 'failed' | 'skipped'
-  rows?: number
-  changed?: number
-  error?: string
-}
+import { runOnConnections, type ManyRun, type Outcome } from './run-many'
 
 /**
  * One script on several connections (dev, test, prod; the tenant databases), one after another, each as the editor
@@ -35,14 +28,14 @@ export function RunManyModal() {
   const [filter, setFilter] = useState('')
   const [stopOnError, setStopOnError] = useState(true)
   const [outcomes, setOutcomes] = useState<Outcome[] | null>(null)
-  const [runId, setRunId] = useState<string | null>(null)
+  const [running, setRunning] = useState(false)
   const [stopped, setStopped] = useState(false)
   // Opened outside a query tab (menu, palette) it has no SQL yet: the script is typed here.
   const given = open ? modal.sql : ''
   const [typed, setTyped] = useState('')
   const sql = given.trim() ? given : typed
-  // (A ref: the loop reads it between connections.)
-  const stoppedRef = useState(() => ({ current: false }))[0]
+  // The run in progress: Stop and Close mark it, and a run started later has its own (the old loop may still wait).
+  const currentRun = useRef<ManyRun | null>(null)
   const origin = open ? list.find((c) => c.id === modal.connectionId) : undefined
 
   useEffect(() => {
@@ -55,11 +48,19 @@ export function RunManyModal() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
+  const manualPicked = list.filter((c) => picked.has(c.id) && c.manualCommit && !c.readOnly)
   const candidates = list.filter((c) => !filter || c.name.toLowerCase().includes(filter.toLowerCase()))
+  const stopRun = () => {
+    const run = currentRun.current
+    if (!run) return
+    run.stopped = true
+    if (run.runId) void api.cancelQuery(run.runId)
+  }
   const close = () => {
     // Closing stops the rest too, not only the connection that runs now.
-    stoppedRef.current = true
-    if (runId) void api.cancelQuery(runId)
+    stopRun()
+    currentRun.current = null
+    setRunning(false)
     setUi({ modal: undefined })
   }
 
@@ -78,40 +79,23 @@ export function RunManyModal() {
       if (!ok) return
     }
     setStopped(false)
-    stoppedRef.current = false
-    const rows: Outcome[] = targets.map((c) => ({ connectionId: c.id, state: 'waiting' }))
-    setOutcomes([...rows])
-    for (const [i, c] of targets.entries()) {
-      if (stoppedRef.current) {
-        rows[i] = { ...rows[i]!, state: 'skipped' }
-        continue
-      }
-      rows[i] = { ...rows[i]!, state: 'running' }
-      setOutcomes([...rows])
-      const id = uid('many')
-      setRunId(id)
-      try {
-        const result: StatementOutcome[] = await api.runQuery({ connectionId: c.id, sql, runId: id, maxRows: 1000 })
-        const failed = result.find((o) => o.error)
-        const sets = result.flatMap((o) => o.results ?? [])
-        rows[i] = {
-          connectionId: c.id,
-          state: failed ? 'failed' : 'ok',
-          rows: sets.filter((r) => r.fields.length).reduce((n, r) => n + r.rowCount, 0),
-          changed: sets.reduce((n, r) => n + (r.affectedRows ?? 0), 0),
-          error: failed?.error?.message,
-        }
-      } catch (err) {
-        rows[i] = { connectionId: c.id, state: 'failed', error: errorMessage(err) }
-      }
-      setOutcomes([...rows])
-      if (rows[i]!.state === 'failed' && stopOnError) stoppedRef.current = true
+    const run: ManyRun = { stopped: false }
+    currentRun.current = run
+    setRunning(true)
+    const mine = () => currentRun.current === run
+    await runOnConnections(
+      run,
+      targets,
+      sql,
+      { stopOnError, newId: uid, progress: (rows) => mine() && setOutcomes(rows) },
+      { runQuery: (r) => api.runQuery(r), transactionState: api.transactionState, endTransaction: api.endTransaction, releaseSession: api.releaseSession },
+    )
+    if (mine()) {
+      currentRun.current = null
+      setRunning(false)
     }
-    setOutcomes([...rows])
-    setRunId(null)
   }
 
-  const running = !!runId
   const done = outcomes && !running
   return (
     <Modal
@@ -126,9 +110,8 @@ export function RunManyModal() {
               variant="danger"
               icon={<Square size={11} fill="currentColor" />}
               onClick={() => {
-                stoppedRef.current = true
+                stopRun()
                 setStopped(true)
-                if (runId) void api.cancelQuery(runId)
               }}
             >
               {t('Stop')}
@@ -186,6 +169,11 @@ export function RunManyModal() {
               ))}
             </div>
             <Checkbox checked={stopOnError} onChange={setStopOnError} label={t('Stop at the first connection that fails')} />
+            {manualPicked.length > 0 && (
+              <div className="text-[11.5px] text-fg-muted" data-testid="run-many-manual">
+                {t('{names} commit manually: each one’s changes are committed when its run succeeds, and rolled back if it fails or is stopped.', { names: manualPicked.map((c) => c.name).join(', ') })}
+              </div>
+            )}
           </>
         ) : (
           <div className="flex flex-col gap-1" data-testid="run-many-results">
@@ -203,7 +191,9 @@ export function RunManyModal() {
                           ? t('Waiting')
                           : o.state === 'skipped'
                             ? t('Not run (stopped)')
-                            : o.error
+                            : o.rolledBack
+                              ? [o.error, t('Its open transaction was rolled back.')].filter(Boolean).join(' · ')
+                              : o.error
                               ? o.error
                               : [o.rows ? tp(o.rows, { one: '{n} row', many: '{n} rows' }) : '', o.changed ? t('{n} changed', { n: formatCount(o.changed) }) : ''].filter(Boolean).join(' · ') || t('Done')}
                     </div>

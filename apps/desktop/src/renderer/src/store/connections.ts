@@ -74,7 +74,7 @@ export const useConnections = create<ConnectionsState>((set, get) => {
     if (rt?.status !== 'error' || !get().get(id)) return stopRetry(id)
     r.inFlight = true
     try {
-      const { serverInfo } = await api.connect(id)
+      const { serverInfo } = await api.connect(id, undefined, { quiet: true })
       stopRetry(id)
       get().opened(id, serverInfo)
     } catch (err) {

@@ -92,7 +92,8 @@ export function ResultsPanel({
   /** Lets AI rewrite the failed statement. */
   onFixWithAi?: (outcome: StatementOutcome) => void
   /** Runs the statement again without the row limit. */
-  onLoadAll?: () => void
+  /** The statement whose result is shown: only it runs again (see load-all.ts). */
+  onLoadAll?: (statement: StatementOutcome) => void
   /** The tab has the keyboard: File → Export Results… (⇧⌘E) opens this panel's export menu. */
   focused?: boolean
 }) {
@@ -332,7 +333,7 @@ export function ResultsPanel({
               <span className="flex items-center gap-1 pr-2 text-[11.5px] text-warning" title={tr('The limit is in Settings → Max result rows')}>
                 <AlertTriangle size={12} /> {tr('First {n} rows', { n: formatCount(current.result.rowCount) })}
                 {onLoadAll && (
-                  <Button size="xs" variant="ghost" className="ml-1" onClick={onLoadAll}>
+                  <Button size="xs" variant="ghost" className="ml-1" onClick={() => onLoadAll(current.statement)}>
                     {tr('Load all rows')}
                   </Button>
                 )}

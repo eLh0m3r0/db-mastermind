@@ -224,8 +224,19 @@ export async function checkNow(ready: (info: { version: string }) => void): Prom
   }
 }
 
-/** Restarts into the downloaded update. */
+let beforeInstall: () => Promise<boolean> = async () => true
+/**
+ * What must happen before the installer starts (index.ts: open transactions are committed or rolled back as the user
+ * says). electron-updater starts the installer before it quits, and the installer closes the app whatever
+ * before-quit asks then.
+ */
+export function setBeforeInstall(settle: () => Promise<boolean>): void {
+  beforeInstall = settle
+}
+
+/** Restarts into the downloaded update; nothing happens when the user keeps an open transaction. */
 export async function installUpdate(): Promise<void> {
+  if (!(await beforeInstall())) return
   if (process.platform === 'darwin') return installMacUpdateNow()
   const autoUpdater = await loadAutoUpdater()
   autoUpdater.quitAndInstall(false, true)

@@ -67,6 +67,7 @@ import { ImportModal } from './ImportModal'
 import { ProfileModal } from './ProfileModal'
 import { SelectionStatsBar } from '@/components/grid/SelectionStatsBar'
 import { RowDetails } from './RowDetails'
+import { carryPending } from './pending'
 import { useAiAllowed } from '../ai/AiPermissions'
 import { tp, useT } from '@/lib/i18n'
 import { askText, confirmAction } from '@/components/ui/ConfirmDialog'
@@ -211,7 +212,10 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
     if (!schema && runtime?.status !== 'connecting') void loadSchema(tab.connectionId)
   }, [schema, runtime?.status, loadSchema, tab.connectionId])
 
-  const load = useCallback(async () => {
+  // Commit / Roll back reload the rows with the unsaved edits kept (`keep`): they are moved by row key.
+  const latest = useRef({ result, pending, primaryKey })
+  latest.current = { result, pending, primaryKey }
+  const load = useCallback(async (keep = false) => {
     if (runId.current) void api.cancelQuery(runId.current)
     const id = uid('run')
     runId.current = id
@@ -230,10 +234,15 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
         session,
       })
       if (runId.current !== id) return
+      const before = latest.current
       setResult(page.result)
       setLastSql(page.sql)
       setDuration(performance.now() - started)
-      setPending(emptyPending())
+      if (keep && before.result) {
+        const { pending: carried, lost } = carryPending(before.pending, before.result, page.result, before.primaryKey)
+        setPending(carried)
+        if (lost) toast({ kind: 'warning', message: tp(lost, { one: '{n} unsaved change was to a row that is no longer there', many: '{n} unsaved changes were to rows that are no longer there' }) })
+      } else setPending(emptyPending())
     } catch (err) {
       if (runId.current !== id) return
       setError(errorMessage(err))
@@ -279,7 +288,8 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
   const hadTransaction = useRef(inTransaction)
   useEffect(() => {
     if (hadTransaction.current && !inTransaction) {
-      void load()
+      // Edits not saved yet are not part of the transaction: they stay.
+      void load(true)
       void count()
     }
     hadTransaction.current = inTransaction

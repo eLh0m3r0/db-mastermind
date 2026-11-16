@@ -19,6 +19,7 @@ import { onCommand } from '@/lib/commands'
 import { ParamsModal, type ParamValues } from './ParamsModal'
 import { PlanView } from './PlanView'
 import { ResultsPanel } from './ResultsPanel'
+import { loadAllTarget, withReloaded } from './load-all'
 import { SqlEditor, type SqlEditorHandle } from './SqlEditor'
 import { TransactionBar } from './TransactionBar'
 import { openDefinition } from '@/lib/definitions'
@@ -106,17 +107,15 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
   // Persist text without re-rendering the tab list on every keystroke.
   const persistSql = useRef(debounce((id: string, sql: string) => updateTab(id, { sql }), 300)).current
 
-  const lastRun = useRef<{ target: { sql: string; offset: number }; parameterValues?: ParamValues }>(undefined)
+  const lastRun = useRef<{ parameterValues?: ParamValues }>(undefined)
   const run = useCallback(
-    async (mode: 'current' | 'all', parameterValues?: ParamValues, again?: { maxRows: number }) => {
+    async (mode: 'current' | 'all', parameterValues?: ParamValues) => {
       // A ref, not state: the menu accelerator and the editor keymap can both fire in the same tick.
       if (runId.current) return
       // An open completion list would float over the parameters dialog (and catch its Enter).
       const view = editor.current?.view()
       if (view) closeCompletion(view)
-      // "Load all rows" runs the same statement again, wherever the cursor is now.
-      const target = again && lastRun.current ? lastRun.current.target : mode === 'all' ? { sql: editor.current?.getValue() ?? '', offset: 0 } : editor.current?.getRunTarget()
-      if (again && lastRun.current) parameterValues = lastRun.current.parameterValues
+      const target = mode === 'all' ? { sql: editor.current?.getValue() ?? '', offset: 0 } : editor.current?.getRunTarget()
       if (!target || !target.sql.trim()) return
       if (!parameterValues) {
         const params = extractParameters(target.sql, driver)
@@ -142,13 +141,13 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       const id = uid('run')
       runId.current = id
       lastFragmentOffset.current = target.offset
-      lastRun.current = { target, parameterValues }
+      lastRun.current = { parameterValues }
       setRunning(true)
       setStartedAt(Date.now())
       setOutcomes(null)
       try {
         setPlan(null)
-        const result = await api.runQuery({ connectionId: tab.connectionId, sql: target.sql, runId: id, session: tab.id, parameterValues, maxRows: again?.maxRows })
+        const result = await api.runQuery({ connectionId: tab.connectionId, sql: target.sql, runId: id, session: tab.id, parameterValues })
         void refreshTransaction(tab.id, tab.connectionId, result)
         if (result.some((o) => o.note?.startsWith('This statement committed the open transaction'))) {
           toast({ kind: 'warning', message: t('The schema change committed the open transaction'), detail: t('The database commits before and after CREATE, ALTER and DROP.') })
@@ -174,6 +173,33 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
     },
     [driver, connection?.environment, connection?.readOnly, settings?.confirmDangerousStatements, tab.connectionId, tab.id, loadSchema],
   )
+
+  /** "Load all rows" of one result: that statement again, without the limit, and only when it reads. */
+  const loadAll = async (statement: StatementOutcome) => {
+    if (runId.current) return
+    const target = loadAllTarget(statement, lastFragmentOffset.current, driver)
+    if (!target) return toast({ kind: 'info', message: t('Only a statement that reads can load all its rows again'), detail: t('Run it again yourself to see every row.') })
+    const id = uid('run')
+    runId.current = id
+    setRunning(true)
+    setStartedAt(Date.now())
+    try {
+      // With no transaction open in the tab it reads in a read-only transaction of its own (a guard, not a guess);
+      // inside an open one it reads in the tab's session, so it sees the same uncommitted rows.
+      const open = !!useTransactions.getState()[tab.id]
+      const result = await api.runQuery({ connectionId: tab.connectionId, sql: target.sql, runId: id, session: open ? tab.id : undefined, readOnly: open ? undefined : true, parameterValues: lastRun.current?.parameterValues, maxRows: ALL_ROWS })
+      if (runId.current !== id) return
+      setOutcomes((now) => withReloaded(now, statement, result))
+    } catch (err) {
+      if (runId.current !== id) return
+      toast({ kind: 'error', message: t('Could not load all rows'), detail: errorMessage(err) })
+    } finally {
+      if (runId.current === id) {
+        runId.current = null
+        setRunning(false)
+      }
+    }
+  }
 
   const explain = useCallback(
     async (analyze: boolean) => {
@@ -535,7 +561,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
           startedAt={startedAt}
           driver={driver}
           connectionId={tab.connectionId}
-          onLoadAll={() => void run('current', undefined, { maxRows: ALL_ROWS })}
+          onLoadAll={(statement) => void loadAll(statement)}
           onFixWithAi={(o) => {
             const view = editor.current?.view()
             if (!view || !o.error) return

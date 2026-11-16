@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { decodeSqlFile, encodeSqlFile, fileBytes, readSqlFile, writeSqlFile } from '../src/main/sql-files'
+import { checkSqlFilePath, decodeSqlFile, encodeSqlFile, fileBytes, keepLineEndings, readSqlFile, rememberChosenSqlFile, writeSqlFile } from '../src/main/sql-files'
 
 const dir = mkdtempSync(join(tmpdir(), 'dbm-sqlfiles-'))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
@@ -104,5 +104,31 @@ describe('writeSqlFile', () => {
 
   it('says when the file is gone instead of creating it again silently', async () => {
     await expect(writeSqlFile(join(dir, 'gone.sql'), 'x', { encoding: 'utf-8', bom: false, eol: '\n' }, { expectedMtimeMs: 1 })).rejects.toMatchObject({ code: 'FILE_MISSING' })
+  })
+})
+
+describe('mixed line endings', () => {
+  it('a line the editor did not change keeps its own ending', async () => {
+    const path = join(dir, 'mixed.sql')
+    writeFileSync(path, 'SELECT 1;\nSELECT 2;\r\nSELECT 3;\nSELECT 4;\nSELECT 5;\r\nSELECT 6;\n')
+    const file = await readSqlFile(path)
+    expect(file.format.eol).toBe('\n')
+    await writeSqlFile(path, file.text.replace('SELECT 3;', 'SELECT 33;').replace('SELECT 4;\n', 'SELECT 4;\nSELECT 4b;\n'), file.format, { expectedMtimeMs: file.mtimeMs })
+    expect(readFileSync(path, 'utf8')).toBe('SELECT 1;\nSELECT 2;\r\nSELECT 33;\nSELECT 4;\nSELECT 4b;\nSELECT 5;\r\nSELECT 6;\n')
+  })
+
+  it('matches unchanged lines between edits and gives new ones the usual ending', () => {
+    expect(keepLineEndings('a\r\nb\nc\r\nd\n', 'x\nb\ny\nd\n', '\r\n')).toBe('x\r\nb\ny\r\nd\n')
+    expect(keepLineEndings('a\r\nb', 'a\nb\nc', '\n')).toBe('a\r\nb\nc')
+  })
+})
+
+describe('paths from the window', () => {
+  it('only .sql files, or a file the user picked in a dialog', () => {
+    expect(checkSqlFilePath(join(dir, 'x.SQL'))).toBe(join(dir, 'x.SQL'))
+    expect(() => checkSqlFilePath(join(dir, '.zshrc'))).toThrow(/Only .sql/)
+    expect(() => checkSqlFilePath(join(dir, 'notes.txt'))).toThrow(/Only .sql/)
+    rememberChosenSqlFile(join(dir, 'notes.txt'))
+    expect(checkSqlFilePath(join(dir, 'notes.txt'))).toBe(join(dir, 'notes.txt'))
   })
 })
