@@ -378,13 +378,14 @@ export class DatabaseService {
           }
           if (guarded) await entry.driver.execute('RELEASE SAVEPOINT dbm_statement', { session: editorSession }).catch(() => {})
           const committed = watch === 'open' && (await this.transactionState(id, editorSession!)) === 'none'
+          const messages = results.flatMap((r) => r.messages ?? [])
           outcomes.push({
             sql: statement.text,
             start: statement.start,
             end: statement.end,
-            results,
+            results: results.filter((r) => !r.messagesOnly),
             durationMs: Date.now() - started,
-            ...(results.some((r) => r.messages?.length) ? { messages: results.flatMap((r) => r.messages ?? []) } : {}),
+            ...(messages.length ? { messages } : {}),
             ...(committed ? { note: 'This statement committed the open transaction: the database commits before and after a schema change.' } : {}),
           })
           if (classifyStatement(statement.text) === 'transaction') inTransaction = /^\s*(BEGIN|START)\b/i.test(statement.text)

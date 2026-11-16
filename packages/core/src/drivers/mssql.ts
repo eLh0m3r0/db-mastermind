@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import sql from 'mssql'
 import { mssqlDialect } from '../dialect.js'
-import { batchesFromEvents, ConnectionLostError, elapsed, QueryCancelledError, SessionTransactions, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
+import { batchesFromEvents, ConnectionLostError, elapsed, messagesOnly, QueryCancelledError, SessionTransactions, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import { isReadOnlyScript } from '../sql-split.js'
 import { openSshTunnel, type SshTunnel } from '../ssh.js'
@@ -267,6 +267,8 @@ export class MssqlDriver implements DatabaseDriver {
       let stoppedEarly = false
       let settled = false
       const errors: Error[] = []
+      // PRINT and RAISERROR below severity 11 arrive as info messages.
+      const messages: string[] = []
 
       const onAbort = () => {
         cancelled = true
@@ -279,9 +281,13 @@ export class MssqlDriver implements DatabaseDriver {
         settled = true
         options.signal?.removeEventListener('abort', onAbort)
         if (cancelled && !stoppedEarly) return reject(new QueryCancelledError())
-        if (errors.length && !stoppedEarly) return reject(errors[0])
+        if (errors.length && !stoppedEarly) return reject(messages.length ? Object.assign(errors[0]!, { notices: messages }) : errors[0])
         const durationMs = elapsed(start)
         for (const r of results) r.durationMs = durationMs
+        if (messages.length) {
+          if (results[0]) results[0].messages = messages
+          else results.push(messagesOnly(messages))
+        }
         resolve(results)
       }
 
@@ -322,6 +328,9 @@ export class MssqlDriver implements DatabaseDriver {
         results.push({ fields: [], rows: [], rowCount: count, affectedRows: count, durationMs: 0 })
       })
       request.on('error', (err: Error) => errors.push(err))
+      request.on('info', (info: { message?: string }) => {
+        if (info.message) messages.push(info.message)
+      })
       request.on('done', finish)
       // Without parameters, send a real batch like SSMS does: query() wraps text in sp_executesql,
       // where SET options and #temp tables vanish when the call ends.

@@ -112,8 +112,10 @@ export interface QueryResult {
   /** True when the driver stopped reading after maxRows. */
   truncated?: boolean
   durationMs: number
-  /** What the server said along the way (PostgreSQL NOTICE / RAISE …), on the statement's first result. */
+  /** What the server said along the way (PostgreSQL NOTICE / RAISE, SQL Server PRINT, MySQL warnings, Oracle DBMS_OUTPUT), on the statement's first result. */
   messages?: string[]
+  /** Carries only `messages` (driver.ts `messagesOnly`); not a result of its own. */
+  messagesOnly?: boolean
 }
 
 export interface QueryOptions {

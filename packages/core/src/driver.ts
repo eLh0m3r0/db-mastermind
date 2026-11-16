@@ -224,3 +224,11 @@ export function elapsed(start: bigint): number {
 export function isShortLivedSession(session: string): boolean {
   return /^(readonly|script|copy|explain)-/.test(session)
 }
+
+/**
+ * A result that only carries server messages (a batch that just PRINTs): the engine moves the messages to the
+ * statement's outcome and drops it, so nothing reports "0 rows affected".
+ */
+export function messagesOnly(messages: string[]): QueryResult {
+  return { fields: [], rows: [], rowCount: 0, durationMs: 0, messages, messagesOnly: true }
+}

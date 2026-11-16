@@ -57,6 +57,21 @@ export class OracleDriver implements DatabaseDriver {
   private tunnel?: SshTunnel
   private sessions = new Map<string, Connection>()
   private connectString?: string
+  private outputEnabled = new WeakSet<Connection>()
+
+  /** What PL/SQL printed with DBMS_OUTPUT since the last call, on connections that enabled it (editor tabs). */
+  private async serverOutput(conn: Connection): Promise<string[]> {
+    if (!this.outputEnabled.has(conn)) return []
+    const r = await conn.execute(
+      `DECLARE l DBMS_OUTPUT.CHARARR; n INTEGER := 2000; s VARCHAR2(32767); BEGIN
+         DBMS_OUTPUT.GET_LINES(l, n);
+         FOR i IN 1 .. n LOOP EXIT WHEN nvl(lengthb(s), 0) + nvl(lengthb(l(i)), 0) + 1 > 32000; s := s || l(i) || CHR(10); END LOOP;
+         :out := s; END;`,
+      { out: { dir: oracledb.BIND_OUT, type: oracledb.STRING, maxSize: 32767 } },
+    )
+    const text = String((r as { outBinds?: { out?: string | null } }).outBinds?.out ?? '')
+    return text ? text.replace(/\n$/, '').split('\n') : []
+  }
   /** Sessions where the user started a transaction (SET TRANSACTION); others auto-commit like DBeaver/SQL Developer's default. */
   private manualTx = new Set<string>()
 
@@ -136,6 +151,9 @@ export class OracleDriver implements DatabaseDriver {
     try {
       for (const sql of SESSION_SETUP) await conn.execute(sql)
       if (this.config.readOnly) await conn.execute('SET TRANSACTION READ ONLY')
+      // DBMS_OUTPUT.PUT_LINE shows in Messages, as SQL Developer's "Dbms Output" pane.
+      await conn.execute('BEGIN DBMS_OUTPUT.ENABLE(NULL); END;')
+      this.outputEnabled.add(conn)
     } catch (err) {
       await conn.close().catch(() => {})
       throw err
@@ -222,11 +240,16 @@ export class OracleDriver implements DatabaseDriver {
       // Oracle commits before and after DDL; ROLLBACK TO SAVEPOINT keeps the transaction.
       if (options.session && (/^\s*(COMMIT|ROLLBACK)\b(?!\s+(WORK\s+)?TO\b)/i.test(sql) || classifyStatement(sql) === 'ddl')) this.manualTx.delete(options.session)
       const durationMs = elapsed(start)
+      const output = await this.serverOutput(conn)
+      const withOutput = (results: QueryResult[]) => {
+        if (output.length) results[0]!.messages = output
+        return results
+      }
       if (r.metaData) {
         const rows = r.rows ?? []
         const truncated = options.maxRows !== undefined && rows.length > options.maxRows
         const kept = truncated ? rows.slice(0, options.maxRows) : rows
-        return [
+        return withOutput([
           {
             fields: r.metaData.map((m) => ({ name: m.name, dataType: m.dbTypeName?.toLowerCase() })),
             rows: kept.map((row) => (row as unknown[]).map(normalizeValue)),
@@ -235,11 +258,14 @@ export class OracleDriver implements DatabaseDriver {
             truncated,
             durationMs,
           },
-        ]
+        ])
       }
-      return [{ fields: [], rows: [], rowCount: r.rowsAffected ?? 0, affectedRows: r.rowsAffected ?? 0, command: sql.trim().split(/\s+/, 1)[0]?.toUpperCase(), durationMs }]
+      return withOutput([{ fields: [], rows: [], rowCount: r.rowsAffected ?? 0, affectedRows: r.rowsAffected ?? 0, command: sql.trim().split(/\s+/, 1)[0]?.toUpperCase(), durationMs }])
     } catch (err) {
       if (cancelled) throw new QueryCancelledError()
+      // DBMS_OUTPUT.PUT_LINE before RAISE_APPLICATION_ERROR explains the error.
+      const output = await this.serverOutput(conn).catch(() => [])
+      if (output.length && err && typeof err === 'object') Object.assign(err, { notices: output })
       throw err
     } finally {
       options.signal?.removeEventListener('abort', onAbort)
