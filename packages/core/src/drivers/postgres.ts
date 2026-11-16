@@ -160,15 +160,18 @@ export class PostgresDriver implements DatabaseDriver {
 
   private notifications = new WeakMap<object, string[]>()
 
-  /** Cancels on a connection of its own, so a busy pool never delays it. */
-  private cancelBackend(pid: number): void {
-    if (!this.clientOptions) return
+  /**
+   * Cancels on a connection of its own, so a busy pool never delays it. Settles once the cancel was sent: the client
+   * is used again only after that, or a late cancel would stop the next statement on it (the pool's next user).
+   */
+  private cancelBackend(pid: number): Promise<void> {
+    if (!this.clientOptions) return Promise.resolve()
     const client = new pg.Client({ ...this.clientOptions, connectionTimeoutMillis: 10_000 })
     client.on('error', () => {})
-    void client
+    return client
       .connect()
       .then(() => client.query('SELECT pg_cancel_backend($1)', [pid]))
-      .catch(() => {})
+      .then(() => undefined, () => undefined)
       .finally(() => void client.end().catch(() => {}))
   }
 
@@ -283,9 +286,10 @@ export class PostgresDriver implements DatabaseDriver {
     let failure: unknown
     const pid = (client as unknown as { processID: number }).processID
     let cancelled = false
+    let cancelling: Promise<void> = Promise.resolve()
     const onAbort = () => {
       cancelled = true
-      this.cancelBackend(pid)
+      cancelling = this.cancelBackend(pid)
     }
     if (options.signal?.aborted) throw new QueryCancelledError()
     options.signal?.addEventListener('abort', onAbort, { once: true })
@@ -336,6 +340,7 @@ export class PostgresDriver implements DatabaseDriver {
     } finally {
       client.off('notice', onNotice)
       options.signal?.removeEventListener('abort', onAbort)
+      await cancelling
       release(failure)
     }
   }
@@ -345,9 +350,10 @@ export class PostgresDriver implements DatabaseDriver {
     const client = await this.checkout()
     const pid = (client as unknown as { processID: number }).processID
     let cancelled = false
+    let cancelling: Promise<void> = Promise.resolve()
     const onAbort = () => {
       cancelled = true
-      this.cancelBackend(pid)
+      cancelling = this.cancelBackend(pid)
     }
     options.signal?.addEventListener('abort', onAbort, { once: true })
     const cursor = client.query(new Cursor(sql, options.params, { rowMode: 'array', types: typeOverrides }))
@@ -377,6 +383,7 @@ export class PostgresDriver implements DatabaseDriver {
     } finally {
       options.signal?.removeEventListener('abort', onAbort)
       await cursor.close().catch(() => {})
+      await cancelling
       client.release()
     }
   }

@@ -150,13 +150,17 @@ export async function copyTables(db: DatabaseService, sourceId: string, targetId
   // A failed or stopped copy takes away the tables it made (children first), so "nothing was changed" holds.
   const dropCreated = async (): Promise<string> => {
     const kept: string[] = []
+    let why = ''
     for (const t of [...ordered].reverse().filter((x) => created.has(x.name))) {
-      const [o] = await db.runScript(targetId, `DROP TABLE ${qualify(dialect, targetRef(t))}`).catch((err: unknown) => [{ error: err }])
-      if (o?.error) kept.push(qualify(dialect, targetRef(t)))
+      const [o] = await db.runScript(targetId, `DROP TABLE ${qualify(dialect, targetRef(t))}`).catch((err: unknown) => [{ error: { message: err instanceof Error ? err.message : String(err) } }])
+      if (o?.error) {
+        kept.push(qualify(dialect, targetRef(t)))
+        why ||= o.error.message
+      }
     }
     if (!kept.length) for (const seq of createdSequences.splice(0)) await db.runScript(targetId, `DROP SEQUENCE ${seq}`).catch(() => {})
     if (kept.length) await db.schema(targetId, true).catch(() => {})
-    return kept.length ? ` (apart from the new tables ${kept.join(', ')}, which could not be dropped again)` : ''
+    return kept.length ? ` (apart from the new tables ${kept.join(', ')}, which could not be dropped again: ${why})` : ''
   }
   if (missing.length) {
     if (!options.create) throw new Error(`The target has no table ${missing.map((t) => t.name).join(', ')}: create them, or let the copy create them`)
