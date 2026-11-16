@@ -1,6 +1,7 @@
 // Minimal typings for the parts of node-oracledb (thin mode) DB Mastermind uses.
 declare module 'oracledb' {
   export const OUT_FORMAT_ARRAY: number
+  export const BIND_OUT: number
   export const OUT_FORMAT_OBJECT: number
   export const STRING: unknown
   export const BUFFER: unknown
@@ -66,6 +67,7 @@ declare module 'oracledb' {
     getConnection: typeof getConnection
     OUT_FORMAT_ARRAY: number
     OUT_FORMAT_OBJECT: number
+    BIND_OUT: number
     STRING: unknown
     BUFFER: unknown
     DB_TYPE_NUMBER: unknown

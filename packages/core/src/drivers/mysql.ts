@@ -274,9 +274,10 @@ export class MysqlDriver implements DatabaseDriver {
     const threadId = conn.threadId
     const maxRows = options.maxRows ?? Number.POSITIVE_INFINITY
     const start = process.hrtime.bigint()
+    let warnings = 0
 
     try {
-      return await new Promise<QueryResult[]>((resolve, reject) => {
+      const results = await new Promise<QueryResult[]>((resolve, reject) => {
         const results: QueryResult[] = []
         let current: QueryResult | undefined
         let settled = false
@@ -332,6 +333,7 @@ export class MysqlDriver implements DatabaseDriver {
             return
           }
           const header = row as ResultSetHeader
+          warnings += header.warningStatus ?? 0
           if (options.session && typeof header.serverStatus === 'number') this.serverInTransaction.set(options.session, (header.serverStatus & 1) !== 0)
           current = undefined
           // CALL returns a trailing OK packet after its result sets; don't show it as a separate result.
@@ -362,6 +364,14 @@ export class MysqlDriver implements DatabaseDriver {
           void finish()
         })
       })
+      // Data truncated, a duplicate skipped by INSERT IGNORE, a NULL turned into a default: the server only says
+      // "1 warning" in the OK packet; SHOW WARNINGS (on the same connection) has the text.
+      if (warnings > 0) {
+        const [rows] = await conn.query<RowDataPacket[]>('SHOW WARNINGS').catch(() => [[] as RowDataPacket[]])
+        const messages = rows.map((w) => `${String(w.Level ?? 'Warning').toUpperCase()} ${w.Code ?? ''}: ${w.Message ?? ''}`.replace(' :', ':'))
+        if (messages.length && results[0]) results[0].messages = messages
+      }
+      return results
     } finally {
       release()
     }
