@@ -196,7 +196,13 @@ export class MssqlDriver implements DatabaseDriver {
     if (!row) return 'none'
     // The pool may have reconnected (SPIDs are reused): keep the session's id current for server activity.
     this.spids.set(session, String(row.id))
-    // An error that rolled the transaction back (XACT_ABORT) must not later read as a lost connection.
+    // The bookkeeping is synced with the server after every statement (executeTracked), so a transaction that is
+    // gone since then went with its connection: the pool quietly reconnected. Report it instead of letting the
+    // caller open a fresh one under the old changes.
+    if (Number(row.n) === 0 && this.transactions.isOpen(session)) {
+      this.transactions.dropped(session)
+      return 'none'
+    }
     this.transactions.set(session, Number(row.n) > 0)
     return Number(row.s) === -1 ? 'failed' : Number(row.n) > 0 ? 'open' : 'none'
   }
@@ -241,9 +247,25 @@ export class MssqlDriver implements DatabaseDriver {
         throw new ConnectionLostError('The open transaction is no longer active on the server (the connection was lost, or the server rolled it back). Its uncommitted changes are gone: start the transaction again.')
       }
     }
-    const results = await this.executeOnce(text, options)
-    if (session) this.transactions.ran(session, text)
-    return results
+    try {
+      const results = await this.executeOnce(text, options)
+      if (session) await this.settle(session, text)
+      return results
+    } catch (err) {
+      // A server error (XACT_ABORT, a severe one) or a cancel may have rolled the transaction back on this same
+      // connection. After a dropped connection, asking would reconnect and read 0: that is left to the next check.
+      if (session && (err instanceof QueryCancelledError || typeof (err as { number?: unknown }).number === 'number')) await this.settle(session, text)
+      throw err
+    }
+  }
+
+  /** After a statement the server's @@TRANCOUNT is the truth: procedures commit or open transactions, errors roll back. */
+  private async settle(session: string, text: string): Promise<void> {
+    const wasOpen = this.transactions.isOpen(session)
+    this.transactions.ran(session, text)
+    if (!wasOpen && !this.transactions.isOpen(session)) return
+    const r = await this.sessions.get(session)?.request().query<{ n: number }>('SELECT @@TRANCOUNT AS n').catch(() => undefined)
+    if (r?.recordset[0]) this.transactions.set(session, Number(r.recordset[0].n) > 0)
   }
 
   private async executeOnce(text: string, options: QueryOptions = {}): Promise<QueryResult[]> {

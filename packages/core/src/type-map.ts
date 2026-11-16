@@ -1,4 +1,5 @@
 import type { DriverId, TableInfo } from './types.js'
+import { stripLiterals } from './sql-split.js'
 
 type Family = 'bool' | 'json' | 'text' | 'string' | 'timestamp' | 'timestamptz' | 'uuid' | 'double' | 'real' | 'binary' | 'tinyint' | 'datetime'
 
@@ -176,8 +177,12 @@ function mySqlBytes(type: string): number {
   return /text|blob|json/i.test(type) ? 0 : 8
 }
 
-/** Only deterministic conditions are allowed in a MySQL check. */
-const NOT_IN_MYSQL_CHECK = /\b(now|current_timestamp|current_date|current_time|curdate|curtime|sysdate|localtime|localtimestamp|utc_date|utc_time|utc_timestamp|rand|uuid|user|current_user|connection_id)\b/i
+/**
+ * Only deterministic conditions are allowed in a MySQL check. Functions count where they are called, and the words
+ * only outside strings and quoted names: `role IN ('user')` or a column `uuid` is no call.
+ */
+const NONDETERMINISTIC = /(?<![\w.$])((now|curdate|curtime|sysdate|utc_date|utc_time|utc_timestamp|rand|uuid|connection_id)\s*\(|(current_timestamp|current_date|current_time|localtime|localtimestamp|current_user|user)\b(?!\s*\.))/i
+const NOT_IN_MYSQL_CHECK = { test: (expression: string) => NONDETERMINISTIC.test(stripLiterals(expression)) }
 
 /**
  * What MySQL refuses in a table that other databases take: a row wider than 65,535 bytes (the longest strings

@@ -62,6 +62,10 @@ describe('batch rename', () => {
       batchRename(quoted, { find: '^', replace: 'x_', regex: true, scope: 'columns' }).tables[0]!.checks![0]!
         .expression,
     ).toBe(`x_kind in ('kind', 'other') and total(1) is null and "x_kind" <> ''`)
+    // A column whose name starts a function's name: `now(` is neither `no` nor `numberw(` (review finding).
+    expect(renameInCondition('created <= now() AND no > 0 AND tota(1) = tota', (n) => (n === 'no' ? 'number' : n === 'tota' ? 'total' : undefined))).toBe(
+      'created <= now() AND number > 0 AND tota(1) = total',
+    )
     // Nor is anything in a comment (prose that happens to use the word).
     expect(
       renameInCondition('kind = 1 /* kind one */ or -- any kind\nkind = 2', (n) =>

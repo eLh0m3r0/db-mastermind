@@ -98,5 +98,24 @@ for (const c of cases) {
       ok(await run('SELECT 1 AS n' + (c.id === 'oracle' ? ' FROM dual' : '')))
       expect(crashes).toEqual([])
     })
+
+    it('a transaction state asked after the loss neither hides it nor outlives it', async () => {
+      await svc.connect(c.config)
+      await svc.connect(c.admin)
+      const select = 'SELECT 1 AS n' + (c.id === 'oracle' ? ' FROM dual' : '')
+      const ok = (o: Awaited<ReturnType<typeof run>>) => expect(o.error?.message).toBeUndefined()
+
+      ok(await run(c.begin, 'state'))
+      ok(await run(select, 'state'))
+      await killSession('state')
+      // The engine asks for the state before a manual-commit write; the loss must still be reported next.
+      await svc.transactionState(c.config.id, 'state')
+      const lost = await run(select, 'state')
+      expect(lost.error?.message).toMatch(/transaction/i)
+      // Afterwards the fresh connection has no transaction (a read sends no status that would correct it).
+      ok(await run(select, 'state'))
+      expect(await svc.transactionState(c.config.id, 'state')).toBe('none')
+      expect(crashes).toEqual([])
+    })
   })
 }

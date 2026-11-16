@@ -170,7 +170,7 @@ export function splitStatements(
       }
     }
 
-    if (isWordChar(ch) && !isWordChar(script[i - 1])) {
+    if (isWordChar(ch) && !isWordChar(script[i - 1]) && !(delimiter !== ';' && script.startsWith(delimiter, i))) {
       let j = i
       // MySQL names may contain `$`: a word still ends where a DELIMITER-set delimiter such as `$$` starts (END$$).
       while (j < n && isWordChar(script[j]) && !(delimiter !== ';' && j > i && script.startsWith(delimiter, j))) j++
@@ -319,12 +319,78 @@ function isReadPragma(sql: string): boolean {
   return READ_PRAGMAS.has(name)
 }
 
-export function stripLiterals(sql: string): string {
-  return sql
-    .replace(/'(?:[^']|'')*'/g, "''")
-    .replace(/"(?:[^"]|"")*"/g, '""')
-    .replace(/--[^\n]*/g, ' ')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+/**
+ * Empties string literals and quoted names and replaces comments with a space, in one pass in source order: a quote
+ * inside a comment (`-- Bob's`) or `--` inside a string must not pair with anything. With a driver it also knows that
+ * engine's quoting (MySQL backslash escapes, backticks and `#` comments, T-SQL `[names]`, PostgreSQL `$$` bodies and
+ * E'' strings), like splitStatements.
+ */
+export function stripLiterals(sql: string, driver?: DriverId): string {
+  const mysql = driver === 'mysql' || driver === 'mariadb'
+  const pgLike = driver === 'postgres' || driver === 'duckdb'
+  const n = sql.length
+  let out = ''
+  let i = 0
+  while (i < n) {
+    const ch = sql[i]!
+    const next = sql[i + 1]
+    if ((ch === '-' && next === '-') || (ch === '#' && mysql)) {
+      const lineEnd = sql.indexOf('\n', i)
+      out += ' '
+      i = lineEnd === -1 ? n : lineEnd
+      continue
+    }
+    if (ch === '/' && next === '*') {
+      let depth = 1
+      i += 2
+      while (i < n && depth > 0) {
+        if (sql[i] === '/' && sql[i + 1] === '*' && driver === 'postgres') {
+          depth++
+          i += 2
+        } else if (sql[i] === '*' && sql[i + 1] === '/') {
+          depth--
+          i += 2
+        } else i++
+      }
+      out += ' '
+      continue
+    }
+    if (ch === "'" || ch === '"' || (ch === '`' && mysql) || (ch === '[' && driver === 'mssql')) {
+      const close = ch === '[' ? ']' : ch
+      const escapeString = ch === "'" && pgLike && /[eE]/.test(sql[i - 1] ?? '') && !isWordChar(sql[i - 2])
+      const backslashEscapes = (mysql && ch !== '`') || escapeString
+      let j = i + 1
+      while (j < n) {
+        if (backslashEscapes && sql[j] === '\\') {
+          j += 2
+          continue
+        }
+        if (sql[j] === close) {
+          if (close !== ']' && sql[j + 1] === close) {
+            j += 2
+            continue
+          }
+          break
+        }
+        j++
+      }
+      out += ch + close
+      i = j + 1
+      continue
+    }
+    if (ch === '$' && pgLike && !isWordChar(sql[i - 1])) {
+      const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i))
+      if (m) {
+        const end = sql.indexOf(m[0], i + m[0].length)
+        out += "''"
+        i = end === -1 ? n : end + m[0].length
+        continue
+      }
+    }
+    out += ch
+    i++
+  }
+  return out
 }
 
 /** Keywords that end, nest or leave a transaction, or run other code: not allowed inside a read-only guard. */
@@ -349,7 +415,7 @@ export function isReadOnlyScript(script: string, driver: DriverId): boolean {
   return splitStatements(script, driver).every((s) => {
     if (classifyStatement(s.text) !== 'read') return false
     if (driver !== 'mssql') return true
-    const body = stripLiterals(s.text).replace(/\[[^\]]*\]/g, '[]')
+    const body = stripLiterals(s.text, driver)
     return !TSQL_WRITES.test(body) && !ESCAPES_TRANSACTION.test(body)
   })
 }
@@ -405,7 +471,8 @@ const SESSION_WORDS = new Set('SET RESET USE SHOW LISTEN UNLISTEN LOAD INSTALL A
 /** Statements the database refuses inside a transaction block. */
 const OUTSIDE_TRANSACTION: Partial<Record<DriverId, RegExp>> = {
   postgres: /^\s*(VACUUM|(CREATE|DROP)\s+(DATABASE|TABLESPACE|SUBSCRIPTION)|ALTER\s+(SYSTEM|SUBSCRIPTION)|(CREATE\s+(UNIQUE\s+)?|DROP\s+)INDEX\s+CONCURRENTLY|REINDEX\b[^;]*\bCONCURRENTLY|ALTER\s+TABLE\b[^;]*\bDETACH\s+PARTITION\b[^;]*\bCONCURRENTLY)\b/i,
-  mssql: /\b((CREATE|ALTER|DROP)\s+(DATABASE|FULLTEXT\s+(CATALOG|INDEX))|BACKUP|RESTORE|RECONFIGURE)\b/i,
+  // Keywords, not names: `dbo.Backup` or a column `restore` is no BACKUP / RESTORE statement.
+  mssql: /(?<![\w.@#$])((CREATE|ALTER|DROP)\s+(DATABASE|FULLTEXT\s+(CATALOG|INDEX))|(BACKUP|RESTORE)\s+(DATABASE|LOG)\b|(?<=(?:^|;)\s*)RECONFIGURE\b)/im,
   sqlite: /^\s*VACUUM\b/i,
   duckdb: /^\s*(VACUUM|CHECKPOINT|FORCE\s+CHECKPOINT|ATTACH|DETACH)\b/i,
 }
@@ -415,7 +482,7 @@ const OUTSIDE_TRANSACTION: Partial<Record<DriverId, RegExp>> = {
  * and the database can run it inside one. Reads, transaction control and session settings run as they are.
  */
 export function opensTransaction(sql: string, driver: DriverId): boolean {
-  const body = stripLiterals(sql).replace(/--[^\n]*/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ')
+  const body = stripLiterals(sql, driver)
   if (!body.trim()) return false
   // "Reads" that change something or hold locks until the transaction ends.
   if (/\bFOR\s+(UPDATE|SHARE|NO\s+KEY\s+UPDATE|KEY\s+SHARE)\b|\bLOCK\s+IN\s+SHARE\s+MODE\b|\b(nextval|setval)\s*\(/i.test(body) && !OUTSIDE_TRANSACTION[driver]?.test(body)) return true
@@ -424,17 +491,19 @@ export function opensTransaction(sql: string, driver: DriverId): boolean {
   if (isReadOnlyScript(sql, driver)) return false
   if (OUTSIDE_TRANSACTION[driver]?.test(body)) return false
   if (driver === 'mssql') {
-    // A batch with its own BEGIN TRAN / COMMIT manages its transaction itself. Only SET / USE / PRINT / DECLARE
-    // lines change nothing.
-    if (/\b(BEGIN\s+TRAN\w*|SAVE\s+TRAN\w*|COMMIT|ROLLBACK)\b/i.test(body)) return false
+    // A batch that opens its own transaction manages it itself. A COMMIT or ROLLBACK without BEGIN TRAN (`UPDATE …
+    // ROLLBACK`, a CATCH block's `IF @@TRANCOUNT > 0 ROLLBACK`) ends the one opened here, so it still needs one.
+    if (/\bBEGIN\s+(DISTRIBUTED\s+)?TRAN\w*\b/i.test(body)) return false
     // T-SQL needs no separators (`SET NOCOUNT ON UPDATE t …` is one line): look for anything that writes, anywhere.
     // (A batch may start with a procedure name and no EXEC: `sp_rename 'a', 'b'`.)
-    return TSQL_WRITES.test(body.replace(/\[[^\]]*\]/g, '[]')) || /\bEXEC(UTE)?\b/i.test(body) || /^\s*(\[?\w+\]?\.)*\[?sp_\w+/i.test(body)
+    return TSQL_WRITES.test(body) || /\bEXEC(UTE)?\b/i.test(body) || /^\s*(\[?\w+\]?\.)*\[?sp_\w+/i.test(body)
   }
   // An Oracle PL/SQL block (BEGIN … END; or DECLARE … BEGIN … END;) can change anything: it opens one too.
   if (driver === 'oracle' && /^\s*(BEGIN|DECLARE)\b[\s\S]*\bEND\b/i.test(body)) return true
   const kind = classifyStatement(sql)
   if (kind === 'transaction') return false
-  const [first = ''] = firstKeywords(sql, 1)
+  const [first = ''] = firstKeywords(body, 1)
+  // MySQL's LOAD DATA / LOAD XML insert rows; DuckDB's LOAD only loads an extension.
+  if (first === 'LOAD') return /^\s*LOAD\s+(DATA|XML)\b/i.test(body)
   return !SESSION_WORDS.has(first)
 }

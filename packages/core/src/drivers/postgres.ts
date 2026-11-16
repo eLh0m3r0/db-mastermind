@@ -340,6 +340,7 @@ export class PostgresDriver implements DatabaseDriver {
     }
     options.signal?.addEventListener('abort', onAbort, { once: true })
     const cursor = client.query(new Cursor(sql, options.params, { rowMode: 'array', types: typeOverrides }))
+    let yielded = false
     try {
       for (;;) {
         const { rows, result } = await new Promise<{ rows: unknown[][]; result: pg.QueryArrayResult }>(
@@ -349,7 +350,8 @@ export class PostgresDriver implements DatabaseDriver {
             )
           },
         )
-        if (!rows.length) return
+        if (!rows.length && (yielded || !result?.fields?.length)) return
+        yielded = true
         yield {
           fields: (result.fields ?? []).map((f) => ({
             name: f.name,

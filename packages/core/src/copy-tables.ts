@@ -5,7 +5,7 @@ import type { BuiltQuery } from './filters.js'
 import { buildBatchInserts } from './import.js'
 import { findTable } from './schema-utils.js'
 import { translateTables } from './type-map.js'
-import type { CellValue, DriverId, TableInfo, TableRef } from './types.js'
+import type { BinaryValue, CellValue, ColumnInfo, DriverId, TableInfo, TableRef } from './types.js'
 import { isBinaryValue } from './values.js'
 
 /** Copies tables (structure and data) from one connection to another, even to another kind of database. */
@@ -75,15 +75,32 @@ export function copyValue(v: CellValue, target: DriverId): unknown {
   return v
 }
 
+/**
+ * A binary value as a parameter. Only whole values cross the app (longer ones arrive as a shortened preview), so a
+ * shortened one fails the copy instead of writing a wrong value. A MySQL BIT arrives as bytes too: it goes as the
+ * number, or as a bit string where the target's bit type reads text.
+ */
+export function copyBinary(v: BinaryValue, column: ColumnInfo, source: DriverId, target: DriverId, where: string): unknown {
+  if (v.$binary.length < v.length * 2) throw new Error(`${where} holds binary values longer than the copy can carry (${v.length} bytes): leave that table out or copy it with the database's own tools`)
+  const bit = (source === 'mysql' || source === 'mariadb') && /^bit\b/i.exec(column.dataType)
+  if (bit) {
+    const n = BigInt(`0x${v.$binary || '0'}`)
+    if (target === 'postgres' || target === 'duckdb') return n.toString(2).padStart(Number(/\((\d+)\)/.exec(column.dataType)?.[1] ?? 1), '0')
+    return n <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(n) : n.toString()
+  }
+  return Buffer.from(v.$binary, 'hex')
+}
+
 /** Which target column each source column fills: the same name first, else the only case-insensitive match. */
-export function columnPairs(from: TableInfo, into: TableInfo): { pairs: [string, string][]; skipped: string[] } {
+export function columnPairs(from: TableInfo, into: TableInfo, source?: DriverId): { pairs: [string, string][]; skipped: string[] } {
   const pairs: [string, string][] = []
   const skipped: string[] = []
   for (const c of from.columns) {
     const exact = into.columns.find((x) => x.name === c.name)
     const loose = into.columns.filter((x) => lower(x.name) === lower(c.name))
     const there = exact ?? (loose.length === 1 ? loose[0] : undefined)
-    const binary = /binary|blob|bytea|image|raw|varbinary/i.test(c.dataType)
+    // (SQL Server's timestamp is a rowversion: the server makes its values, nobody can insert them.)
+    const binary = /binary|blob|bytea|image|raw|varbinary|rowversion/i.test(c.dataType) || (source === 'mssql' && /^timestamp$/i.test(c.dataType))
     if (!there || there.isGenerated || c.isGenerated || binary || pairs.some(([, to]) => to === there.name)) skipped.push(c.name)
     else pairs.push([c.name, there.name])
   }
@@ -94,7 +111,7 @@ export async function copyTables(db: DatabaseService, sourceId: string, targetId
   const sourceDriver = db.config(sourceId).driver
   const targetDriver = db.config(targetId).driver
   if (db.config(targetId).readOnly) throw new Error('The target connection is read-only')
-  const stopped = () => new Error('The copy was stopped: nothing was changed in the target')
+  const stopped = (left = '') => new Error(`The copy was stopped: nothing was changed in the target${left}`)
   const dialect = getDialect(targetDriver)
   const source = await db.schema(sourceId, true)
   const picked = options.tables.map((ref) => {
@@ -129,6 +146,18 @@ export async function copyTables(db: DatabaseService, sourceId: string, targetId
   // 1. Tables the target lacks, created in one script (foreign keys only between tables it will have).
   const missing = ordered.filter((t) => !findTable(target, targetRef(t)))
   const created = new Set<string>()
+  const createdSequences: string[] = []
+  // A failed or stopped copy takes away the tables it made (children first), so "nothing was changed" holds.
+  const dropCreated = async (): Promise<string> => {
+    const kept: string[] = []
+    for (const t of [...ordered].reverse().filter((x) => created.has(x.name))) {
+      const [o] = await db.runScript(targetId, `DROP TABLE ${qualify(dialect, targetRef(t))}`).catch((err: unknown) => [{ error: err }])
+      if (o?.error) kept.push(qualify(dialect, targetRef(t)))
+    }
+    if (!kept.length) for (const seq of createdSequences.splice(0)) await db.runScript(targetId, `DROP SEQUENCE ${seq}`).catch(() => {})
+    if (kept.length) await db.schema(targetId, true).catch(() => {})
+    return kept.length ? ` (apart from the new tables ${kept.join(', ')}, which could not be dropped again)` : ''
+  }
   if (missing.length) {
     if (!options.create) throw new Error(`The target has no table ${missing.map((t) => t.name).join(', ')}: create them, or let the copy create them`)
     const known = (schema: string | undefined, name: string) => ordered.some((x) => x.name === name && (x.schema ?? '') === (schema ?? '')) || !!findTable(target, { schema, name })
@@ -141,10 +170,19 @@ export async function copyTables(db: DatabaseService, sourceId: string, targetId
     // rows bring their values anyway.
     const portable = sameEngine ? drafts : drafts.map((t) => ({ ...t, columns: t.columns.map((c) => ({ ...c, defaultValue: null })) }))
     const script = createScript(sameEngine ? portable : translateTables(portable, targetDriver, sourceDriver), dialect, { from: sourceDriver })
-    const failed = (await db.runScript(targetId, script)).find((o) => o.error)
-    if (failed) throw new Error(`Creating the tables failed: ${failed.error!.message}\n  in: ${failed.sql.slice(0, 300)}`)
-    for (const t of missing) created.add(t.name)
+    const outcomes = await db.runScript(targetId, script)
+    const failed = outcomes.find((o) => o.error)
+    // DuckDB's identities are sequences of their own.
+    for (const o of outcomes) {
+      const seq = !o.error && /^\s*CREATE\s+SEQUENCE\s+(.+?)\s*;?\s*$/i.exec(o.sql)?.[1]
+      if (seq) createdSequences.push(seq)
+    }
     target = await readTarget()
+    for (const t of missing) if (findTable(target, targetRef(t))) created.add(t.name)
+    if (failed) {
+      const left = await dropCreated()
+      throw new Error(`Creating the tables failed: ${failed.error!.message}\n  in: ${failed.sql.slice(0, 300)}${left}`)
+    }
   }
 
   // 2. Rows: one transaction on the target for all tables, so a failure or Stop leaves it as it was (a replace too).
@@ -156,36 +194,60 @@ export async function copyTables(db: DatabaseService, sourceId: string, targetId
   }
   const out: CopiedTable[] = []
   const batchRows = options.batchRows ?? 1000
-  // DuckDB checks a foreign key against the transaction's start: its replace empties the tables first, one by one.
-  if (options.mode === 'replace' && targetDriver === 'duckdb') {
-    for (const t of [...ordered].reverse()) {
-      if (options.signal?.aborted) throw stopped()
-      await db.transactionRaw(targetId, [{ sql: `DELETE FROM ${qualify(dialect, targetRef(t))}`, params: [] }])
+  // DuckDB checks a foreign key against the transaction's start, so its replace has to empty the tables one by one,
+  // each committed, before the copy's transaction. Their rows are kept in temporary tables on the copy's connection
+  // and put back if the copy fails or is stopped.
+  const duckReplace = options.mode === 'replace' && targetDriver === 'duckdb' ? ordered.filter((t) => !created.has(t.name)) : []
+  const backup = (i: number) => dialect.quoteIdent(`dbm_copy_backup_${i}`)
+  const storedColumns = (t: TableInfo) => findTable(target, targetRef(t))!.columns.filter((c) => !c.isGenerated).map((c) => dialect.quoteIdent(c.name)).join(', ')
+  let emptied = 0
+  const restore = async (): Promise<string> => {
+    if (!emptied) return ''
+    try {
+      await driver.execute(dialect.rollback, { session }).catch(() => {})
+      await driver.execute(dialect.begin, { session })
+      // Emptied children first: the last `emptied` ones. Filled again parents first.
+      for (const [i, t] of duckReplace.entries()) {
+        if (i < duckReplace.length - emptied) continue
+        await driver.execute(`INSERT INTO ${qualify(dialect, targetRef(t))} (${storedColumns(t)}) SELECT ${storedColumns(t)} FROM ${backup(i)}`, { session })
+      }
+      await driver.execute(dialect.commit, { session })
+      return ''
+    } catch (err) {
+      await driver.execute(dialect.rollback, { session }).catch(() => {})
+      return ` (but the emptied tables could not be filled again: ${(err as Error).message})`
     }
   }
   try {
+    for (const [i, t] of duckReplace.entries()) await exec({ sql: `CREATE TEMP TABLE ${backup(i)} AS SELECT * FROM ${qualify(dialect, targetRef(t))}`, params: [] })
+    for (const t of [...duckReplace].reverse()) {
+      await exec({ sql: `DELETE FROM ${qualify(dialect, targetRef(t))}`, params: [] })
+      emptied++
+    }
     if (dialect.begin) await exec({ sql: dialect.begin, params: [] })
     if (options.mode === 'replace' && targetDriver !== 'duckdb') {
       for (const t of [...ordered].reverse()) await exec({ sql: `DELETE FROM ${qualify(dialect, targetRef(t))}`, params: [] })
     }
     for (const [index, t] of ordered.entries()) {
       const into = findTable(target, targetRef(t))!
-      const { pairs, skipped } = columnPairs(t, into)
+      const { pairs, skipped } = columnPairs(t, into, sourceDriver)
       const warnings: string[] = []
       const targetColumns = pairs.map(([, to]) => to)
       let identity = into.columns.some((c) => c.isIdentity && targetColumns.includes(c.name))
-      // SQL Server: the catalog says for sure (IDENTITY_INSERT is needed for any identity column the rows fill).
+      // SQL Server: the catalog says for sure. IDENTITY_INSERT is needed when the rows fill the identity column, and
+      // refused (error 545) when they don't.
       if (targetDriver === 'mssql') {
-        const [r] = await exec({ sql: `SELECT OBJECTPROPERTY(OBJECT_ID('${qualify(dialect, into).replaceAll("'", "''")}'), 'TableHasIdentity')`, params: [] })
-        identity = Number(r?.rows[0]?.[0] ?? 0) === 1
+        const [r] = await exec({ sql: `SELECT name FROM sys.identity_columns WHERE object_id = OBJECT_ID('${qualify(dialect, into).replaceAll("'", "''")}')`, params: [] })
+        identity = (r?.rows ?? []).some((row) => targetColumns.some((c) => lower(c) === lower(String(row[0]))))
       }
       const from = getDialect(sourceDriver)
+      const sourceColumns = pairs.map(([c]) => t.columns.find((x) => x.name === c)!)
       const select = `SELECT ${pairs.map(([c]) => from.quoteIdent(c)).join(', ')} FROM ${qualify(from, { schema: t.schema, name: t.name })}`
       let rows = 0
       options.onProgress?.({ table: t.name, index, total: ordered.length, rows, done: false })
       for await (const batch of db.streamQuery(sourceId, select, { batchSize: batchRows, signal: options.signal })) {
         if (!batch.rows.length) continue
-        const values = batch.rows.map((r) => r.map((v) => (isBinaryValue(v) ? null : copyValue(v, targetDriver))))
+        const values = batch.rows.map((r) => r.map((v, i) => (isBinaryValue(v) ? copyBinary(v, sourceColumns[i]!, sourceDriver, targetDriver, `${display(t)}.${sourceColumns[i]!.name}`) : copyValue(v, targetDriver))))
         for (const q of insertStatements(dialect, into, targetColumns, values as (string | null)[][], identity)) await exec(q)
         rows += batch.rows.length
         options.onProgress?.({ table: t.name, index, total: ordered.length, rows, done: false })
@@ -209,7 +271,10 @@ export async function copyTables(db: DatabaseService, sourceId: string, targetId
     if (dialect.commit) await driver.execute(dialect.commit, { session })
   } catch (err) {
     if (dialect.rollback) await driver.execute(dialect.rollback, { session }).catch(() => {})
-    throw options.signal?.aborted ? stopped() : err
+    const left = (await restore()) + (await dropCreated())
+    if (options.signal?.aborted) throw stopped(left)
+    if (left && err instanceof Error) err.message += left
+    throw err
   } finally {
     await driver.releaseSession(session).catch(() => {})
   }

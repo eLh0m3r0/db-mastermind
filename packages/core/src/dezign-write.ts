@@ -182,16 +182,19 @@ export interface SaveDezignOptions {
 type El = DezignElement
 /** Edits of the project's triggers, procedures and sequences, which the model text does not hold. */
 export interface DezignObjectEdits {
-  /** New code of triggers and procedures, by id (DeZign's placeholders such as `%triggername%` kept). */
-  code?: { id: string; code: string }[]
+  /**
+   * New code or name of triggers and procedures, by id (a trigger's as the model gives it: `dezignTriggerId`).
+   * DeZign's placeholders such as `%triggername%` are kept in the code.
+   */
+  code?: { id: string; kind?: 'trigger' | 'procedure'; code?: string; name?: string }[]
   /** Sequences: one with an id is changed to this, one without is made. */
   sequences?: ({ id?: string; name: string; schema?: string } & DezignSequenceSettings)[]
   /** New triggers of a table (`table`: `schema.table` of the edited model). */
   triggers?: { table: string; name: string; code: string }[]
   /** New procedures, made last in the order of creation. */
   procedures?: { name: string; code: string }[]
-  /** Ids of triggers, procedures and sequences to remove. */
-  remove?: string[]
+  /** Triggers, procedures and sequences to remove (an id alone: whichever has it). */
+  remove?: (string | { kind: 'trigger' | 'procedure' | 'sequence'; id: string })[]
 }
 
 /**
@@ -200,23 +203,30 @@ export interface DezignObjectEdits {
  */
 export function dezignObjectEdits(before: DezignSqlObject[], edited: DezignSqlObject[]): DezignObjectEdits {
   // Objects added in the app carry an id of the app's own (`local:…`) until the project gives them one.
-  const after = edited.map((o) => (o.id?.startsWith('local:') ? { ...o, id: undefined } : o))
+  // A tab opened before triggers' ids named their table (`dezignTriggerId`) holds the trigger's own id alone.
+  const ownId = (o: DezignSqlObject) =>
+    o.kind === 'trigger' && o.id && !o.id.includes('@') ? before.find((b) => b.kind === 'trigger' && b.id?.startsWith(`${o.id}@`) && lower(b.table ?? '') === lower(o.table ?? '') && lower(b.schema ?? '') === lower(o.schema ?? ''))?.id ?? o.id : o.id
+  const after = edited.map((o) => (o.id?.startsWith('local:') ? { ...o, id: undefined } : { ...o, id: ownId(o) }))
   const managed = (o: DezignSqlObject) => o.kind === 'trigger' || o.kind === 'procedure' || o.kind === 'sequence'
-  const byId = new Map(before.filter((o) => managed(o) && o.id).map((o) => [o.id!, o]))
+  // (Numbered files may give a procedure and a sequence the same number: an object is its kind and its id.)
+  const key = (o: DezignSqlObject) => `${o.kind}\u0000${o.id}`
+  const byId = new Map(before.filter((o) => managed(o) && o.id).map((o) => [key(o), o]))
   const edits: Required<DezignObjectEdits> = { code: [], sequences: [], triggers: [], procedures: [], remove: [] }
   const settings = (q: DezignSequenceSettings | undefined) => JSON.stringify(['increment', 'start', 'min', 'max', 'cache'].map((k) => (q?.[k as keyof DezignSequenceSettings] as string | undefined)?.trim() ?? '').concat(String(!!q?.cycle)))
   for (const o of after.filter(managed)) {
-    const was = o.id ? byId.get(o.id) : undefined
+    const was = o.id ? byId.get(key(o)) : undefined
     if (o.kind === 'sequence') {
       if (o.id && !was) continue
       if (!was || was.name !== o.name || (was.schema ?? '') !== (o.schema ?? '') || settings(was.sequence) !== settings(o.sequence)) edits.sequences.push({ ...(o.id ? { id: o.id } : {}), name: o.name, schema: o.schema, ...o.sequence })
     } else if (was) {
-      if (o.code !== undefined && o.code !== was.code) edits.code.push({ id: o.id!, code: o.code })
+      const code = o.code !== undefined && o.code !== was.code ? o.code : undefined
+      const name = o.name.trim() && o.name.trim() !== was.name ? o.name.trim() : undefined
+      if (code !== undefined || name) edits.code.push({ id: o.id!, kind: o.kind as 'trigger' | 'procedure', ...(code !== undefined ? { code } : {}), ...(name ? { name } : {}) })
     } else if (!o.id && o.kind === 'trigger' && o.table && o.code?.trim()) edits.triggers.push({ table: `${o.schema ?? ''}.${o.table}`, name: o.name, code: o.code })
     else if (!o.id && o.kind === 'procedure' && o.code?.trim()) edits.procedures.push({ name: o.name, code: o.code })
   }
-  const kept = new Set(after.map((o) => o.id).filter(Boolean))
-  for (const id of byId.keys()) if (!kept.has(id)) edits.remove.push(id)
+  const kept = new Set(after.filter((o) => o.id).map(key))
+  for (const [k, o] of byId) if (!kept.has(k)) edits.remove.push({ kind: o.kind as 'trigger' | 'procedure' | 'sequence', id: o.id! })
   return edits
 }
 
@@ -293,6 +303,18 @@ const PG_LIST_NAMES: Record<string, string> = { VARCHAR: 'CHARACTER VARYING', CH
 const tableKey = (t: { schema?: string; name: string }) => lower(`${t.schema ?? ''}.${t.name}`)
 const normType = (s: string) => lower(s).replace(/\s+/g, ' ').replace(/\s*,\s*/g, ',').replace(/\s*\(\s*/g, '(').replace(/\s*\)/g, ')').trim()
 const normText = (s: string | null | undefined) => (s ?? '').replace(/\r\n?/g, '\n').trim()
+/**
+ * The same column type as `verify` sees it: synonyms (varchar ≡ character varying) and serial ≡ an auto-numbered
+ * integer. After "Switch to PostgreSQL" the file says CHARACTER VARYING and SERIAL while the tab still says varchar
+ * and int: that is no change of type.
+ */
+const sameColumnType = (a: { dataType: string; isIdentity: boolean }, b: { dataType: string; isIdentity: boolean }) => {
+  const key = (c: { dataType: string; isIdentity: boolean }) => {
+    const type = normType(c.dataType)
+    return `${serialType(sameTypeName(type), c.isIdentity)}${c.isIdentity || /^(small|big)?serial$/.test(type) ? ' id' : ''}`
+  }
+  return key(a) === key(b)
+}
 /** Labels compared as a set of names (case aside). */
 const labelsKey = (l: string[] | undefined) => [...new Set((l ?? []).map((x) => lower(x.trim())).filter(Boolean))].sort().join('|')
 /** Custom property values compared by name (case aside), empty ones left out. */
@@ -1135,7 +1157,7 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
       let altered = false
       // What the column is (as opposed to what is said about it).
       let typed = false
-      if (normType(b.dataType) !== normType(c.dataType) || b.isIdentity !== c.isIdentity) {
+      if (!sameColumnType(b, c)) {
         setType(existing, c.dataType, c.isIdentity)
         altered = typed = true
       }
@@ -2169,31 +2191,45 @@ export function saveToDezign(files: DezignFile[], given: TableInfo[], wanted: Ta
   if (options.objects) {
     const edits = options.objects
     const triggersOf = (e: Entity) => kids(kid(e.el, 'TRIGGERS'), 'TRIGGER')
+    // `<trigger id>@<table id>` (dezignTriggerId), or a trigger's own id alone.
     const findTrigger = (id: string) => {
+      const at = id.lastIndexOf('@')
+      const [own, table] = at >= 0 ? [id.slice(0, at), id.slice(at + 1)] : [id, undefined]
       for (const e of entities.values()) {
-        const el = triggersOf(e).find((t) => text(t, 'ID') === id)
+        if (table !== undefined && e.id !== table) continue
+        const el = triggersOf(e).find((t) => text(t, 'ID') === own)
         if (el) return { entity: e, el }
       }
       return undefined
     }
     const keepCode = (code: string) => code.replace(/\s+$/, '')
     for (const wanted of edits.code ?? []) {
-      if (!wanted.code.trim()) continue
-      const trigger = findTrigger(wanted.id)
-      const proc = trigger ? undefined : project.list('PROC').find((p) => text(p.el, 'ID') === wanted.id)
+      const trigger = wanted.kind === 'procedure' ? undefined : findTrigger(wanted.id)
+      const proc = trigger || wanted.kind === 'trigger' ? undefined : project.list('PROC').find((p) => text(p.el, 'ID') === wanted.id)
       const el = trigger?.el ?? proc?.el
-      if (!el || normText(text(el, 'CODE')) === normText(wanted.code)) continue
-      set(el, 'CODE', keepCode(wanted.code))
+      if (!el) continue
+      const code = wanted.code?.trim() && normText(text(el, 'CODE')) !== normText(wanted.code) ? wanted.code : undefined
+      const name = wanted.name?.trim() && wanted.name.trim() !== text(el, 'NAME') ? wanted.name.trim() : undefined
+      if (code === undefined && !name) continue
+      if (code !== undefined) set(el, 'CODE', keepCode(code))
+      if (name) {
+        // A folder project may name a procedure's file by the procedure: it follows, as a renamed domain's does.
+        if (proc && project.fileStem(proc) && project.fileStem(proc) !== text(proc.el, 'ID')) project.rename('PROC', proc, name)
+        set(el, 'NAME', name)
+      }
       changes.push({ kind: trigger ? 'alter_trigger' : 'alter_procedure', table: trigger ? text(trigger.entity.el, 'NAME') : text(el, 'NAME'), ...(trigger ? { name: text(el, 'NAME') } : {}) })
     }
-    for (const id of edits.remove ?? []) {
-      const trigger = findTrigger(id)
+    for (const entry of edits.remove ?? []) {
+      const { kind: only, id } = typeof entry === 'string' ? { kind: undefined, id: entry } : entry
+      const trigger = only === undefined || only === 'trigger' ? findTrigger(id) : undefined
       if (trigger) {
         remove(kid(trigger.entity.el, 'TRIGGERS'), trigger.el)
         changes.push({ kind: 'drop_trigger', table: text(trigger.entity.el, 'NAME'), name: text(trigger.el, 'NAME') })
         continue
       }
+      if (only === 'trigger') continue
       for (const kind of ['SEQUENCE', 'PROC'] as const) {
+        if (only && only !== (kind === 'SEQUENCE' ? 'sequence' : 'procedure')) continue
         const slot = project.list(kind).find((x) => text(x.el, 'ID') === id)
         if (!slot) continue
         project.remove(kind, slot)

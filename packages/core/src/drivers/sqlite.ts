@@ -337,13 +337,17 @@ export class SqliteDriver implements DatabaseDriver {
     const open = (await this.send({ type: 'stream-open', sql, params: options.params ?? [] })) as { cursor: number; fields: ResultField[] }
     if (!open.cursor) return
     let done = false
+    let yielded = false
     try {
       while (!done) {
         // Batches are small and quick, so cancelling between them is enough.
         if (options.signal?.aborted) throw new QueryCancelledError()
         const next = (await this.send({ type: 'stream-next', cursor: open.cursor, size: options.batchSize ?? 5000 })) as { rows: unknown[][]; done: boolean }
         done = next.done
-        if (next.rows.length) yield { fields: open.fields, rows: next.rows.map((r) => r.map(normalizeValue)) }
+        if (next.rows.length || (done && !yielded && open.fields.length)) {
+          yielded = true
+          yield { fields: open.fields, rows: next.rows.map((r) => r.map(normalizeValue)) }
+        }
       }
     } finally {
       if (!done) await this.send({ type: 'stream-close', cursor: open.cursor }).catch(() => {})

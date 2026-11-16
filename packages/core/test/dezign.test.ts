@@ -668,6 +668,36 @@ describe('saving back into a DeZign project', () => {
     expect(objects(removed.files[0]!.text).filter((o) => o.kind !== 'view').map((o) => o.name)).toEqual(['ticket_no'])
   })
 
+  it('tells apart triggers numbered per table, and writes renamed triggers and procedures (review findings)', () => {
+    // Before DeZign 14 each table numbers its own triggers: customer and invoice both have trigger 1.
+    const trigger = (name: string) => `<TRIGGERS>\n<TRIGGER>\n<NAME>${name}</NAME>\n<ID>1</ID>\n<POSNR>0</POSNR>\n<CODE>CREATE TRIGGER %triggername% BEFORE UPDATE ON %table% FOR EACH ROW EXECUTE FUNCTION f()</CODE>\n</TRIGGER>\n</TRIGGERS>\n`
+    const [current, ...rest] = dez.replace('<NAME>invoice_no</NAME>', '<NAME>invoice_no</NAME>\n<ID>S1</ID>').split('</VERSION>')
+    const text = current!
+      .replace('<NAME>customer</NAME>\n<ID>10</ID>\n', `<NAME>customer</NAME>\n<ID>10</ID>\n${trigger('trg_customer')}`)
+      .replace('<NAME>invoice</NAME>\n<ID>20</ID>\n', `<NAME>invoice</NAME>\n<ID>20</ID>\n${trigger('trg_invoice')}`)
+    const files: DezignFile[] = [{ path: 'shop.dez', text: [text, ...rest].join('</VERSION>') }]
+    const base = model(files)
+    const before = readDezign(files[0]!.text).sqlObjects
+    const triggers = before.filter((o) => o.kind === 'trigger')
+    expect(triggers.map((o) => o.name)).toEqual(['trg_customer', 'trg_invoice'])
+    expect(new Set(triggers.map((o) => o.id)).size).toBe(2)
+    // A tab opened before holds each trigger's own id alone: still the same triggers, nothing to remove.
+    expect(dezignObjectEdits(before, before.map((o) => (o.kind === 'trigger' ? { ...o, id: o.id!.slice(0, o.id!.indexOf('@')) } : o)))).toEqual({ code: [], sequences: [], triggers: [], procedures: [], remove: [] })
+    // Removing the invoice's trigger removes that one only.
+    const removed = saveToDezign(files, base, base, { normalize: viaDbml, objects: dezignObjectEdits(before, before.filter((o) => o.name !== 'trg_invoice')) })
+    expect(removed.changes).toEqual([{ kind: 'drop_trigger', table: 'invoice', name: 'trg_invoice' }])
+    expect(readDezign(removed.files[0]!.text).sqlObjects.filter((o) => o.kind === 'trigger').map((o) => o.name)).toEqual(['trg_customer'])
+    // Renamed: the invoice's trigger and a new procedure.
+    const renamed = saveToDezign(files, base, base, { normalize: viaDbml, objects: dezignObjectEdits(before, before.map((o) => (o.name === 'trg_invoice' ? { ...o, name: 'trg_invoice_total' } : o))) })
+    expect(renamed.changes).toEqual([{ kind: 'alter_trigger', table: 'invoice', name: 'trg_invoice_total' }])
+    expect(readDezign(renamed.files[0]!.text).sqlObjects.filter((o) => o.kind === 'trigger').map((o) => o.name)).toEqual(['trg_customer', 'trg_invoice_total'])
+    const withProc = saveToDezign(files, base, base, { normalize: viaDbml, objects: { procedures: [{ name: 'usp_x', code: 'CREATE PROCEDURE %procname%' }] } }).files
+    const procs = readDezign(withProc[0]!.text).sqlObjects
+    const r = saveToDezign(withProc, base, base, { normalize: viaDbml, objects: dezignObjectEdits(procs, procs.map((o) => (o.name === 'usp_x' ? { ...o, name: 'usp_y' } : o))) })
+    expect(r.changes).toEqual([{ kind: 'alter_procedure', table: 'usp_y' }])
+    expect(readDezign(r.files[0]!.text).sqlObjects.filter((o) => o.kind === 'procedure').map((o) => o.sql)).toEqual(['CREATE PROCEDURE usp_y'])
+  })
+
   it('puts a new sequence of a folder project into a file of its own, and removes one with its file', () => {
     const files = dezignAsFolder(dez.replace('<NAME>invoice_no</NAME>', '<NAME>invoice_no</NAME>\n<ID>S1</ID>'), 'Shop')
     const seqFiles = (list: DezignFile[]) => list.filter((f) => /sequences\//i.test(f.path)).map((f) => f.path)
@@ -712,12 +742,20 @@ describe('saving back into a DeZign project', () => {
       before[3]!,
     ]
     expect(dezignObjectEdits(before, after)).toEqual({
-      code: [{ id: 'T1', code: 'CREATE TRIGGER %triggername% -- changed' }],
+      code: [{ id: 'T1', kind: 'trigger', code: 'CREATE TRIGGER %triggername% -- changed' }],
       sequences: [{ id: 'S1', name: 'invoice_no', schema: 'shop', increment: '5', start: '1000', cycle: true }, { name: 'ticket_no', schema: undefined, start: '1' }],
       triggers: [{ table: 'shop.invoice', name: 'trg_new', code: 'CREATE TRIGGER %triggername%' }],
       procedures: [],
-      remove: ['P1'],
+      remove: [{ kind: 'procedure', id: 'P1' }],
     })
+    // A renamed trigger or procedure is a change too (review finding); so is the name of a procedure alone.
+    expect(dezignObjectEdits(before, [{ ...before[0]!, name: 'trg_b' }, { ...before[1]!, name: 'q' }, before[2]!, before[3]!]).code).toEqual([
+      { id: 'T1', kind: 'trigger', name: 'trg_b' },
+      { id: 'P1', kind: 'procedure', name: 'q' },
+    ])
+    // An object is its kind and its id: a procedure numbered like a sequence is not that sequence.
+    const twins = [before[1]!, { ...before[2]!, id: 'P1' }]
+    expect(dezignObjectEdits(twins, [twins[1]!]).remove).toEqual([{ kind: 'procedure', id: 'P1' }])
     // The SQL follows an edit of the code or the settings.
     expect(withDezignSql({ ...after[2]!, code: 'CREATE TRIGGER %triggername% ON %table%' }).sql).toBe('CREATE TRIGGER trg_new ON shop.invoice')
     expect(withDezignSql(after[1]!).sql).toBe('CREATE SEQUENCE shop.invoice_no INCREMENT BY 5 START WITH 1000 CYCLE')
@@ -757,6 +795,12 @@ describe('saving back into a DeZign project', () => {
     const cleared = save([{ path: 'shop.dez', text: out }], (t) => void delete t[0]!.properties)
     expect(readDezign(cleared.files[0]!.text).tables[0]!.properties).toBeUndefined()
     expect(() => save(files, (t) => void (t[0]!.properties = { Owner: 'x' }))).toThrow(/no custom property "Owner"/)
+    // A folder project keeps the definitions in a folder of the data dictionary (review finding).
+    const folder = dezignAsFolder(files[0]!.text, 'Shop')
+    expect(folder.some((f) => f.path.startsWith('data dictionary/user defined properties/'))).toBe(true)
+    const fromFolder = readDezign(assembleDezignProject(folder))
+    expect(fromFolder.userProperties.map((p) => p.name)).toEqual(['Assigned to', 'Personal data'])
+    expect(fromFolder.tables[0]!.properties).toEqual({ 'Assigned to': 'Pete B' })
   })
 
   it('makes a relationship a subtype one (DeZign: a cluster under the supertype) and back', () => {
@@ -850,6 +894,12 @@ describe('saving back into a DeZign project', () => {
     const back = saveToDezign([{ path: 'shop.dez', text: r.files[0]!.text }], viaDbml(out.tables), pg, { normalize: viaDbml, targetDatabase: 'postgresql16' })
     expect(back.files[0]!.text.split('</VERSION>')[0]).not.toMatch(/<DTLISTNAME>VARCHAR</)
     expect(readDezign(back.files[0]!.text).targetDatabase).toBe('postgresql16')
+    // The tab keeps the text it switched with (varchar, int): the next save changes only what was edited, not
+    // DeZign's names for the same types back (review finding).
+    const switched = readDezign(back.files[0]!.text)
+    const next = saveToDezign([{ path: 'shop.dez', text: back.files[0]!.text }], viaDbml(switched.tables), pg.map((t, i) => (i === 0 ? { ...t, comment: 'People who buy' } : t)), { normalize: viaDbml })
+    expect(next.changes.map((c) => c.kind)).toEqual(['alter_table'])
+    expect(next.files[0]!.text.split('</VERSION>')[0]).not.toMatch(/<DTLISTNAME>VARCHAR</)
     // A folder project names its database in its data dictionary's own file.
     const folder = dezignAsFolder(dez, 'Shop')
     const f = saveToDezign(folder, model(folder), viaDbml(translateTables(model(folder).map((t) => ({ ...t, columns: t.columns.map((c) => ({ ...c, domain: undefined })) })), 'mssql', 'postgres')), { normalize: viaDbml, targetDatabase: 'mssqlserver2022' })

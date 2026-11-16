@@ -87,12 +87,43 @@ for (const engine of engines) {
         for (const object of routines!.objects) {
           expect(snapshot.routines.some((r) => r.name === object.name && (object.arguments === undefined || r.arguments === object.arguments))).toBe(true)
           const { sql } = await objectDefinition(svc, config.id, object)
+          if (engine.id === 'mariadb') {
+            // Replaced in one statement: a text that fails leaves the routine (and its grants) in place.
+            expect(sql).not.toMatch(/DROP/)
+            const broken = await svc.runScript(config.id, sql.replace(/\bRETURN\b|\bSELECT\b/, 'RETURNX'))
+            expect(broken.some((o) => o.error)).toBe(true)
+            const [still] = await svc.runScript(config.id, object.check)
+            expect(still?.error?.message).toBeUndefined()
+          }
           const outcomes = await svc.runScript(config.id, sql)
           expect(outcomes.filter((o) => o.error).map((o) => `${o.sql}\n→ ${o.error!.message}`)).toEqual([])
           const [called] = await svc.runScript(config.id, object.check)
           expect(called?.error?.message).toBeUndefined()
           if (object.expect !== undefined) expect(String(called!.results!.at(-1)!.rows[0]![0])).toBe(String(object.expect))
         }
+      } finally {
+        await svc.disconnectAll()
+      }
+    })
+
+    it.skipIf(engine.id !== 'postgres')('keeps a PostgreSQL view’s options and check option (review finding)', async () => {
+      const svc = new DatabaseService()
+      try {
+        const config = await setupEngine(svc, engine)
+        const options = async () => {
+          const [o] = await svc.runScript(config.id, `SELECT array_to_string(reloptions, ',') FROM pg_class WHERE oid = 'shop.positive_customers'::regclass`)
+          return String(o!.results![0]!.rows[0]![0])
+        }
+        const [made] = await svc.runScript(config.id, 'CREATE OR REPLACE VIEW shop.positive_customers WITH (security_invoker = true, security_barrier = true) AS SELECT id, name FROM shop.customers WHERE id > 0 WITH CASCADED CHECK OPTION')
+        expect(made?.error?.message).toBeUndefined()
+        const before = await options()
+        expect(before).toMatch(/security_invoker=true/)
+        const { sql } = await objectDefinition(svc, config.id, { schema: 'shop', name: 'positive_customers', kind: 'view' })
+        expect(sql).toMatch(/WITH CASCADED CHECK OPTION;/)
+        const outcomes = await svc.runScript(config.id, sql)
+        expect(outcomes.filter((o) => o.error).map((o) => o.error!.message)).toEqual([])
+        expect(await options()).toBe(before)
+        await svc.runScript(config.id, 'DROP VIEW shop.positive_customers')
       } finally {
         await svc.disconnectAll()
       }

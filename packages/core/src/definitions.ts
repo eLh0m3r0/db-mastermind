@@ -149,17 +149,23 @@ export async function objectDefinition(db: DatabaseService, id: string, object: 
   switch (config.driver) {
     case 'postgres': {
       if (isView) {
+        // CREATE OR REPLACE VIEW sets the view's options to the ones it names: security_invoker, security_barrier and
+        // the check option (kept among them) must be written out, or running the text drops them.
         const row = await first(
-          `SELECT c.relkind::text AS kind, pg_get_viewdef(c.oid, true) AS def
+          `SELECT c.relkind::text AS kind, pg_get_viewdef(c.oid, true) AS def,
+                  (SELECT string_agg(o, ', ') FROM unnest(c.reloptions) o WHERE o NOT LIKE 'check\\_option=%') AS options,
+                  (SELECT upper(substr(o, 14)) FROM unnest(c.reloptions) o WHERE o LIKE 'check\\_option=%') AS check_option
              FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind IN ('v', 'm')`,
           [object.schema ?? 'public', object.name],
         )
         if (!row) throw notFound()
-        const body = ensureSemicolon(text(row.def))
+        const options = text(row.options) ? ` WITH (${text(row.options)})` : ''
+        const check = /^(LOCAL|CASCADED)$/.test(text(row.check_option)) ? `\n  WITH ${text(row.check_option)} CHECK OPTION` : ''
+        const body = `${text(row.def).trim().replace(/;\s*$/, '')}${check};`
         return text(row.kind) === 'm'
-          ? { sql: `-- A materialized view can't be replaced: DROP MATERIALIZED VIEW ${name}; first, then run this.\nCREATE MATERIALIZED VIEW ${name} AS\n${body}\n` }
-          : { sql: `CREATE OR REPLACE VIEW ${name} AS\n${body}\n` }
+          ? { sql: `-- A materialized view can't be replaced: DROP MATERIALIZED VIEW ${name}; first, then run this.\nCREATE MATERIALIZED VIEW ${name}${options} AS\n${body}\n` }
+          : { sql: `CREATE OR REPLACE VIEW ${name}${options} AS\n${body}\n` }
       }
       const row = await first(
         `SELECT pg_get_functiondef(p.oid) AS def
@@ -177,10 +183,15 @@ export async function objectDefinition(db: DatabaseService, id: string, object: 
       const row = await first(`SHOW CREATE ${kind} ${name}`, [])
       const def = row ? text(row[`create ${kind.toLowerCase()}`]) : ''
       if (!def) throw notFound()
-      // MySQL has CREATE OR REPLACE for views only (MariaDB for routines too, but DROP + CREATE works on both).
       if (isView) return { sql: `${ensureSemicolon(withLeadingCreate(def, 'CREATE OR REPLACE'))}\n` }
       // A body's own semicolons need another delimiter, as in the mysql client and Workbench.
-      return { sql: `DROP ${kind} IF EXISTS ${name};\n\nDELIMITER $$\n${def.trim().replace(/;\s*$/, '')}$$\nDELIMITER ;\n` }
+      const body = def.trim().replace(/;\s*$/, '')
+      // MariaDB replaces a routine in one statement, which keeps it (and the grants on it) when the new text fails.
+      if (config.driver === 'mariadb') return { sql: `DELIMITER $$\n${withLeadingCreate(body, 'CREATE OR REPLACE')}$$\nDELIMITER ;\n` }
+      // MySQL has CREATE OR REPLACE for views only.
+      return {
+        sql: `-- MySQL can't replace a routine: this drops it and creates it again. If the CREATE fails, the ${kind.toLowerCase()} is gone until it\n-- succeeds, and EXECUTE privileges granted on it have to be granted again.\nDROP ${kind} IF EXISTS ${name};\n\nDELIMITER $$\n${body}$$\nDELIMITER ;\n`,
+      }
     }
     case 'mssql': {
       const row = await first(`SELECT OBJECT_DEFINITION(OBJECT_ID(@p1)) AS def`, [name])
@@ -193,7 +204,8 @@ export async function objectDefinition(db: DatabaseService, id: string, object: 
       const owner = object.schema ?? text((await first(`SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AS "s" FROM dual`, []))?.s)
       const ownName = qualify(dialect, { schema: owner, name: object.name })
       if (isView) {
-        const row = await first(`SELECT text_vc AS "def" FROM all_views WHERE owner = :1 AND view_name = :2`, [owner, object.name])
+        // TEXT_VC holds only the first 4,000 characters; TEXT (a LONG) holds them all.
+        const row = await first(`SELECT text AS "def" FROM all_views WHERE owner = :1 AND view_name = :2`, [owner, object.name])
         if (!row?.def) throw notFound()
         return { sql: `CREATE OR REPLACE VIEW ${ownName} AS\n${ensureSemicolon(text(row.def))}\n` }
       }

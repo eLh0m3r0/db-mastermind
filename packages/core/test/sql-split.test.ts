@@ -6,6 +6,7 @@ import {
   isDangerousStatement,
   isReadOnlyCondition,
   isReadOnlyScript,
+  stripLiterals,
   opensTransaction,
   splitStatements,
   statementAtOffset,
@@ -73,6 +74,11 @@ describe('splitStatements', () => {
   it('ends a statement at a $$ delimiter right after a word (END$$), though MySQL names may contain $', () => {
     const script = `DELIMITER $$\ncreate procedure p() begin if 1 then select 1; end if; end$$\nDELIMITER ;\nselect a$b from t;`
     expect(texts(script, 'mysql')).toEqual(['create procedure p() begin if 1 then select 1; end if; end', 'select a$b from t'])
+  })
+
+  it('ends a statement at a $$ delimiter after whitespace or on its own line', () => {
+    const script = `DELIMITER $$\ncreate procedure p() begin select 1; end $$\ncreate procedure q() begin select 2; end\n$$\nDELIMITER ;\nselect 3;`
+    expect(texts(script, 'mysql')).toEqual(['create procedure p() begin select 1; end', 'create procedure q() begin select 2; end', 'select 3'])
   })
 
   it('splits T-SQL on GO lines and bracket identifiers', () => {
@@ -238,5 +244,46 @@ describe('opensTransaction (manual commit)', () => {
     expect(opensTransaction('BEGIN NOT ATOMIC UPDATE t SET v = 1; END', 'mariadb')).toBe(true)
     expect(opensTransaction("sp_rename 'a', 'b'", 'mssql')).toBe(true)
     expect(opensTransaction("SELECT 'sp_x'", 'mssql')).toBe(false)
+  })
+  it('a quote in a comment does not hide the write after it', () => {
+    const sql = "-- fix Bob's email\nUPDATE users SET email = 'bob@example.com' WHERE id = 7"
+    for (const driver of ['postgres', 'mysql', 'mssql', 'sqlite', 'duckdb', 'oracle'] as const) expect(opensTransaction(sql, driver), driver).toBe(true)
+    expect(opensTransaction("/* it's */ DELETE FROM t WHERE a = 'x'", 'postgres')).toBe(true)
+    expect(opensTransaction("-- it's\nUPDATE t\nSET a = 'x'", 'mssql')).toBe(true)
+    expect(opensTransaction("SELECT '-- not a comment' AS a\nUPDATE t SET a = 1", 'mssql')).toBe(true)
+    expect(opensTransaction("SELECT 'it\\'s' AS a; -- it's\n", 'mysql')).toBe(false)
+  })
+  it('MySQL LOAD DATA / LOAD XML write rows; DuckDB LOAD loads an extension', () => {
+    expect(opensTransaction("LOAD DATA INFILE '/tmp/x.csv' INTO TABLE t", 'mysql')).toBe(true)
+    expect(opensTransaction("LOAD DATA LOCAL INFILE 'x.csv' INTO TABLE t", 'mariadb')).toBe(true)
+    expect(opensTransaction("LOAD XML INFILE 'x.xml' INTO TABLE t", 'mysql')).toBe(true)
+    expect(opensTransaction('LOAD httpfs', 'duckdb')).toBe(false)
+  })
+  it('T-SQL: tables or columns named like BACKUP / RESTORE / RECONFIGURE are not those statements', () => {
+    expect(opensTransaction('UPDATE dbo.Backup SET done = 1', 'mssql')).toBe(true)
+    expect(opensTransaction('UPDATE t SET restore = 1, reconfigure = 0', 'mssql')).toBe(true)
+    expect(opensTransaction('INSERT INTO backup (a) VALUES (1)', 'mssql')).toBe(true)
+    expect(opensTransaction("RESTORE DATABASE d FROM DISK = 'x'", 'mssql')).toBe(false)
+    expect(opensTransaction("EXEC sp_configure 'x', 1;\nRECONFIGURE", 'mssql')).toBe(false)
+  })
+  it('T-SQL: COMMIT or ROLLBACK without BEGIN TRAN ends the transaction opened here', () => {
+    expect(opensTransaction('UPDATE t SET a = 1 WHERE id = 2\nROLLBACK', 'mssql')).toBe(true)
+    expect(opensTransaction('BEGIN TRY UPDATE t SET a = 1 END TRY BEGIN CATCH IF @@TRANCOUNT > 0 ROLLBACK END CATCH', 'mssql')).toBe(true)
+    expect(opensTransaction('BEGIN TRANSACTION UPDATE t SET a = 1 COMMIT', 'mssql')).toBe(false)
+    expect(opensTransaction('COMMIT', 'mssql')).toBe(false)
+  })
+})
+
+describe('stripLiterals', () => {
+  it('skips comments and literals in one pass, in source order', () => {
+    expect(stripLiterals("-- Bob's\nUPDATE t SET a = 'x'")).toBe(" \nUPDATE t SET a = ''")
+    expect(stripLiterals(`SELECT 'a -- b', "it's" /* c' */ FROM t`)).toBe(`SELECT '', ""   FROM t`)
+    expect(stripLiterals("SELECT 'it\\'s', `x'` # y'\nFROM t", 'mysql')).toBe("SELECT '', ``  \nFROM t")
+    expect(stripLiterals("SELECT [it's] FROM t", 'mssql')).toBe('SELECT [] FROM t')
+    expect(stripLiterals("SELECT E'it\\'s', $$ it's $$ FROM t", 'postgres')).toBe("SELECT E'', '' FROM t")
+  })
+  it('T-SQL: an apostrophe in a comment does not hide a write from the read-only check', () => {
+    expect(isReadOnlyScript("-- it's\nSELECT 'a' DELETE FROM t", 'mssql')).toBe(false)
+    expect(isReadOnlyScript("SELECT 1 /* don't */ UPDATE t SET a = 1", 'mssql')).toBe(false)
   })
 })
