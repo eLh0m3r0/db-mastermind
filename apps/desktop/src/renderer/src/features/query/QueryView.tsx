@@ -409,7 +409,8 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
   }, [active, run, cancel, format, save, openInline, tab.id])
 
   useEffect(() => {
-    if (active) requestAnimationFrame(() => editor.current?.focus())
+    // (Not while someone walks the tab strip with the arrow keys: the focus stays on the tabs.)
+    if (active) requestAnimationFrame(() => !document.activeElement?.matches('[role="tab"]:focus-visible') && editor.current?.focus())
   }, [active])
 
   // Insert text requested from elsewhere (history, AI, sidebar).
