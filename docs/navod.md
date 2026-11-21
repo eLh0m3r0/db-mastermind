@@ -23,10 +23,18 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
 
 - **Nové připojení** (vlevo dole): PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite, DuckDB, ClickHouse, CockroachDB, BigQuery nebo Trino.
   - Do pole nahoře můžete vložit celý connection string a formulář se vyplní sám.
+  - Hostované služby pozná podle adresy serveru: Supabase, Neon, Timescale, Amazon RDS / Aurora, Azure a Google
+    Cloud SQL. Pod hostitelem se objeví, o kterou jde, šifrování (TLS) se zapne samo a prázdný název dostane
+    jméno služby. U Supabase na portu 6543 upozorní, že tento pooler nedrží nastavení relace.
   - U SQL Serveru na Windows zvolte **Ověření Windows** a heslo nezadáváte.
 - **Import:** tlačítko *Importovat připojení* vedle *Nové připojení* najde nástroje na počítači (Beekeeper Studio, DBeaver,
   DataGrip, pgAdmin, SSMS, Azure Data Studio, MySQL Workbench, HeidiSQL a další) nebo načte soubor od kolegy. Z Beekeeper
   Studia a DBeaveru převezme i uložená hesla; když heslo chybí, aplikace se na něj při připojení zeptá.
+- **Připojení z projektu:** přetáhněte do okna složku projektu, soubor `.env` nebo `docker-compose.yml` (případně
+  *Importovat připojení → Ze složky projektu…* nebo *Ze souboru…*). Aplikace najde `DATABASE_URL` a podobné
+  proměnné, databázové služby z compose (s portem zveřejněným na tomto počítači) a datasource z
+  `prisma/schema.prisma`. Hesla převezme, uloží je šifrovaně a nic se nepřipojí, dokud připojení neotevřete.
+  Čte jen tyto soubory přímo ve složce, žádné odkazy jinam.
 - **Sdílení s kolegy:** pravé tlačítko na připojení → *Sdílet s kolegy (bez hesla)…*. Soubor neobsahuje hesla.
 - **Jiná databáze na stejném serveru:** v nabídce připojení (šipka u jeho názvu nebo pravé tlačítko) zvolte *Otevřít
   jinou databázi…*. Každá databáze se otevře jako samostatné připojení s vlastní barvou, režimem jen pro čtení
@@ -98,6 +106,14 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
   v návrháři, kde přidáte sloupce, klíče, další tabulky a vazby. DBML psát nemusíte.
 - **Model bez připojení:** model otevřete z úvodní stránky, přes *Soubor → Otevřít model* (⌘O / Ctrl+O), přetažením
   souboru do okna nebo dvojklikem na `.dbml`. Databázi vyberete v liště modelu, až budete chtít porovnání.
+- **Kód z modelu:** *Exportovat → Kód* u diagramu (modelu i živé databáze) uloží schéma pro Prisma, Drizzle,
+  modely SQLAlchemy nebo typy TypeScriptu. Prisma a Drizzle se nabídnou jen pro databáze, které umějí.
+  Z příkazové řádky totéž udělá `dbm export model.dbml --format prisma`.
+- **Modely z jiných nástrojů:** *Otevřít model* (nebo přetažení souboru) otevře i model z MySQL Workbenche (`.mwb`),
+  diagram z drawDB (`.json`, `.ddb`), ER diagram v Mermaidu (`.mmd`, i uvnitř Markdownu) a schéma Prisma. Otevře se
+  jako nový neuložený model i s rozložením tabulek; původní soubor zůstane, jak byl, a *Uložit* vytvoří `.dbml`.
+  Hlášení řekne, co se převzít nedalo (pohledy, procedury, vazby M:N…). Totéž umí *Importovat → Soubor SQL, Prisma,
+  Mermaid, drawDB nebo MySQL Workbench…* uvnitř modelu.
 - **Diagram do PDF:** *Export → PDF* uloží diagram na jednu stránku, nebo v čitelné velikosti na více listů A4
   (každý list má v rohu číslo řádku a sloupce).
 - **Diagramy projektu DeZignu:** v liště modelu přepínáte mezi celým modelem a jeho diagramy. *Nový diagram…*
