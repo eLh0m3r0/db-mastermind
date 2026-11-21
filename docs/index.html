@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DB Mastermind — free database client and data modeler with AI</title>
 <meta name="author" content="Václav Mudra">
-<meta name="description" content="Free, open-source database client and data modeler for PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite, DuckDB, ClickHouse, CockroachDB, BigQuery and Trino: data browser with advanced filters, ER diagrams, data modeling that opens DeZign for Databases projects, schema design with migrations, and AI that knows your database.">
+<meta name="description" content="Free, open-source database client and data modeler for PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite, DuckDB, ClickHouse, CockroachDB, BigQuery and Trino: a data browser with advanced filters, an SQL editor that knows your schema, ER diagrams, models with migrations and code export, an MCP server for agents, and AI that knows your database.">
 <link rel="canonical" href="https://dbmastermind.app/">
 <link rel="icon" href="icon.svg">
 <link rel="stylesheet" href="site.css">
@@ -35,7 +35,7 @@
   <main>
   <div class="hero">
     <h1>The database client that<br>understands your data</h1>
-    <p>Browse and filter data without limits, model a new database or redesign one you have with generated migrations (DeZign for Databases projects open too), and ask an AI that knows your database. Free and open source, nothing to install on Windows.</p>
+    <p>Browse and filter data without limits, write SQL with an editor that knows your schema, model a new database or redesign the one you have with generated migrations, and ask an AI that knows your database. Free and open source, for Windows, macOS and Linux.</p>
     <div class="cta">
       <a class="btn primary" id="download" href="https://github.com/eLh0m3r0/db-mastermind/releases/latest">Download <small id="download-os"></small></a>
       <a class="btn" href="https://github.com/eLh0m3r0/db-mastermind/releases/latest">All downloads</a>
@@ -46,6 +46,7 @@
     <ul class="engines">
       <li>PostgreSQL</li><li>SQL Server</li><li>Oracle</li><li>MySQL</li><li>MariaDB</li><li>SQLite</li><li>DuckDB</li><li>ClickHouse</li><li>CockroachDB</li><li>BigQuery</li><li>Trino</li><li>CSV · Parquet · Excel</li>
     </ul>
+    <div class="note">Works with hosted databases too: Supabase, Neon, Timescale, Amazon RDS and Aurora, Azure Database and Azure SQL, Google Cloud SQL. Paste their connection string and the app recognises the service.</div>
     <div class="shot"><img src="screenshots/table-filters.png" alt="Table browser with filters and row details"></div>
   </div>
 
@@ -72,18 +73,20 @@
       <div class="card"><h3>Find any value</h3><p>Search a value across a whole database, see a column's profile (empty, distinct, most common), and get totals of the cells you select.</p></div>
       <div class="card"><h3>Compare</h3><p>Schemas between environments with the migration for the target, and table data with a sync script.</p></div>
       <div class="card"><h3>For DBAs too</h3><p>Running queries and lock waits, the slowest queries, storage with unused and duplicate indexes, users &amp; roles, backup and restore.</p></div>
-      <div class="card"><h3>Enterprise connections</h3><p>SSH tunnels and jump hosts, SSL, passwords from 1Password, Bitwarden or Vault, SQL Server with Windows authentication or Entra ID, import connections from DBeaver, DataGrip, pgAdmin, SSMS, TablePlus and more.</p></div>
+      <div class="card"><h3>Enterprise connections</h3><p>SSH tunnels and jump hosts, SSL, passwords from 1Password, Bitwarden or Vault, SQL Server with Windows authentication or Entra ID, import connections from DBeaver, DataGrip, pgAdmin, SSMS, Azure Data Studio, TablePlus and more.</p></div>
+      <div class="card"><h3>Connections from your project</h3><p>Drop a <code>.env</code>, a docker-compose file or a project folder on the window: the databases it names become connections, with their passwords saved encrypted. Nothing connects until you open one.</p></div>
       <div class="card"><h3>Move data</h3><p>Copy tables to another database, even another engine, run one script on several connections, and import CSV, Excel, JSON or Parquet.</p></div>
       <div class="card"><h3>Safe by default</h3><p>Read-only connections, a production guard, and a confirmation before DELETE or UPDATE without WHERE, DROP or TRUNCATE.</p></div>
       <div class="card"><h3>Keyboard first</h3><p>Command palette (<span class="kbd">Ctrl/⌘ K</span>), quick table open (<span class="kbd">Ctrl/⌘ P</span>), split view, tabs that survive a restart; every shortcut under Help → Keyboard Shortcuts.</p></div>
       <div class="card"><h3>Big schemas stay fast</h3><p>Thousands of tables across many schemas: filter the explorer, hide schemas you don't use, pin the tables you do.</p></div>
       <div class="card"><h3>Share with your team</h3><p>A shared team folder with connections, queries and notes, exports without passwords, and a data dictionary as one HTML page.</p></div>
     </div>
+    <p class="more"><a class="subtle" href="azure-data-studio.html">Coming from Azure Data Studio? What you will find here →</a></p>
   </section>
 
   <section id="design">
     <h2>Model, understand and redesign</h2>
-    <p class="lead">Design a database before it exists, or change the one you have. Teams that use DeZign for Databases open their projects here, edit them and save them back, without DeZign installed.</p>
+    <p class="lead">Design a database before it exists, or change the one you have. Start from what you already have: a database, an SQL script, a Prisma schema, a Mermaid ER diagram, a drawDB file or a MySQL Workbench model.</p>
     <div class="feature">
       <div class="text"><h3>Interactive ER diagrams</h3><p>Automatic layout, crow's-foot notation, focus on a table and its neighbours, saved subject-area diagrams, and the join path between any two tables as ready SQL.</p></div>
       <img loading="lazy" src="screenshots/join-path.png" alt="Join path between two tables in the ER diagram">
@@ -93,7 +96,7 @@
       <img loading="lazy" src="screenshots/designer.png" alt="Schema designer">
     </div>
     <div class="feature">
-      <div class="text"><h3>Model a new database</h3><p>Draw tables and relationships, rename and retype right on the canvas, and keep everything else in one panel. The model is a DBML text file for Git; generate DDL for any database or compare it with one to get the migration. Opens and saves DeZign for Databases projects too.</p></div>
+      <div class="text"><h3>Model a new database</h3><p>Draw tables and relationships, rename and retype right on the canvas, and keep everything else in one panel. The model is a DBML text file for Git; generate DDL for any database or compare it with one to get the migration.</p><p>Export a model or a live database as code: a Prisma schema, a Drizzle schema, SQLAlchemy models or TypeScript types.</p><p>Using DeZign for Databases? Your projects open here and save back in place: <a href="dezign.html">see what is kept</a>.</p></div>
       <img loading="lazy" src="screenshots/modeler.png" alt="A model edited on the canvas with the detail panel">
     </div>
     <div class="feature">
@@ -200,17 +203,24 @@ brew install --cask db-mastermind</pre>
   <footer>
     <span>DB Mastermind by <a href="https://vaclavmudra.com">Václav Mudra</a> · MIT license · made with Claude</span>
     <span class="trademark">DeZign for Databases is a trademark of Datanamic. DB Mastermind is not affiliated with or endorsed by Datanamic.</span>
-    <span><a href="privacy.html">Privacy policy</a> · <a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md">Roadmap</a> · <a href="https://github.com/eLh0m3r0/db-mastermind/issues">Issues</a> · <a href="https://ko-fi.com/vaclavmudra">☕ Support on Ko-fi</a></span>
+    <span><a href="privacy.html">Privacy policy</a> · <a href="dezign.html">For DeZign users</a> · <a href="azure-data-studio.html">Coming from Azure Data Studio</a> · <a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md">Roadmap</a> · <a href="https://github.com/eLh0m3r0/db-mastermind/issues">Issues</a> · <a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/SECURITY.md">Security</a> · <a href="https://ko-fi.com/vaclavmudra">☕ Support on Ko-fi</a></span>
   </footer>
 </div>
 <script>
-// Point the main button at the right file of the latest release for this computer.
+// Point the main button at the right download for this computer: the Microsoft Store on Windows (signed, no
+// SmartScreen warning), the latest release's file elsewhere.
 (async () => {
   const ua = navigator.userAgent
   // Phones and tablets keep the link to all downloads (an iPhone says "Mac OS X", Android says "Linux").
   if (/Android|iPhone|iPad|Mobile/.test(ua)) return
   const os = /Windows/.test(ua) ? 'win' : /Mac/.test(ua) ? 'mac' : /Linux/.test(ua) ? 'linux' : null
   if (!os) return
+  const button = document.getElementById('download')
+  const label = document.getElementById('download-os')
+  if (os === 'win') {
+    button.href = 'https://apps.microsoft.com/detail/9p0grd7bz4nf'
+    label.textContent = 'from the Microsoft Store'
+  }
   try {
     const res = await fetch('https://api.github.com/repos/eLh0m3r0/db-mastermind/releases/latest')
     if (!res.ok) return
@@ -218,17 +228,22 @@ brew install --cask db-mastermind</pre>
     const version = release.tag_name.replace(/^v/, '')
     const assets = release.assets || []
     const find = (re) => assets.find((a) => re.test(a.name))
-    const pick = os === 'win' ? find(/win-x64-setup\.exe$/) : os === 'mac' ? find(/mac-arm64\.dmg$/) : find(/linux-x86_64\.AppImage$/) ?? find(/\.AppImage$/)
-    // The user agent can't tell an Intel Mac or a Windows on Arm PC: the other build is one click away.
-    const other = os === 'win' ? find(/win-arm64-setup\.exe$/) : os === 'mac' ? find(/mac-x64\.dmg$/) : null
+    const link = (asset, text) => (asset ? ` · <a href="${asset.browser_download_url}">${text}</a>` : '')
+    let others = ''
+    // The Store copy is x64 and the user agent can't tell a Windows on Arm PC or an Intel Mac: the other files are
+    // one click away.
+    if (os === 'win') others = link(find(/win-x64-setup\.exe$/), 'Installer') + link(find(/win-x64-portable\.zip$/), 'Portable zip') + link(find(/win-arm64-setup\.exe$/), 'Windows on Arm')
+    else if (os === 'mac') others = link(find(/mac-x64\.dmg$/), 'Intel Mac')
     const latest = document.getElementById('latest')
-    latest.innerHTML = `<a href="${release.html_url}">What's new in ${version} →</a>` + (other ? ` · <a href="${other.browser_download_url}">${os === 'win' ? 'Windows on Arm' : 'Intel Mac'}</a>` : '')
+    latest.innerHTML = `<a href="${release.html_url}">What's new in ${version} →</a>` + others
     latest.hidden = false
+    if (os === 'win') return
+    const pick = os === 'mac' ? find(/mac-arm64\.dmg$/) : find(/linux-x86_64\.AppImage$/) ?? find(/\.AppImage$/)
     if (!pick) return
-    document.getElementById('download').href = pick.browser_download_url
-    document.getElementById('download-os').textContent = `${version} for ${os === 'win' ? 'Windows' : os === 'mac' ? 'macOS (Apple Silicon)' : 'Linux'}`
+    button.href = pick.browser_download_url
+    label.textContent = `${version} for ${os === 'mac' ? 'macOS (Apple Silicon)' : 'Linux'}`
   } catch {
-    // Offline or rate-limited: the button still opens the releases page.
+    // Offline or rate-limited: the button still opens the Store or the releases page.
   }
 })()
 </script>
