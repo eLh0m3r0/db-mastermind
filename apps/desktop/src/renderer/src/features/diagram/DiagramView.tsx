@@ -49,6 +49,10 @@ import {
   toDesignTable,
   toMermaid,
   toPlantUml,
+  CODE_FORMATS,
+  codeFormatsFor,
+  exportCode,
+  type CodeFormat,
   type DesignTable,
   type DezignLabel,
   type DictionaryReport,
@@ -548,7 +552,7 @@ function nodeHeight(t: TableInfo, shown: Shown, fk: Set<string>, ref: Set<string
   return HEADER + visible * ROW + (showsMore(shown) && visible < t.columns.length ? ROW : 0) + 2
 }
 
-function DiagramInner({ tab, focused, model, modelDriver, domains, userProperties, labels, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout, flushRef, modelHistory }: { tab: DiagramTab; focused: boolean; flushRef?: React.MutableRefObject<(() => boolean) | null>; userProperties?: DezignUserProperty[]; labels?: DezignLabel[]; modelHistory?: ModelHistory; model?: SchemaSnapshot; modelDriver?: DriverId; domains?: { name: string; dataType: string }[]; dashNonIdentifying?: boolean; request?: DiagramRequest; onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[], renames: ModelRename[]) => boolean | void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
+function DiagramInner({ tab, focused, model, modelDriver, modelEnums, domains, userProperties, labels, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout, flushRef, modelHistory }: { tab: DiagramTab; focused: boolean; flushRef?: React.MutableRefObject<(() => boolean) | null>; userProperties?: DezignUserProperty[]; labels?: DezignLabel[]; modelHistory?: ModelHistory; model?: SchemaSnapshot; modelDriver?: DriverId; modelEnums?: Record<string, string[]>; domains?: { name: string; dataType: string }[]; dashNonIdentifying?: boolean; request?: DiagramRequest; onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[], renames: ModelRename[]) => boolean | void; onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
   const tr = useT()
   const runtime = useConnections((s) => s.runtime[tab.connectionId])
   const loadSchema = useConnections((s) => s.loadSchema)
@@ -1163,6 +1167,22 @@ function DiagramInner({ tab, focused, model, modelDriver, domains, userPropertie
   const exportMermaid = () => {
     void navigator.clipboard.writeText(toMermaid(tables))
     toast({ kind: 'success', message: tr('Mermaid diagram copied to clipboard') })
+  }
+
+  /**
+   * Code for the tables on the diagram (Prisma, Drizzle, SQLAlchemy, TypeScript), for the database the model is
+   * for (a database's own; CockroachDB is told apart by the server's name) and saved where the user says.
+   */
+  const codeDatabase = model ? (modelDriver ?? connection?.driver ?? 'postgres') : runtime?.serverInfo?.product === 'CockroachDB' ? 'cockroachdb' : (connection?.driver ?? 'postgres')
+  const exportCodeFile = async (format: CodeFormat) => {
+    try {
+      const enums = model ? modelEnums : Object.fromEntries((schema?.objects ?? []).filter((o) => o.kind === 'type' && o.detail === 'enum').map((o) => [o.schema && o.schema !== schema?.defaultSchema ? `${o.schema}.${o.name}` : o.name, o.labels ?? []]))
+      const code = exportCode(format, tables, { database: codeDatabase, enums, defaultSchema: schema?.defaultSchema })
+      const path = await api.saveCodeFile(code, CODE_FORMATS.find((f) => f.id === format)!.file)
+      if (path) toast({ kind: 'success', message: tr('Code saved'), detail: path, action: { label: tr('Show in folder'), run: () => void api.showItemInFolder(path) } })
+    } catch (err) {
+      toast({ kind: 'error', message: tr('Export failed'), detail: errorMessage(err) })
+    }
   }
 
   const exportPlantUml = () => {
@@ -1932,6 +1952,8 @@ function DiagramInner({ tab, focused, model, modelDriver, domains, userPropertie
               { label: tr('Copy as Mermaid'), onClick: exportMermaid },
               { label: tr('Copy as PlantUML'), onClick: exportPlantUml },
               { label: tr('Copy as DBML (dbdiagram.io)'), onClick: exportDbml },
+              // Prisma and Drizzle only for the databases they support.
+              { label: tr('Code'), submenu: CODE_FORMATS.filter((f) => codeFormatsFor(codeDatabase).includes(f.id)).map((f) => ({ label: `${tr(f.label)}…`, onClick: () => void exportCodeFile(f.id) })) },
               ...(model
                 ? ['separator' as const, { label: tr('Data dictionary (HTML)…'), onClick: () => setReportOpen(true) }]
                 : [
@@ -2397,10 +2419,10 @@ function DiagramInner({ tab, focused, model, modelDriver, domains, userPropertie
   )
 }
 
-export function DiagramView({ tab, focused = true, model, modelDriver, domains, userProperties, labels, modelHistory, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout, flushRef }: { tab: DiagramTab; /** Its pane is the focused one (a split shows two): only then do keys act on it. */ focused?: boolean; /** The custom properties the model's project defines: its tables' and columns' values are edited in the dialog. */ userProperties?: DezignUserProperty[]; /** The labels the model's project defines. */ labels?: DezignLabel[]; /** Undo and redo of what was written into the model (a model takes canvas changes as they are made). */ modelHistory?: ModelHistory; /** Set to a function that writes the canvas's pending changes into the model (true when there were any). */ flushRef?: React.MutableRefObject<(() => boolean) | null>; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; /** The project's domains, offered for columns. */ domains?: { name: string; dataType: string }[]; /** Lines of relationships whose key is not part of the child's primary key are dashed, as DeZign draws them. */ dashNonIdentifying?: boolean; /** From the model's object browser: show a table, or open a table's or a relationship's dialog. */ request?: DiagramRequest; /** A model's diagram of the selected tables (DeZign: subdiagram from selection). */ onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[], renames: ModelRename[]) => boolean | void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
+export function DiagramView({ tab, focused = true, model, modelDriver, modelEnums, domains, userProperties, labels, modelHistory, dashNonIdentifying, request, onNewDiagram, onApplyModel, onLayout, flushRef }: { tab: DiagramTab; /** Its pane is the focused one (a split shows two): only then do keys act on it. */ focused?: boolean; /** The custom properties the model's project defines: its tables' and columns' values are edited in the dialog. */ userProperties?: DezignUserProperty[]; /** The labels the model's project defines. */ labels?: DezignLabel[]; /** Undo and redo of what was written into the model (a model takes canvas changes as they are made). */ modelHistory?: ModelHistory; /** Set to a function that writes the canvas's pending changes into the model (true when there were any). */ flushRef?: React.MutableRefObject<(() => boolean) | null>; model?: SchemaSnapshot; /** The database a model without a connection is written for (the table editor offers its types). */ modelDriver?: DriverId; /** The model's enums (DBML Enum blocks), for code made from it. */ modelEnums?: Record<string, string[]>; /** The project's domains, offered for columns. */ domains?: { name: string; dataType: string }[]; /** Lines of relationships whose key is not part of the child's primary key are dashed, as DeZign draws them. */ dashNonIdentifying?: boolean; /** From the model's object browser: show a table, or open a table's or a relationship's dialog. */ request?: DiagramRequest; /** A model's diagram of the selected tables (DeZign: subdiagram from selection). */ onNewDiagram?: (tables: string[], positions: Record<string, { x: number; y: number }>) => void; onApplyModel?: (tables: TableInfo[], renames: ModelRename[]) => boolean | void; /** Takes over storing positions, notes and colors (a model's named diagram keeps its own). */ onLayout?: (patch: Partial<Pick<DiagramTab, 'positions' | 'notes' | 'colors' | 'tables' | 'display' | 'boxes'>>) => void }) {
   return (
     <ReactFlowProvider>
-      <DiagramInner tab={tab} focused={focused} model={model} modelDriver={modelDriver} domains={domains} dashNonIdentifying={dashNonIdentifying} request={request} onNewDiagram={onNewDiagram} onApplyModel={onApplyModel} onLayout={onLayout} flushRef={flushRef} userProperties={userProperties} labels={labels} modelHistory={modelHistory} />
+      <DiagramInner tab={tab} focused={focused} model={model} modelDriver={modelDriver} modelEnums={modelEnums} domains={domains} dashNonIdentifying={dashNonIdentifying} request={request} onNewDiagram={onNewDiagram} onApplyModel={onApplyModel} onLayout={onLayout} flushRef={flushRef} userProperties={userProperties} labels={labels} modelHistory={modelHistory} />
     </ReactFlowProvider>
   )
 }

@@ -1,5 +1,5 @@
 import { dezignDriver, splitModelLayout, type DezignChange, type DezignSqlObject } from '@dbmastermind/core/browser'
-import type { OpenedModelFile } from '@shared/api'
+import type { ForeignModelInfo, OpenedModelFile } from '@shared/api'
 import { t, tp } from '@/lib/i18n'
 import { toast } from '@/store/ui'
 import type { ModelTab } from '@/store/workspace'
@@ -10,6 +10,40 @@ const LEFT_OUT: [keyof NonNullable<OpenedModelFile['imported']>['leftOut'], stri
   ['objectNotes', 'notes of relationships (kept in the file): {n}'],
 ]
 
+/** What another tool's file is, in the notice after opening it. */
+const SOURCES: Record<ForeignModelInfo['format'], string> = {
+  mwb: 'MySQL Workbench model',
+  drawdb: 'drawDB diagram',
+  mermaid: 'Mermaid ER diagram',
+  prisma: 'Prisma schema',
+}
+const FOREIGN_LEFT_OUT: [keyof ForeignModelInfo['leftOut'], string][] = [
+  ['views', 'views: {n}'],
+  ['routines', 'procedures and functions: {n}'],
+  ['triggers', 'triggers: {n}'],
+  ['manyToMany', 'many-to-many relationships: {n}'],
+  ['relationshipsWithoutKey', 'relationships to an entity without a primary key: {n}'],
+  ['brokenRelationships', 'relationships to tables or columns the file does not have: {n}'],
+  ['scalarLists', 'list fields (kept as text): {n}'],
+  ['customTypes', 'composite types (columns keep their name): {n}'],
+]
+
+/** The notice after another tool's model was opened or imported: what came over and what could not, with counts. */
+export function foreignModelNotice(file: string, info: ForeignModelInfo, opened: boolean): void {
+  const leftOut = FOREIGN_LEFT_OUT.filter(([key]) => (info.leftOut[key] ?? 0) > 0).map(([key, label]) => t(label, { n: String(info.leftOut[key]) }))
+  toast({
+    kind: leftOut.length ? 'warning' : 'success',
+    message: tp(info.tables, { one: '{source}: {n} table', many: '{source}: {n} tables' }, { source: `${t(SOURCES[info.format])} ${file}` }),
+    detail: [
+      tp(info.relationships, { one: '{n} relationship', many: '{n} relationships' }) + (Object.keys(info.positions).length ? ` · ${t('the diagram as it was drawn')}` : ''),
+      leftOut.length ? `${t('Not taken from the file:')} ${leftOut.join(' · ')}.` : '',
+      opened ? t('The file itself is not changed: Save makes a .dbml model.') : '',
+    ]
+      .filter(Boolean)
+      .join('\n'),
+  })
+}
+
 /** What the previous document of a tab may still have pending: never carried over to the one opened in it. */
 const NOTHING_PENDING = { targetDatabase: undefined, directives: undefined, domainRenames: undefined, domainRemovals: undefined, tableRenames: undefined }
 
@@ -19,6 +53,15 @@ const NOTHING_PENDING = { targetDatabase: undefined, directives: undefined, doma
  */
 export function modelTabFromFile(file: OpenedModelFile, defaultSchema?: string, options: { /** No notice about what was opened (the caller says its own). */ quiet?: boolean } = {}): Pick<ModelTab, 'text' | 'path' | 'source' | 'dirty' | 'title' | 'positions' | 'diagrams' | 'colors' | 'notes' | 'boxes' | 'display' | 'removedDiagrams' | 'sqlObjects' | 'userProperties' | 'labels' | 'sqlDatabase' | 'scripting' | 'targetDatabase' | 'directives' | 'domainRenames' | 'domainRemovals' | 'tableRenames'> {
   const name = file.path.split(/[\\/]/).pop() ?? t('Model')
+  if (file.foreign) {
+    // Another tool's model: a new, unsaved model of its own (Save asks where to put the .dbml).
+    const f = file.foreign
+    const keyed = (key: string) => (key.startsWith('.') ? `${defaultSchema ?? ''}${key}` : key)
+    const rekey = <T,>(map: Record<string, T> | undefined) => Object.fromEntries(Object.entries(map ?? {}).map(([key, v]) => [keyed(key), v]))
+    if (!options.quiet) foreignModelNotice(name, f, true)
+    const colors = rekey(f.colors)
+    return { ...NOTHING_PENDING, text: file.text, path: undefined, source: undefined, dirty: true, title: name, positions: rekey(f.positions), diagrams: f.diagrams.length ? f.diagrams.map((d) => ({ ...d, tables: d.tables.map(keyed), positions: rekey(d.positions), colors: rekey(d.colors) })) : undefined, colors: Object.keys(colors).length ? colors : undefined, notes: f.notes.length ? f.notes : undefined, boxes: f.boxes.length ? f.boxes : undefined, display: undefined, removedDiagrams: undefined, sqlObjects: undefined, userProperties: undefined, labels: undefined, sqlDatabase: f.database, scripting: undefined }
+  }
   if (!file.imported) {
     // A model of its own keeps its diagrams' layout in its file (see core/model-layout.ts).
     const { text, layout } = splitModelLayout(file.text)

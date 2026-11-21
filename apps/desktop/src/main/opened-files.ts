@@ -1,8 +1,11 @@
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-/** Files the app opens when they are handed to it: SQL scripts, models, and data files that are queried with SQL. */
-const OPENABLE = /\.(sql|dbml|dez|dezproj|csv|tsv|parquet|json|jsonl|ndjson|xlsx|sqlite|sqlite3|db3|duckdb)$/i
+/**
+ * Files the app opens when they are handed to it: SQL scripts, models (its own, DeZign's, MySQL Workbench's, drawDB's,
+ * Mermaid ER diagrams, Prisma schemas), and data files that are queried with SQL.
+ */
+const OPENABLE = /\.(sql|dbml|dez|dezproj|mwb|mmd|mermaid|prisma|ddb|csv|tsv|parquet|json|jsonl|ndjson|xlsx|sqlite|sqlite3|db3|duckdb)$/i
 
 let pending: string[] = []
 let deliver: ((path: string) => void) | undefined

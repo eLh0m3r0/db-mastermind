@@ -8,7 +8,8 @@ import { useWorkspace } from '@/store/workspace'
 import { modelTabFromFile } from '@/features/model/open-model'
 import { confirmAction } from '@/components/ui/ConfirmDialog'
 
-export const MODEL_FILE = /\.(dbml|dez|dezproj)$/i
+/** Models: the app's own, DeZign's, and other tools' (a drawDB diagram may also be a .json: see openFile). */
+export const MODEL_FILE = /\.(dbml|dez|dezproj|mwb|mmd|mermaid|prisma|ddb)$/i
 
 const LINKS = 'dbm.modelDatabase'
 const links = (): Record<string, string> => {
@@ -80,8 +81,18 @@ export async function openModel(path?: string): Promise<void> {
   }
 }
 
-/** A file handed to the app (double-click in the system, command line, drop): a SQL script, a model, or data to query. */
+/**
+ * A file handed to the app (double-click in the system, command line, drop): a SQL script, a model, or data to query.
+ * A .json is a model only when it is a drawDB diagram; any other JSON is data.
+ */
 export function openFile(path: string): void {
+  if (/\.json$/i.test(path)) {
+    void api.isModelFile(path).then(
+      (model) => (model ? openModel(path) : queryFile(path)),
+      () => queryFile(path),
+    )
+    return
+  }
   void (SQL_FILE.test(path) ? openSqlFile(path) : MODEL_FILE.test(path) ? openModel(path) : queryFile(path))
 }
 

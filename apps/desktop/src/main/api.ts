@@ -39,7 +39,6 @@ import {
   KnowledgeBase,
   staleKnowledge,
   tablesFromDdl,
-  tablesFromPrisma,
   toDbml,
   resolveInside,
   SAMPLE_KNOWLEDGE,
@@ -69,6 +68,7 @@ import { detectImportSources, exportConnections, importConnections } from './imp
 import { backupDatabase, restoreDatabase } from './backup'
 import { archiveModelVersion, exportDezignModel, listModelVersions, openDezignModel, openModelVersion, saveDezignModel } from './dezign-file'
 import { takeOpenedFiles } from './opened-files'
+import { foreignFormatOf, foreignModelFile, isForeignModel, openForeignModel, readForeignModel } from './foreign-model'
 import { saveDiagramPdf } from './diagram-pdf'
 import { aiAccess, turnedOffCentrally } from './ai-access'
 import { managed } from './managed'
@@ -605,8 +605,16 @@ export const api: MastermindApi = {
     const scripts = !!request?.scripts
     if (!path) {
       const window = BrowserWindow.getFocusedWindow()
-      const filters = [{ name: 'Models (DBML, DeZign for Databases)', extensions: ['dbml', 'dez', 'dezproj'] }, ...(scripts ? [{ name: 'SQL DDL script (e.g. pg_dump, mysqldump, SSMS)', extensions: ['sql', 'ddl'] }] : [])]
-      const options = { title: scripts ? 'Compare with' : 'Open model', defaultPath: defaultDir, properties: ['openFile' as const], filters: scripts ? [{ name: 'Models and SQL scripts', extensions: ['dbml', 'dez', 'dezproj', 'sql', 'ddl'] }, ...filters] : filters }
+      const filters = [
+        { name: 'Models (DBML, DeZign for Databases)', extensions: ['dbml', 'dez', 'dezproj'] },
+        ...(scripts ? [{ name: 'SQL DDL script (e.g. pg_dump, mysqldump, SSMS)', extensions: ['sql', 'ddl'] }] : [{ name: 'Models of other tools (MySQL Workbench, drawDB, Mermaid, Prisma)', extensions: ['mwb', 'json', 'ddb', 'mmd', 'mermaid', 'prisma'] }]),
+      ]
+      const options = {
+        title: scripts ? 'Compare with' : 'Open model',
+        defaultPath: defaultDir,
+        properties: ['openFile' as const],
+        filters: scripts ? [{ name: 'Models and SQL scripts', extensions: ['dbml', 'dez', 'dezproj', 'sql', 'ddl'] }, ...filters] : [{ name: 'All models', extensions: ['dbml', 'dez', 'dezproj', 'mwb', 'json', 'ddb', 'mmd', 'mermaid', 'prisma'] }, ...filters],
+      }
       const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
       if (r.canceled || !r.filePaths[0]) return null
       path = r.filePaths[0]
@@ -618,7 +626,9 @@ export const api: MastermindApi = {
       const { tables, skipped } = await tablesFromDdl(await readFile(path, 'utf8'))
       return { path, text: toDbml(tables), skipped: skipped.length }
     }
-    if (ext !== '.dbml') throw new Error('Models are .dbml files, or DeZign for Databases models (.dez, .dezproj)')
+    // Another tool's model opens as a new model of its own (the file is only read).
+    if (!scripts && (await isForeignModel(path))) return openForeignModel(path)
+    if (ext !== '.dbml') throw new Error('Models are .dbml files, DeZign for Databases models (.dez, .dezproj), MySQL Workbench models (.mwb), drawDB diagrams (.json, .ddb), Mermaid ER diagrams (.mmd, .mermaid) or Prisma schemas (.prisma)')
     return { path, text: await readFile(path, 'utf8') }
   },
   saveDezignModel: (request) => saveDezignModel(request),
@@ -678,19 +688,42 @@ export const api: MastermindApi = {
   },
   async importDdlFile() {
     const window = BrowserWindow.getFocusedWindow()
-    const options = { title: 'Import SQL DDL or a Prisma schema', properties: ['openFile' as const], filters: [{ name: 'SQL DDL or Prisma schema', extensions: ['sql', 'ddl', 'txt', 'prisma'] }] }
+    const options = {
+      title: 'Import tables',
+      properties: ['openFile' as const],
+      filters: [
+        { name: 'SQL, Prisma, Mermaid, drawDB or MySQL Workbench', extensions: ['sql', 'ddl', 'txt', 'prisma', 'mmd', 'mermaid', 'md', 'json', 'ddb', 'mwb'] },
+        { name: 'All files', extensions: ['*'] },
+      ],
+    }
     const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
     if (r.canceled || !r.filePaths[0]) return null
-    const source = await readFile(r.filePaths[0], 'utf8')
-    if (extname(r.filePaths[0]).toLowerCase() === '.prisma' || /^\s*(model|datasource|generator)\s+\w+\s*\{/m.test(source)) {
-      const prisma = tablesFromPrisma(source)
-      return { path: r.filePaths[0], dbml: toDbml(prisma.tables, { enums: prisma.enums }), skipped: prisma.errors.map((e) => ({ sql: '', error: e.message })) }
+    const path = r.filePaths[0]
+    // The format is the file's: its extension, else what its text looks like (a .txt may hold a Prisma schema).
+    const source = /\.mwb$/i.test(path) ? '' : await readFile(path, 'utf8')
+    if (foreignFormatOf(path, source)) {
+      const opened = foreignModelFile(path, await readForeignModel(path))
+      return { path, dbml: opened.text, skipped: [], foreign: opened.foreign }
     }
     const { tables, skipped } = await tablesFromDdl(source)
     // The default schemas of the script's database (public, dbo) become the model's default one.
     const own = (schema: string | undefined) => (schema && /^(public|dbo|main)$/i.test(schema) ? undefined : schema)
     const placed = tables.map((t) => ({ ...t, schema: own(t.schema), foreignKeys: t.foreignKeys.map((f) => ({ ...f, refSchema: own(f.refSchema) })) }))
-    return { path: r.filePaths[0], dbml: toDbml(placed), skipped }
+    return { path, dbml: toDbml(placed), skipped }
+  },
+  isModelFile: (path) => isForeignModel(path),
+  async saveCodeFile(text, name) {
+    const window = BrowserWindow.getFocusedWindow()
+    const ext = extname(name).slice(1).toLowerCase()
+    const kinds: Record<string, string> = { prisma: 'Prisma schema', ts: 'TypeScript', py: 'Python' }
+    if (!kinds[ext]) throw new Error('Code is saved as .prisma, .ts or .py files')
+    const options = { title: 'Save code', defaultPath: name, filters: [{ name: kinds[ext]!, extensions: [ext] }] }
+    const r = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
+    if (r.canceled || !r.filePath) return null
+    // Only the kind of file the dialog offered: the renderer must not be able to write anything else.
+    if (extname(r.filePath).slice(1).toLowerCase() !== ext) throw new Error(`Save it as a .${ext} file`)
+    await writeFile(r.filePath, text, 'utf8')
+    return r.filePath
   },
   async saveModelFile(text, path, defaultDir, layout) {
     if (!path) {
