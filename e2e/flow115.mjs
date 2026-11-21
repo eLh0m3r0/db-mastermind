@@ -81,6 +81,8 @@ try {
   check('a folder the user did not hand to the app is not read', /through the app/.test(refused), refused)
   const json = await win.evaluate(async (path) => window.mastermind.api.isModelFile(path).then(() => 'read', (err) => String(err?.message ?? err)), join(unasked, 'x.json'))
   check('…nor a .json file', /through the app/.test(json), json)
+  const data = await win.evaluate(async (path) => window.mastermind.api.queryFile(path).then(() => 'read', (err) => String(err?.message ?? err)), join(unasked, 'data.csv'))
+  check('…nor a data file to query (review N10)', /through the app/.test(data), data)
 
   // The same project again: nothing new.
   await pick(shop)

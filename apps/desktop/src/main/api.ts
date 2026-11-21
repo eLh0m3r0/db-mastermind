@@ -770,6 +770,11 @@ export const api: MastermindApi = {
       const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
       if (r.canceled || !r.filePaths[0]) return null
       path = r.filePaths[0]
+      rememberChosenPath(path)
+    } else {
+      // A path from the renderer is one the user handed to the app (opened with it, dropped, given on the command
+      // line): anything else is refused, as for models and projects (chosen-paths.ts).
+      path = checkChosenPath(path)
     }
     // A database file opens as its own connection (it used to go through read_csv and fail).
     const database = await databaseFileDriver(path)
