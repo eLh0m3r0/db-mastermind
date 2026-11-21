@@ -10,16 +10,30 @@ on:
         type: boolean
         default: false
 
+# Read-only unless a job says otherwise.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   # Create the release once; parallel electron-builder jobs would otherwise race and create duplicates.
   create-release:
     runs-on: ubuntu-latest
     if: ${{ !inputs.mcp_only }}
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      # A release (and everything that publishes from it) is made only from a commit that is on main.
+      - name: The tag is on main
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          git fetch --no-tags --quiet origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD; then
+            echo "::error::$GITHUB_REF_NAME points at $GITHUB_SHA, which is not on main: tag a commit of main."
+            exit 1
+          fi
       # A manual run from a branch builds the apps (uploads are tag-only below) but must not make a release or a tag
       # named after the branch.
       - name: Create release
@@ -44,6 +58,9 @@ jobs:
   desktop:
     needs: create-release
     if: ${{ !inputs.mcp_only }}
+    # Uploads to the release and pushes the Homebrew cask to main.
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -59,8 +76,11 @@ jobs:
       # '1' once the Apple Developer ID secrets exist (docs/macos-notarization.md).
       MAC_NOTARIZE: ${{ secrets.APPLE_API_KEY_ID != '' && '1' || '' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # No token left in .git/config while dependencies install and run; the cask step authenticates its push itself.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
@@ -93,15 +113,23 @@ jobs:
           echo "d98372d5524226ccf9dc0eda03d4e4f5826182dabb2fc3f2bd303ed9113a748d  $RUNNER_TEMP/rcodesign.tar.gz" | shasum -a 256 -c -
           tar xzf "$RUNNER_TEMP/rcodesign.tar.gz" -C "$RUNNER_TEMP"
           echo "RCODESIGN=$RUNNER_TEMP/apple-codesign-0.29.0-macos-universal/rcodesign" >> "$GITHUB_ENV"
+      # Two build steps so the signing secrets reach the macOS leg only.
       - name: Build
+        if: runner.os != 'macOS'
         working-directory: apps/desktop
         run: npx electron-vite build && npx electron-builder ${{ matrix.args }} --publish never
         env:
-          # No Apple Developer ID yet (see docs/STRATEGY.md): electron-builder doesn't sign; after-pack does.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
           # 7-Zip compresses arm64 executables with its ARM64 filter, which the installer's older Nsis7z plugin can't
           # undo: the Windows on Arm installer then installed only the uninstaller. BCJ is one it understands.
           ELECTRON_BUILDER_7Z_FILTER: BCJ
+      - name: Build (macOS, signed)
+        if: runner.os == 'macOS'
+        working-directory: apps/desktop
+        run: npx electron-vite build && npx electron-builder ${{ matrix.args }} --publish never
+        env:
+          # electron-builder doesn't sign; after-pack does (self-signed, or Developer ID + notarization).
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
           MAC_SIGN_P12: ${{ secrets.MAC_SIGN_P12 }}
           MAC_SIGN_PASSWORD: ${{ secrets.MAC_SIGN_PASSWORD }}
           # Apple Developer ID: when all five exist, after-pack signs with the hardened runtime and notarizes instead
@@ -115,7 +143,7 @@ jobs:
       # first-run test plan in docs/macos-notarization.md.
       - name: Notarized macOS files (manual runs)
         if: runner.os == 'macOS' && !startsWith(github.ref, 'refs/tags/v') && env.MAC_NOTARIZE == '1'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: macos-notarized
           path: |
@@ -178,8 +206,12 @@ jobs:
         # The repository doubles as a tap: brew tap elh0m3r0/db-mastermind https://github.com/eLh0m3r0/db-mastermind
         if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           V="${GITHUB_REF_NAME#v}"
+          AUTH="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
+          echo "::add-mask::$AUTH"
           DBM_NOTARIZED="$MAC_NOTARIZE" node scripts/homebrew-cask.mjs "$V" "apps/desktop/release/DB-Mastermind-$V-mac-arm64.dmg" "apps/desktop/release/DB-Mastermind-$V-mac-x64.dmg" > "$RUNNER_TEMP/db-mastermind.rb"
           cat "$RUNNER_TEMP/db-mastermind.rb"
           git config --global user.name "github-actions[bot]"
@@ -190,7 +222,7 @@ jobs:
             git -C "$RUNNER_TEMP/tap" add Casks/db-mastermind.rb
             if git -C "$RUNNER_TEMP/tap" diff --cached --quiet; then break; fi
             git -C "$RUNNER_TEMP/tap" commit -qm "Homebrew cask $V [skip ci]"
-            if git -C "$RUNNER_TEMP/tap" push -q origin HEAD:main; then break; fi
+            if git -C "$RUNNER_TEMP/tap" -c "http.https://github.com/.extraheader=$AUTH" push -q origin HEAD:main; then break; fi
             git worktree remove -f "$RUNNER_TEMP/tap"; sleep 5
           done
 
@@ -200,6 +232,8 @@ jobs:
     needs: desktop
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
+    # Works only with its own WINGET_TOKEN.
+    permissions: {}
     env:
       WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
     steps:
@@ -220,75 +254,152 @@ jobs:
             --release-notes-url "https://github.com/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME" \
             --submit --token "$WINGET_TOKEN"
 
-  # dbmastermind-mcp on npm, then its entry in the MCP registry (packages/mcp/server.json). Runs with a release tag,
-  # or by hand (Run workflow, "Use workflow from" the release tag, mcp_only) to publish a release whose tag came
-  # before the npm credentials. Publishes only from a v* tag whose version is the package's.
-  # Credentials: npm trusted publishing (OIDC, no token) when the repository variable NPM_TRUSTED_PUBLISHING is 1,
-  # otherwise the NPM_TOKEN secret; with neither it skips. The MCP registry needs no secret (GitHub OIDC).
-  # A version already on npm or in the registry is skipped, so a rerun finishes what a failed run left.
-  mcp-npm:
+  # dbmastermind-mcp on npm and in the MCP registry, in two jobs so nothing that installs or runs code ever sees a
+  # credential. mcp-pack (no secrets, read-only token) decides what is left to publish, installs, builds, tests the
+  # packed tarball and keeps that exact tarball; mcp-publish only publishes it.
+  # Runs with a release tag after create-release (so the tag is on main and has its notes), or by hand from the tag
+  # with mcp_only (create-release is skipped then; mcp-pack checks the tag itself). Published only from a v* tag on
+  # main whose version is the package's and server.json's. A version already on npm or in the registry is skipped, so
+  # a rerun finishes what a failed run left.
+  mcp-pack:
+    needs: create-release
+    if: ${{ !cancelled() && (needs.create-release.result == 'success' || (inputs.mcp_only && needs.create-release.result == 'skipped')) }}
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      publish: ${{ steps.plan.outputs.publish }}
+      npm: ${{ steps.plan.outputs.npm }}
+      registry: ${{ steps.plan.outputs.registry }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: The tag is on main
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          git fetch --no-tags --quiet "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD; then
+            echo "::error::$GITHUB_REF_NAME points at $GITHUB_SHA, which is not on main: tag a commit of main."
+            exit 1
+          fi
+      - name: What to publish
+        id: plan
+        run: |
+          # server.json, packages/mcp/package.json and the root version must agree (npm version keeps them so).
+          node packages/mcp/sync-server-json.mjs --check
+          V=$(node -p "require('./packages/mcp/package.json').version")
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF" != refs/tags/v* ]]; then
+            echo "::notice::Nothing is published from $GITHUB_REF: run the workflow from the release tag."
+            echo "publish=no" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ "${GITHUB_REF_NAME#v}" != "$V" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME, but packages/mcp/package.json and server.json say $V."; exit 1
+          fi
+          npm=todo; registry=todo
+          if [ "$(npm view "dbmastermind-mcp@$V" version 2>/dev/null)" = "$V" ]; then
+            npm=done; echo "::notice::dbmastermind-mcp@$V is already on npm."
+          fi
+          NAME=$(node -p "encodeURIComponent(require('./packages/mcp/server.json').name)")
+          if curl -sf -o /dev/null "https://registry.modelcontextprotocol.io/v0.1/servers/$NAME/versions/$V"; then
+            registry=done; echo "::notice::The MCP registry already lists $V."
+          fi
+          echo "npm=$npm" >> "$GITHUB_OUTPUT"; echo "registry=$registry" >> "$GITHUB_OUTPUT"
+          if [ $npm = done ] && [ $registry = done ]; then echo "publish=no" >> "$GITHUB_OUTPUT"; else echo "publish=yes" >> "$GITHUB_OUTPUT"; fi
+      # No install scripts: the build is esbuild (its binary comes as an optional dependency, no script needed) and
+      # nothing here starts Electron. Not `npm ci`: the lock file lacks esbuild's other-platform packages, which
+      # npm ci refuses (CI run 44942181815).
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Pack (prepack bundles dist/)
+        run: |
+          mkdir -p "$RUNNER_TEMP/pack"
+          npm pack -w packages/mcp --pack-destination "$RUNNER_TEMP/pack"
+          cp packages/mcp/server.json "$RUNNER_TEMP/pack/server.json"
+      # The tarball must install into an empty folder and answer over stdio; this is the file that gets published.
+      - name: Check the packed package
+        run: node packages/mcp/test/packed-package.mjs --tarball "$RUNNER_TEMP/pack"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: steps.plan.outputs.publish == 'yes'
+        with:
+          name: mcp-release
+          path: |
+            ${{ runner.temp }}/pack/*.tgz
+            ${{ runner.temp }}/pack/server.json
+          retention-days: 7
+          if-no-files-found: error
+
+  mcp-publish:
+    needs: mcp-pack
+    if: needs.mcp-pack.outputs.publish == 'yes'
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     env:
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-      NPM_TRUSTED_PUBLISHING: ${{ vars.NPM_TRUSTED_PUBLISHING }}
       MCP_PUBLISHER_VERSION: v1.8.8
-      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      VERSION: ${{ needs.mcp-pack.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # Which npm credential exists, decided without its value ever entering a step's environment.
+      - name: npm credentials
+        id: auth
+        env:
+          TRUSTED: ${{ vars.NPM_TRUSTED_PUBLISHING }}
+          HAS_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
+        run: |
+          if [ "$TRUSTED" = "1" ]; then auth=oidc; elif [ "$HAS_TOKEN" = "true" ]; then auth=token; else auth=none; fi
+          echo "auth=$auth" >> "$GITHUB_OUTPUT"
+          echo "npm credentials: $auth"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: mcp-release
+          path: ${{ runner.temp }}/pack
+      - name: The files are this release's
+        run: |
+          cd "$RUNNER_TEMP/pack"
+          ls -la
+          set -- dbmastermind-mcp-*.tgz
+          if [ $# -ne 1 ] || [ ! -f "$1" ]; then echo "::error::expected one tarball"; exit 1; fi
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(tar -xOzf "$1" package/package.json | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
+          INNER=$(tar -xOzf "$1" package/server.json | node -p "const s = JSON.parse(require('fs').readFileSync(0, 'utf8')); s.version + ' ' + s.packages[0].version")
+          OUTER=$(node -p "const s = require('./server.json'); s.version + ' ' + s.packages[0].version")
+          echo "tag $TAG, planned $VERSION, tarball $PKG, its server.json $INNER, registry server.json $OUTER"
+          for v in "$VERSION" "$PKG" $INNER $OUTER; do
+            if [ "$v" != "$TAG" ]; then echo "::error::version $v is not the tag's $TAG: nothing is published"; exit 1; fi
+          done
+          if ! cmp -s server.json <(tar -xOzf "$1" package/server.json); then echo "::error::server.json differs from the tarball's"; exit 1; fi
+          echo "TARBALL=$RUNNER_TEMP/pack/$1" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      - name: What to publish
-        id: plan
+      - name: Publish the tested tarball to npm
+        if: needs.mcp-pack.outputs.npm != 'done' && steps.auth.outputs.auth != 'none'
         run: |
-          V=$(node -p "require('./packages/mcp/package.json').version")
-          echo "version=$V" >> "$GITHUB_OUTPUT"
-          if [ "$NPM_TRUSTED_PUBLISHING" = "1" ]; then AUTH=oidc
-          elif [ -n "$NPM_TOKEN" ]; then AUTH=token
-          else
-            echo "::notice::dbmastermind-mcp is not published: add the NPM_TOKEN secret, or set the repository variable NPM_TRUSTED_PUBLISHING to 1 once npm trusts this workflow."
-            echo "auth=none" >> "$GITHUB_OUTPUT"; exit 0
+          # Checked again here: "Re-run failed jobs" reuses mcp-pack's answer from before the first attempt.
+          if [ "$(npm view "dbmastermind-mcp@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
+            echo "::notice::dbmastermind-mcp@$VERSION is already on npm."; exit 0
           fi
-          if [[ "$GITHUB_REF" != refs/tags/v* ]]; then
-            echo "::notice::Nothing is published from $GITHUB_REF: run the workflow from the release tag."
-            echo "auth=none" >> "$GITHUB_OUTPUT"; exit 0
-          fi
-          if [ "${GITHUB_REF_NAME#v}" != "$V" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME, but packages/mcp/package.json says $V."; exit 1
-          fi
-          echo "auth=$AUTH" >> "$GITHUB_OUTPUT"
-          if [ "$(npm view "dbmastermind-mcp@$V" version 2>/dev/null)" = "$V" ]; then
-            echo "::notice::dbmastermind-mcp@$V is already on npm."; echo "npm=done" >> "$GITHUB_OUTPUT"
-          fi
-          NAME=$(node -p "encodeURIComponent(require('./packages/mcp/server.json').name)")
-          if curl -sf -o /dev/null "https://registry.modelcontextprotocol.io/v0.1/servers/$NAME/versions/$V"; then
-            echo "::notice::The MCP registry already lists $V."; echo "registry=done" >> "$GITHUB_OUTPUT"
-          fi
-      - run: npm install --no-audit --no-fund
-        if: steps.plan.outputs.auth != 'none' && steps.plan.outputs.npm != 'done'
-      # The packed package must install from its tarball and answer over stdio before it goes out.
-      - name: Check the packed package
-        if: steps.plan.outputs.auth != 'none' && steps.plan.outputs.npm != 'done'
-        run: node packages/mcp/test/packed-package.mjs
-      - name: Publish dbmastermind-mcp to npm
-        if: steps.plan.outputs.auth != 'none' && steps.plan.outputs.npm != 'done'
-        run: |
           # Trusted publishing needs npm 11.5.1 or newer.
-          npm install -g npm@11.21.2
-          npm publish -w packages/mcp --access public --provenance
+          npm install -g --ignore-scripts npm@11.21.2
+          npm publish "$TARBALL" --access public --provenance
         env:
-          # setup-node points .npmrc at NODE_AUTH_TOKEN; with trusted publishing it stays empty and npm uses OIDC.
-          NODE_AUTH_TOKEN: ${{ steps.plan.outputs.auth == 'token' && secrets.NPM_TOKEN || '' }}
+          # The token only in this step; with trusted publishing it stays empty and npm uses OIDC.
+          NODE_AUTH_TOKEN: ${{ steps.auth.outputs.auth == 'token' && secrets.NPM_TOKEN || '' }}
+      - name: No npm credentials
+        if: needs.mcp-pack.outputs.npm != 'done' && steps.auth.outputs.auth == 'none'
+        run: echo "::notice::dbmastermind-mcp $VERSION is not published to npm; add the NPM_TOKEN secret, or set the repository variable NPM_TRUSTED_PUBLISHING to 1 once npm trusts this workflow."
       - name: Install cosign
-        if: steps.plan.outputs.auth != 'none' && steps.plan.outputs.registry != 'done'
+        if: needs.mcp-pack.outputs.registry != 'done'
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Download and verify mcp-publisher
-        if: steps.plan.outputs.auth != 'none' && steps.plan.outputs.registry != 'done'
+        if: needs.mcp-pack.outputs.registry != 'done'
         run: |
           set -euo pipefail
           archive="mcp-publisher_linux_amd64.tar.gz"
@@ -300,13 +411,21 @@ jobs:
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" "$RUNNER_TEMP/$archive"
           tar xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" mcp-publisher
       - name: Publish to the MCP registry
-        if: steps.plan.outputs.auth != 'none' && steps.plan.outputs.registry != 'done'
+        if: needs.mcp-pack.outputs.registry != 'done'
+        env:
+          AUTH: ${{ steps.auth.outputs.auth }}
         run: |
-          # The registry reads mcpName from the npm package: give a fresh publish a moment to show up there.
+          # The registry checks mcpName in the npm package: the version must be on npm first.
           for i in 1 2 3 4 5 6; do
-            [ "$(npm view "dbmastermind-mcp@${{ steps.plan.outputs.version }}" version 2>/dev/null)" = "${{ steps.plan.outputs.version }}" ] && break
+            [ "$(npm view "dbmastermind-mcp@$VERSION" version 2>/dev/null)" = "$VERSION" ] && break
+            if [ "$AUTH" = none ]; then echo "::notice::dbmastermind-mcp@$VERSION isn't on npm, so the registry entry waits."; exit 0; fi
             sleep 20
           done
+          if [ "$(npm view "dbmastermind-mcp@$VERSION" version 2>/dev/null)" != "$VERSION" ]; then echo "::error::dbmastermind-mcp@$VERSION is not on npm"; exit 1; fi
+          NAME=$(node -p "encodeURIComponent(require(process.env.RUNNER_TEMP + '/pack/server.json').name)")
+          if curl -sf -o /dev/null "https://registry.modelcontextprotocol.io/v0.1/servers/$NAME/versions/$VERSION"; then
+            echo "::notice::The MCP registry already lists $VERSION."; exit 0
+          fi
           "$RUNNER_TEMP/mcp-publisher" login github-oidc
-          for i in 1 2 3; do "$RUNNER_TEMP/mcp-publisher" publish packages/mcp/server.json && exit 0; sleep 30; done
+          for i in 1 2 3; do "$RUNNER_TEMP/mcp-publisher" publish "$RUNNER_TEMP/pack/server.json" && exit 0; sleep 30; done
           exit 1

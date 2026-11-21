@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# Pull requests get a read-only token.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -56,7 +60,7 @@ jobs:
         options: >-
           --health-cmd healthcheck.sh --health-interval 5s --health-retries 60 --health-start-period 20s
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       # A service container takes no command: pg_stat_statements (Server activity → Top queries,
       # health.integration.test.ts) is preloaded through ALTER SYSTEM and a restart, as docker-compose.test.yml does
       # with its command line.
@@ -67,7 +71,7 @@ jobs:
           for i in $(seq 1 60); do docker exec ${{ job.services.postgres.id }} pg_isready -U postgres >/dev/null 2>&1 && break; sleep 2; done
           docker exec ${{ job.services.postgres.id }} psql -U postgres -tAc 'SHOW shared_preload_libraries' | grep -q pg_stat_statements
           echo "DBM_PGSS_PORT=54329" >> "$GITHUB_ENV"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
@@ -128,8 +132,8 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 2s --health-retries 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
@@ -147,7 +151,7 @@ jobs:
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: UI sweep (virtual display)
         run: xvfb-run -a node e2e/ui-sweep.mjs ui-sweep cs --strict
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: ui-sweep
@@ -168,8 +172,8 @@ jobs:
             exe: apps/desktop/release/linux-unpacked/db-mastermind
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
@@ -224,7 +228,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Upload screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ui-shots-${{ matrix.os }}
           path: ui-shots
@@ -239,8 +243,8 @@ jobs:
   linux-sandbox:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
@@ -302,14 +306,42 @@ jobs:
           xvfb-run -a node e2e/linux-sandbox.mjs "$APPIMAGE_FILE" sandboxed || rc=1
           xvfb-run -a node e2e/linux-sandbox.mjs "$APPIMAGE_FILE" sandboxed --plain || rc=1
           exit $rc
+      # Where ordinary users can't create user namespaces although root can, electron-builder's own install test (run
+      # as root) can't tell, and Chromium's SUID helper can't help either: Chromium splits its path at the space in
+      # "/opt/DB Mastermind" (run 44943689826). Reproduced as on Ubuntu when the app's AppArmor profile can't be
+      # loaded: restriction on, profile gone, apparmor_parser unusable.
+      - name: .deb without user namespaces for users, started as before this change (Chromium refuses)
+        if: ${{ !cancelled() }}
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
+          sudo apparmor_parser -R /etc/apparmor.d/db-mastermind
+          sudo rm /etc/apparmor.d/db-mastermind
+          xvfb-run -a node e2e/linux-sandbox.mjs "/opt/DB Mastermind/db-mastermind" refused
+      - name: .deb installed where its profile can't load (menu entry falls back to --no-sandbox)
+        if: ${{ !cancelled() }}
+        run: |
+          AP=$(command -v apparmor_parser || echo /usr/sbin/apparmor_parser)
+          sudo chmod -x "$AP"
+          sudo apt-get install -y --reinstall ./apps/desktop/release/DB-Mastermind-*-linux-amd64.deb 2>&1 | grep -E "DB Mastermind|AppArmor"
+          sudo chmod +x "$AP"
+          if [ -e /etc/apparmor.d/db-mastermind ]; then echo "::error::the profile was installed after all"; exit 1; fi
+          grep '^Exec=' /usr/share/applications/db-mastermind.desktop
+          xvfb-run -a node e2e/linux-sandbox.mjs /usr/share/applications/db-mastermind.desktop fallback --plain
+      - name: .deb reinstalled where users get user namespaces again (menu entry sandboxed)
+        if: ${{ !cancelled() }}
+        run: |
+          sudo apt-get install -y --reinstall ./apps/desktop/release/DB-Mastermind-*-linux-amd64.deb 2>&1 | grep -E "DB Mastermind|AppArmor" || true
+          grep '^Exec=' /usr/share/applications/db-mastermind.desktop
+          if grep -q -- '--no-sandbox' /usr/share/applications/db-mastermind.desktop; then echo "::error::--no-sandbox stayed in the menu entry"; exit 1; fi
+          xvfb-run -a node e2e/linux-sandbox.mjs /usr/share/applications/db-mastermind.desktop sandboxed --plain
 
   # Code generated from models, checked by the tools themselves (packages/core/test/orm-export.tools.test.ts): pinned
   # prisma, drizzle-orm and typescript from npm into a temp folder, SQLAlchemy from pip in a venv. Needs the network.
   orm-tools:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
@@ -327,17 +359,17 @@ jobs:
   mcp-pack:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
-      - run: npm install --no-audit --no-fund
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      # As release.yml packs it: no install scripts (esbuild needs none, nothing runs Electron). Not `npm ci`: the lock
+      # file lacks esbuild's other-platform packages, which npm ci refuses (CI run 44942181815).
+      - run: npm install --ignore-scripts --no-audit --no-fund
       - name: npm pack (prepack builds dist/)
         run: mkdir -p "$RUNNER_TEMP/pack" && npm pack -w packages/mcp --pack-destination "$RUNNER_TEMP/pack"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mcp-tarball
           path: ${{ runner.temp }}/pack/*.tgz
@@ -353,11 +385,11 @@ jobs:
         node: ['22.16', '24']
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ matrix.node }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: mcp-tarball
           path: ${{ runner.temp }}/pack
@@ -368,13 +400,13 @@ jobs:
   windows-auth:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
       - name: Install SQL Server LocalDB
-        uses: potatoqualitee/mssqlsuite@v1.7
+        uses: potatoqualitee/mssqlsuite@9a0136e208df60b8ecb62909f076bc34854fa55a # v1.7
         with:
           install: localdb
       - run: npm install --no-audit --no-fund
