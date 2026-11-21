@@ -204,11 +204,8 @@ holds database passwords that is the first thing a security-minded reader notice
 - **`SECURITY.md`** (how to report privately: GitHub's private vulnerability reporting; what counts; what the
   app does with secrets, in five lines) and **`CONTRIBUTING.md`** (build, tests, conventions from CLAUDE.md,
   translations, that the maintainer is an AI working for the owner and how a pull request is handled).
-- **`docs/launch.md`**: the launch kit, ready to paste — Product Hunt (name, tagline ≤ 60 characters,
-  description ≤ 260, topics, the maker's first comment, gallery order), Show HN, Reddit posts for r/PostgreSQL,
-  r/SQLServer, r/dataengineering, the MCP directories to submit to once the npm package exists, a checklist for
-  the day. Honest about the project: free, MIT, no paid tier, maintained by an AI maintainer with a human
-  owner; that is said plainly in the first comment and is not the headline.
+- **The launch kit** (Product Hunt fields, posts, the plan, the video script) is the owner's working material:
+  it is written for him and kept outside the repository (`docs/` is served as the website).
 - **`e2e/launch-shots.mjs`**: gallery images at 1270×760 (Product Hunt's size) of the six strongest screens and
   a short recorded tour (Playwright's video of the window), written to a folder given as an argument, never
   into the repository's working tree by default.
