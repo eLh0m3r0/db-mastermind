@@ -178,3 +178,23 @@ describe('what a file names is cleaned', () => {
     expect(found[0]!.password).toBe('p\nw')
   })
 })
+
+describe('names cleaning makes alike', () => {
+  it('get a number, references follow them, and the notice counts them', () => {
+    const long = 'x'.repeat(200)
+    const draw = {
+      tables: [
+        { id: 1, name: 'ab', x: 0, y: 0, fields: [{ id: 1, name: 'id', type: 'INT', primary: true }, { id: 2, name: 'v\u0007al', type: 'INT' }, { id: 3, name: 'val', type: 'INT' }] },
+        { id: 2, name: 'a\u0007b', x: 10, y: 0, fields: [{ id: 4, name: 'id', type: 'INT', primary: true }, { id: 5, name: `${long}1`, type: 'INT' }, { id: 6, name: `${long}2`, type: 'INT' }] },
+      ],
+      relationships: [{ id: 1, startTableId: 2, startFieldId: 6, endTableId: 1, endFieldId: 3 }],
+    }
+    const m = readModelFile('m.json', strToU8(JSON.stringify(draw)))
+    expect(m.tables.map((t) => t.name)).toEqual(['ab', 'ab_2'])
+    expect(m.tables[0]!.columns.map((c) => c.name)).toEqual(['id', 'val', 'val_2'])
+    expect(m.tables[1]!.columns.map((c) => c.name)).toEqual(['id', 'x'.repeat(128), `${'x'.repeat(126)}_2`])
+    expect(m.tables[1]!.foreignKeys.map((f) => [f.columns, f.refTable, f.refColumns])).toEqual([[[`${'x'.repeat(126)}_2`], 'ab', ['val_2']]])
+    expect(Object.keys(m.positions).sort()).toEqual(['.ab', '.ab_2'])
+    expect(m.leftOut.renamed).toBe(3)
+  })
+})

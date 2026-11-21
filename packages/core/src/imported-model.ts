@@ -50,6 +50,8 @@ export type LeftOutKind =
   | 'indexes'
   /** Referential actions that aren't one (CASCADE, RESTRICT, SET NULL, SET DEFAULT, NO ACTION). */
   | 'actions'
+  /** Names that cleaning (control characters out, 128 characters at most) made alike: given a number. */
+  | 'renamed'
 
 /**
  * What a file said that isn't taken as SQL (foreign-sql.ts): a line of the column's comment says it, and it is
