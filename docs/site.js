@@ -1,4 +1,4 @@
-// The page's small behaviours: the product diagram (drag, lines), the appearance swatches, sharing, copying.
+// The page's small behaviors: the product diagram (drag, lines), the appearance swatches, sharing, copying.
 // Everything here is an addition: without this file every link works and the diagram shows its default layout.
 
 // --- Diagram geometry (the same numbers and routes as the app's ER diagram) -------------------------------------
@@ -74,11 +74,19 @@ const route = (child, ci, parent, pi) => {
       redraw(key)
       reset.hidden = false
     }
+    // On a canvas every table is open and its header moves it; on phones the header folds the table.
+    const placeTables = () => {
+      const canvas = absolute()
+      dg.classList.toggle('movable', canvas)
+      if (canvas) nodes.forEach((el) => (el.open = true))
+    }
+    placeTables()
+    window.matchMedia('(min-width: 768px)').addEventListener('change', placeTables)
     for (const [key, el] of nodes) {
       const handle = el.querySelector('.node-h')
-      handle.tabIndex = 0
-      handle.setAttribute('aria-roledescription', 'movable table')
-      handle.setAttribute('aria-label', `${key} table: arrow keys move it`)
+      handle.addEventListener('click', (e) => {
+        if (absolute()) e.preventDefault()
+      })
       handle.addEventListener('pointerdown', (e) => {
         if (!absolute() || e.button !== 0) return
         e.preventDefault()

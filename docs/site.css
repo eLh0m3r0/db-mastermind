@@ -166,20 +166,21 @@ h3 { font-size: 18px; line-height: 1.25; font-weight: 600; }
 .only-phone { display: none; }
 @media (max-width: 719px) {
   .only-phone { display: flex; }
-  .not-phone { display: none; }
+  .not-phone { display: none !important; }
   .only-phone .btn { width: 100%; justify-content: center; }
 }
-.cta.not-phone { flex-direction: column; align-items: flex-start; gap: 14px; }
+/* The download button, with this system's other files right beside it (filled in by the download script). */
+.download { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.download-alt { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 15px; }
+.download-alt a, .more-links a { color: var(--ink); }
 .more-links { display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 15px; }
-.more-links a { color: var(--ink); }
-.more-links > span { display: contents; }
-.more-links > span a { color: var(--accent-text); }
+.hero-text .more-links { margin-top: -6px; }
 
 /* --- Hero: the app's diagram canvas ----------------------------------------------------------------------- */
 .hero { background-color: var(--paper); background-image: radial-gradient(circle, var(--dots) 1px, transparent 1.3px); background-size: 16px 16px; background-position: -8px -8px; border-bottom: 1px solid var(--hair); padding: 40px 0 56px; }
 .hero-grid { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "text" "shot" "map"; gap: 40px; }
 .hero-text { grid-area: text; display: grid; gap: 20px; align-content: start; }
-.hero-text .lead { color: var(--ink); max-width: 30ch; }
+.hero-text .lead { color: var(--ink); max-width: 38ch; text-wrap: pretty; }
 .hero .dg { grid-area: map; }
 .hero-shot { grid-area: shot; margin: 0; }
 @media (min-width: 1180px) {
@@ -193,7 +194,13 @@ h3 { font-size: 18px; line-height: 1.25; font-weight: 600; }
 .dg-box { display: grid; gap: 0; }
 .dg-lines { display: none; }
 .node { width: 100%; background: var(--node); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; box-shadow: var(--shadow); }
-.node-h { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; margin: 0; background: var(--accent); color: var(--accent-fg); font-weight: 600; font-size: 15px; line-height: 1; user-select: none; }
+/* On phones each table folds (a <details>): its header says what it is and how many links it holds. */
+.node-h { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 12px; margin: 0; background: var(--accent); color: var(--accent-fg); font-weight: 600; font-size: 15px; line-height: 1; user-select: none; list-style: none; cursor: pointer; }
+.node-h::-webkit-details-marker { display: none; }
+.node-h::after { content: ""; flex: none; width: 7px; height: 7px; margin: 0 2px 4px 4px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); }
+.node[open] > .node-h::after { margin-bottom: -4px; transform: rotate(225deg); }
+.node-count { font-weight: 400; font-size: 14px; min-width: 2ch; text-align: right; }
+.node-h:focus-visible { outline: 2px solid var(--ink); outline-offset: -4px; }
 .node-h .g { width: 14px; height: 14px; }
 .node-schema { margin-left: auto; font-weight: 400; font-size: 13px; }
 .node ul { list-style: none; margin: 0; padding: 0; }
@@ -223,14 +230,17 @@ h3 { font-size: 18px; line-height: 1.25; font-weight: 600; }
   .dg-lines path.active { stroke: var(--accent); stroke-width: 2; }
   .dg-v { display: none; }
   .node { position: absolute; left: calc(var(--x) * 1px); top: calc(var(--y) * 1px); width: 200px; }
+  /* Always open here, also where JavaScript doesn't run to open them. */
+  .node::details-content { content-visibility: visible; display: block; }
+  .node-count, .node-h::after { display: none; }
   .node[data-node="terms"] { margin-top: 0; }
-  .node-h { height: 32px; padding: 0 10px; gap: 6px; font-size: 13px; }
+  .node-h { min-height: 0; height: 32px; padding: 0 10px; gap: 6px; font-size: 13px; cursor: default; }
   .node-h .g { width: 12px; height: 12px; }
   .node-schema { font-size: 12px; }
   .node li a { min-height: 0; height: 24px; padding: 0 10px; gap: 6px; font-size: 13px; }
   .type { font-size: 12px; padding-left: 8px; }
   .node li a > span.g { width: 12px; }
-  .dg .node-h[tabindex] { cursor: grab; }
+  .dg.movable .node-h { cursor: grab; }
   .dg.dragging, .dg.dragging .node-h { cursor: grabbing; }
   .node.lifted { box-shadow: 0 8px 28px rgba(15, 23, 42, 0.18); z-index: 2; }
 }
@@ -298,10 +308,9 @@ h3 { font-size: 18px; line-height: 1.25; font-weight: 600; }
 .seg.os button[aria-pressed="true"] { background: var(--chrome); box-shadow: inset 0 0 0 1px var(--hair); }
 .mcp-where { margin: 14px 0 8px; color: var(--slate); }
 .mcp-note { font-size: 14px; color: var(--slate); margin: 10px 0 12px; }
-.code { display: grid; }
-.code .copy { order: -1; justify-self: end; margin: 0 0 6px; }
+.code { display: grid; grid-template-columns: minmax(0, 1fr); }
+.code .copy { justify-self: end; margin: 0 0 6px; }
 pre { margin: 0; padding: 14px 16px; background: var(--chrome); border: 1px solid var(--hair); border-radius: 6px; font-size: 14px; line-height: 1.5; overflow-x: auto; white-space: pre; color: var(--ink); }
-.mcp pre { white-space: pre-wrap; word-break: break-all; }
 .copy { font: 600 13px/1 var(--font); color: var(--ink); background: var(--node); border: 1px solid var(--rule); border-radius: 6px; padding: 7px 10px; cursor: pointer; }
 .copy:hover { background: var(--hover); }
 .npx { margin-top: 28px; }
@@ -323,7 +332,7 @@ pre { margin: 0; padding: 14px 16px; background: var(--chrome); border: 1px soli
 .os-cols p { margin: 0 0 12px; color: var(--slate); }
 .os-cols p strong { color: var(--ink); }
 .os-cols .code { margin: 0 0 14px; }
-.os-cols pre { font-size: 13px; white-space: pre-wrap; word-break: break-all; }
+.os-cols pre { font-size: 13px; }
 @media (min-width: 1000px) { .os-cols { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
 /* Make it yours */
