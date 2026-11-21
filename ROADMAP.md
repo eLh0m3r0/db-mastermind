@@ -904,6 +904,27 @@ where a test can reach it.
 
 Left as it is, for the owner to decide: Linux builds still start with `--no-sandbox` (see 1.3.1).
 
+## Milestone 12 — Launch (1.5.0) 🚧
+
+The owner wants to launch publicly (Product Hunt and elsewhere, decided 2026-11-21). The app was built for his
+team first; a wider audience needs ways in that it recognises and a first install without friction, not more
+depth. The specification: [docs/specs/launch.md](docs/specs/launch.md).
+
+- ⬜ A1 Code from a model or a database: Prisma schema, Drizzle schema, SQLAlchemy models, TypeScript types
+  (diagram → Export → Code, `dbm export`); each checked by its own tool
+- ⬜ A2 Models from other tools: Mermaid `erDiagram`, drawDB, MySQL Workbench `.mwb` (Import, Open a model, drop)
+- ⬜ A3 Services by name in the connection form and on the website (Supabase, Neon, Timescale, RDS / Aurora,
+  Azure, Cloud SQL): recognised from the host, TLS on
+- ⬜ A4 Connections from a project: a dropped `.env`, docker-compose file or project folder
+- ⬜ B1 `dbmastermind-mcp` and `dbm` on npm, listed in the MCP registry; a test that the packed package starts
+- ⬜ B2 Linux builds use Chromium's sandbox where it can work (`.deb` always, AppImage when the system allows)
+- ⬜ B3 Website for everyone (hero without DeZign, pages for DeZign users and for people coming from Azure Data
+  Studio, Microsoft Store first on Windows), README, SECURITY.md, CONTRIBUTING.md, the launch kit (docs/launch.md)
+- ⬜ For the owner (issue #1): npm token, Apple Developer ID for notarization, the Product Hunt account and date
+
+After the launch, by demand: Turso / libSQL driver, test data generated in foreign-key order, Snowflake, more
+UI languages.
+
 ## Backlog — what other tools have (review 2026-11-14) 💡
 
 An independent pass over the app against DataGrip 2026.2, DBeaver 26.x, Beekeeper Studio 6, TablePlus, SSMS and
