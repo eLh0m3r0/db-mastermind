@@ -3,209 +3,607 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DB Mastermind — free database client and data modeler with AI</title>
+<title>DB Mastermind is a free, open-source database client and data modeler for Windows, macOS and Linux.</title>
+<meta name="description" content="DB Mastermind is a free, open-source database client and data modeler for Windows, macOS and Linux. Design a schema, browse and query PostgreSQL, SQL Server, Oracle, MySQL and seven more, turn results into charts, and let an AI assistant or your coding agent read it safely.">
 <meta name="author" content="Václav Mudra">
-<meta name="description" content="Free, open-source database client and data modeler for PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite, DuckDB, ClickHouse, CockroachDB, BigQuery and Trino: a data browser with advanced filters, an SQL editor that knows your schema, ER diagrams, models with migrations and code export, an MCP server for agents, and AI that knows your database.">
 <link rel="canonical" href="https://dbmastermind.app/">
-<link rel="icon" href="icon.svg">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="DB Mastermind">
+<meta property="og:title" content="DB Mastermind is a free, open-source database client and data modeler for Windows, macOS and Linux.">
+<meta property="og:description" content="DB Mastermind is a free, open-source database client and data modeler for Windows, macOS and Linux. Design a schema, browse and query PostgreSQL, SQL Server, Oracle, MySQL and seven more, turn results into charts, and let an AI assistant or your coding agent read it safely.">
+<meta property="og:url" content="https://dbmastermind.app/">
+<meta property="og:image" content="https://dbmastermind.app/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Understand your data. DB Mastermind, a free, open-source database client and data modeler, with a diagram of design, query and see.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="DB Mastermind is a free, open-source database client and data modeler for Windows, macOS and Linux.">
+<meta name="twitter:description" content="DB Mastermind is a free, open-source database client and data modeler for Windows, macOS and Linux. Design a schema, browse and query PostgreSQL, SQL Server, Oracle, MySQL and seven more, turn results into charts, and let an AI assistant or your coding agent read it safely.">
+<meta name="twitter:image" content="https://dbmastermind.app/og.png">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preload" href="fonts/atkinson-hyperlegible-next-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/atkinson-hyperlegible-next-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="site.css">
 <script src="theme.js"></script>
+<link rel="preload" href="fonts/atkinson-hyperlegible-mono-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<!-- Structured data for search engines: what the app is, that it costs nothing, where to download it.
+     No version number, so it doesn't go stale. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "DB Mastermind",
+  "description": "DB Mastermind is a free, open-source database client and data modeler for Windows, macOS and Linux.",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Windows, macOS, Linux",
+  "url": "https://dbmastermind.app/",
+  "downloadUrl": "https://github.com/eLh0m3r0/db-mastermind/releases/latest",
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  "author": { "@type": "Person", "name": "Václav Mudra", "url": "https://vaclavmudra.com" },
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <img src="icon.svg" alt="">
-    <strong>DB Mastermind</strong>
-    <nav>
-      <a href="#features">Features</a>
-      <a href="#design">Modeling</a>
+<!-- The skip link, header and footer are the same on every page (index, guide, dezign, azure-data-studio,
+     privacy, 404): a change goes into all six. -->
+<a class="skip" href="#main">Skip to content</a>
+<!-- Drawings the page refers to with url(#…) and <use>: the ends of relationship lines, copied from the app's
+     ER diagram (DiagramView.tsx), and three Lucide icons (ISC license) the app uses: table, key, link. -->
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <defs>
+    <marker id="crow-many" viewBox="0 0 16 16" refX="15" refY="8" markerWidth="16" markerHeight="16" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M3 8 L15 1 M3 8 L15 8 M3 8 L15 15" fill="none" stroke="currentColor" stroke-width="1.2"/></marker>
+    <marker id="crow-one-s" viewBox="0 0 16 16" refX="15" refY="8" markerWidth="16" markerHeight="16" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M10 2 L10 14 M6 2 L6 14" fill="none" stroke="currentColor" stroke-width="1.2"/></marker>
+    <marker id="crow-one" viewBox="0 0 16 16" refX="15" refY="8" markerWidth="16" markerHeight="16" orient="auto" markerUnits="userSpaceOnUse"><path d="M10 2 L10 14 M6 2 L6 14" fill="none" stroke="currentColor" stroke-width="1.2"/></marker>
+    <marker id="crow-many-e" viewBox="0 0 16 16" refX="15" refY="8" markerWidth="16" markerHeight="16" orient="auto" markerUnits="userSpaceOnUse"><path d="M3 8 L15 1 M3 8 L15 8 M3 8 L15 15" fill="none" stroke="currentColor" stroke-width="1.2"/></marker>
+    <marker id="crow-zero-one" viewBox="0 0 20 16" refX="19" refY="8" markerWidth="20" markerHeight="16" orient="auto" markerUnits="userSpaceOnUse"><circle cx="5" cy="8" r="3.2" class="ring" stroke="currentColor" stroke-width="1.2"/><path d="M13 2 L13 14" fill="none" stroke="currentColor" stroke-width="1.2"/></marker>
+  </defs>
+  <symbol id="i-table" viewBox="0 0 24 24"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r="1" fill="currentColor"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 1 1 0 10h-2M8 12h8"/></symbol>
+</svg>
+<header class="top">
+  <div class="wrap top-in">
+    <a class="brand" href="./"><img src="icon.svg" alt="" width="28" height="28"><span>DB Mastermind</span></a>
+    <nav class="nav" aria-label="Site">
+      <a href="#design">Design</a>
+      <a href="#query">Query</a>
+      <a href="#see">See</a>
       <a href="#ai">AI</a>
       <a href="#mcp">MCP</a>
       <a href="#privacy">Privacy</a>
       <a href="#install">Install</a>
+      <a href="guide.html">Guide</a>
       <a href="https://github.com/eLh0m3r0/db-mastermind">GitHub</a>
     </nav>
+    <details class="menu">
+      <summary>Contents</summary>
+      <div class="menu-panel">
+        <nav aria-label="Site, compact">
+          <a href="#design">Design</a>
+          <a href="#query">Query</a>
+          <a href="#see">See</a>
+          <a href="#ai">AI</a>
+          <a href="#mcp">MCP</a>
+          <a href="#privacy">Privacy</a>
+          <a href="#install">Install</a>
+          <a href="guide.html">Guide</a>
+          <a href="https://github.com/eLh0m3r0/db-mastermind">GitHub</a>
+        </nav>
+        <div class="theme-toggle in-menu" role="group" aria-label="Theme">
+          <button type="button" data-choice="system" title="Match the system" aria-label="Match the system"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button>
+          <button type="button" data-choice="light" title="Light" aria-label="Light"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+          <button type="button" data-choice="dark" title="Dark" aria-label="Dark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+        </div>
+      </div>
+    </details>
     <div class="theme-toggle" role="group" aria-label="Theme">
-      <button type="button" data-choice="system" title="Match the system" aria-label="Match the system"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button>
-      <button type="button" data-choice="light" title="Light" aria-label="Light"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
-      <button type="button" data-choice="dark" title="Dark" aria-label="Dark"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+      <button type="button" data-choice="system" title="Match the system" aria-label="Match the system"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button>
+      <button type="button" data-choice="light" title="Light" aria-label="Light"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+      <button type="button" data-choice="dark" title="Dark" aria-label="Dark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
     </div>
-  </header>
+  </div>
+</header>
+<main id="main">
+  <section class="hero" aria-labelledby="h1">
+    <div class="wrap hero-grid">
+      <div class="hero-text">
+        <h1 id="h1">Understand your data.</h1>
+        <p class="lead">DB Mastermind is a free, open-source database client and data modeler for Windows, macOS and Linux. Design the database, query it, see it in charts.</p>
+        <div class="download not-phone">
+          <a class="btn primary" id="download" href="https://github.com/eLh0m3r0/db-mastermind/releases/latest">Download <small id="download-os"></small></a>
+          <span class="download-alt" id="download-alt" hidden></span>
+        </div>
+        <p class="more-links not-phone">
+          <a href="https://github.com/eLh0m3r0/db-mastermind/releases/latest">All downloads</a>
+          <a href="https://github.com/eLh0m3r0/db-mastermind">Source code</a>
+          <a id="whats-new" href="https://github.com/eLh0m3r0/db-mastermind/releases/latest" hidden>What’s new</a>
+        </p>
+        <div class="cta only-phone">
+          <a class="btn primary" href="#install">Downloads for your computer</a>
+          <a class="btn" id="share" href="mailto:?subject=DB%20Mastermind&amp;body=A%20free%2C%20open-source%20database%20client%20and%20data%20modeler%3A%20https%3A%2F%2Fdbmastermind.app%2F">Send yourself the link</a>
+        </div>
+      </div>
+      <nav class="dg" aria-labelledby="dg-title" aria-describedby="dg-desc">
+        <h2 class="sr-only" id="dg-title">What DB Mastermind does</h2>
+        <p class="sr-only" id="dg-desc">A diagram of the product as database tables. One schema leads to many query results, and one result to many charts. AI is optional in each of them. The terms: price 0, MIT license, no paid tier, no account, no telemetry. On wide screens a focused table moves with the arrow keys.</p>
+        <div class="dg-box">
+          <!-- The relationship lines, drawn as the app draws them (crow's feet from the markers in the sprite above).
+               Each path joins a child's row (data-from, table.column) to a parent's key row (data-to). The d="…" values
+               are computed from the tables' --x / --y and the order of their rows: after changing a table by hand
+               (a row, its position), run  node scripts/site-diagram.mjs  and it rewrites them. site.js re-routes the same
+               lines with the same function while a table is dragged. The box is 704 × 316 px (.dg-box in site.css). -->
+          <svg class="dg-lines" aria-hidden="true" focusable="false" width="704" height="316" viewBox="0 0 704 316">
+            <path data-from="query.schema" data-to="design.schema" d="M 252 69 L 232 69 Q 226 69 226 63 L 226 51 Q 226 45 220 45 L 200 45" marker-start="url(#crow-many)" marker-end="url(#crow-one)"/>
+            <path data-from="see.result" data-to="query.result" d="M 504 69 L 484 69 Q 478 69 478 63 L 478 51 Q 478 45 472 45 L 452 45" marker-start="url(#crow-many)" marker-end="url(#crow-one)"/>
+            <path data-from="design.ai" data-to="ai.assistant" d="M 200 141 L 220 141 Q 226 141 226 147 L 226 247 Q 226 253 232 253 L 252 253" marker-start="url(#crow-many)" marker-end="url(#crow-zero-one)"/>
+            <path data-from="query.ai" data-to="ai.assistant" d="M 452 165 L 472 165 Q 478 165 478 171 L 478 247 Q 478 253 472 253 L 452 253" marker-start="url(#crow-many)" marker-end="url(#crow-zero-one)"/>
+            <path data-from="see.ai" data-to="ai.assistant" d="M 504 117 L 484 117 Q 478 117 478 123 L 478 247 Q 478 253 472 253 L 452 253" marker-start="url(#crow-many)" marker-end="url(#crow-zero-one)"/>
+          </svg>
+          <!-- The tables: a <details> each, so phones can fold them; from 768 px up they are always open and placed at
+               --x / --y (CSS pixels inside the box). The links between them on phones are the .dg-v connectors. -->
+          <details class="node" data-node="design" style="--x:0;--y:0" open>
+            <summary class="node-h"><svg class="g g-table" aria-hidden="true" focusable="false"><use href="#i-table"/></svg><span class="node-name">design</span><span class="node-schema">modeler</span><span class="node-count">5<span class="sr-only"> links</span></span></summary>
+            <ul>
+              <li data-col="schema"><a href="#d-model"><svg class="g g-key" aria-hidden="true" focusable="false"><use href="#i-key"/></svg><span class="col pk">schema</span> <span class="type">dbml</span></a></li>
+              <li data-col="diagrams"><a href="#d-diagrams"><span class="g"></span><span class="col">diagrams</span> <span class="type">live</span></a></li>
+              <li data-col="migrations"><a href="#d-migrations"><span class="g"></span><span class="col">migrations</span> <span class="type">checked</span></a></li>
+              <li data-col="code"><a href="#d-code"><span class="g"></span><span class="col">code</span> <span class="type">prisma…</span></a></li>
+              <li data-col="ai"><a href="#ai"><svg class="g g-link" aria-hidden="true" focusable="false"><use href="#i-link"/></svg><span class="col">ai</span> <span class="type">optional</span></a></li>
+            </ul>
+          </details>
+          <div class="dg-v" aria-hidden="true"><svg width="24" height="40" viewBox="0 0 24 40"><path d="M12 2 V38" marker-start="url(#crow-one-s)" marker-end="url(#crow-many-e)"/></svg></div>
+          <details class="node" data-node="query" style="--x:252;--y:0">
+            <summary class="node-h"><svg class="g g-table" aria-hidden="true" focusable="false"><use href="#i-table"/></svg><span class="node-name">query</span><span class="node-schema">client</span><span class="node-count">6<span class="sr-only"> links</span></span></summary>
+            <ul>
+              <li data-col="result"><a href="#query"><svg class="g g-key" aria-hidden="true" focusable="false"><use href="#i-key"/></svg><span class="col pk">result</span> <span class="type">rows</span></a></li>
+              <li data-col="schema"><a href="#design"><svg class="g g-link" aria-hidden="true" focusable="false"><use href="#i-link"/></svg><span class="col">schema</span> <span class="type">design</span></a></li>
+              <li data-col="filters"><a href="#q-filters"><span class="g"></span><span class="col">filters</span> <span class="type">no SQL</span></a></li>
+              <li data-col="editor"><a href="#q-editor"><span class="g"></span><span class="col">autocomplete</span> <span class="type">SQL</span></a></li>
+              <li data-col="databases"><a href="#q-engines"><span class="g"></span><span class="col">databases</span> <span class="type">11</span></a></li>
+              <li data-col="ai"><a href="#ai"><svg class="g g-link" aria-hidden="true" focusable="false"><use href="#i-link"/></svg><span class="col">ai</span> <span class="type">optional</span></a></li>
+            </ul>
+          </details>
+          <div class="dg-v" aria-hidden="true"><svg width="24" height="40" viewBox="0 0 24 40"><path d="M12 2 V38" marker-start="url(#crow-one-s)" marker-end="url(#crow-many-e)"/></svg></div>
+          <details class="node" data-node="see" style="--x:504;--y:0">
+            <summary class="node-h"><svg class="g g-table" aria-hidden="true" focusable="false"><use href="#i-table"/></svg><span class="node-name">see</span><span class="node-schema">charts</span><span class="node-count">4<span class="sr-only"> links</span></span></summary>
+            <ul>
+              <li data-col="chart"><a href="#see"><svg class="g g-key" aria-hidden="true" focusable="false"><use href="#i-key"/></svg><span class="col pk">chart</span> <span class="type">bar, line</span></a></li>
+              <li data-col="result"><a href="#query"><svg class="g g-link" aria-hidden="true" focusable="false"><use href="#i-link"/></svg><span class="col">result</span> <span class="type">query</span></a></li>
+              <li data-col="dashboards"><a href="#s-charts"><span class="g"></span><span class="col">dashboards</span> <span class="type">live</span></a></li>
+              <li data-col="ai"><a href="#ai"><svg class="g g-link" aria-hidden="true" focusable="false"><use href="#i-link"/></svg><span class="col">ai</span> <span class="type">optional</span></a></li>
+            </ul>
+          </details>
+          <div class="dg-v" aria-hidden="true"><svg width="24" height="40" viewBox="0 0 24 40"><path d="M12 2 V38" marker-start="url(#crow-many)" marker-end="url(#crow-zero-one)"/></svg><span>optional in design, query and see</span></div>
+          <details class="node" data-node="ai" style="--x:252;--y:208">
+            <summary class="node-h"><svg class="g g-table" aria-hidden="true" focusable="false"><use href="#i-table"/></svg><span class="node-name">ai</span><span class="node-schema">yours</span><span class="node-count">3<span class="sr-only"> links</span></span></summary>
+            <ul>
+              <li data-col="assistant"><a href="#ai"><svg class="g g-key" aria-hidden="true" focusable="false"><use href="#i-key"/></svg><span class="col pk">assistant</span> <span class="type">your AI</span></a></li>
+              <li data-col="mcp"><a href="#mcp"><span class="g"></span><span class="col">MCP server</span> <span class="type">agents</span></a></li>
+              <li data-col="knowledge"><a href="#a-knowledge"><span class="g"></span><span class="col">knowledge base</span> <span class="type">md</span></a></li>
+            </ul>
+          </details>
+          <details class="node" data-node="terms" style="--x:504;--y:160">
+            <summary class="node-h"><svg class="g g-table" aria-hidden="true" focusable="false"><use href="#i-table"/></svg><span class="node-name">terms</span><span class="node-schema">today</span><span class="node-count">5<span class="sr-only"> links</span></span></summary>
+            <ul>
+              <li data-col="price"><a href="#who"><svg class="g g-key" aria-hidden="true" focusable="false"><use href="#i-key"/></svg><span class="col pk">price</span> <span class="type">0</span></a></li>
+              <li data-col="license"><a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/LICENSE"><span class="g"></span><span class="col">license</span> <span class="type">MIT</span></a></li>
+              <li data-col="paid"><a href="#who"><span class="g"></span><span class="col">paid tier</span> <span class="type">none</span></a></li>
+              <li data-col="account"><a href="#privacy"><span class="g"></span><span class="col">account</span> <span class="type">none</span></a></li>
+              <li data-col="telemetry"><a href="#privacy"><span class="g"></span><span class="col">telemetry</span> <span class="type">none</span></a></li>
+            </ul>
+          </details>
+        </div>
+        <button type="button" class="dg-reset" hidden>Auto layout</button>
+      </nav>
+      <!-- A screenshot in both themes: CSS displays one, so only that one loads. The files come from
+           node scripts/site-images.mjs (AVIF, WebP, PNG; 1440 and 2880 px wide; the phone crop at 960). -->
+      <figure class="shot hero-shot">
+        <picture class="theme-light">
+          <source media="(max-width: 719px)" type="image/avif" srcset="screenshots/hero-phone-960.avif" width="960" height="720">
+          <source media="(max-width: 719px)" type="image/webp" srcset="screenshots/hero-phone-960.webp" width="960" height="720">
+          <source media="(max-width: 719px)" srcset="screenshots/hero-phone-960.png" width="960" height="720">
+          <source type="image/avif" srcset="screenshots/hero-1440.avif 1440w, screenshots/hero-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+          <source type="image/webp" srcset="screenshots/hero-1440.webp 1440w, screenshots/hero-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+          <img src="screenshots/hero-1440.png" width="1440" height="900" alt="DB Mastermind in split view: an ER diagram of a coffee shop database on the left, an SQL query and a line chart of its result on the right." fetchpriority="high" loading="lazy" decoding="async">
+        </picture>
+        <picture class="theme-dark">
+          <source media="(max-width: 719px)" type="image/avif" srcset="screenshots/hero-phone-dark-960.avif" width="960" height="720">
+          <source media="(max-width: 719px)" type="image/webp" srcset="screenshots/hero-phone-dark-960.webp" width="960" height="720">
+          <source media="(max-width: 719px)" srcset="screenshots/hero-phone-dark-960.png" width="960" height="720">
+          <source type="image/avif" srcset="screenshots/hero-dark-1440.avif 1440w, screenshots/hero-dark-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+          <source type="image/webp" srcset="screenshots/hero-dark-1440.webp 1440w, screenshots/hero-dark-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+          <img src="screenshots/hero-dark-1440.png" width="1440" height="900" alt="DB Mastermind in split view: an ER diagram of a coffee shop database on the left, an SQL query and a line chart of its result on the right." fetchpriority="high" loading="lazy" decoding="async">
+        </picture>
+      </figure>
+    </div>
+  </section>
 
-  <main>
-  <div class="hero">
-    <h1>The database client that<br>understands your data</h1>
-    <p>Browse and filter data without limits, write SQL with an editor that knows your schema, model a new database or redesign the one you have with generated migrations, and ask an AI that knows your database. Free and open source, for Windows, macOS and Linux.</p>
-    <div class="cta">
-      <a class="btn primary" id="download" href="https://github.com/eLh0m3r0/db-mastermind/releases/latest">Download <small id="download-os"></small></a>
-      <a class="btn" href="https://github.com/eLh0m3r0/db-mastermind/releases/latest">All downloads</a>
-      <a class="btn" href="https://github.com/eLh0m3r0/db-mastermind">Source code</a>
+  <section class="sec start" id="start" aria-labelledby="start-h">
+    <div class="wrap">
+      <h2 id="start-h">Where to start</h2>
+      <table class="grid">
+        <thead>
+          <tr><th scope="col">If you</th><th scope="col">Start with</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">build apps</th>
+            <td>
+              <p>Drop your project’s <code>.env</code> or docker-compose file on the window: the databases it names become connections, with their passwords saved encrypted. Open the ER diagram of a live database, or export the schema as a Prisma schema, Drizzle schema, SQLAlchemy models or TypeScript types.</p>
+              <p class="go">
+                <a href="#query">Query it</a>
+                <a href="#design">Design it</a>
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">analyze data</th>
+            <td>
+              <p>Open a table and filter it without writing SQL: nested AND/OR groups, <em>last 30 days</em>, <em>in list</em>. Drop a CSV, Excel or Parquet file on the window and query it with SQL, then chart the result.</p>
+              <p class="go">
+                <a href="#query">Query it</a>
+                <a href="#see">See it</a>
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">work on a company Windows laptop</th>
+            <td>
+              <p>Get it from the Microsoft Store, or run the portable zip with no installation and no admin rights. SQL Server with Windows authentication, read-only and production connections, and AI that IT can switch off.</p>
+              <p class="go">
+                <a href="#install">Install</a>
+                <a href="#privacy">Privacy</a>
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row">design databases</th>
+            <td>
+              <p>Open a DeZign for Databases project, a MySQL Workbench model or a drawDB file, or start a model from scratch. Compare it with the live database to get the migration, checked against the data first.</p>
+              <p class="go">
+                <a href="#design">Design it</a>
+                <a href="dezign.html">For DeZign users</a>
+              </p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
-    <div class="note" id="latest" hidden></div>
-    <div class="note">Windows · macOS (Apple Silicon &amp; Intel) · Linux — <a href="https://apps.microsoft.com/detail/9p0grd7bz4nf">Microsoft Store</a> · <a href="#install">Scoop, Homebrew, MSI</a></div>
-    <ul class="engines">
-      <li>PostgreSQL</li><li>SQL Server</li><li>Oracle</li><li>MySQL</li><li>MariaDB</li><li>SQLite</li><li>DuckDB</li><li>ClickHouse</li><li>CockroachDB</li><li>BigQuery</li><li>Trino</li><li>CSV · Parquet · Excel</li>
-    </ul>
-    <div class="note">Works with hosted databases too: Supabase, Neon, Timescale, Amazon RDS and Aurora, Azure Database and Azure SQL, Google Cloud SQL. Paste their connection string and the app recognises the service.</div>
-    <div class="shot"><img src="screenshots/table-filters.png" alt="Table browser with filters and row details"></div>
+  </section>
+
+  <div id="features">
+    <section class="sec" id="design" aria-labelledby="design-h">
+      <div class="wrap">
+        <h2 id="design-h">Design it</h2>
+        <p class="lead">Draw a new database or change the one you have. Every change becomes a migration script you review, checked against the data that is already there.</p>
+        <figure class="shot">
+          <picture class="theme-light">
+            <source type="image/avif" srcset="screenshots/modeler-1440.avif 1440w, screenshots/modeler-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+            <source type="image/webp" srcset="screenshots/modeler-1440.webp 1440w, screenshots/modeler-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+            <img src="screenshots/modeler-1440.png" width="1440" height="900" alt="A model on the canvas: five tables in two schemas with crow’s-foot relationships, and the panel of the selected table with its columns and foreign key." loading="lazy" decoding="async">
+          </picture>
+          <picture class="theme-dark">
+            <source type="image/avif" srcset="screenshots/modeler-dark-1440.avif 1440w, screenshots/modeler-dark-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+            <source type="image/webp" srcset="screenshots/modeler-dark-1440.webp 1440w, screenshots/modeler-dark-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+            <img src="screenshots/modeler-dark-1440.png" width="1440" height="900" alt="A model on the canvas: five tables in two schemas with crow’s-foot relationships, and the panel of the selected table with its columns and foreign key." loading="lazy" decoding="async">
+          </picture>
+          <figcaption>A model edited on the canvas, with the table’s panel open.</figcaption>
+        </figure>
+        <ul class="items">
+          <li id="d-model" class="has-key">
+            <svg class="g g-key" aria-hidden="true" focusable="false"><use href="#i-key"/></svg>
+            <h3>A model you can keep in Git</h3>
+            <p>Draw tables and relationships, and rename and retype them right on the canvas; everything else is in one panel. The model is a DBML text file. Generate DDL for any of the eleven databases, or compare the model with one to get the migration.</p>
+          </li>
+          <li id="d-migrations">
+            <h3>Migrations that check the data first</h3>
+            <p>NULLs, duplicates and orphans are found before anything runs. Steps that can’t be undone, like dropping a table, are called out, and the rest comes with a rollback script.</p>
+          </li>
+          <li id="d-diagrams">
+            <h3>Diagrams of a live database</h3>
+            <p>Automatic layout, crow’s-foot notation, focus on a table and its neighbors, saved subject areas, and the join path between any two tables as ready SQL.</p>
+          </li>
+          <li id="d-from">
+            <h3>Start from what you have</h3>
+            <p>A database, an SQL script, a Prisma schema, a Mermaid ER diagram, a drawDB file or a MySQL Workbench model. The file you open stays as it is.</p>
+          </li>
+          <li id="d-code">
+            <h3>Code from a model</h3>
+            <p>A Prisma schema, a Drizzle schema, SQLAlchemy models or TypeScript types, from a model or a live database. Each is checked by the tool it is for: Prisma, the TypeScript compiler, SQLAlchemy.</p>
+          </li>
+          <li id="d-dezign" class="has-link">
+            <svg class="g g-link" aria-hidden="true" focusable="false"><use href="#i-link"/></svg>
+            <h3>Using DeZign for Databases?</h3>
+            <p>Your projects open here and save back in place, without DeZign installed. <a href="dezign.html">What is kept</a></p>
+          </li>
+        </ul>
+        <p class="also">Also here: schema compare between environments with the migration for the target, data compare with a sync script, IDEF1X notation, and diagrams as PDF, PNG, SVG, Mermaid or PlantUML. <a href="guide.html#models">Diagrams and models in the guide</a></p>
+      </div>
+    </section>
+
+    <section class="sec" id="query" aria-labelledby="query-h">
+      <div class="wrap">
+        <h2 id="query-h">Query it</h2>
+        <p class="lead">Browse, filter and edit data, or write SQL in an editor that knows your schema.</p>
+        <p class="engines" id="q-engines"><strong>PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite, DuckDB, ClickHouse, CockroachDB, BigQuery and Trino</strong>, tested in CI against running servers (BigQuery against its emulator), and CSV, Parquet and Excel files. Hosted databases too: Supabase, Neon, Timescale, Amazon RDS and Aurora, Azure Database and Azure SQL, Google Cloud SQL. Paste their connection string and the app recognizes the service.</p>
+        <figure class="shot">
+          <picture class="theme-light">
+            <source type="image/avif" srcset="screenshots/table-filters-1440.avif 1440w, screenshots/table-filters-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+            <source type="image/webp" srcset="screenshots/table-filters-1440.webp 1440w, screenshots/table-filters-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+            <img src="screenshots/table-filters-1440.png" width="1440" height="900" alt="The orders table filtered by status in a list and a date, with foreign-key arrows in the cells and the selected row’s details on the right." loading="lazy" decoding="async">
+          </picture>
+          <picture class="theme-dark">
+            <source type="image/avif" srcset="screenshots/table-filters-dark-1440.avif 1440w, screenshots/table-filters-dark-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+            <source type="image/webp" srcset="screenshots/table-filters-dark-1440.webp 1440w, screenshots/table-filters-dark-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+            <img src="screenshots/table-filters-dark-1440.png" width="1440" height="900" alt="The orders table filtered by status in a list and a date, with foreign-key arrows in the cells and the selected row’s details on the right." loading="lazy" decoding="async">
+          </picture>
+          <figcaption>A table filtered by two conditions, with the row’s details on the right.</figcaption>
+        </figure>
+        <ul class="items">
+          <li id="q-filters" class="has-key">
+            <svg class="g g-key" aria-hidden="true" focusable="false"><use href="#i-key"/></svg>
+            <h3>Filters without SQL</h3>
+            <p>Nested AND/OR groups, more than 25 operators (in list, between, regex, last N days, this month), a raw WHERE, or a filter described in plain words. Click a foreign key to open the row it points to.</p>
+          </li>
+          <li id="q-editor">
+            <h3>An editor that knows your schema</h3>
+            <p>Autocomplete writes whole JOINs from foreign keys and warns while you type about a table that doesn’t exist or an UPDATE without WHERE. Parameters, snippets, execution plans, history and saved queries are built in.</p>
+          </li>
+          <li id="q-files">
+            <h3>Files are tables too</h3>
+            <p>Drop a CSV, Parquet, JSON or Excel file on the window and query it with SQL. Exports with semicolons and decimal commas work as they are.</p>
+          </li>
+          <li id="q-edit">
+            <h3>Edit with a safety net</h3>
+            <p>Edit cells, paste rows from Excel and add new ones: every change waits in a change set you review. In the editor you commit yourself, and an open transaction is always shown.</p>
+          </li>
+          <li id="q-safe">
+            <h3>Safe by default</h3>
+            <p>Read-only connections, a production guard, and a question before DELETE or UPDATE without WHERE, DROP or TRUNCATE.</p>
+          </li>
+          <li id="q-connect" class="has-link">
+            <svg class="g g-link" aria-hidden="true" focusable="false"><use href="#i-link"/></svg>
+            <h3>Connections from where they already are</h3>
+            <p>SSH tunnels and jump hosts, TLS, passwords from 1Password, Bitwarden or Vault, SQL Server with Windows authentication or Entra ID. Import connections from DBeaver, DataGrip, pgAdmin, SSMS, Azure Data Studio, TablePlus and more. <a href="azure-data-studio.html">Coming from Azure Data Studio</a></p>
+          </li>
+        </ul>
+        <p class="also">Also here: server activity and lock waits, the slowest queries, unused and duplicate indexes, users and roles, backup and restore, copying tables to another database, a command palette (Ctrl/⌘ K), split view, and an explorer that stays fast with thousands of tables. <a href="guide.html#sql">Writing SQL in the guide</a></p>
+      </div>
+    </section>
+
+    <section class="sec" id="see" aria-labelledby="see-h">
+      <div class="wrap">
+        <h2 id="see-h">See it</h2>
+        <p class="lead">Turn a result into a chart in one click, and keep the ones you check often on a dashboard.</p>
+        <figure class="shot">
+          <picture class="theme-light">
+            <source type="image/avif" srcset="screenshots/dashboard-1440.avif 1440w, screenshots/dashboard-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+            <source type="image/webp" srcset="screenshots/dashboard-1440.webp 1440w, screenshots/dashboard-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+            <img src="screenshots/dashboard-1440.png" width="1440" height="900" alt="A dashboard of pinned query results: charts and a single number, refreshed by the app." loading="lazy" decoding="async">
+          </picture>
+          <picture class="theme-dark">
+            <source type="image/avif" srcset="screenshots/dashboard-dark-1440.avif 1440w, screenshots/dashboard-dark-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+            <source type="image/webp" srcset="screenshots/dashboard-dark-1440.webp 1440w, screenshots/dashboard-dark-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+            <img src="screenshots/dashboard-dark-1440.png" width="1440" height="900" alt="A dashboard of pinned query results: charts and a single number, refreshed by the app." loading="lazy" decoding="async">
+          </picture>
+          <figcaption>Pinned results on a dashboard.</figcaption>
+        </figure>
+        <ul class="items">
+          <li id="s-charts" class="has-key">
+            <svg class="g g-key" aria-hidden="true" focusable="false"><use href="#i-key"/></svg>
+            <h3>Charts from any result</h3>
+            <p>Bar, line or scatter, from the result you already have. Pin a chart or a single number to a dashboard that refreshes itself.</p>
+          </li>
+          <li id="s-find">
+            <h3>Find any value</h3>
+            <p>Search a whole database for a value, see a column’s profile (empty, distinct, most common), and get totals of the cells you select.</p>
+          </li>
+          <li id="s-export">
+            <h3>Export without limits</h3>
+            <p>Every row of a table or a query to CSV, Excel, JSON or SQL, beyond any display limit.</p>
+          </li>
+          <li id="s-dictionary">
+            <h3>A data dictionary to share</h3>
+            <p>One HTML page documenting every table, with your notes, for people who don’t use the app.</p>
+          </li>
+        </ul>
+        <p class="also">Also here: results copied as TSV for Excel, JSON or Markdown, several result sets saved at once, and charts exported with the query that made them. <a href="guide.html#sql">Results in the guide</a></p>
+      </div>
+    </section>
   </div>
 
-  <section id="features">
-    <h2>Everything you do every day, done well</h2>
-    <p class="lead">No row limits, no paywalled features. Light, dark and high-contrast themes (follow the system or pick one in Settings), in English and Czech.</p>
-    <div class="feature">
-      <div class="text"><h3>An SQL editor that knows your schema</h3><p>Autocomplete suggests tables and columns as you type and writes whole JOINs from foreign keys. It warns while you type about a table that doesn't exist or an UPDATE without WHERE. Parameters, snippets, execution plans, history and saved queries are built in.</p><p>Open a view, function or table as SQL ready to change, and open and save your own .sql files.</p><p>Results open in a fast grid; export every row to CSV, Excel, JSON or SQL, beyond any display limit.</p></div>
-      <img loading="lazy" src="screenshots/query.png" alt="SQL editor with results">
-    </div>
-    <div class="feature">
-      <div class="text"><h3>Query any file</h3><p>Drop a CSV, Parquet, JSON or Excel file on the window and query it with SQL right away. European exports with semicolons and decimal commas just work.</p><p>Import a file into a table with column mapping when you need it in the database.</p></div>
-      <img loading="lazy" src="screenshots/query-file.png" alt="SQL over a CSV file">
-    </div>
-    <div class="feature">
-      <div class="text"><h3>Charts in one click</h3><p>Turn any result into a bar, line or scatter chart, and pin charts and single numbers to a dashboard that refreshes itself.</p></div>
-      <img loading="lazy" src="screenshots/chart.png" alt="Chart of a query result">
-    </div>
-    <h3 class="grid-title">And much more</h3>
-    <div class="grid">
-      <div class="card"><h3>Advanced filters</h3><p>Nested AND/OR groups, 25+ operators (in list, between, regex, last N days, this month), raw WHERE, or describe the filter in plain words.</p></div>
-      <div class="card"><h3>Edit with a safety net</h3><p>Edit cells, paste from Excel and add rows; every change waits in a change set you review before it's saved.</p></div>
-      <div class="card"><h3>Transactions you can see</h3><p>Commit changes yourself, per connection. Every open transaction and lock is shown, and closing a tab never commits or loses anything silently.</p></div>
-      <div class="card"><h3>Find any value</h3><p>Search a value across a whole database, see a column's profile (empty, distinct, most common), and get totals of the cells you select.</p></div>
-      <div class="card"><h3>Compare</h3><p>Schemas between environments with the migration for the target, and table data with a sync script.</p></div>
-      <div class="card"><h3>For DBAs too</h3><p>Running queries and lock waits, the slowest queries, storage with unused and duplicate indexes, users &amp; roles, backup and restore.</p></div>
-      <div class="card"><h3>Enterprise connections</h3><p>SSH tunnels and jump hosts, SSL, passwords from 1Password, Bitwarden or Vault, SQL Server with Windows authentication or Entra ID, import connections from DBeaver, DataGrip, pgAdmin, SSMS, Azure Data Studio, TablePlus and more.</p></div>
-      <div class="card"><h3>Connections from your project</h3><p>Drop a <code>.env</code>, a docker-compose file or a project folder on the window: the databases it names become connections, with their passwords saved encrypted. Nothing connects until you open one.</p></div>
-      <div class="card"><h3>Move data</h3><p>Copy tables to another database, even another engine, run one script on several connections, and import CSV, Excel, JSON or Parquet.</p></div>
-      <div class="card"><h3>Safe by default</h3><p>Read-only connections, a production guard, and a confirmation before DELETE or UPDATE without WHERE, DROP or TRUNCATE.</p></div>
-      <div class="card"><h3>Keyboard first</h3><p>Command palette (<span class="kbd">Ctrl/⌘ K</span>), quick table open (<span class="kbd">Ctrl/⌘ P</span>), split view, tabs that survive a restart; every shortcut under Help → Keyboard Shortcuts.</p></div>
-      <div class="card"><h3>Big schemas stay fast</h3><p>Thousands of tables across many schemas: filter the explorer, hide schemas you don't use, pin the tables you do.</p></div>
-      <div class="card"><h3>Share with your team</h3><p>A shared team folder with connections, queries and notes, exports without passwords, and a data dictionary as one HTML page.</p></div>
-    </div>
-    <p class="more"><a class="subtle" href="azure-data-studio.html">Coming from Azure Data Studio? What you will find here →</a></p>
-  </section>
-
-  <section id="design">
-    <h2>Model, understand and redesign</h2>
-    <p class="lead">Design a database before it exists, or change the one you have. Start from what you already have: a database, an SQL script, a Prisma schema, a Mermaid ER diagram, a drawDB file or a MySQL Workbench model.</p>
-    <div class="feature">
-      <div class="text"><h3>Interactive ER diagrams</h3><p>Automatic layout, crow's-foot notation, focus on a table and its neighbours, saved subject-area diagrams, and the join path between any two tables as ready SQL.</p></div>
-      <img loading="lazy" src="screenshots/join-path.png" alt="Join path between two tables in the ER diagram">
-    </div>
-    <div class="feature">
-      <div class="text"><h3>Design on the live database</h3><p>Edit tables, columns, keys and indexes right on the diagram. DB Mastermind writes the migration for your database and checks the existing data before anything runs.</p></div>
-      <img loading="lazy" src="screenshots/designer.png" alt="Schema designer">
-    </div>
-    <div class="feature">
-      <div class="text"><h3>Model a new database</h3><p>Draw tables and relationships, rename and retype right on the canvas, and keep everything else in one panel. The model is a DBML text file for Git; generate DDL for any database or compare it with one to get the migration.</p><p>Export a model or a live database as code: a Prisma schema, a Drizzle schema, SQLAlchemy models or TypeScript types.</p><p>Using DeZign for Databases? Your projects open here and save back in place: <a href="dezign.html">see what is kept</a>.</p></div>
-      <img loading="lazy" src="screenshots/modeler.png" alt="A model edited on the canvas with the detail panel">
-    </div>
-    <div class="feature">
-      <div class="text"><h3>Migrations you can trust</h3><p>Every schema change comes as a script you review. The existing data is checked first (NULLs, duplicates, orphans), steps that can't be undone, like dropping a table, are called out, and everything else comes with a rollback script.</p></div>
-      <img loading="lazy" src="screenshots/migration.png" alt="Generated migration with impact checks">
+  <section class="sec" id="ai" aria-labelledby="ai-h">
+    <div class="wrap">
+      <h2 id="ai-h">AI on your terms</h2>
+      <p class="lead">Bring the AI you already have: a Claude Code or Codex subscription, your own API key, or a model running on your computer. It is off until you set one up.</p>
+      <p class="engines">Claude Code, Codex, Anthropic, OpenAI, OpenRouter, Gemini, Azure OpenAI, Ollama, and any OpenAI-compatible server such as LM Studio or vLLM.</p>
+      <figure class="shot">
+        <picture class="theme-light">
+          <source type="image/avif" srcset="screenshots/ai-1440.avif 1440w, screenshots/ai-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+          <source type="image/webp" srcset="screenshots/ai-1440.webp 1440w, screenshots/ai-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+          <img src="screenshots/ai-1440.png" width="1440" height="900" alt="The AI assistant beside an ER diagram: it read the sales notes in the knowledge base, ran a read-only query and answers with a table of revenue by category and the SQL it used." loading="lazy" decoding="async">
+        </picture>
+        <picture class="theme-dark">
+          <source type="image/avif" srcset="screenshots/ai-dark-1440.avif 1440w, screenshots/ai-dark-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+          <source type="image/webp" srcset="screenshots/ai-dark-1440.webp 1440w, screenshots/ai-dark-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
+          <img src="screenshots/ai-dark-1440.png" width="1440" height="900" alt="The AI assistant beside an ER diagram: it read the sales notes in the knowledge base, ran a read-only query and answers with a table of revenue by category and the SQL it used." loading="lazy" decoding="async">
+        </picture>
+        <figcaption>The assistant answers from the knowledge base and shows the SQL it ran.</figcaption>
+      </figure>
+      <ul class="items">
+        <li id="a-ask" class="has-key">
+          <svg class="g g-key" aria-hidden="true" focusable="false"><use href="#i-key"/></svg>
+          <h3>Ask, explain, fix</h3>
+          <p>The assistant explores the schema, samples data, runs read-only queries and asks before any change. Press Ctrl/⌘ I in the editor to describe a query; a failed statement gets a Fix with AI button.</p>
+        </li>
+        <li id="a-readonly">
+          <h3>Read-only means read-only</h3>
+          <p>Queries from AI and agents run in a read-only transaction that is rolled back, so the database itself refuses a write. It doesn’t depend on guessing from the SQL.</p>
+        </li>
+        <li id="a-knowledge">
+          <h3>A knowledge base</h3>
+          <p>Markdown notes per database explain what tables, codes and statuses mean. Keep them in Git, share them with your team, and let AI draft the first version.</p>
+        </li>
+        <li id="a-design">
+          <h3>Design with AI</h3>
+          <p>Describe a change in plain words; the assistant proposes it as pending design changes with a migration you review.</p>
+        </li>
+        <li id="a-control">
+          <h3>You decide</h3>
+          <p>Per connection: AI off, schema only, read or write. IT can turn AI off for everyone.</p>
+        </li>
+      </ul>
+      <p class="also">Also here: filters described in plain words, Explain with AI on any table, and team tools: SQL files in the knowledge base that the assistant and agents can call, read-only and with bound parameters. <a href="guide.html#ai">AI and agents in the guide</a></p>
     </div>
   </section>
 
-  <section id="ai">
-    <h2>AI that knows your database</h2>
-    <p class="lead">Bring the AI you already have: your Claude Code or Codex subscription, your own API key, or a model running on your computer.</p>
-    <ul class="engines left">
-      <li>Claude Code</li><li>Codex</li><li>Anthropic</li><li>OpenAI</li><li>OpenRouter</li><li>Gemini</li><li>Azure OpenAI</li><li>Ollama (local)</li><li>OpenAI-compatible (LM Studio, vLLM, your gateway)</li>
-    </ul>
-    <div class="feature">
-      <div class="text">
-        <h3>Ask, explain, fix</h3>
-        <p>The assistant explores the schema, samples data, runs read-only queries and asks before any change. Press <span class="kbd">Ctrl/⌘ I</span> in the editor to describe a query; failed statements get a <em>Fix with AI</em> button.</p>
-        <p>A per-database <strong>knowledge base</strong> of Markdown notes teaches it what your codes and statuses mean — and AI can write the first version for you.</p>
-      </div>
-      <img loading="lazy" src="screenshots/ai.png" alt="AI assistant">
-    </div>
-    <div class="grid">
-      <div class="card"><h3>Knowledge base</h3><p>Markdown notes per database explain what tables, codes and statuses mean. Keep them in Git, share them with the team, let AI draft them.</p></div>
-      <div class="card"><h3>Design with AI</h3><p>Describe a change in plain words; the assistant proposes tables and columns as pending design changes with a migration you review.</p></div>
-      <div class="card"><h3>You stay in control</h3><p>Per connection: AI off, schema only, read or write. Changes always ask first; IT can turn AI off for everyone.</p></div>
-    </div>
-  </section>
-
-  <section id="mcp">
-    <h2>Your databases in Claude Code, Codex, Cursor and more</h2>
-    <p class="lead">DB Mastermind is also an MCP server: agents get schema exploration, read-only queries, join paths and your knowledge base, using the connections you already have. They see only connections where you allow AI, read-only unless you say otherwise.</p>
-    <p class="mcp-easy">Easiest: in the app open <em>Settings → MCP server</em> and click <em>Add to Claude Code / Claude Desktop / Codex / Cursor / VS Code</em>. It writes their config for you and keeps a <code>.bak</code> copy. The same page shows the exact command for your computer.</p>
-    <div class="mcp">
-      <div class="mcp-bar">
-        <div class="tabs" role="group" aria-label="Agent">
-          <button data-tool="claude-code" aria-pressed="true">Claude Code</button>
-          <button data-tool="codex" aria-pressed="false">Codex</button>
-          <button data-tool="claude-desktop" aria-pressed="false">Claude Desktop</button>
-          <button data-tool="cursor" aria-pressed="false">Cursor</button>
-          <button data-tool="vscode" aria-pressed="false">VS Code / Copilot</button>
-          <button data-tool="windsurf" aria-pressed="false">Windsurf</button>
-          <button data-tool="gemini" aria-pressed="false">Gemini CLI</button>
-          <button data-tool="zed" aria-pressed="false">Zed</button>
-          <button data-tool="jetbrains" aria-pressed="false">JetBrains</button>
-          <button data-tool="http" aria-pressed="false">Over HTTP</button>
+  <section class="sec" id="mcp" aria-labelledby="mcp-h">
+    <div class="wrap">
+      <h2 id="mcp-h">Your databases in your coding agent</h2>
+      <p class="lead">DB Mastermind is also an MCP server. Claude Code, Codex, Cursor and other agents get schema exploration, read-only queries, join paths and your knowledge base, through the connections you already have and only those where you allow AI.</p>
+      <p class="body">Easiest: in the app, open <em>Settings → MCP server</em> and choose <em>Add to Claude Code / Claude Desktop / Codex / Cursor / VS Code</em>. It writes their configuration for you and keeps a <code>.bak</code> copy. The same page shows the exact command for your computer. By hand:</p>
+      <div class="mcp">
+        <div class="mcp-bar">
+          <div class="seg tabs" role="group" aria-label="Agent">
+            <button type="button" data-tool="claude-code" aria-pressed="true">Claude Code</button>
+            <button type="button" data-tool="codex" aria-pressed="false">Codex</button>
+            <button type="button" data-tool="claude-desktop" aria-pressed="false">Claude Desktop</button>
+            <button type="button" data-tool="cursor" aria-pressed="false">Cursor</button>
+            <button type="button" data-tool="vscode" aria-pressed="false">VS Code / Copilot</button>
+            <button type="button" data-tool="windsurf" aria-pressed="false">Windsurf</button>
+            <button type="button" data-tool="gemini" aria-pressed="false">Gemini CLI</button>
+            <button type="button" data-tool="zed" aria-pressed="false">Zed</button>
+            <button type="button" data-tool="jetbrains" aria-pressed="false">JetBrains</button>
+            <button type="button" data-tool="http" aria-pressed="false">Over HTTP</button>
+          </div>
+          <div class="seg os" role="group" aria-label="Your system">
+            <button type="button" data-os="mac" aria-pressed="true">macOS</button>
+            <button type="button" data-os="win" aria-pressed="false">Windows</button>
+            <button type="button" data-os="linux" aria-pressed="false">Linux</button>
+          </div>
         </div>
-        <div class="os" role="group" aria-label="Your system">
-          <button data-os="mac" aria-pressed="true">macOS</button>
-          <button data-os="win" aria-pressed="false">Windows</button>
-          <button data-os="linux" aria-pressed="false">Linux</button>
+        <p class="mcp-where" id="mcp-where">Run in a terminal:</p>
+        <div class="code">
+          <button type="button" class="copy" data-copy="mcp-code" hidden>Copy</button>
+          <pre id="mcp-code">claude mcp add --scope user dbmastermind -- "/Applications/DB Mastermind.app/Contents/MacOS/DB Mastermind" --mcp</pre>
         </div>
+        <p class="mcp-note" id="mcp-note">Check it with <code>claude mcp list</code> or <code>/mcp</code> inside Claude Code.</p>
       </div>
-      <p class="mcp-where" id="mcp-where"></p>
-      <pre id="mcp-code"></pre>
-      <p class="mcp-note" id="mcp-note"></p>
+      <!-- npm package: start (remove this block if dbmastermind-mcp is not on npm) -->
+      <div class="npx">
+        <p class="body">On a server without the app, run the MCP server from npm with a connection URL:</p>
+        <div class="code">
+          <button type="button" class="copy" data-copy="npx-code" hidden>Copy</button>
+          <pre id="npx-code">npx dbmastermind-mcp --url 'postgres://user@host/db'</pre>
+        </div>
+        <p class="body">The same package has <code>dbm</code>, a command line for scripts and CI.</p>
+      </div>
+      <!-- npm package: end -->
+      <p class="body tools">Tools for agents: <code>list_connections</code>, <code>list_tables</code>, <code>describe_table</code>, <code>search_schema</code>, <code>get_relationships</code>, <code>find_join_path</code>, <code>sample_rows</code>, <code>run_query</code>, <code>explain_query</code>, <code>get_definition</code>, <code>search_knowledge</code>, <code>read_knowledge</code>, <code>write_knowledge</code> (when you allow it), and prompts such as <em>document_database</em>. An agent can also propose a new connection, which you review and save in the app.</p>
     </div>
-    <p class="lead">Tools for agents: <code>list_connections</code>, <code>list_tables</code>, <code>describe_table</code>, <code>search_schema</code>, <code>get_relationships</code>, <code>find_join_path</code>, <code>sample_rows</code>, <code>run_query</code>, <code>explain_query</code>, <code>get_definition</code>, <code>search_knowledge</code>, <code>read_knowledge</code>, <code>write_knowledge</code> (when you allow it), plus prompts such as <em>document_database</em>. An agent can also propose a new connection, which you review and save in the app.</p>
   </section>
 
-  <section id="privacy">
-    <h2>Private by design</h2>
-    <p class="lead">Your databases, queries and passwords stay on your computer. No account, no tracking, nothing sent anywhere you didn't choose.</p>
-    <div class="grid trust">
-      <div class="card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg><h3>No telemetry</h3><p>No analytics, no crash reports, no usage statistics, no sign-in.</p></div>
-      <div class="card"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><h3>Secrets stay local</h3><p>Passwords and API keys are encrypted with your system keychain (on Linux without one, the app warns you) and go only to the database or AI provider they belong to.</p></div>
-      <div class="card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4"/></svg><h3>AI only when you choose</h3><p>Off until you set up a provider. Every change asks first, agents are read-only unless you allow writes, and AI can be switched off per connection or for the whole company. Ollama on your computer keeps it all there.</p></div>
-      <div class="card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg><h3>Updates, nothing else</h3><p>The only network access of its own is the update check with GitHub (and the download, where the app updates itself). Turn it off in Settings → General.</p></div>
+  <section class="sec" id="privacy" aria-labelledby="privacy-h">
+    <div class="wrap">
+      <h2 id="privacy-h">Private by design</h2>
+      <p class="lead">Your databases, queries and passwords stay on your computer. No account, no tracking, nothing sent anywhere you didn’t choose.</p>
+      <dl class="facts">
+        <div><dt>No telemetry</dt><dd>No analytics, no crash reports, no usage statistics, no sign-in.</dd></div>
+        <div><dt>Secrets stay local</dt><dd>Passwords and API keys are encrypted with your system keychain (on Linux without one, the app warns you) and go only to the database or AI provider they belong to.</dd></div>
+        <div><dt>AI only when you choose</dt><dd>Off until you set up a provider. Every change asks first, agents are read-only unless you allow writes, and AI can be switched off per connection or for the whole company. Ollama on your computer keeps it all there.</dd></div>
+        <div><dt>Updates, nothing else</dt><dd>The only network access of its own is the update check with GitHub (and the download, where the app updates itself). Turn it off in Settings → General.</dd></div>
+      </dl>
+      <p class="also"><a href="privacy.html">Read the privacy policy</a></p>
     </div>
-    <p class="more"><a href="privacy.html">Read the full privacy policy →</a></p>
   </section>
 
-  <section id="install">
-    <h2>Install</h2>
-    <p class="lead">Free for everyone, with no feature limits. The installer, the AppImage and the macOS app update themselves, the Store updates its copy, and the portable zip and .deb tell you when a new version is out.</p>
-    <div class="grid install">
-      <div class="card">
-        <h3>Windows</h3>
-        <p><strong>Microsoft Store</strong> (recommended): signed by Microsoft, no warnings, updates through the Store. <a href="https://apps.microsoft.com/detail/9p0grd7bz4nf">Get it from the Microsoft Store →</a> (AI agents reach this version over HTTP; see MCP above.)</p>
-        <p><strong>No installation:</strong> download the <em>portable zip</em>, unzip it, run <em>DB Mastermind.exe</em>. Settings stay in the folder.</p>
-        <p><strong>Installer:</strong> <em>…-setup.exe</em>, per user, no admin rights, updates itself. <strong>For IT:</strong> per-machine <em>.msi</em>.</p>
-        <p>Files from GitHub aren't code-signed yet: if SmartScreen warns, choose <em>More info → Run anyway</em>.</p>
-        <p><strong>Scoop:</strong></p>
-        <pre>scoop install https://github.com/eLh0m3r0/db-mastermind/releases/latest/download/db-mastermind.json</pre>
-      </div>
-      <div class="card">
-        <h3>macOS</h3>
-        <p>Download the <em>.dmg</em> for Apple Silicon or Intel and drag the app to Applications. The app isn't notarized yet, so macOS blocks it the first time: open <em>System Settings → Privacy &amp; Security</em> and click <em>Open Anyway</em>, or run</p>
-        <pre>xattr -dr com.apple.quarantine "/Applications/DB Mastermind.app"</pre>
-        <p><strong>Homebrew:</strong></p>
-        <pre>brew tap elh0m3r0/db-mastermind https://github.com/eLh0m3r0/db-mastermind
+  <section class="sec" id="install" aria-labelledby="install-h">
+    <div class="wrap">
+      <h2 id="install-h">Install</h2>
+      <p class="lead">Free for everyone, with no feature limits. The installer, the AppImage and the macOS app update themselves; the Store updates its copy; the portable zip and the .deb tell you when a new version is out.</p>
+      <div class="os-cols">
+        <div>
+          <h3>Windows</h3>
+          <p><strong>Microsoft Store</strong>: signed by Microsoft, no warnings, updates through the Store. <a href="https://apps.microsoft.com/detail/9p0grd7bz4nf">Get it from the Microsoft Store</a>. AI agents reach this version over HTTP (see MCP above).</p>
+          <p><strong>No installation</strong>: download the <em>portable zip</em>, unzip it and run <em>DB Mastermind.exe</em>. Settings stay in the folder.</p>
+          <p><strong>Installer</strong>: <em>…-setup.exe</em>, per user, no admin rights, updates itself. <strong>For IT</strong>: the per-machine <em>.msi</em>.</p>
+          <p>Files from GitHub aren’t code-signed yet: if SmartScreen warns, choose <em>More info</em>, then <em>Run anyway</em>.</p>
+          <p><strong>Scoop</strong>:</p>
+          <div class="code">
+            <button type="button" class="copy" data-copy="scoop-code" hidden>Copy</button>
+            <pre id="scoop-code">scoop install https://github.com/eLh0m3r0/db-mastermind/releases/latest/download/db-mastermind.json</pre>
+          </div>
+        </div>
+        <div>
+          <h3>macOS</h3>
+          <p>Download the <em>.dmg</em> for Apple Silicon or Intel and drag the app to Applications. The app isn’t notarized yet, so macOS blocks it the first time: open <em>System Settings → Privacy &amp; Security</em> and click <em>Open Anyway</em>, or run</p>
+          <div class="code">
+            <button type="button" class="copy" data-copy="xattr-code" hidden>Copy</button>
+            <pre id="xattr-code">xattr -dr com.apple.quarantine "/Applications/DB Mastermind.app"</pre>
+          </div>
+          <p><strong>Homebrew</strong>:</p>
+          <div class="code">
+            <button type="button" class="copy" data-copy="brew-code" hidden>Copy</button>
+            <pre id="brew-code">brew tap elh0m3r0/db-mastermind https://github.com/eLh0m3r0/db-mastermind
 brew install --cask db-mastermind</pre>
+          </div>
+        </div>
+        <div>
+          <h3>Linux</h3>
+          <p><strong>Debian / Ubuntu</strong>: the <em>.deb</em> package. It runs inside Chromium’s sandbox.</p>
+          <p><strong>AppImage</strong>: <em>DB-Mastermind-linux-x86_64.AppImage</em>. Make it executable and run it; it updates itself. It uses the sandbox where the system allows unprivileged user namespaces, and says so when it starts where it doesn’t (Ubuntu 23.10 and later by default). It needs FUSE 2: on Ubuntu 24.04, <code>sudo apt install libfuse2t64</code>.</p>
+        </div>
       </div>
-      <div class="card">
-        <h3>Linux</h3>
-        <p><strong>AppImage:</strong> make it executable and run it; it updates itself.</p>
-        <p><strong>Debian / Ubuntu:</strong> the <em>.deb</em> package.</p>
-      </div>
+      <p class="also"><a href="https://github.com/eLh0m3r0/db-mastermind/releases/latest">All downloads and release notes</a></p>
     </div>
-    <p class="more"><a href="https://github.com/eLh0m3r0/db-mastermind/releases/latest">All downloads and release notes →</a></p>
   </section>
-  </main>
 
-  <footer>
-    <span>DB Mastermind by <a href="https://vaclavmudra.com">Václav Mudra</a> · MIT license · made with Claude</span>
-    <span class="trademark">DeZign for Databases is a trademark of Datanamic. DB Mastermind is not affiliated with or endorsed by Datanamic.</span>
-    <span><a href="privacy.html">Privacy policy</a> · <a href="dezign.html">For DeZign users</a> · <a href="azure-data-studio.html">Coming from Azure Data Studio</a> · <a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md">Roadmap</a> · <a href="https://github.com/eLh0m3r0/db-mastermind/issues">Issues</a> · <a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/SECURITY.md">Security</a> · <a href="https://ko-fi.com/vaclavmudra">☕ Support on Ko-fi</a></span>
-  </footer>
-</div>
+  <section class="sec small" id="appearance" aria-labelledby="appearance-h">
+    <div class="wrap">
+      <h2 id="appearance-h">Make it yours</h2>
+      <p class="body">Light, dark or high contrast, six accent colors and compact density, in Settings → Appearance. The colors work here too.</p>
+      <div class="swatches" role="group" aria-label="Accent color" hidden>
+        <button type="button" class="sw sw-violet" data-accent="violet" aria-pressed="true" aria-label="Violet" title="Violet"></button><button type="button" class="sw sw-blue" data-accent="blue" aria-pressed="false" aria-label="Blue" title="Blue"></button><button type="button" class="sw sw-teal" data-accent="teal" aria-pressed="false" aria-label="Teal" title="Teal"></button><button type="button" class="sw sw-green" data-accent="green" aria-pressed="false" aria-label="Green" title="Green"></button><button type="button" class="sw sw-orange" data-accent="orange" aria-pressed="false" aria-label="Orange" title="Orange"></button><button type="button" class="sw sw-rose" data-accent="rose" aria-pressed="false" aria-label="Rose" title="Rose"></button>
+        <button type="button" class="sw sw-look" data-look aria-pressed="false" aria-label="Another look" title="Another look"></button>
+      </div>
+      <p class="body look-hint" aria-live="polite" hidden>The app has a few of these. Settings → Appearance.</p>
+    </div>
+  </section>
+
+  <section class="sec" id="who" aria-labelledby="who-h">
+    <div class="wrap">
+      <h2 id="who-h">Who makes it</h2>
+      <p class="body">DB Mastermind is free because it exists to help people and teams understand their data, with one tool for the whole job: design the database, query it, and see it in charts. It is made by Václav Mudra, who decides what it does and uses it every day. The code, tests and releases are written by an AI maintainer, Claude, working for him. It is free and MIT-licensed, with no paid tier, no account and no telemetry: its author pays for it, and Ko-fi is there if you want to say thanks. It is young, a 1.x release, and feedback is welcome in the issues.</p>
+      <ul class="links">
+        <li><a href="https://github.com/eLh0m3r0/db-mastermind">Source code on GitHub</a></li>
+        <li><a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md">Roadmap</a></li>
+        <li><a href="https://ko-fi.com/vaclavmudra">Support on Ko-fi</a></li>
+        <li><a href="https://github.com/eLh0m3r0/db-mastermind/issues">Open an issue</a></li>
+      </ul>
+    </div>
+  </section>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <p>DB Mastermind by <a href="https://vaclavmudra.com">Václav Mudra</a>. MIT license.</p>
+    <ul class="foot-links">
+      <li><a href="guide.html">Getting started</a></li>
+      <li><a href="privacy.html">Privacy policy</a></li>
+      <li><a href="dezign.html">For DeZign users</a></li>
+      <li><a href="azure-data-studio.html">Coming from Azure Data Studio</a></li>
+      <li><a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md">Roadmap</a></li>
+      <li><a href="https://github.com/eLh0m3r0/db-mastermind/issues">Issues</a></li>
+      <li><a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/SECURITY.md">Security</a></li>
+      <li><a href="https://ko-fi.com/vaclavmudra">Ko-fi</a></li>
+    </ul>
+    <p class="trademark">DeZign for Databases is a trademark of Datanamic. DB Mastermind is not affiliated with or endorsed by Datanamic.</p>
+  </div>
+</footer>
+<script src="site.js" defer></script>
 <script>
 // Point the main button at the right download for this computer: the Microsoft Store on Windows (signed, no
 // SmartScreen warning), the latest release's file elsewhere.
@@ -228,15 +626,21 @@ brew install --cask db-mastermind</pre>
     const version = release.tag_name.replace(/^v/, '')
     const assets = release.assets || []
     const find = (re) => assets.find((a) => re.test(a.name))
-    const link = (asset, text) => (asset ? ` · <a href="${asset.browser_download_url}">${text}</a>` : '')
+    const link = (asset, text) => (asset ? `<a href="${asset.browser_download_url}">${text}</a>` : '')
     let others = ''
     // The Store copy is x64 and the user agent can't tell a Windows on Arm PC or an Intel Mac: the other files are
     // one click away.
     if (os === 'win') others = link(find(/win-x64-setup\.exe$/), 'Installer') + link(find(/win-x64-portable\.zip$/), 'Portable zip') + link(find(/win-arm64-setup\.exe$/), 'Windows on Arm')
     else if (os === 'mac') others = link(find(/mac-x64\.dmg$/), 'Intel Mac')
-    const latest = document.getElementById('latest')
-    latest.innerHTML = `<a href="${release.html_url}">What's new in ${version} →</a>` + others
-    latest.hidden = false
+    else others = link(find(/linux-amd64\.deb$/), '.deb package')
+    // The other files for this system sit next to the button; the release notes join the general links.
+    const alt = document.getElementById('download-alt')
+    alt.innerHTML = others
+    alt.hidden = !others
+    const notes = document.getElementById('whats-new')
+    notes.href = release.html_url
+    notes.textContent = `What's new in ${version}`
+    notes.hidden = false
     if (os === 'win') return
     const pick = os === 'mac' ? find(/mac-arm64\.dmg$/) : find(/linux-x86_64\.AppImage$/) ?? find(/\.AppImage$/)
     if (!pick) return
