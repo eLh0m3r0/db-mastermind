@@ -3,7 +3,10 @@ import {
   buildDataDictionary,
   cellToText,
   checkModel,
+  CODE_FORMATS,
+  codeFormatsFor,
   compareSchemas,
+  exportCode,
   DatabaseService,
   describeError,
   findChangedChecks,
@@ -14,6 +17,8 @@ import {
   parseDbml,
   splitStatements,
   type CellValue,
+  type CodeDatabase,
+  type CodeFormat,
   type ConnectionConfig,
   type ResultField,
 } from '@dbmastermind/core'
@@ -27,6 +32,8 @@ Usage:
   dbm dictionary --url <url> [--format html|markdown] [--schema s] [--out file]
   dbm check      model.dbml [--strict]
   dbm diff       model.dbml --url <url> [--out migration.sql] [--drop-extra] [--allow-writes]
+  dbm export     model.dbml --format prisma|drizzle|sqlalchemy|typescript [--database mysql] [--out file]
+  dbm export     --url <url> --format prisma|drizzle|sqlalchemy|typescript [--schema s] [--out file]
 
 Connections:
   --url <url>          postgres://…, mysql://…, sqlserver://…, sqlite:///path, JDBC or ADO.NET; \${ENV_VAR} is expanded
@@ -36,6 +43,10 @@ Exit codes:
   0  done (diff: the database matches the model; check: no problems)
   1  error (check: problems found)
   2  diff: the database differs from the model (the migration is printed)
+
+export writes code for the model's tables: a Prisma schema, a Drizzle schema, SQLAlchemy models or TypeScript
+types. The database is the connection's, or for a .dbml file the one its Project block names (database_type),
+else --database, else PostgreSQL.
 
 Read-only unless --allow-writes: the database itself refuses writes where it can.
 diff never changes the database. To compare the conditions of checks that keep their name, it needs a writable
@@ -58,6 +69,7 @@ interface Options {
   out?: string
   file?: string
   schemas: string[]
+  database?: string
   allowWrites: boolean
   strict: boolean
   dropExtra: boolean
@@ -96,6 +108,9 @@ function parse(argv: string[]): Options {
         break
       case '--schema':
         o.schemas.push(next())
+        break
+      case '--database':
+        o.database = next()
         break
       case '--allow-writes':
         o.allowWrites = true
@@ -289,6 +304,58 @@ async function diff(o: Options, db: DatabaseService, io: DbmIo): Promise<number>
   return 2
 }
 
+const DBML_DATABASES: [RegExp, CodeDatabase][] = [
+  [/^postgres/i, 'postgres'],
+  [/^cockroach/i, 'cockroachdb'],
+  [/^mysql/i, 'mysql'],
+  [/^maria/i, 'mariadb'],
+  [/^(sql ?server|mssql|t-?sql|transactsql)/i, 'mssql'],
+  [/^sqlite/i, 'sqlite'],
+  [/^oracle/i, 'oracle'],
+  [/^duckdb/i, 'duckdb'],
+  [/^clickhouse/i, 'clickhouse'],
+  [/^bigquery/i, 'bigquery'],
+  [/^trino/i, 'trino'],
+]
+const codeDatabase = (name: string) => DBML_DATABASES.find(([re]) => re.test(name.trim()))?.[1]
+
+async function exportModel(o: Options, db: DatabaseService, io: DbmIo): Promise<number> {
+  const format = o.format as CodeFormat
+  if (!CODE_FORMATS.some((f) => f.id === format)) throw new Error(`--format is one of ${CODE_FORMATS.map((f) => f.id).join(', ')}`)
+  let tables
+  let enums: Record<string, string[]> = {}
+  let database: CodeDatabase | undefined = o.database ? codeDatabase(o.database) : undefined
+  if (o.database && !database) throw new Error(`Unknown database ${o.database}`)
+  let defaultSchema: string | undefined
+  if (o.url || o.config) {
+    const config = pickConnection(o)
+    const info = await db.connect(config)
+    const snapshot = await db.schema(config.id)
+    tables = snapshot.tables.filter((t) => !o.schemas.length || o.schemas.includes(t.schema ?? ''))
+    defaultSchema = snapshot.defaultSchema
+    enums = Object.fromEntries((snapshot.objects ?? []).filter((x) => x.kind === 'type' && x.detail === 'enum').map((x) => [x.schema && x.schema !== snapshot.defaultSchema ? `${x.schema}.${x.name}` : x.name, x.labels ?? []]))
+    database ??= info.product === 'CockroachDB' ? 'cockroachdb' : config.driver
+  } else {
+    const path = o.positional[0]
+    if (!path) throw new Error('Give the model file (.dbml) or a connection (--url)')
+    // Enums stay enums: the code has types for them.
+    const model = parseDbml(readFileSync(path, 'utf8'))
+    if (model.errors.length) throw new Error(model.errors.map((e) => `${path}:${e.line}: ${e.message}`).join('\n'))
+    tables = model.tables
+    enums = model.enums
+    // DBML says its database in the Project block: database_type: 'PostgreSQL'.
+    const declared = model.extras.map((x) => /database_type\s*:\s*['"]([^'"]+)['"]/i.exec(x)?.[1]).find(Boolean)
+    database ??= declared ? codeDatabase(declared) : undefined
+  }
+  database ??= 'postgres'
+  if (!codeFormatsFor(database).includes(format)) throw new Error(`${CODE_FORMATS.find((f) => f.id === format)!.label} is not made for ${database}: ${codeFormatsFor(database).join(', ')} are`)
+  const code = exportCode(format, tables, { database, enums, defaultSchema })
+  if (o.out) writeFileSync(o.out, code, 'utf8')
+  else await io.stdout(code)
+  io.stderr(`${tables.filter((t) => t.type === 'table').length} tables as ${CODE_FORMATS.find((f) => f.id === format)!.label} for ${database}${o.out ? ` → ${o.out}` : ''}\n`)
+  return 0
+}
+
 /** Runs one dbm command; returns the exit code. Never throws: errors go to stderr with exit code 1. */
 export async function runDbm(argv: string[], io: DbmIo, db = new DatabaseService()): Promise<number> {
   try {
@@ -302,6 +369,8 @@ export async function runDbm(argv: string[], io: DbmIo, db = new DatabaseService
         return check(o, io)
       case 'diff':
         return await diff(o, db, io)
+      case 'export':
+        return await exportModel(o, db, io)
       case '':
       case 'help':
       case '-h':
@@ -309,7 +378,7 @@ export async function runDbm(argv: string[], io: DbmIo, db = new DatabaseService
         io.stdout(DBM_HELP)
         return o.command ? 0 : 1
       default:
-        throw new Error(`Unknown command ${o.command}. Commands: query, dictionary, check, diff`)
+        throw new Error(`Unknown command ${o.command}. Commands: query, dictionary, check, diff, export`)
     }
   } catch (err) {
     io.stderr(`dbm: ${describeError(err).message}\n`)
