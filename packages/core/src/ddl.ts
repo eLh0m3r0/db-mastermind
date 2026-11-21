@@ -694,8 +694,11 @@ function guardStatements(m: Migration, d: Dialect): Migration {
   const warnings = m.warnings.map((w) => ({ ...w, message: oneLine(w.message) }))
   const whole = (sql: string) => {
     const expected = d.id === 'mssql' && /^\s*DECLARE\s+@/i.test(sql) ? 2 : 1
-    const parts = splitStatements(`${sql};\nSELECT 1`, d.id)
-    return parts.length === expected + 1 && parts.at(-1)!.text === 'SELECT 1'
+    // (On a line of its own: a statement may end in a comment, `-- data is not restored`. A rollback step can be a
+    // comment alone, which is no statement at all.)
+    const parts = splitStatements(`${sql}\n;\nSELECT 1`, d.id)
+    if (parts.at(-1)?.text !== 'SELECT 1') return false
+    return parts.length === expected + 1 || (parts.length === 1 && !splitStatements(sql, d.id).length)
   }
   const keep = (list: string[], what: string) =>
     list.filter((sql) => {

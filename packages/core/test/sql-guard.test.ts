@@ -119,3 +119,15 @@ describe('what the generators write (review N1, the invariant)', () => {
     expect(code(script, 'postgres').join('\n')).not.toMatch(/victim/)
   })
 })
+
+describe('what the statement check must let through (wave 6: real models)', () => {
+  it('a statement ending in a comment, and a rollback step that is a comment alone', () => {
+    const before = { name: 't', type: 'table' as const, comment: null, columns: [col('id', { isPrimaryKey: true, nullable: false }), col('a', { dataType: 'smallint' })], primaryKey: ['id'], foreignKeys: [], indexes: [{ name: 't_pkey', columns: ['id'], unique: true, primary: true }] }
+    for (const d of DIALECTS) {
+      const dropColumn = generateMigration(compareSchemas([{ ...before, columns: before.columns.slice(0, 1) }], [before], { model: true }), getDialect(d))
+      const dropTable = generateMigration(compareSchemas([], [before]), getDialect(d))
+      for (const m of [dropColumn, dropTable]) expect(m.warnings.filter((w) => /Left out/.test(w.message)), d).toEqual([])
+      expect(dropColumn.rollback.length + dropTable.rollback.length, d).toBeGreaterThan(0)
+    }
+  })
+})
