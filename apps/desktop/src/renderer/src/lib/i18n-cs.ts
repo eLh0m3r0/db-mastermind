@@ -1965,6 +1965,9 @@ export const cs: Record<string, string> = {
   'relationships to tables or columns the file does not have: {n}': 'vazby na tabulky nebo sloupce, které soubor nemá: {n}',
   'list fields (kept as text): {n}': 'pole se seznamem (ponechána jako text): {n}',
   'composite types (columns keep their name): {n}': 'složené typy (sloupce si ponechají jejich název): {n}',
+  "defaults that aren't plain SQL (a note on the column says them): {n}": 'výchozí hodnoty, které nejsou prostým SQL (uvádí je poznámka u sloupce): {n}',
+  "checks that aren't plain SQL (a note on the column says them): {n}": 'kontroly, které nejsou prostým SQL (uvádí je poznámka u sloupce): {n}',
+  "types that aren't plain SQL (text, a note on the column says them): {n}": 'typy, které nejsou prostým SQL (text, uvádí je poznámka u sloupce): {n}',
   'The file itself is not changed: Save makes a .dbml model.': 'Samotný soubor se nemění: Uložit z něj udělá model .dbml.',
   'Paste a connection URL (postgres://…, JDBC, ADO.NET; Supabase, Neon, Amazon RDS, Azure…)': 'Vložte URL připojení (postgres://…, JDBC, ADO.NET; Supabase, Neon, Amazon RDS, Azure…)',
   "Port 6543 is Supabase's transaction pooler: session settings (default schema, statement timeout, read-only) and transactions across statements don't carry over. Port 5432 keeps the session.":

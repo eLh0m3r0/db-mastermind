@@ -1,5 +1,6 @@
 import type { ColumnInfo, ForeignKeyInfo, TableInfo } from './types.js'
-import { emptyImport, type ImportedModel } from './imported-model.js'
+import { emptyImport, leaveOut, type ImportedModel } from './imported-model.js'
+import { isPlainType } from './foreign-sql.js'
 
 /**
  * Mermaid ER diagrams (`erDiagram`, also inside a Markdown ```mermaid fence): entities with their attributes
@@ -107,8 +108,10 @@ export function tablesFromMermaid(text: string): ImportedModel {
           if (!m) continue
           const name = m[2]!.replace(/^\*/, '')
           const keys = (m[3] ?? '').split(',').map((k) => k.trim())
-          const column: ColumnInfo = { name, ordinal: t.columns.length + 1, dataType: sqlType(m[1]!.replace(/^\*/, '')), nullable: !keys.includes('PK'), defaultValue: null, isPrimaryKey: keys.includes('PK') || m[2]!.startsWith('*'), isIdentity: false, comment: m[4]?.trim() || null }
+          const typed = sqlType(m[1]!.replace(/^\*/, ''))
+          const column: ColumnInfo = { name, ordinal: t.columns.length + 1, dataType: isPlainType(typed) ? typed : 'text', nullable: !keys.includes('PK'), defaultValue: null, isPrimaryKey: keys.includes('PK') || m[2]!.startsWith('*'), isIdentity: false, comment: m[4]?.trim() || null }
           if (column.isPrimaryKey) column.nullable = false
+          if (column.dataType !== typed) leaveOut(out, column, 'types', 'Mermaid', typed)
           if (t.columns.some((c) => c.name === name)) continue
           t.columns.push(column)
           if (column.isPrimaryKey) t.primaryKey.push(name)

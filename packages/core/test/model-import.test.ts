@@ -1,6 +1,6 @@
-import { strToU8, zipSync } from 'fflate'
+import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import { describe, expect, it } from 'vitest'
-import { isDrawDb, modelFormatOf, parseDbml, readModelFile, tablesFromDrawDb, tablesFromMermaid, tablesFromMwb, toDbml, toMermaid, toPrisma } from '../src/index.js'
+import { createScript, getDialect, isDrawDb, modelFormatOf, parseDbml, readModelFile, tablesFromDrawDb, tablesFromMermaid, tablesFromMwb, toDbml, toMermaid, toPrisma } from '../src/index.js'
 
 // Every fixture here is written by hand in the tool's format (other projects' files never go into the repository).
 
@@ -337,5 +337,21 @@ describe('Prisma schemas opened as models', () => {
     expect(m.database).toBe('mysql')
     expect(m.tables.map((t) => t.name)).toEqual(['a'])
     expect(m.leftOut).toEqual({ scalarLists: 1 })
+  })
+})
+
+describe('hostile text in a MySQL Workbench model (review L12)', () => {
+  it('takes defaults, types and collations only when plain', () => {
+    const files = unzipSync(workbenchModel())
+    const xml = strFromU8(files['document.mwb.xml']!)
+    const hostile = xml.replace("key=\"defaultValue\">'G'<", "key=\"defaultValue\">'G'); DROP TABLE film; --<").replace("key=\"datatypeExplicitParams\">('G', 'PG')<", "key=\"datatypeExplicitParams\">('G\\', ') x int); DROP TABLE film; --')<")
+    expect(hostile).not.toBe(xml)
+    const m = tablesFromMwb(zipSync({ ...files, 'document.mwb.xml': strToU8(hostile) }))
+    expect(m.leftOut).toMatchObject({ defaults: 1, types: 1 })
+    const rating = m.tables.find((t) => t.name === 'customer')!.columns.find((c) => c.name === 'rating')!
+    expect(rating).toMatchObject({ dataType: 'text', defaultValue: null })
+    expect(rating.comment).toMatch(/^MySQL Workbench type \(not taken\)/)
+    const tables = m.tables.map((t) => ({ ...t, comment: null, columns: t.columns.map((c) => ({ ...c, comment: null })) }))
+    expect(createScript(tables, getDialect('mysql'))).not.toMatch(/DROP TABLE/)
   })
 })
