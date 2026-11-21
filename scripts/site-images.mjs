@@ -3,7 +3,8 @@
 // AVIF, the system Chrome (through Playwright, sandboxed, local data only) resizes, crops and writes WebP and PNG.
 //
 //   node scripts/site-images.mjs <folder> [--placeholders]
-//   node scripts/site-images.mjs --og        renders docs/og.html into docs/og.png (1200×630)
+//   node scripts/site-images.mjs --og        renders docs/og.html into docs/og.png (1200×630) and the icon into
+//                                            docs/apple-touch-icon.png (180×180, opaque: iOS rounds the corners)
 //
 // <folder> holds <name>.png and <name>-dark.png for every name below. With --placeholders a missing shot is
 // replaced by the nearest existing one (see FALLBACK), so the layout can be judged before the retake.
@@ -65,8 +66,15 @@ if (og) {
   await p.goto(`file://${join(root, 'docs', 'og.html')}`)
   await p.evaluate(() => document.fonts.ready)
   await p.screenshot({ path: join(root, 'docs', 'og.png') })
+  // The app icon's drawing (docs/icon.svg) on a full square of its gradient.
+  const icon = readFileSync(join(root, 'docs', 'icon.svg'), 'utf8')
+  const glyph = icon.slice(icon.indexOf('<ellipse'), icon.lastIndexOf('</g>'))
+  const square = `<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8b6dff"/><stop offset="1" stop-color="#4f2fe0"/></linearGradient></defs><rect width="64" height="64" fill="url(#g)"/><g>${glyph}</g></svg>`
+  await p.setViewportSize({ width: 180, height: 180 })
+  await p.setContent(`<body style="margin:0">${square}</body>`)
+  await p.locator('svg').screenshot({ path: join(root, 'docs', 'apple-touch-icon.png') })
   await browser.close()
-  console.log('docs/og.png')
+  console.log('docs/og.png, docs/apple-touch-icon.png')
   process.exit(0)
 }
 const page = await browser.newPage()
