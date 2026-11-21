@@ -45,7 +45,8 @@ function localModels(): { label: string; tables: TableInfo[]; driver: DriverId; 
       const path = join(dir, name)
       if (statSync(path).isDirectory()) {
         if (name.toLowerCase() !== 'archived versions') walk(path)
-      } else if (/\.dezproj$/i.test(name) || /\.dez$/i.test(name)) found.push(path)
+      // (As the real-world test: a file of DeZign 3 and older, format 30, is not one the app reads.)
+      } else if (/\.dezproj$/i.test(name) || (/\.dez$/i.test(name) && !/<FILEFORMATVERSIONNUMBER>/.test(readFileSync(path, 'latin1').slice(0, 600)))) found.push(path)
     }
   }
   walk(root)

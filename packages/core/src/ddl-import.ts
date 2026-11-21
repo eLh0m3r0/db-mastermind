@@ -478,7 +478,8 @@ function columnsOnly(sql: string): string {
     .flatMap((part) => {
       if (/^(CONSTRAINT\s+\S+\s+)?PRIMARY\s+KEY\s*\(/i.test(part)) return [part]
       const column = /^("[^"]+"|[\w$]+)\s+/.exec(part)
-      return column && !TABLE_PART.test(part) ? [`${column[1]} VARCHAR`] : []
+      // (NOT NULL kept: asDeclared brings back types and defaults from the text, not whether a column may be empty.)
+      return column && !TABLE_PART.test(part) ? [`${column[1]} VARCHAR${/\bNOT\s+NULL\b/i.test(part) ? ' NOT NULL' : ''}`] : []
     })
   return `${sql.slice(0, start)}\n  ${parts.join(',\n  ')}\n${sql.slice(end)}`
 }
@@ -739,6 +740,17 @@ export async function tablesFromDdl(given: string): Promise<DdlImportResult> {
                 continue
               }
             }
+            // A type DuckDB has without modifiers (MySQL's BLOB(65535), TEXT(100)): the type without them.
+            const bare = /Type ([\w$]+) does not support any modifiers/i.exec(message)?.[1]
+            if (bare) {
+              // (DuckDB names its own type: BLOB is also what VARBINARY(255) and BINARY(16) are to it.)
+              const names = bare.toUpperCase() === 'BLOB' ? 'blob|varbinary|binary|bytea|tinyblob|mediumblob|longblob' : bare
+              const unsized = sql.replace(new RegExp(`(?<![\\w$"])(${names})\\s*\\(\\s*\\d+\\s*\\)`, 'gi'), '$1')
+              if (unsized !== sql) {
+                sql = unsized
+                continue
+              }
+            }
             // (DuckDB names the extension a type such as GEOMETRY would come from: it is still unknown here.)
             const type = /Type with name "?([\w$.]+)"? (?:does not exist|is not in the catalog)/i.exec(message)?.[1]
             if (!type) break
@@ -749,8 +761,10 @@ export async function tablesFromDdl(given: string): Promise<DdlImportResult> {
         }
         if (sql) failed.push(sql)
       }
-      if (failed.length === pending.length) break
+      // (The statements as simplified so far go on, also when a round got nothing more through.)
+      const progress = failed.length < pending.length
       pending = failed
+      if (!progress) break
     }
     // A part that DuckDB refuses never costs the table: the table without it, the part said in `skipped`.
     for (let sql of pending) {
