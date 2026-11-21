@@ -75,6 +75,57 @@ try {
   }
   check('"+" clickable, selected tab in view, fades only where tabs are hidden: 24 cases', bad.length === 0, bad.join(' | '))
 
+  // The same matrix in Shrink mode (Settings → Appearance): the selected tab keeps its natural width, the others never
+  // go below the floor (92 px), no scrolling before the floor is reached, then the strip scrolls as in Scroll mode.
+  await api('updateSettings', { tabOverflow: 'shrink' })
+  const badShrink = []
+  for (const w of [900, 1280, 1920]) {
+    await size(w)
+    for (const n of [3, 8, 15, 30]) {
+      for (const long of [false, true]) {
+        await setTabs(n, long)
+        const s = await strip()
+        const m = await win.evaluate(() => {
+          const el = document.querySelector('[role="tablist"]')
+          const tabs = [...el.querySelectorAll('[role="tab"]')]
+          const active = tabs.find((t) => t.getAttribute('aria-selected') === 'true')
+          const title = active.querySelector('[data-tab-title]')
+          const inactive = tabs.filter((t) => t !== active).map((t) => Math.round(t.getBoundingClientRect().width))
+          return { whole: title.scrollWidth <= title.clientWidth + 1 || Math.round(active.getBoundingClientRect().width) >= 220, min: Math.min(...inactive), scroll: el.scrollWidth - el.clientWidth }
+        })
+        const ok = s.plus && s.activeInView && s.fadesRight && m.whole && m.min >= 92 && (m.scroll <= 1 || m.min === 92)
+        if (!ok) badShrink.push(`${w}px ${n} ${long ? 'long' : 'short'}: ${JSON.stringify({ plus: s.plus, active: s.activeInView, fades: s.fadesRight, ...m })}`)
+        if (n === 30 && long && m.scroll > 1) {
+          // At the floor the strip scrolls: the wheel moves it.
+          await win.evaluate(() => (document.querySelector('[role="tablist"]').scrollLeft = 0))
+          const before = await win.evaluate(() => document.querySelector('[role="tablist"]').scrollLeft)
+          await win.locator('[role="tab"]').first().hover()
+          await win.mouse.wheel(0, 400)
+          await win.waitForTimeout(200)
+          if ((await win.evaluate(() => document.querySelector('[role="tablist"]').scrollLeft)) <= before) badShrink.push(`${w}px: the wheel did not scroll at the floor`)
+        }
+      }
+    }
+  }
+  check('Shrink: selected tab whole, others ≥ 92 px, no scrolling before the floor, "+" clickable, fades right: 24 cases', badShrink.length === 0, badShrink.join(' | '))
+  await size(1280)
+  await setTabs(12, true, 2)
+  const widthsOf = () => win.evaluate(() => [...document.querySelectorAll('[role="tab"]')].map((t) => Math.round(t.getBoundingClientRect().width)))
+  const w1 = await widthsOf()
+  await win.keyboard.press('Meta+6')
+  await win.waitForTimeout(400)
+  const w2 = await widthsOf()
+  const changed = w1.map((x, i) => (x !== w2[i] ? i : -1)).filter((i) => i >= 0)
+  check('Shrink: selecting another tab changes only the two that trade widths', changed.join() === '2,5', changed.join())
+  await win.locator('[role="tab"]').nth(8).hover()
+  await win.waitForTimeout(250)
+  const closeShown = await win.evaluate(() => getComputedStyle(document.querySelectorAll('[role="tab"]')[8].querySelector('button[aria-label="Close tab"]')).opacity)
+  check('Shrink: a narrowed tab shows its close button on hover', closeShown === '1', closeShown)
+  await win.locator('[role="tab"]').nth(8).click({ button: 'middle' })
+  await win.waitForTimeout(300)
+  check('Shrink: middle-click still closes a narrowed tab', (await strip()).titles.length === 11)
+  await api('updateSettings', { tabOverflow: 'scroll' })
+
   // Restored with a middle tab selected, then every way of moving around.
   await size(1280)
   await setTabs(15, true, 7)
