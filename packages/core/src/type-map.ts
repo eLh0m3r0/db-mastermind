@@ -308,7 +308,7 @@ const FAMILIES: [RegExp, TypeFamily][] = [
  * A column type read into its family and its arguments: `varchar(255)` is a varchar of 255, `int unsigned` an
  * unsigned integer, `tinyint(1)` and Oracle's `NUMBER(1)` flags, `NUMBER(10)` a whole number.
  */
-export function classifyType(type: string): ColumnType {
+export function classifyType(type: string, /** The database the type is written for: `bit` is a flag in SQL Server and MySQL, a bit string in PostgreSQL. */ database?: DriverId | 'cockroachdb'): ColumnType {
   let t = type.trim().toLowerCase().replace(/\s+/g, ' ')
   let array = false
   if (/\[\s*\d*\s*\]$/.test(t)) {
@@ -337,6 +337,9 @@ export function classifyType(type: string): ColumnType {
   if (/serial/.test(name)) base.serial = true
   if (/^(nvarchar|nchar|ntext|nvarchar2|nclob|national)/.test(name)) base.national = true
   // MySQL's flag, Oracle's flag and SQL Server's one-bit boolean.
+  // (PostgreSQL's bit and bit(1) are bit strings, as prisma db pull reads them: String @db.Bit(1).)
+  const pgBit = name === 'bit' && (database === 'postgres' || database === 'cockroachdb')
+  if (pgBit) return { ...base, length: nums[0] ?? 1, family: 'bit' }
   if ((name === 'tinyint' && nums[0] === 1) || (name === 'number' && nums[0] === 1 && !nums[1]) || (name === 'bit' && (nums[0] === undefined || nums[0] === 1))) return { ...base, family: 'boolean' }
   // Oracle's NUMBER(n) and NUMBER(n, 0) are whole numbers.
   if (name === 'number' && nums[0] !== undefined && !nums[1]) return { ...base, family: nums[0] <= 4 ? 'smallint' : nums[0] <= 9 ? 'integer' : nums[0] <= 18 ? 'bigint' : 'decimal' }

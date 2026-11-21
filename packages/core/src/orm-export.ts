@@ -77,10 +77,10 @@ function modelOf(tables: TableInfo[], options: CodeOptions): Model {
     .map((t) => {
       if (!keyString) return t
       const keyed = new Set([...t.primaryKey, ...t.indexes.flatMap((i) => i.columns), ...t.foreignKeys.flatMap((f) => f.columns)])
-      const unbounded = (c: ColumnInfo) => keyed.has(c.name) && ['text', 'json', 'jsonb'].includes(classifyType(c.dataType).family)
+      const unbounded = (c: ColumnInfo) => keyed.has(c.name) && ['text', 'json', 'jsonb'].includes(classifyType(c.dataType, options.database).family)
       // (BLOB and varbinary(max) can't be keyed either: a bounded binary string.)
       const blob = (c: ColumnInfo) => {
-        const type = classifyType(c.dataType)
+        const type = classifyType(c.dataType, options.database)
         return keyed.has(c.name) && type.family === 'binary' && (type.max || type.length === undefined)
       }
       const binaryKey = options.database === 'mssql' ? 'varbinary(900)' : 'varbinary(255)'
@@ -510,7 +510,7 @@ export function toPrisma(tables: TableInfo[], options: CodeOptions = {}): string
     fieldsOf.set(
       t,
       t.columns.map((column) => {
-        const type = classifyType(column.dataType)
+        const type = classifyType(column.dataType, database)
         const enumName = enumFor(t, column, type)
         const mapped = enumName ? { scalar: enumName } : prismaType({ ...type, array: false }, column.dataType.replace(/\[\]$/, ''), provider)
         // Lists only where the database has arrays (and of types Prisma can list).
@@ -952,7 +952,7 @@ export function toDrizzle(tables: TableInfo[], options: CodeOptions = {}): strin
     const lines: string[] = []
     let numberedOnce = false
     for (const c of t.columns) {
-      const type = classifyType(c.dataType)
+      const type = classifyType(c.dataType, database)
       const b = builder(t, c, type)
       let expr = b.call
       const d = defaultOf(c, type)
@@ -1220,7 +1220,7 @@ export function toSqlAlchemy(tables: TableInfo[], options: CodeOptions = {}): st
       }
     }
     const columnArgs = (c: ColumnInfo, mapped: boolean) => {
-      const type = classifyType(c.dataType)
+      const type = classifyType(c.dataType, database)
       const ty = typeOf(c, type)
       const args: string[] = []
       if (!mapped) args.push(pyString(c.name))
@@ -1334,7 +1334,7 @@ export function toTypeScript(tables: TableInfo[], options: CodeOptions = {}): st
     out.push('', `export type ${ts} = ${literal(values)};`)
   }
   const tsOf = (c: ColumnInfo): string => {
-    const type = classifyType(c.dataType)
+    const type = classifyType(c.dataType, options.database ?? 'postgres')
     const named = model.enumOf(c)
     const base = (() => {
       if (named) return enumTypes.get(named.name) ?? literal(named.values)
