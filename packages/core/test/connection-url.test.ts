@@ -174,3 +174,19 @@ describe('SQL Server URLs as people write them (npm package testing)', () => {
     expect(parseConnectionString('Server=tcp:h,1433;Database=x;User Id=sa;Password=p;Encrypt=True;TrustServerCertificate=True')).toMatchObject({ ssl: { mode: 'require' }, options: { trustServerCertificate: true } })
   })
 })
+
+describe('CockroachDB URLs', () => {
+  it('make a PostgreSQL connection on port 26257 with TLS required', () => {
+    expect(parseConnectionString('cockroachdb://root@crdb.example.com/defaultdb')).toMatchObject({ driver: 'postgres', host: 'crdb.example.com', port: 26257, database: 'defaultdb', user: 'root', ssl: { mode: 'require' } })
+  })
+
+  it('keep a port and an sslmode they name', () => {
+    expect(parseConnectionString('cockroachdb://u:p@h:26000/db?sslmode=verify-full')).toMatchObject({ port: 26000, ssl: { mode: 'verify-full' } })
+    expect(parseConnectionString('cockroachdb://u@localhost/db?sslmode=disable')).toMatchObject({ ssl: { mode: 'disable' } })
+  })
+
+  it('leave postgres:// as it was', () => {
+    expect(parseConnectionString('postgres://u@h/db')).toMatchObject({ port: 5432 })
+    expect(parseConnectionString('postgres://u@h/db').ssl).toBeUndefined()
+  })
+})

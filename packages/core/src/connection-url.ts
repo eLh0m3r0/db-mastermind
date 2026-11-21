@@ -17,6 +17,9 @@ const SCHEMES: Record<string, DriverId> = {
   postgres: 'postgres',
   postgresql: 'postgres',
   pg: 'postgres',
+  // CockroachDB speaks PostgreSQL's protocol: its URLs make a PostgreSQL connection on its own port, with TLS.
+  cockroachdb: 'postgres',
+  cockroach: 'postgres',
   mysql: 'mysql',
   mariadb: 'mariadb',
   mssql: 'mssql',
@@ -90,7 +93,7 @@ export function parseConnectionString(input: string): Parsed {
   const config: Parsed = {
     driver,
     host: decodeURIComponent(url.hostname).replace(/^\[|\]$/g, '') || 'localhost',
-    port: url.port ? Number(url.port) : DEFAULT_PORTS[driver],
+    port: url.port ? Number(url.port) : /^cockroach/.test(scheme) ? 26257 : DEFAULT_PORTS[driver],
     database: decodeURIComponent(url.pathname.replace(/^\//, '')) || params.get('database') || params.get('dbname') || undefined,
     user: url.username ? decodeURIComponent(url.username) : (params.get('user') ?? undefined),
     password: url.password ? decodeURIComponent(url.password) : (params.get('password') ?? undefined),
@@ -100,6 +103,7 @@ export function parseConnectionString(input: string): Parsed {
   if (modeMap[sslmode]) config.ssl = { mode: modeMap[sslmode] }
   else if (sslFlag === 'true' || sslFlag === '1') config.ssl = { mode: 'require' }
   else if (sslFlag === 'false' || sslFlag === '0') config.ssl = { mode: 'disable' }
+  else if (/^cockroach/.test(scheme)) config.ssl = { mode: 'require' }
   // SQL Server's settings as query parameters (sqlserver://u:p@h:1433/db?encrypt=true&trustServerCertificate=true).
   if (driver === 'mssql') {
     const get = (name: string) => [...params].find(([k]) => k.toLowerCase() === name.toLowerCase())?.[1]

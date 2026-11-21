@@ -9,7 +9,7 @@ import { forgetRecentModel, queryFile, openModel, recentModels } from '@/lib/fil
 import { useConnections } from '@/store/connections'
 import { toast, useUi } from '@/store/ui'
 import { errorMessage } from '@/lib/utils'
-import { connectionDetail, DriverIcon } from '../connections/drivers'
+import { connectionDetail, connectionSubtitle, DriverIcon } from '../connections/drivers'
 import { connectAndSelect, openImportMenu, StatusDot } from '../sidebar/Sidebar'
 import { useT } from '@/lib/i18n'
 import { LookDecoration } from '@/components/LookDecoration'
@@ -80,7 +80,7 @@ export function HomeScreen() {
                       {c.environment === 'production' && <span className="rounded bg-danger px-1 text-[9.5px] font-bold text-white">PROD</span>}
                     </>
                   }
-                  detail={connectionDetail(c)}
+                  detail={connectionSubtitle(c)}
                   extra={<StatusDot id={c.id} />}
                   accent={c.color}
                 />

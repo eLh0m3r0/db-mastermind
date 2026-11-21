@@ -1,5 +1,5 @@
 import { showConnectionProposals } from '@/lib/proposals'
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { Building2, CheckCircle2, ClipboardPaste, FolderOpen, XCircle } from 'lucide-react'
 import { detectService, isFileDriver, supportsManualCommit, type ConnectionConfig, type DriverId, type Environment, type SslMode } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
@@ -15,6 +15,8 @@ import { useSettings } from '@/store/settings'
 import { AiPermissionControls, aiDefaultsOf } from '../ai/AiPermissions'
 import { KnowledgeLocationBar, useKnowledgeLocation } from '../knowledge/KnowledgeLocation'
 import { useT } from '@/lib/i18n'
+import { explainConnectError } from '@/lib/connect-errors'
+import { usePasswordPromptOpen } from './PasswordPrompt'
 
 export const CONNECTION_COLORS = ['#6d4aff', '#0b72d9', '#0f9f6e', '#d97706', '#dc2626', '#db2777', '#64748b']
 /** Names for screen readers and tooltips, in CONNECTION_COLORS order. */
@@ -65,6 +67,8 @@ function blank(driver: DriverId = 'postgres'): ConnectionConfig {
 
 type Section = 'general' | 'ssl' | 'ssh' | 'advanced'
 
+const COCKROACH_PORT = 26257
+
 export function ConnectionForm() {
   const modal = useUi((s) => s.modal)
   const setUi = useUi((s) => s.set)
@@ -77,6 +81,7 @@ export function ConnectionForm() {
   const connect = useConnections((s) => s.connect)
   const [config, setConfig] = useState<ConnectionConfig>(blank())
   const [section, setSection] = useState<Section>('general')
+  const prompting = usePasswordPromptOpen()
   const [test, setTest] = useState<{ state: 'idle' | 'running' | 'ok' | 'error'; message?: string }>({ state: 'idle' })
   const [busy, setBusy] = useState(false)
   const [urlText, setUrlText] = useState('')
@@ -89,6 +94,7 @@ export function ConnectionForm() {
     if (!open) return
     setConfig(existing ? structuredClone(existing) : { ...blank(), ...(modal.draft as Partial<ConnectionConfig>) })
     setSection('general')
+    setCockroach(false)
     setTest(failedConnect.current ?? { state: 'idle' })
     failedConnect.current = undefined
     setUrlText('')
@@ -108,15 +114,25 @@ export function ConnectionForm() {
   const setOption = (key: string, value: string | boolean | undefined) =>
     set({ options: { ...config.options, [key]: value as string | boolean } })
 
+  // CockroachDB is a PostgreSQL connection on its own port with TLS: picked here, it stays marked until another
+  // database is picked (a saved connection shows as the PostgreSQL connection it is).
+  const [cockroach, setCockroach] = useState(false)
   const changeDriver = (driver: DriverId) => {
-    const portWasDefault = !config.port || config.port === DEFAULT_PORTS[config.driver]
+    const portWasDefault = !config.port || config.port === DEFAULT_PORTS[config.driver] || config.port === COCKROACH_PORT
+    setCockroach(false)
     set({ driver, port: portWasDefault ? DEFAULT_PORTS[driver] : config.port })
+  }
+  const pickCockroach = () => {
+    const portWasDefault = !config.port || config.port === DEFAULT_PORTS[config.driver]
+    setCockroach(true)
+    set({ driver: 'postgres', port: portWasDefault ? COCKROACH_PORT : config.port, ssl: config.ssl && config.ssl.mode !== 'disable' ? config.ssl : { mode: 'require' } })
   }
 
   const applyUrl = async (text: string) => {
     if (!text.trim()) return
     try {
       const parsed = await api.parseConnectionString(text)
+      if (/^\s*(jdbc:)?cockroach/i.test(text)) setCockroach(true)
       // A known service (Supabase, Neon, RDS…) takes TLS only: a URL that says nothing about it gets require, and an
       // empty name is the service's.
       const service = detectService(parsed.host, parsed.driver, parsed.port)
@@ -198,7 +214,8 @@ export function ConnectionForm() {
       bodyClassName="p-0"
       footer={
         <>
-          <Button onClick={() => void runTest()} loading={test.state === 'running'}>
+          {/* (While the password prompt is up, it is what's being waited for: no spinners behind it.) */}
+          <Button onClick={() => void runTest()} loading={test.state === 'running' && !prompting}>
             {t('Test connection')}
           </Button>
           {test.state === 'ok' && (
@@ -206,16 +223,11 @@ export function ConnectionForm() {
               <CheckCircle2 size={14} className="shrink-0" /> {test.message}
             </span>
           )}
-          {test.state === 'error' && (
-            <span className="flex min-w-0 items-center gap-1 text-[12px] text-danger" title={test.message}>
-              <XCircle size={14} className="shrink-0" /> <span className="line-clamp-2">{test.message}</span>
-            </span>
-          )}
           <div className="flex-1" />
           <Button onClick={() => void submit(false)} disabled={busy}>
             {t('Save')}
           </Button>
-          <Button variant="primary" onClick={() => void submit(true)} loading={busy}>
+          <Button variant="primary" onClick={() => void submit(true)} loading={busy && !prompting}>
             {t('Save & connect')}
           </Button>
         </>
@@ -231,18 +243,36 @@ export function ConnectionForm() {
         {/* Driver picker */}
         <div className="flex w-[170px] shrink-0 flex-col gap-0.5 border-r border-line bg-subtle p-2">
           {DRIVERS.map((d) => (
-            <button
-              key={d.id}
-              type="button"
-              onClick={() => changeDriver(d.id)}
-              className={cn(
-                'flex h-9 items-center gap-2.5 rounded-md px-2 text-left text-[13px]',
-                config.driver === d.id ? 'bg-elevated font-medium shadow-sm' : 'text-fg-muted hover:bg-hover hover:text-fg',
+            <Fragment key={d.id}>
+              <button
+                type="button"
+                onClick={() => changeDriver(d.id)}
+                className={cn(
+                  'flex h-9 items-center gap-2.5 rounded-md px-2 text-left text-[13px]',
+                  config.driver === d.id && !cockroach ? 'bg-elevated font-medium shadow-sm' : 'text-fg-muted hover:bg-hover hover:text-fg',
+                )}
+              >
+                <DriverIcon driver={d.id} size={18} />
+                {d.label}
+              </button>
+              {d.id === 'postgres' && (
+                <button
+                  type="button"
+                  onClick={pickCockroach}
+                  title={t('A PostgreSQL connection on port 26257 with TLS')}
+                  data-testid="driver-cockroachdb"
+                  className={cn(
+                    'flex h-9 items-center gap-2.5 rounded-md px-2 text-left text-[13px]',
+                    cockroach && config.driver === 'postgres' ? 'bg-elevated font-medium shadow-sm' : 'text-fg-muted hover:bg-hover hover:text-fg',
+                  )}
+                >
+                  <span className="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] text-[9px] font-semibold text-white" style={{ background: '#5a33d6' }} aria-hidden>
+                    Cr
+                  </span>
+                  CockroachDB
+                </button>
               )}
-            >
-              <DriverIcon driver={d.id} size={18} />
-              {d.label}
-            </button>
+            </Fragment>
           ))}
         </div>
 
@@ -749,8 +779,30 @@ export function ConnectionForm() {
             )}
             <button type="submit" hidden />
           </form>
+          {test.state === 'error' && test.message && <ConnectError message={test.message} onShow={isFile ? undefined : setSection} current={section} />}
         </div>
       </div>
     </Modal>
+  )
+}
+
+/** Why the connection failed and what to do, over the driver's own words (full width, never cut). */
+function ConnectError({ message, onShow, current }: { message: string; onShow?: (section: Section) => void; current: Section }) {
+  const t = useT()
+  const problem = explainConnectError(message, t)
+  const go = problem.section && problem.section !== current && onShow ? problem.section : undefined
+  return (
+    <div className="flex shrink-0 gap-2 border-t border-line bg-danger-soft px-4 py-2.5 text-[12.5px]" data-testid="connection-error" role="alert">
+      <XCircle size={15} className="mt-px shrink-0 text-danger" />
+      <div className="flex min-w-0 flex-col gap-0.5">
+        {problem.summary && <span className="font-medium text-fg">{problem.summary}</span>}
+        <span className={cn('break-words', problem.summary ? 'font-mono text-[11.5px] text-fg-muted' : 'text-danger')}>{problem.detail}</span>
+        {go && (
+          <button type="button" className="self-start text-accent hover:underline" onClick={() => onShow!(go)}>
+            {{ general: t('Show the General tab'), ssl: t('Show the SSL / TLS tab'), ssh: t('Show the SSH tunnel tab') }[go]}
+          </button>
+        )}
+      </div>
+    </div>
   )
 }

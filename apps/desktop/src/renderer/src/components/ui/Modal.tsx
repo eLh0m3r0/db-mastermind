@@ -4,6 +4,10 @@ import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { IconButton } from './Button'
 import { t } from '@/lib/i18n'
+import { create } from 'zustand'
+
+/** How many dialogs are open: toasts move to the top while any is, never over a dialog's buttons. */
+export const useOpenModals = create<{ count: number }>(() => ({ count: 0 }))
 
 export function Modal({
   open,
@@ -59,6 +63,7 @@ export function Modal({
       }
     }
     window.addEventListener('keydown', onKey, true)
+    useOpenModals.setState((s) => ({ count: s.count + 1 }))
     // Focus the first field for keyboard users.
     requestAnimationFrame(() => {
       const first = panel.current?.querySelector<HTMLElement>('input, textarea, select, button[data-autofocus]')
@@ -66,6 +71,7 @@ export function Modal({
     })
     return () => {
       window.removeEventListener('keydown', onKey, true)
+      useOpenModals.setState((s) => ({ count: Math.max(0, s.count - 1) }))
       previous?.focus?.()
     }
   }, [open])

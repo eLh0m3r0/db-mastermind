@@ -38,7 +38,8 @@ import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { dismissToast, toast, useUi } from '@/store/ui'
 import { useActiveTab, useWorkspace, type NewTab } from '@/store/workspace'
-import { connectionDetail, DriverIcon, driverLabel } from '../connections/drivers'
+import { explainConnectError } from '@/lib/connect-errors'
+import { connectionDetail, connectionSubtitle, DriverIcon, driverLabel } from '../connections/drivers'
 import { HistoryPanel, SavedQueriesPanel } from './LibraryPanels'
 import { SchemaTree } from './SchemaTree'
 import { t, tp, useT } from '@/lib/i18n'
@@ -64,7 +65,14 @@ export async function connectAndSelect(id: string, firstTab?: NewTab): Promise<b
     else ws.newQuery(id)
   } else if (useConnections.getState().runtime[id]?.status === 'error') {
     const c = useConnections.getState().get(id)
-    toast({ kind: 'error', message: c ? t('Could not connect to {name}', { name: c.name }) : t('Could not connect to the database'), detail: useConnections.getState().runtime[id]?.error })
+    const error = useConnections.getState().runtime[id]?.error ?? ''
+    // What happened and what to do first, the driver's words under it.
+    const problem = explainConnectError(error, t)
+    toast({
+      kind: 'error',
+      message: c ? t('Could not connect to {name}', { name: c.name }) : t('Could not connect to the database'),
+      detail: problem.summary ? `${problem.summary}\n${problem.detail}` : problem.detail,
+    })
   }
   return ok
 }
@@ -386,7 +394,7 @@ function ConnectionList() {
                       </span>
                     )}
                   </div>
-                  <div className="truncate text-[11px] text-fg-faint" title={c.filePath}>{connectionDetail(c)}</div>
+                  <div className="truncate text-[11px] text-fg-faint" title={c.filePath}>{connectionSubtitle(c)}</div>
                 </div>
                 <StatusDot id={c.id} />
               </button>
