@@ -59,3 +59,16 @@ describe('a project folder from a stranger', () => {
     expect(() => readProject(big)).toThrow(/\.env is larger than 1 MB/)
   })
 })
+
+describe("a project's SQLite file (review L7)", () => {
+  it('is the project folder\'s when relative, and not taken when it points out of the folder', () => {
+    const project = join(dir, 'laravel')
+    mkdirSync(project)
+    writeFileSync(join(project, '.env'), 'DB_CONNECTION=sqlite\nDB_DATABASE=database/database.sqlite\n')
+    expect(readProject(project).map((c) => c.filePath)).toEqual([join(project, 'database', 'database.sqlite')])
+    writeFileSync(join(project, '.env'), 'DB_CONNECTION=sqlite\nDB_DATABASE=../../elsewhere.db\n')
+    expect(readProject(project)).toEqual([])
+    writeFileSync(join(project, '.env'), 'DB_CONNECTION=sqlite\nDB_DATABASE=/etc/hosts\n')
+    expect(readProject(project)).toEqual([])
+  })
+})

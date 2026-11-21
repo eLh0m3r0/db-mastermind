@@ -1,5 +1,5 @@
 import { lstatSync, readdirSync, readFileSync } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { COMPOSE_FILE, FILE_LIMITS, megabytes, PROJECT_ENV_FILE, projectConnections, type ImportedConnection } from '@dbmastermind/core'
 
 /** A project's own file that describes connections: a .env file or a docker-compose file. */
@@ -53,5 +53,12 @@ export function readProject(path: string): ImportedConnection[] {
     // Compose reads the .env beside it for ${VAR}.
     if (COMPOSE_FILE.test(basename(path))) add('.env')
   }
-  return projectConnections(files, basename(dir), { folder })
+  // A SQLite file a project names (Laravel's DB_DATABASE=database/database.sqlite) is the project's own: a relative
+  // path is the folder's, and a path out of the folder (a stranger's .env naming ~/x.db) is not taken.
+  return projectConnections(files, basename(dir), { folder }).flatMap((c) => {
+    if (c.driver !== 'sqlite' || !c.filePath) return [c]
+    const full = resolve(dir, c.filePath)
+    const inside = relative(dir, full)
+    return inside && !inside.startsWith('..') && !isAbsolute(inside) ? [{ ...c, filePath: full }] : []
+  })
 }
