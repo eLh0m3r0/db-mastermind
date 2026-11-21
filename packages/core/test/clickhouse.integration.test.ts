@@ -71,3 +71,26 @@ describe('ClickHouse', () => {
     expect(inlineClickHouseParams('SELECT {__p1}, {__p2}, {__p3}', ["it's \\ ok", 5, null])).toBe("SELECT 'it\\'s \\\\ ok', 5, NULL")
   })
 })
+
+describe('ClickHouse client warnings (npm package testing)', () => {
+  it('connects and queries without the client warning about progress headers on stderr', async () => {
+    const said: string[] = []
+    const write = process.stderr.write.bind(process.stderr)
+    const warn = console.warn
+    process.stderr.write = ((chunk: unknown, ...rest: unknown[]) => {
+      said.push(String(chunk))
+      return (write as (...a: unknown[]) => boolean)(chunk, ...rest)
+    }) as typeof process.stderr.write
+    console.warn = (...args: unknown[]) => void said.push(args.map(String).join(' '))
+    try {
+      const other = new DatabaseService()
+      await other.connect({ id: 'ch2', name: 'ch2', driver: 'clickhouse', host: '127.0.0.1', port: 18123, user: 'default', password: 'mastermind', database: 'default' })
+      await other.runScript('ch2', 'SELECT 1')
+      await other.disconnectAll()
+    } finally {
+      process.stderr.write = write
+      console.warn = warn
+    }
+    expect(said.filter((s) => /send_progress_in_http_headers|\[WARN\]/.test(s))).toEqual([])
+  })
+})

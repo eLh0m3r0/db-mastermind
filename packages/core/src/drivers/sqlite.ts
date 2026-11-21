@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs'
+import { dirname } from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { sqliteDialect } from '../dialect.js'
 import { checkAffected, TooManyRowsError, elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
@@ -158,6 +160,13 @@ interface RawResult {
 const liveWorkers = new Set<Worker>()
 export const sqliteWorkersAlive = (): number => liveWorkers.size
 
+/** node:sqlite's StatementSync.columns(), which reads a result's columns, came in Node.js 22.16 (and 23.11). */
+export function sqliteNodeProblem(version = process.versions.node): string | undefined {
+  const [major = 0, minor = 0] = version.split('.').map(Number)
+  if (major > 23 || (major === 23 && minor >= 11) || (major === 22 && minor >= 16)) return undefined
+  return `SQLite needs Node.js 22.16 or later (this is Node.js ${version}): update Node.js`
+}
+
 export class SqliteDriver implements DatabaseDriver {
   readonly dialect = sqliteDialect
   private worker?: Worker
@@ -178,13 +187,23 @@ export class SqliteDriver implements DatabaseDriver {
     this.txOwner = undefined
     const path = this.config.filePath
     if (!path) throw new Error('SQLite connection needs a database file')
+    const tooOld = sqliteNodeProblem()
+    if (tooOld) throw new Error(tooOld)
     const worker = new Worker(WORKER_SOURCE, {
       eval: true,
       workerData: { path, readOnly: Boolean(this.config.readOnly) },
     })
     this.worker = worker
     liveWorkers.add(worker)
-    worker.once('exit', () => liveWorkers.delete(worker))
+    worker.once('exit', () => {
+      liveWorkers.delete(worker)
+      // A worker that stopped by itself (the file could not be opened) answers nothing more: whatever waits for it
+      // fails now instead of waiting forever (a closed connection's last request kept the process from ending).
+      if (this.worker === worker) {
+        this.worker = undefined
+        this.failAll(new Error('The SQLite database was closed'))
+      }
+    })
     worker.on('message', (reply: WorkerReply) => {
       const p = this.pending.get(reply.id)
       if (!p) return
@@ -195,7 +214,9 @@ export class SqliteDriver implements DatabaseDriver {
       else p.reject(Object.assign(new Error(reply.error?.message ?? 'SQLite error'), { code: reply.error?.code, errcode: reply.error?.errcode }))
     })
     return new Promise<void>((resolve, reject) => {
-      const onError = (err: Error) => {
+      const onError = (given: Error) => {
+        // SQLite's own words don't say which file, nor why.
+        const err = /unable to open database file/i.test(given.message) ? new Error(`Can't open the SQLite database ${path}: ${existsSync(dirname(path)) ? 'the file can\'t be opened (permissions, or it is not a database)' : `the folder ${dirname(path)} does not exist`}`) : given
         this.failAll(err)
         reject(err)
       }

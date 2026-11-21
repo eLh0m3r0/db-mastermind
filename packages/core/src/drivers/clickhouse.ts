@@ -44,7 +44,15 @@ export class ClickHouseDriver implements DatabaseDriver {
 
   private get settings(): ClickHouseSettings {
     // Keep 64-bit integers and decimals exact (strings), and stop read-only queries when the client goes away.
-    return { output_format_json_quote_64bit_integers: 1, output_format_json_quote_decimals: 1, cancel_http_readonly_queries_on_client_close: 1 }
+    // A query that runs for minutes sends progress headers now and then, so a proxy or load balancer between here and
+    // the server doesn't drop the quiet connection (the client warns about the long request_timeout without them).
+    return {
+      output_format_json_quote_64bit_integers: 1,
+      output_format_json_quote_decimals: 1,
+      cancel_http_readonly_queries_on_client_close: 1,
+      send_progress_in_http_headers: 1,
+      http_headers_progress_interval_ms: '110000',
+    }
   }
 
   async connect(): Promise<void> {

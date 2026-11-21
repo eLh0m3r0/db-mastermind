@@ -1,6 +1,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
+import { app } from 'electron'
 import { createMcpServer, type McpServerOptions } from 'dbmastermind-mcp'
 
 /**
@@ -46,7 +47,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Unauthorized' }))
     return
   }
-  const mcp = createMcpServer(options)
+  const mcp = createMcpServer({ version: app.getVersion(), ...options })
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })
   res.on('close', () => {
     void transport.close()

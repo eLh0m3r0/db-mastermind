@@ -160,3 +160,11 @@ describe('dbm export', () => {
     expect(await dbm('export', join(dir, 'export.dbml'), '--format', 'drizzle', '--database', 'mssql')).toMatchObject({ code: 1, stderr: expect.stringMatching(/not made for mssql/) })
   })
 })
+
+describe('dbm errors (npm package testing)', () => {
+  it('a SQLite file in a folder that does not exist: a clear error and exit code 1, not a hang', async () => {
+    const r = await dbm('query', '--url', `sqlite://${join(dir, 'no-such-folder', 'x.db')}`, 'SELECT 1')
+    expect(r.code).toBe(1)
+    expect(r.stderr).toMatch(/the folder .*no-such-folder does not exist/)
+  })
+})

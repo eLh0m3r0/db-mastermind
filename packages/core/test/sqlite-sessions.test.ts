@@ -48,3 +48,15 @@ describe('SQLite sessions', () => {
     expect(await count(id)).toBe(2)
   })
 })
+
+describe('the Node.js version SQLite needs', () => {
+  it('names the version for Node.js without StatementSync.columns() (before 22.16)', async () => {
+    const { sqliteNodeProblem } = await import('../src/drivers/sqlite.js')
+    expect(sqliteNodeProblem('22.13.1')).toMatch(/Node\.js 22\.16 or later \(this is Node\.js 22\.13\.1\)/)
+    expect(sqliteNodeProblem('22.15.0')).toBeDefined()
+    expect(sqliteNodeProblem('22.16.0')).toBeUndefined()
+    expect(sqliteNodeProblem('23.10.0')).toBeDefined()
+    expect(sqliteNodeProblem('23.11.0')).toBeUndefined()
+    expect(sqliteNodeProblem('24.5.0')).toBeUndefined()
+  })
+})

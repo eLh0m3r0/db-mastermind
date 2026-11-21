@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { DatabaseService, type ConnectionConfig } from '@dbmastermind/core'
 import { connectionFromUrl, connectionsFromFile } from './connection-args.js'
@@ -11,7 +12,9 @@ Usage:
 
 Connections:
   --url <url>            postgres://…, mysql://…, mariadb://…, sqlserver://…, sqlite:///path, JDBC or ADO.NET strings.
-                         Repeat for several databases. \${ENV_VAR} placeholders are expanded.
+                         Repeat for several databases. \${ENV_VAR} placeholders are expanded: put the URL in
+                         single quotes so the shell leaves them for the server (the password stays out of the
+                         agent's configuration).
   --name <name>          Name for the preceding --url (default: host/database)
   --config <file>        JSON array of connections: [{ "name", "url" | driver/host/port/database/user/password, "knowledgeBase", "readOnly" }]
   --knowledge <dir>      Knowledge base folder for the preceding --url
@@ -26,7 +29,7 @@ Tip: the DB Mastermind desktop app can run as an MCP server with your saved conn
 See Settings → MCP server in the app.
 
 Examples:
-  claude mcp add shop -- npx -y dbmastermind-mcp --url "postgres://me:\${PGPASSWORD}@localhost/shop"
+  claude mcp add shop -- npx -y dbmastermind-mcp --url 'postgres://me:\${PGPASSWORD}@localhost/shop'
   codex mcp add shop -- npx -y dbmastermind-mcp --config ~/dbs.json
 `
 
@@ -84,6 +87,15 @@ function parseArgs(argv: string[]) {
   return { connections, flags }
 }
 
+/** The version agents see (serverInfo): the package's own, from the package.json beside dist/ (or src/). */
+function packageVersion(): string | undefined {
+  try {
+    return (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version?: string }).version
+  } catch {
+    return undefined
+  }
+}
+
 async function main() {
   const { connections, flags } = parseArgs(process.argv.slice(2))
   if (connections.length === 0) {
@@ -91,7 +103,7 @@ async function main() {
     process.exit(1)
   }
   const db = new DatabaseService()
-  const server = createMcpServer({ db, connections, ...flags })
+  const server = createMcpServer({ db, connections, ...flags, version: packageVersion() })
   await server.connect(new StdioServerTransport())
   const shutdown = async () => {
     await db.disconnectAll()

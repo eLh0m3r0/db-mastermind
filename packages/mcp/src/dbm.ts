@@ -37,6 +37,7 @@ Usage:
 
 Connections:
   --url <url>          postgres://…, mysql://…, sqlserver://…, sqlite:///path, JDBC or ADO.NET; \${ENV_VAR} is expanded
+                       (in single quotes, so the shell doesn't put the password into the command line)
   --config <file>      JSON array of connections; pick one with --connection <name>
 
 Exit codes:

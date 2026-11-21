@@ -159,3 +159,18 @@ describe('Oracle thin URLs and DataGrip', () => {
     expect(list[1]).toMatchObject({ name: 'ERP', driver: 'mssql', host: 'sql01', database: 'ERP' })
   })
 })
+
+describe('SQL Server URLs as people write them (npm package testing)', () => {
+  it('a sign-in before the host of a JDBC-style URL is the sign-in, not the host', () => {
+    expect(parseConnectionString('sqlserver://sa:P%40ss@db.example.com:1433;databaseName=shop')).toMatchObject({ driver: 'mssql', host: 'db.example.com', port: 1433, database: 'shop', user: 'sa', password: 'P@ss' })
+    expect(parseConnectionString('sqlserver://sa:secret@localhost:14339;databaseName=master;trustServerCertificate=true')).toEqual({ driver: 'mssql', host: 'localhost', port: 14339, database: 'master', user: 'sa', password: 'secret', ssl: undefined, options: { trustServerCertificate: true } })
+  })
+
+  it('encrypt and trustServerCertificate from URL query parameters, JDBC and ADO.NET', () => {
+    expect(parseConnectionString('sqlserver://sa:secret@localhost:1433/master?encrypt=true&trustServerCertificate=true')).toMatchObject({ host: 'localhost', database: 'master', ssl: { mode: 'require' }, options: { trustServerCertificate: true } })
+    expect(parseConnectionString('mssql://sa:secret@localhost/master?encrypt=false')).toMatchObject({ ssl: { mode: 'disable' } })
+    expect(parseConnectionString('sqlserver://sa:secret@localhost?databaseName=shop&instanceName=SQLEXPRESS')).toMatchObject({ database: 'shop', options: { instanceName: 'SQLEXPRESS' } })
+    expect(parseConnectionString('jdbc:sqlserver://h:1433;databaseName=x;user=sa;password=p;encrypt=true;trustServerCertificate=true')).toMatchObject({ ssl: { mode: 'require' }, options: { trustServerCertificate: true } })
+    expect(parseConnectionString('Server=tcp:h,1433;Database=x;User Id=sa;Password=p;Encrypt=True;TrustServerCertificate=True')).toMatchObject({ ssl: { mode: 'require' }, options: { trustServerCertificate: true } })
+  })
+})

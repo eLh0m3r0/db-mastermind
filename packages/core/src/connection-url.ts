@@ -67,7 +67,8 @@ export function parseConnectionString(input: string): Parsed {
   if (text.toLowerCase().startsWith('jdbc:')) text = text.slice(5)
 
   if (/^oracle:thin:/i.test(text)) return parseOracleThin(text)
-  if (/^sqlserver:\/\/[^/]*;/i.test(text) || /^sqlserver:\/\/[^/;]*$/i.test(text)) return parseJdbcSqlServer(text)
+  // (`sqlserver://h:1433;databaseName=x` is JDBC's form; with a path or a query it is a URL.)
+  if (/^sqlserver:\/\/[^/?]*;/i.test(text) || /^sqlserver:\/\/[^/;?]*$/i.test(text)) return parseJdbcSqlServer(text)
   if (!/^[a-z][a-z0-9+.-]*:/i.test(text) && /=/.test(text)) return parseAdoNet(text)
 
   const scheme = text.slice(0, text.indexOf(':')).toLowerCase()
@@ -99,6 +100,17 @@ export function parseConnectionString(input: string): Parsed {
   if (modeMap[sslmode]) config.ssl = { mode: modeMap[sslmode] }
   else if (sslFlag === 'true' || sslFlag === '1') config.ssl = { mode: 'require' }
   else if (sslFlag === 'false' || sslFlag === '0') config.ssl = { mode: 'disable' }
+  // SQL Server's settings as query parameters (sqlserver://u:p@h:1433/db?encrypt=true&trustServerCertificate=true).
+  if (driver === 'mssql') {
+    const get = (name: string) => [...params].find(([k]) => k.toLowerCase() === name.toLowerCase())?.[1]
+    const encrypt = mssqlEncrypt(get('encrypt'))
+    if (encrypt && !modeMap[sslmode]) config.ssl = encrypt
+    const options: Record<string, string | boolean> = {}
+    if (get('trustServerCertificate')?.toLowerCase() === 'true') options.trustServerCertificate = true
+    if (get('instanceName')) options.instanceName = get('instanceName')!
+    if (Object.keys(options).length) config.options = { ...config.options, ...options }
+    config.database ??= get('databaseName') || undefined
+  }
   // Trino: /catalog/schema.
   if (driver === 'trino' && config.database?.includes('/')) {
     const [catalog, schema] = config.database.split('/')
@@ -124,16 +136,29 @@ function parseKeyValues(text: string): Map<string, string> {
   return out
 }
 
+/** SQL Server's `encrypt` (JDBC, ADO.NET, URL query): true / strict / mandatory need TLS, false / no / optional don't. */
+const mssqlEncrypt = (value: string | undefined | null): Parsed['ssl'] => {
+  const v = (value ?? '').toLowerCase()
+  if (['true', 'yes', 'strict', 'mandatory', '1'].includes(v)) return { mode: 'require' }
+  if (['false', 'no', 'optional', '0'].includes(v)) return { mode: 'disable' }
+  return undefined
+}
+
 function parseJdbcSqlServer(text: string): Parsed {
   const rest = text.replace(/^sqlserver:\/\//i, '')
-  const [hostPart = '', ...props] = rest.split(';')
+  const [first = '', ...props] = rest.split(';')
   const kv = parseKeyValues(props.join(';'))
+  // `sqlserver://user:password@host:1433;databaseName=…`: the URL's sign-in, written before the host.
+  const at = first.lastIndexOf('@')
+  const userInfo = at === -1 ? '' : first.slice(0, at)
+  const hostPart = at === -1 ? first : first.slice(at + 1)
+  const [infoUser, ...infoPassword] = userInfo ? userInfo.split(':') : []
   const [hostAndInstance = '', port] = hostPart.split(':')
   const [host, instanceName] = hostAndInstance.split('\\')
   const options: Record<string, string | boolean> = {}
   const instance = instanceName || kv.get('instancename')
   if (instance) options.instanceName = instance
-  if (kv.get('trustservercertificate') === 'true') options.trustServerCertificate = true
+  if (kv.get('trustservercertificate')?.toLowerCase() === 'true') options.trustServerCertificate = true
   if (kv.get('domain')) options.domain = kv.get('domain')!
   if (kv.get('integratedsecurity')?.toLowerCase() === 'true') options.authentication = 'windows'
   return {
@@ -141,9 +166,9 @@ function parseJdbcSqlServer(text: string): Parsed {
     host: host || 'localhost',
     port: port ? Number(port) : instance ? undefined : 1433,
     database: kv.get('databasename') ?? kv.get('database'),
-    user: kv.get('user') ?? kv.get('username'),
-    password: kv.get('password'),
-    ssl: kv.get('encrypt') === 'false' ? { mode: 'disable' } : undefined,
+    user: kv.get('user') ?? kv.get('username') ?? (infoUser ? decodeURIComponent(infoUser) : undefined),
+    password: kv.get('password') ?? (infoPassword.length ? decodeURIComponent(infoPassword.join(':')) : undefined),
+    ssl: mssqlEncrypt(kv.get('encrypt')),
     options: Object.keys(options).length ? options : undefined,
   }
 }
@@ -191,7 +216,7 @@ function parseAdoNet(text: string): Parsed {
     database: kv.get('database') ?? kv.get('initial catalog'),
     user: kv.get('user id') ?? kv.get('uid') ?? kv.get('user'),
     password: kv.get('password') ?? kv.get('pwd'),
-    ssl: encrypt === 'false' || encrypt === 'no' ? { mode: 'disable' } : undefined,
+    ssl: mssqlEncrypt(encrypt),
     options: Object.keys(options).length ? options : undefined,
   }
 }
