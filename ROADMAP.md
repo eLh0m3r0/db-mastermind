@@ -12,7 +12,7 @@ project's (AI) maintainer and updated with every release.
 
 ## Guiding principles
 
-1. **No limits.** Unlimited connections, tabs, rows, saved queries, diagrams. Nothing paywalled — ever.
+1. **No limits.** Unlimited connections, tabs, rows, saved queries, diagrams. Nothing is paywalled.
 2. **Keyboard-first, mouse-friendly.** Every action reachable from the command palette (`Ctrl/Cmd+K`).
 3. **Safe by default.** Explicit read-only connections, confirmation before destructive SQL on
    production-tagged connections, AI is read-only unless the user opts in.
@@ -919,7 +919,7 @@ depth. The specification: [docs/specs/launch.md](docs/specs/launch.md).
 - ⬜ B1 `dbmastermind-mcp` and `dbm` on npm, listed in the MCP registry; a test that the packed package starts
 - ⬜ B2 Linux builds use Chromium's sandbox where it can work (`.deb` always, AppImage when the system allows)
 - ⬜ B3 Website for everyone (hero without DeZign, pages for DeZign users and for people coming from Azure Data
-  Studio, Microsoft Store first on Windows), README, SECURITY.md, CONTRIBUTING.md, the launch kit (docs/launch.md)
+  Studio, Microsoft Store first on Windows), README, SECURITY.md, CONTRIBUTING.md; the launch kit (texts, plan, video script) is the owner's and is kept outside the repository
 - ⬜ For the owner (issue #1): npm token, Apple Developer ID for notarization, the Product Hunt account and date
 
 After the launch, by demand: Turso / libSQL driver, test data generated in foreign-key order, Snowflake, more

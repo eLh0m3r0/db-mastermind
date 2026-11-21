@@ -1,5 +1,13 @@
 # Product strategy
 
+## Why it exists
+
+To help people and teams understand their data, with one tool for the whole job: design the database, query it
+and see it in charts. Free for everyone.
+
+The owner does not want to earn money on this product (decided 2026-11-21, before the public launch). It
+started as the database tool of his own team and is paid for by him.
+
 ## Who it is for
 
 1. **Analysts and developers who live in databases**: IT analysts, BI people, backend developers, support
@@ -48,42 +56,42 @@ DeZign for Databases. It does what DeZign does, the way a tool of today does it.
 
 ## License and business model
 
-**Decision:** open core.
+Everything in this repository is **MIT**: the app, the drivers, AI, the MCP server, diagrams and data modeling.
+It is free for everyone, including commercial use. There is no paid tier, no account and no telemetry, and
+none is planned.
 
-| Part | License | Price |
-|---|---|---|
-| Everything in this repository: the app, drivers, AI, MCP server, diagrams, data modeling | **MIT** | Free for everyone, including commercial use |
-| Builds from GitHub Releases | MIT | Free |
-| Mac App Store / Microsoft Store editions (signed, sandboxed, auto-updated by the store) | MIT source, paid convenience | One-time, ~€19 |
-| Future `ee/` folder: team & enterprise features | Source-available (code public, production use by organisations of more than 5 people requires a paid license) | Per seat / year |
+| What | Price |
+|---|---|
+| The app from GitHub Releases, the Microsoft Store, Homebrew, Scoop, the MSI for IT | Free |
+| `dbmastermind-mcp` and `dbm` from npm | Free |
+| Team features (team folder, managed configuration, audit log) | Free, in the same MIT code |
 
-Planned enterprise features, built only once there's demand, and only features individuals don't need:
-- Team workspace: shared connections (without secrets), shared knowledge base, diagrams and saved queries,
-  synced via Git or a shared folder
-- Central policy: managed config file / Windows Group Policy (allowed AI providers, forced read-only for
-  prod, disabled export)
-- Audit log of executed statements
-- Signed MSI for software distribution tools (Intune, SCCM)
-- Priority support and custom drivers
+Income: none is needed to keep it going. People who want to say thanks can use Ko-fi. If a company asks for
+work done for it alone (support, onboarding, a driver nobody else needs), that can be paid work; it is not a
+version of the product.
 
-Other income: Ko-fi donations and paid support or onboarding for companies.
+**What public texts say:** "free, MIT-licensed, no paid tier" in the present tense. They make no promise about
+the future ("forever", "never"): the owner does not want one made in his name, and a plain fact that can be
+checked today is worth more than a promise.
 
-**Why this model:** MIT keeps adoption friction at zero, so colleagues can use it at work without legal review.
-Store editions earn money from people who'd rather pay than click through an unsigned-app warning.
-Team and enterprise features earn money from organisations, which can afford it, without ever taking a feature
-away from an individual.
+**History:** until 2026-11-21 this page planned an open core (paid editions in the app stores and a
+source-available `ee/` folder for team and enterprise features). None of it was built: the Microsoft Store
+edition is free, the Mac App Store was dropped because its sandbox would cut features, and the team features
+shipped under MIT with everything else.
 
 ## Distribution
 
-- GitHub Releases: macOS dmg (arm64, x64), Windows portable zip + per-user installer, Linux AppImage/deb
-- Later: winget, Homebrew cask, Scoop, Mac App Store, Microsoft Store
-- The `dbmastermind-mcp` npm package works without the desktop app
+- GitHub Releases: macOS dmg (arm64, x64), Windows portable zip, per-user installer and MSI, Linux AppImage and .deb
+- Microsoft Store (signed by Microsoft), Homebrew cask and Scoop (this repository is the tap and the bucket);
+  winget waits for its first review. Not planned: the Mac App Store (see above)
+- The `dbmastermind-mcp` npm package (the MCP server and the `dbm` command line) works without the desktop app
 
 ## What success looks like
 
-- v0.1: I and my colleagues replace Beekeeper Studio for daily work.
-- v0.3: AI + knowledge base make onboarding onto an unknown database dramatically faster.
-- v1.0: 1k GitHub stars, listed in winget/Homebrew, first supporters on Ko-fi.
+- v0.1: I and my colleagues replace Beekeeper Studio for daily work. ✅
+- v0.3: AI + knowledge base make onboarding onto an unknown database dramatically faster. ✅
+- v1.x, after the public launch (1.5): people outside the owner's company use it daily and say what is missing;
+  issues and pull requests from strangers; listed in winget and the MCP registry.
 
 ## Maintenance model
 

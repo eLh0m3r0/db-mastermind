@@ -88,7 +88,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 9. MCP server for Claude Code, Codex, Cursor and VS Code
 10. Query CSV, Parquet, JSON and Excel files with SQL
 11. SSH tunnels, SSL and SQL Server Windows authentication
-12. No telemetry, no account, no feature limits. Free and open source, forever
+12. No telemetry, no account, no feature limits. Free and open source
 13. Data modeler that opens and saves DeZign for Databases projects
 14. Transactions you can see, with manual commit per connection
 15. Server activity: sessions, slowest queries, storage and unused indexes

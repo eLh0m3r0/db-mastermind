@@ -1,5 +1,11 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Security vulnerability
+    url: https://github.com/eLh0m3r0/db-mastermind/security/advisories/new
+    about: Report it privately, not as a public issue (see SECURITY.md).
+  - name: Getting started
+    url: https://dbmastermind.app/guide.html
+    about: The first connection, filters, SQL, diagrams, models, AI and agents.
   - name: Rychlý návod (česky)
     url: https://github.com/eLh0m3r0/db-mastermind/blob/main/docs/navod.md
     about: Jak aplikaci rozběhnout a co v ní najdete.
