@@ -217,3 +217,135 @@ function forMySql(t: TableInfo, to: 'mysql' | 'mariadb'): TableInfo {
   const checks = t.checks?.filter((ch) => !NOT_IN_MYSQL_CHECK.test(ch.expression))
   return { ...t, columns, indexes, ...(t.checks ? { checks } : {}) }
 }
+
+/** What a column type is, whatever database spells it: what code generators (orm-export.ts) map from. */
+export type TypeFamily =
+  | 'smallint'
+  | 'integer'
+  | 'bigint'
+  | 'tinyint'
+  | 'mediumint'
+  | 'decimal'
+  | 'money'
+  | 'real'
+  | 'double'
+  | 'boolean'
+  | 'char'
+  | 'varchar'
+  | 'text'
+  | 'uuid'
+  | 'date'
+  | 'time'
+  | 'timetz'
+  | 'timestamp'
+  | 'timestamptz'
+  | 'interval'
+  | 'year'
+  | 'json'
+  | 'jsonb'
+  | 'binary'
+  | 'bit'
+  | 'xml'
+  | 'network'
+  | 'enum'
+  | 'set'
+  | 'other'
+
+export interface ColumnType {
+  family: TypeFamily
+  /** The type's own name, lower case, without its arguments (`varchar`, `datetime2`, `mediumtext`). */
+  name: string
+  /** Length (strings, binary, bits) or precision (decimals, fractional seconds). */
+  length?: number
+  scale?: number
+  /** `varchar(max)`, `nvarchar(max)`. */
+  max?: boolean
+  unsigned?: boolean
+  /** Numbers itself (serial, bigserial). */
+  serial?: boolean
+  /** An array of it (PostgreSQL `integer[]`). */
+  array?: boolean
+  /** National characters (SQL Server nvarchar, nchar, ntext). */
+  national?: boolean
+  /** MySQL ENUM / SET values. */
+  values?: string[]
+}
+
+const FAMILIES: [RegExp, TypeFamily][] = [
+  [/^(smallint|int2|smallserial|serial2)$/, 'smallint'],
+  [/^(integer|int|int4|serial|serial4|pls_integer|binary_integer)$/, 'integer'],
+  [/^(bigint|int8|bigserial|serial8|int64|long|hugeint)$/, 'bigint'],
+  [/^(tinyint|int1|utinyint)$/, 'tinyint'],
+  [/^(mediumint|int3)$/, 'mediumint'],
+  [/^(decimal|numeric|dec|number|fixed|bignumeric)$/, 'decimal'],
+  [/^(money|smallmoney)$/, 'money'],
+  [/^(real|float4|binary_float|float32)$/, 'real'],
+  [/^(double|double precision|float8|binary_double|float64|float)$/, 'double'],
+  [/^(boolean|bool)$/, 'boolean'],
+  [/^(char|character|nchar|bpchar|national char|national character)$/, 'char'],
+  [/^(varchar|character varying|nvarchar|varchar2|nvarchar2|string|national varchar|varying character)$/, 'varchar'],
+  [/^(text|ntext|tinytext|mediumtext|longtext|clob|nclob|citext|long varchar|memo)$/, 'text'],
+  [/^(uuid|uniqueidentifier)$/, 'uuid'],
+  [/^date$/, 'date'],
+  [/^(time|time without time zone)$/, 'time'],
+  [/^(timetz|time with time zone)$/, 'timetz'],
+  [/^(timestamp|timestamp without time zone|datetime|datetime2|smalldatetime|datetime64)$/, 'timestamp'],
+  [/^(timestamptz|timestamp with time zone|timestamp with local time zone|datetimeoffset)$/, 'timestamptz'],
+  [/^interval$/, 'interval'],
+  [/^year$/, 'year'],
+  [/^json$/, 'json'],
+  [/^jsonb$/, 'jsonb'],
+  [/^(bytea|blob|tinyblob|mediumblob|longblob|image|raw|long raw|binary|varbinary|bytes|binary varying)$/, 'binary'],
+  [/^(bit|varbit|bit varying)$/, 'bit'],
+  [/^(xml|xmltype)$/, 'xml'],
+  [/^(inet|cidr|macaddr|macaddr8)$/, 'network'],
+]
+
+/**
+ * A column type read into its family and its arguments: `varchar(255)` is a varchar of 255, `int unsigned` an
+ * unsigned integer, `tinyint(1)` and Oracle's `NUMBER(1)` flags, `NUMBER(10)` a whole number.
+ */
+export function classifyType(type: string): ColumnType {
+  let t = type.trim().toLowerCase().replace(/\s+/g, ' ')
+  let array = false
+  if (/\[\s*\d*\s*\]$/.test(t)) {
+    array = true
+    t = t.replace(/(\s*\[\s*\d*\s*\])+$/, '')
+  } else if (/^_[a-z]/.test(t)) {
+    // PostgreSQL's catalog names arrays `_int4`.
+    array = true
+    t = t.slice(1)
+  }
+  if (/^(enum|set)\s*\(/.test(t)) {
+    const values = [...type.slice(type.indexOf('(') + 1, type.lastIndexOf(')')).matchAll(/'((?:[^']|'')*)'/g)].map((m) => m[1]!.replaceAll("''", "'"))
+    return { family: t.startsWith('enum') ? 'enum' : 'set', name: t.startsWith('enum') ? 'enum' : 'set', values }
+  }
+  const unsigned = /\bunsigned\b/.test(t)
+  const zerofill = /\bzerofill\b/.test(t)
+  t = t.replace(/\b(unsigned|signed|zerofill)\b/g, '').trim()
+  // `timestamp(3) with time zone`, `time(6) without time zone`: the precision sits inside the name.
+  const inner = /^(timestamp|time)\s*\(\s*(\d+)\s*\)\s*(with(?:out)? (?:local )?time zone)$/.exec(t)
+  const m = inner ? null : /^(.*?)\s*\(\s*([^)]*)\)\s*(.*)$/.exec(t)
+  const name = inner ? `${inner[1]} ${inner[3]}` : m ? `${m[1]}${m[3] ? ` ${m[3]}` : ''}`.trim() : t
+  const args = inner ? [inner[2]!] : m ? m[2]!.split(',').map((a) => a.trim()) : []
+  const max = args[0] === 'max'
+  const nums = args.map((a) => (/^\d+$/.test(a) ? Number(a) : undefined))
+  const base: Omit<ColumnType, 'family'> = { name, ...(nums[0] !== undefined ? { length: nums[0] } : {}), ...(nums[1] !== undefined ? { scale: nums[1] } : {}), ...(max ? { max } : {}), ...(unsigned || zerofill ? { unsigned: true } : {}), ...(array ? { array } : {}) }
+  if (/serial/.test(name)) base.serial = true
+  if (/^(nvarchar|nchar|ntext|nvarchar2|nclob|national)/.test(name)) base.national = true
+  // MySQL's flag, Oracle's flag and SQL Server's one-bit boolean.
+  if ((name === 'tinyint' && nums[0] === 1) || (name === 'number' && nums[0] === 1 && !nums[1]) || (name === 'bit' && (nums[0] === undefined || nums[0] === 1))) return { ...base, family: 'boolean' }
+  // Oracle's NUMBER(n) and NUMBER(n, 0) are whole numbers.
+  if (name === 'number' && nums[0] !== undefined && !nums[1]) return { ...base, family: nums[0] <= 4 ? 'smallint' : nums[0] <= 9 ? 'integer' : nums[0] <= 18 ? 'bigint' : 'decimal' }
+  if (max && /^(n?varchar|varbinary)$/.test(name)) return { ...base, family: name === 'varbinary' ? 'binary' : 'text' }
+  // `float(n)`: up to 24 bits of precision is a single.
+  if (name === 'float' && nums[0] !== undefined && nums[0] <= 24) return { ...base, family: 'real' }
+  // DuckDB's and BigQuery's STRING / VARCHAR without a length is any length.
+  for (const [re, family] of FAMILIES) if (re.test(name)) return { ...base, family }
+  if (/^(serial|bigserial|smallserial)$/.test(name)) return { ...base, family: 'integer' }
+  if (/^u?(int16|uint16|usmallint)$/.test(name)) return { ...base, family: 'smallint' }
+  if (/^u?(int32|uint32|uinteger)$/.test(name)) return { ...base, family: 'integer' }
+  if (/^u?(int64|uint64|ubigint)$/.test(name)) return { ...base, family: 'bigint' }
+  if (/^(fixedstring|lowcardinality)/.test(name)) return { ...base, family: 'varchar' }
+  return { ...base, family: 'other' }
+}
