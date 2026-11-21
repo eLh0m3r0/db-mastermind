@@ -346,8 +346,9 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
         // A custom setting: the attribute package (DeZign) the column comes from.
         ...(value('package') ? { package: unquoteString(value('package')!) } : {}),
       }
-      // A table's own column wins over an injected one of the same name; so does a later partial.
-      const earlier = t.columns.findIndex((c) => c.name.toLowerCase() === name.toLowerCase())
+      // A table's own column wins over an injected one of the same name; so does a later partial. (The same name:
+      // `email` and `Email` are two columns, as @dbml/core and case-sensitive databases read them.)
+      const earlier = t.columns.findIndex((c) => c.name === name)
       if (earlier !== -1) {
         t.columns.splice(earlier, 1)
         t.primaryKey = t.primaryKey.filter((c) => c !== name)

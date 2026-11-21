@@ -323,3 +323,10 @@ describe('an unclosed bracket (review M5)', () => {
     expect(m.errors.length).toBe(80_000)
   })
 })
+
+describe('names that differ only in case', () => {
+  it('are two columns', () => {
+    const m = parseDbml("Table users {\n  id int [pk]\n  email text\n  Email text [note: 'other']\n}\n")
+    expect(m.tables[0]!.columns.map((c) => c.name)).toEqual(['id', 'email', 'Email'])
+  })
+})
