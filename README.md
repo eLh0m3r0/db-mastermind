@@ -4,14 +4,17 @@
 
 # DB Mastermind
 
-**The free, open-source database client that understands your data model.**
+**The free, open-source database client that understands your data.**
 
-Browse, filter, query, diagram and redesign databases, with an AI assistant that knows your schema and your
-team's notes. It also exposes everything over MCP to Claude Code, Codex, Cursor and other agents.
+Browse and filter data without limits, write SQL with an editor that knows your schema, model a new database or
+redesign the one you have with generated migrations, and ask an AI that knows your database. It is also an MCP
+server for Claude Code, Codex, Cursor and other agents.
 
 [Website](https://dbmastermind.app) · [Microsoft Store](https://apps.microsoft.com/detail/9p0grd7bz4nf) · [Download](https://github.com/eLh0m3r0/db-mastermind/releases/latest) · [Roadmap](ROADMAP.md) · [Report an issue](https://github.com/eLh0m3r0/db-mastermind/issues/new)
 
 PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB · ClickHouse · CockroachDB · BigQuery · Trino — Windows · macOS · Linux — English & čeština — MIT, no feature limits
+
+Works with hosted databases too: Supabase · Neon · Timescale · Amazon RDS and Aurora · Azure Database and Azure SQL · Google Cloud SQL
 
 </div>
 
@@ -33,6 +36,9 @@ PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB · Cl
 - Command palette (`Ctrl/⌘ K`), quick table open (`Ctrl/⌘ P`), light, dark and high-contrast themes (follow the system or pick one in Settings), English and Czech UI
 - **Enterprise-ready connections**: SSH tunnels, SSL, read-only and production safety rails, **SQL Server Windows
   authentication** (no password, your domain account), **Oracle without Instant Client**
+- **Connections from your project**: drop a `.env`, a docker-compose file or a project folder on the window and the
+  databases it names become connections (passwords saved encrypted); paste a Supabase, Neon, RDS, Azure or Cloud
+  SQL connection string and the app recognises the service
 
 ![SQL editor](docs/screenshots/query.png)
 
@@ -62,7 +68,11 @@ PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB · Cl
   else in one detail panel (docked in a wide window, sliding in on a laptop). Changes are kept as you make them,
   with undo. The model is a plain DBML text file (reads well in Git); generate DDL for any supported database
   (types translated) or compare it with a database for the migration
-- **Works with DeZign for Databases projects** (`.dez` and `.dezproj` folder projects, DeZign 4 to 14): open them
+- **Models from other tools**: open an SQL script, a Prisma schema, a Mermaid `erDiagram`, a drawDB file or a MySQL
+  Workbench `.mwb` as a model (the file itself is never changed)
+- **Code from a model or a live database**: a Prisma schema, a Drizzle schema, SQLAlchemy models or TypeScript types,
+  from the diagram's Export menu or `dbm export`
+- **Works with DeZign for Databases projects** ([more](https://dbmastermind.app/dezign.html); `.dez` and `.dezproj` folder projects, DeZign 4 to 14): open them
   with their diagrams, edit and save back into the project, or save a model made here as a new DeZign project.
   Domains, attribute packages, subtypes, labels, custom properties, to-dos, triggers, procedures, sequences,
   archived versions, reports and switching the target database are kept (changes are listed first, a backup is
@@ -103,8 +113,12 @@ Or download from [Releases](https://github.com/eLh0m3r0/db-mastermind/releases/l
 | macOS Apple Silicon / Intel | `DB-Mastermind-<version>-mac-arm64.dmg` / `-mac-x64.dmg` |
 | Linux | `DB-Mastermind-<version>-linux-x86_64.AppImage` or `-linux-amd64.deb` |
 
-The downloads aren't code-signed yet (the Store version is). **macOS**: right-click the app → *Open* the first time (or run
-`xattr -dr com.apple.quarantine "/Applications/DB Mastermind.app"`). **Windows**: *More info → Run anyway*.
+The downloads aren't signed with a certificate Windows trusts or notarized by Apple yet (the Store version is
+signed by Microsoft).
+**macOS**: the first time, macOS blocks the app; open *System Settings → Privacy & Security* and click *Open Anyway*
+(then *Open* once more), or run
+`xattr -dr com.apple.quarantine "/Applications/DB Mastermind.app"`. **Windows**: if SmartScreen warns, choose
+*More info → Run anyway*.
 
 With [Scoop](https://scoop.sh) on Windows (portable, updates with `scoop update`, keeps your data):
 
@@ -195,9 +209,17 @@ npm run test:integration   # every driver and migration against real databases
 See [CLAUDE.md](CLAUDE.md) for architecture and conventions, [docs/STRATEGY.md](docs/STRATEGY.md) for product
 direction.
 
+## Contributing and security
+
+Pull requests and issues are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities privately as
+described in [SECURITY.md](SECURITY.md).
+
+Coming from Azure Data Studio? [What you will find here](https://dbmastermind.app/azure-data-studio.html).
+
 ## Author
 
-DB Mastermind is created and maintained by [Václav Mudra](https://vaclavmudra.com).
+DB Mastermind is created by [Václav Mudra](https://vaclavmudra.com), who decides what the product does. The code,
+tests and releases are written by an AI maintainer (Claude) working for him; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Support
 
