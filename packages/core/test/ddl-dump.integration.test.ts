@@ -190,3 +190,89 @@ describe.skipIf(!msContainer)('a model translated for SQL Server is created ther
     expect(failures).toEqual([])
   })
 })
+
+// MySQL the way three readers see it (wave 2, Sakila): a model as MySQL Workbench writes it (UNSIGNED, a flag as
+// tinyint(1) DEFAULT 1, the index MySQL makes for a foreign key), the database made from it, that database dumped
+// by mysqldump, and the same tables as a hand-written script (BOOLEAN DEFAULT TRUE, no index for the key, an
+// unnamed UNIQUE KEY, a versioned comment, a FULLTEXT key, index names two tables share) compare as the same.
+const myContainer = skipped.includes('mysql') ? undefined : containerFor(33069)
+describe.skipIf(!myContainer)('MySQL: a Workbench-style model, its database, its dump and a script agree', () => {
+  const MODEL = parseDbml(`Table store {
+  store_id "tinyint unsigned" [pk, increment]
+  active "tinyint(1)" [not null, default: 1]
+  name varchar(45) [not null]
+
+  indexes {
+    name [unique, name: 'name']
+  }
+}
+
+Table rental {
+  rental_id int [pk, increment]
+  store_id "tinyint unsigned" [not null]
+  staff_id "tinyint unsigned" [not null]
+  rental_date datetime [not null]
+  note text
+
+  indexes {
+    staff_id [name: 'idx_fk_staff']
+    (rental_date, store_id) [unique, name: 'rental_date']
+    store_id [name: 'fk_rental_store']
+    note [name: 'idx_note_text']
+  }
+}
+
+Ref fk_rental_store: rental.store_id > store.store_id [delete: restrict, update: cascade]
+`).tables.map((t) => ({ ...t, indexes: t.indexes.map((i) => (i.name === 'idx_note_text' ? { ...i, method: 'FULLTEXT', definition: 'CREATE FULLTEXT INDEX `idx_note_text` ON `rental` (`note`)', definitionDriver: 'mysql' as const } : i)) }))
+  const SCRIPT = `CREATE TABLE store (
+  store_id TINYINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  name VARCHAR(45) NOT NULL,
+  PRIMARY KEY (store_id),
+  UNIQUE KEY (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE rental (
+  rental_id INT NOT NULL AUTO_INCREMENT,
+  store_id TINYINT UNSIGNED NOT NULL,
+  staff_id TINYINT UNSIGNED NOT NULL,
+  rental_date DATETIME NOT NULL,
+  /*!50705 note TEXT, */
+  PRIMARY KEY (rental_id),
+  UNIQUE KEY rental_date (rental_date, store_id),
+  KEY idx_fk_staff (staff_id),
+  FULLTEXT KEY idx_note_text (note),
+  CONSTRAINT fk_rental_store FOREIGN KEY (store_id) REFERENCES store (store_id) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE store_log (id INT NOT NULL, staff_id TINYINT UNSIGNED, PRIMARY KEY (id), KEY idx_fk_staff (staff_id));`
+
+  it('finds no difference between any two of them', { timeout: 120_000 }, async () => {
+    const svc = new DatabaseService()
+    const server = SERVERS.mysql!
+    const config: ConnectionConfig = { ...server, id: 'dump-my-wb', database: 'dump_wb' }
+    try {
+      await svc.connect(server)
+      await svc.runScript(server.id, 'DROP DATABASE IF EXISTS dump_wb')
+      await svc.runScript(server.id, 'CREATE DATABASE dump_wb')
+      await svc.connect(config)
+      const created = await svc.runScript(config.id, createScript(MODEL, getDialect('mysql')))
+      expect(created.filter((o) => o.error).map((o) => o.error!.message)).toEqual([])
+      const plain = (tables: TableInfo[]) => tables.filter((t) => t.type === 'table' && t.name !== 'store_log').map((t) => ({ ...t, schema: undefined, foreignKeys: t.foreignKeys.map((f) => ({ ...f, refSchema: undefined })) }))
+      const live = plain((await svc.schema(config.id, true)).tables)
+      const dump = plain((await tablesFromDdl(execFileSync('docker', SERVERS.mysql!.dump(myContainer!, 'dump_wb'), { encoding: 'utf8' }))).tables)
+      const script = await tablesFromDdl(SCRIPT)
+      expect(script.skipped).toEqual([])
+      const fromScript = plain(script.tables)
+      const describe = (a: TableInfo[], b: TableInfo[]) => compareSchemas(a, b, { model: true }).map((c) => `${c.kind} ${c.table.name} ${'column' in c ? String(c.column) : ''}${'index' in c ? String((c.index as { name?: string }).name) : ''}${'name' in c ? String(c.name) : ''}`)
+      expect({
+        modelVsLive: describe(MODEL, live),
+        dumpVsLive: describe(dump, live),
+        scriptVsLive: describe(fromScript, live),
+        modelVsScript: describe(MODEL, fromScript),
+        modelVsDump: describe(MODEL, dump),
+      }).toEqual({ modelVsLive: [], dumpVsLive: [], scriptVsLive: [], modelVsScript: [], modelVsDump: [] })
+    } finally {
+      await svc.runScript(server.id, 'DROP DATABASE IF EXISTS dump_wb').catch(() => {})
+      await svc.disconnectAll()
+    }
+  })
+})

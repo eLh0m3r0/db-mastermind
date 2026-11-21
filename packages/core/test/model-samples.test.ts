@@ -88,24 +88,10 @@ describe.skipIf(!folder)('models of other tools, real files', () => {
     console.log(`Sakila: ${mwb.tables.length} tables in the model (${fromModel.length} of sakila), ${fromScript.length} in the script, ${script.skipped.length} script statements skipped (views DuckDB can't run); left out of the model: ${JSON.stringify(mwb.leftOut)}; ${Object.keys(mwb.positions).length} positions, ${mwb.diagrams.length} more diagrams`)
     expect(fromModel.map((t) => t.name).sort()).toEqual(fromScript.map((t) => t.name).sort())
     const changes = compareSchemas(fromModel, fromScript, { model: true })
-    // What remains, and why (each is counted):
-    //  - unsigned: the SQL reader keeps no UNSIGNED (ddl-import.ts declaredColumn); Workbench and MySQL do.
-    //  - BOOLEAN DEFAULT TRUE in the script is tinyint(1) DEFAULT '1' in Workbench, which is what MySQL makes of it.
-    //  - Workbench lists the index MySQL creates for a foreign key whose columns no index leads; the script leaves
-    //    MySQL to make it (fk_film_category_category, fk_payment_rental).
-    const kinds = { unsigned: 0, booleanDefault: 0, foreignKeyIndex: 0, other: 0 }
-    const otherChanges: unknown[] = []
-    for (const c of changes) {
-      const r = c as { kind: string; before?: { dataType: string; defaultValue?: string | null }; after?: { dataType: string; defaultValue?: string | null }; index?: { name: string; columns: string[] }; table: { name: string } }
-      if (r.kind === 'alter_column' && r.before && r.after && r.after.dataType === `${r.before.dataType} unsigned` && r.before.defaultValue === r.after.defaultValue) kinds.unsigned++
-      else if (r.kind === 'alter_column' && r.before?.dataType === 'boolean' && r.after?.dataType === 'tinyint(1)' && /^true$/i.test(r.before.defaultValue ?? '') && r.after.defaultValue === '1') kinds.booleanDefault++
-      else if (r.kind === 'add_index' && r.index && fromModel.find((t) => t.name === r.table.name)?.foreignKeys.some((f) => f.name === r.index!.name && f.columns.join() === r.index!.columns.join())) kinds.foreignKeyIndex++
-      else {
-        kinds.other++
-        otherChanges.push(c)
-      }
-    }
-    console.log(`Sakila differences: ${changes.length} (${JSON.stringify(kinds)})`)
-    expect(otherChanges).toEqual([])
+    // UNSIGNED, BOOLEAN DEFAULT TRUE ≡ tinyint(1) DEFAULT 1 and the index MySQL makes for a foreign key compare as
+    // the same now. What remains is a difference of the two files themselves: Workbench's film_text.film_id has no
+    // UNSIGNED flag, the script's has.
+    console.log(`Sakila differences: ${changes.length}`)
+    expect(changes).toEqual([expect.objectContaining({ kind: 'alter_column', table: { name: 'film_text' }, column: 'film_id', before: expect.objectContaining({ dataType: 'smallint unsigned' }), after: expect.objectContaining({ dataType: 'smallint' }) })])
   })
 })

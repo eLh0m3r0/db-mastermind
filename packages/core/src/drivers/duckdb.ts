@@ -304,7 +304,8 @@ export class DuckDBDriver implements DatabaseDriver {
       const columns = String(ix.expressions ?? '')
         .replace(/^\[|\]$/g, '')
         .split(',')
-        .map((s) => s.trim().replace(/^"|"$/g, ''))
+        // A name that needs quotes (a keyword such as `name`) comes as '"name"'.
+        .map((s) => s.trim().replace(/^'(.*)'$/, '$1').replace(/^"(.*)"$/, '$1').replaceAll('""', '"'))
         .filter(Boolean)
       t.indexes.push({ name: String(ix.index_name), columns, unique: Boolean(ix.is_unique), primary: false })
     }

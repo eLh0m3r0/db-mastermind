@@ -232,6 +232,19 @@ const normDefault = (value: string | null | undefined) => {
   if (/^"[^"']*"$/.test(v)) v = `'${v.slice(1, -1)}'`
   return v.includes("'") ? v : v.toLowerCase()
 }
+/**
+ * The same default of a flag: MySQL keeps BOOLEAN as tinyint(1), so `DEFAULT TRUE` in a script is `1` in the
+ * database (and in a Workbench model).
+ */
+function sameFlag(a: { dataType: string; defaultValue?: string | null }, b: { dataType: string; defaultValue?: string | null }): boolean {
+  if (normType(a.dataType) !== 'boolean' || normType(b.dataType) !== 'boolean') return false
+  const flag = (v: string | null | undefined) => {
+    const d = normDefault(v).replace(/^'(.*)'$/, '$1').replace(/^b'([01])'$/, '$1')
+    return /^(true|1)$/.test(d) ? 'true' : /^(false|0)$/.test(d) ? 'false' : d
+  }
+  return flag(a.defaultValue) === flag(b.defaultValue)
+}
+
 function balanced(text: string): boolean {
   let depth = 0
   for (const ch of text) {
@@ -346,7 +359,7 @@ export function diffTable(original: TableInfo | undefined, draftIn: DesignTable,
       type: !byDomain && typesDiffer(col.dataType, before.dataType),
       // PostgreSQL makes a serial column NOT NULL whatever the model says.
       nullable: col.nullable !== before.nullable && !(isSerialType(col.dataType) && !before.nullable),
-      default: normDefault(col.defaultValue) !== normDefault(before.defaultValue) && !(byDomain && !before.defaultValue),
+      default: normDefault(col.defaultValue) !== normDefault(before.defaultValue) && !(byDomain && !before.defaultValue) && !sameFlag(col, before),
       comment: (col.comment ?? null) !== (before.comment ?? null),
     }
     if (diff.type || diff.nullable || diff.default || diff.comment) {
@@ -1400,11 +1413,24 @@ export function compareSchemas(source: TableInfo[], target: TableInfo[], options
       // References point into the target's schema, not the source's.
       f.refSchema = inTarget(f.refTable, f.refSchema)?.schema ?? t.schema
     }
+    const matchedIndexes = new Set<unknown>()
     for (const i of draft.indexes) {
       const match = t.indexes.find((x) => !matched.has(x) && !x.primary && cols(x.columns) === cols(i.columns) && x.unique === i.unique)
       matched.add(match)
-      if (match) Object.assign(i, { name: match.name, originalName: match.name, columns: newName.size ? i.columns : match.columns })
+      if (match) {
+        Object.assign(i, { name: match.name, originalName: match.name, columns: newName.size ? i.columns : match.columns })
+        matchedIndexes.add(i)
+      }
     }
+    // MySQL makes an index for a foreign key whose columns no index leads, named after the key: a model (a
+    // Workbench model, a live database) lists it, a script leaves it to MySQL. The same index, so no change.
+    draft.indexes = draft.indexes.filter(
+      (i) =>
+        matchedIndexes.has(i) ||
+        i.unique ||
+        !draft.foreignKeys.some((f) => f.originalName && same(f.name ?? '', i.name ?? '') && cols(f.columns) === cols(i.columns)) ||
+        t.indexes.some((x) => cols(x.columns.slice(0, i.columns.length)) === cols(i.columns)),
+    )
     // Keep target indexes that support a foreign key that stays (MySQL creates them and refuses to drop them).
     for (const ix of t.indexes.filter((x) => !x.primary)) {
       const supportsFk = draft.foreignKeys.some((f) => cols(f.columns) === cols(ix.columns.slice(0, f.columns.length)))

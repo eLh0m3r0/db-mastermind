@@ -102,15 +102,16 @@ function stripLeadingComments(sql: string): string {
  * aside (`special`) and added to the table as they are written.
  */
 function extractInlineIndexes(statement: string, special?: Map<string, IndexInfo[]>): string[] {
-  const m = new RegExp(`^\\s*CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(${NAME})\\s*\\(`, 'i').exec(statement)
+  const m = CREATE_TABLE.exec(statement)
   if (!m) return [statement]
   const indexes: string[] = []
-  const lines = statement.split('\n')
+  const { start, end } = tableBody(statement, m)
+  // The table's parts at the top level, so a key written on the same line as other parts is found too.
   const kept: string[] = []
-  for (const line of lines) {
-    const ix = /^\s*(UNIQUE\s+|FULLTEXT\s+|SPATIAL\s+)?(?:KEY|INDEX)(?:\s+("[^"]+"|[\w$]+))?\s*(\([^)]*\))\s*,?\s*$/i.exec(line)
+  for (const part of topLevel(statement.slice(start, end))) {
+    const ix = /^(UNIQUE\s+|FULLTEXT\s+|SPATIAL\s+)?(?:KEY|INDEX)(?:\s+("[^"]+"|[\w$]+))?\s*(\([\s\S]*\))(?:\s+(?:USING\s+\w+|COMMENT\s+'(?:[^']|'')*'|INVISIBLE|VISIBLE))*$/i.exec(part)
     if (!ix) {
-      kept.push(line)
+      kept.push(part)
       continue
     }
     const columns = names(ix[3]!.slice(1, -1).replace(/\(\d+\)/g, ''))
@@ -125,9 +126,8 @@ function extractInlineIndexes(statement: string, special?: Map<string, IndexInfo
     const cols = ix[3]!.replace(/\(\d+\)/g, '')
     indexes.push(`CREATE ${kind === 'UNIQUE' ? 'UNIQUE ' : ''}INDEX "${name}" ON ${m[1]} ${cols}`)
   }
-  // Removing lines can leave a dangling comma before the closing parenthesis.
-  const body = kept.join('\n').replace(/,(\s*\n\s*\))/, '$1')
-  return [body, ...indexes]
+  if (kept.length === topLevel(statement.slice(start, end)).length) return [statement]
+  return [`${statement.slice(0, start)}\n  ${kept.join(',\n  ')}\n${statement.slice(end)}`, ...indexes]
 }
 
 /**
@@ -264,11 +264,14 @@ function declaredColumn(definition: string): (DeclaredColumn & { name: string })
       .replace(/\s*\(\s*/g, '(')
       .replace(/\s*,\s*/g, ',')
       .replace(/\s*\)/g, ')')
-      .replace(/\b(unsigned|zerofill)\b/gi, '')
       .toLowerCase(),
   ).trim()
-  // Display widths of MySQL integers say nothing about the type (tinyint(1) is how MySQL spells a flag).
-  type = type.replace(/\b(smallint|mediumint|int|integer|bigint)\(\d+\)/g, '$1')
+  // Display widths of MySQL integers say nothing about the type (tinyint(1) is how MySQL spells a flag). UNSIGNED
+  // and ZEROFILL do, and MySQL reports them (COLUMN_TYPE `smallint unsigned`): kept, as a live database has them.
+  type = type
+    .replace(/\b(smallint|mediumint|int|integer|bigint)\(\d+\)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
   const after = rest.slice(end)
   // Keywords count outside literals only (a comment may well say "identity").
   let identity = /\bIDENTITY\b|\bAUTO_?INCREMENT\b|\bGENERATED\s+(ALWAYS|BY\s+DEFAULT)\s+AS\s+IDENTITY\b/i.test(after.replace(/'(?:[^']|'')*'/g, "''"))
