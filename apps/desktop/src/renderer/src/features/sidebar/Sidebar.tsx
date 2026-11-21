@@ -437,10 +437,31 @@ export async function openImportMenu(anchor: HTMLElement) {
     ...(found.length
       ? found.map((s) => ({ label: t('From {app} ({n})', { app: s.label, n: s.count }), icon: <Download size={13} />, onClick: () => void importFrom(s.id, s.label) }))
       : [{ label: t('No other database tools found on this computer'), disabled: true }]),
-    { label: t('From a file… (export of DB Mastermind, pgAdmin, DataGrip, Workbench, SSMS…)'), onClick: () => void importFrom('file') },
+    { label: t('From a file… (.env, docker-compose, export of DB Mastermind, pgAdmin, DataGrip, Workbench, SSMS…)'), onClick: () => void importFrom('file') },
+    { label: t('From a project folder… (.env, docker-compose, Prisma)'), onClick: () => void importFromProject() },
     'separator',
     { label: t('Share all connections (without passwords)…'), icon: <Share2 size={13} />, onClick: () => void shareConnections() },
   ])
+}
+
+/**
+ * The connections a project describes (a folder, a .env or a docker-compose file): with their passwords, which the
+ * files hold. Nothing is connected until the connection is opened.
+ */
+export async function importFromProject(path?: string) {
+  try {
+    const r = await api.importProjectConnections(path)
+    if (!r) return
+    await useConnections.getState().load()
+    if (!r.found) return toast({ kind: 'info', message: t('No connections found in {project}', { project: r.project }), detail: t('A project describes them in .env files (DATABASE_URL, DB_HOST…), docker-compose files (database services with a published port) or prisma/schema.prisma.') })
+    toast({
+      kind: 'success',
+      message: r.added ? tp(r.added, { one: 'Imported {n} connection from {project}', many: 'Imported {n} connections from {project}' }, { project: r.project }) : t('The connections of {project} are already here', { project: r.project }),
+      detail: r.passwords ? tp(r.passwords, { one: 'Added the saved password to {n} connection', many: 'Added saved passwords to {n} connections' }) : t('Passwords are saved encrypted. Nothing is connected until you open a connection.'),
+    })
+  } catch (err) {
+    toast({ kind: 'error', message: t('Import failed'), detail: errorMessage(err) })
+  }
 }
 
 export async function importFrom(source: ImportSourceId | 'file', label?: string) {

@@ -98,6 +98,9 @@ export function openFile(path: string): void {
 
 export const SQL_FILE = /\.sql$/i
 
+/** A project's own description of its connections: a .env file or a docker-compose file. */
+export const PROJECT_FILE = /^\.env(\.[\w.-]+)?$|^(docker-)?compose(\.[\w-]+)?\.ya?ml$/i
+
 const waitingSqlFiles = new Set<string>()
 let stopWaiting: (() => void) | undefined
 let waitingToast: number | undefined

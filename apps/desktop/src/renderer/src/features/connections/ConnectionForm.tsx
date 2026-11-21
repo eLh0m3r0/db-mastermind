@@ -1,7 +1,7 @@
 import { showConnectionProposals } from '@/lib/proposals'
 import { useEffect, useRef, useState } from 'react'
 import { Building2, CheckCircle2, ClipboardPaste, FolderOpen, XCircle } from 'lucide-react'
-import { isFileDriver, supportsManualCommit, type ConnectionConfig, type DriverId, type Environment, type SslMode } from '@dbmastermind/core/browser'
+import { detectService, isFileDriver, supportsManualCommit, type ConnectionConfig, type DriverId, type Environment, type SslMode } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
 import { Checkbox, Field, Input, Segmented, Select, Textarea } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -10,7 +10,7 @@ import { cn, errorMessage } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useWorkspace } from '@/store/workspace'
 import { toast, useUi } from '@/store/ui'
-import { DriverIcon, DRIVERS } from './drivers'
+import { DriverIcon, driverLabel, DRIVERS } from './drivers'
 import { useSettings } from '@/store/settings'
 import { AiPermissionControls, aiDefaultsOf } from '../ai/AiPermissions'
 import { KnowledgeLocationBar, useKnowledgeLocation } from '../knowledge/KnowledgeLocation'
@@ -117,7 +117,10 @@ export function ConnectionForm() {
     if (!text.trim()) return
     try {
       const parsed = await api.parseConnectionString(text)
-      setConfig((c) => ({ ...c, ...parsed, name: c.name }))
+      // A known service (Supabase, Neon, RDS…) takes TLS only: a URL that says nothing about it gets require, and an
+      // empty name is the service's.
+      const service = detectService(parsed.host, parsed.driver, parsed.port)
+      setConfig((c) => ({ ...c, ...parsed, ...(service && !parsed.ssl ? { ssl: { mode: service.tls } } : {}), name: c.name || service?.name || '' }))
       setTest({ state: 'idle' })
       setUrlText('')
       toast({ kind: 'success', message: t('Connection details filled in from the URL') })
@@ -168,6 +171,7 @@ export function ConnectionForm() {
   }
 
   const isFile = isFileDriver(config.driver)
+  const service = isFile ? undefined : detectService(config.host, config.driver, config.port)
   const isDuck = config.driver === 'duckdb'
   const isBigQuery = config.driver === 'bigquery'
   const windowsAuth = config.driver === 'mssql' && config.options?.authentication === 'windows'
@@ -276,7 +280,7 @@ export function ConnectionForm() {
                   <div className="flex gap-2">
                     <Input
                       className="flex-1 font-mono text-[12px]"
-                      placeholder={t('Paste a connection URL (postgres://…, JDBC, ADO.NET)')}
+                      placeholder={t('Paste a connection URL (postgres://…, JDBC, ADO.NET; Supabase, Neon, Amazon RDS, Azure…)')}
                       value={urlText}
                       onChange={(e) => setUrlText(e.target.value)}
                       onPaste={(e) => {
@@ -373,7 +377,7 @@ export function ConnectionForm() {
                   <>
                     <div className="flex gap-2">
                       <Field label={t('Host')} className="flex-1">
-                        <Input value={config.host ?? ''} onChange={(e) => set({ host: e.target.value })} placeholder="localhost" />
+                        <Input value={config.host ?? ''} onChange={(e) => set({ host: e.target.value })} onBlur={() => !config.name.trim() && service && set({ name: service.name })} placeholder="localhost" />
                       </Field>
                       <Field label={t('Port')} className="w-24">
                         <Input
@@ -384,6 +388,13 @@ export function ConnectionForm() {
                         />
                       </Field>
                     </div>
+                    {service && (
+                      // Which service the host is, quietly: the service's own name and the engine it runs.
+                      <div className="-mt-1.5 text-[12px] text-fg-muted" data-testid="connection-service">
+                        {service.name} ({driverLabel(config.driver)})
+                        {service.note && <div className="mt-0.5 text-warning">{t(service.note)}</div>}
+                      </div>
+                    )}
                     {config.driver === 'mssql' && (
                       <Field label={t('Authentication')}>
                         <Segmented

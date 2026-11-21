@@ -64,7 +64,7 @@ import { cancelChat, respondApproval, startChat } from './ai/assistant'
 import { completeText, extractJson } from './ai/complete'
 import { listModels, testProvider } from './ai/models'
 import { deleteChat, deleteChatsOf, getChat, listChats, renameChat, saveChat } from './ai/chat-store'
-import { detectImportSources, exportConnections, importConnections } from './importers'
+import { detectImportSources, exportConnections, importConnections, importProjectConnections } from './importers'
 import { backupDatabase, restoreDatabase } from './backup'
 import { archiveModelVersion, exportDezignModel, listModelVersions, openDezignModel, openModelVersion, saveDezignModel } from './dezign-file'
 import { takeOpenedFiles } from './opened-files'
@@ -398,6 +398,7 @@ export const api: MastermindApi = {
   async importConnections(source) {
     return importConnections(source)
   },
+  importProjectConnections: (path) => importProjectConnections(path),
   async detectImportSources() {
     return detectImportSources()
   },

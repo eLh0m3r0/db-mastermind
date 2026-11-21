@@ -12,7 +12,7 @@ import { ContextMenuHost } from '@/components/ui/ContextMenu'
 import { Splitter } from '@/components/ui/Splitter'
 import { Toasts } from '@/components/ui/Toasts'
 import { bridge } from '@/lib/api'
-import { MODEL_FILE, modelConnection, openFile, openModel, openSqlFile, QUERYABLE_FILE, SQL_FILE } from '@/lib/files'
+import { MODEL_FILE, modelConnection, openFile, openModel, openSqlFile, PROJECT_FILE, QUERYABLE_FILE, SQL_FILE } from '@/lib/files'
 import { onCommand, runCommand } from '@/lib/commands'
 import { t } from '@/lib/i18n'
 import { installKeymap } from '@/lib/keymap'
@@ -39,7 +39,7 @@ import { HomeScreen } from './features/shell/HomeScreen'
 import { StatusBar } from './features/shell/StatusBar'
 import { TabBar } from './features/shell/TabBar'
 import { setSidebarShown, toggleSidebar, useSidebarShown } from './features/shell/sidebar-shown'
-import { Sidebar, useCurrentConnectionId } from './features/sidebar/Sidebar'
+import { Sidebar, useCurrentConnectionId, importFromProject } from './features/sidebar/Sidebar'
 import { StructureView } from './features/structure/StructureView'
 import { TableView } from './features/table/TableView'
 
@@ -168,9 +168,15 @@ function useFileDrop() {
       // Never let Electron navigate to the dropped file, nor the editor paste its contents.
       e.preventDefault()
       e.stopPropagation()
-      const file = [...(e.dataTransfer?.files ?? [])].find((f) => SQL_FILE.test(f.name) || MODEL_FILE.test(f.name) || QUERYABLE_FILE.test(f.name))
+      // A project (a folder, its .env or docker-compose file) brings its connections.
+      const items = [...(e.dataTransfer?.items ?? [])]
+      const files = [...(e.dataTransfer?.files ?? [])]
+      const project = files.find((f, i) => PROJECT_FILE.test(f.name) || !!items[i]?.webkitGetAsEntry()?.isDirectory)
+      // (A file the system can't name, such as one dragged out of a browser, is no project.)
+      if (project && bridge.pathForFile(project)) return void importFromProject(bridge.pathForFile(project))
+      const file = files.find((f) => SQL_FILE.test(f.name) || MODEL_FILE.test(f.name) || QUERYABLE_FILE.test(f.name))
       if (file) openFile(bridge.pathForFile(file))
-      else toast({ kind: 'info', message: t('Drop a SQL script or a model (DBML, DeZign, MySQL Workbench, drawDB, Mermaid, Prisma) to open it, or a CSV, Parquet, JSON or Excel file to query it with SQL') })
+      else toast({ kind: 'info', message: t('Drop a SQL script or a model (DBML, DeZign, MySQL Workbench, drawDB, Mermaid, Prisma) to open it, a CSV, Parquet, JSON or Excel file to query it with SQL, or a project folder, .env or docker-compose file to import its connections') })
     }
     window.addEventListener('dragover', onDragOver)
     window.addEventListener('drop', onDrop, true)

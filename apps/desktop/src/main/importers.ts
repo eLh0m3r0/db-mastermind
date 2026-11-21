@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process'
 import { createDecipheriv, createHash, createHmac, timingSafeEqual } from 'node:crypto'
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { BrowserWindow, dialog } from 'electron'
 import {
@@ -13,7 +13,10 @@ import {
   parseDbVisualizer,
   parseHeidiPortable,
   parseMySqlWorkbench,
+  COMPOSE_FILE,
   parsePgAdminServersJson,
+  PROJECT_ENV_FILE,
+  projectConnections,
   parsePgpass,
   parsePlist,
   parseRegQuery,
@@ -242,12 +245,75 @@ function readDbeaver(): Imported[] {
  */
 async function readFileExport(): Promise<Imported[]> {
   const window = BrowserWindow.getFocusedWindow()
-  const options = { title: 'Import connections', properties: ['openFile' as const], filters: [{ name: 'Connections', extensions: ['json', 'xml', 'txt', 'plist'] }] }
+  // (.env files are hidden ones: the dialog shows them.)
+  const options = {
+    title: 'Import connections',
+    properties: ['openFile' as const, 'showHiddenFiles' as const],
+    filters: [
+      { name: 'Connections, .env and docker-compose files', extensions: ['json', 'xml', 'txt', 'plist', 'env', 'yml', 'yaml', 'local', 'development', 'production'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+  }
   const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
   const file = r.filePaths[0]
   if (r.canceled || !file) return []
+  if (isProjectFile(file)) return readProject(file)
   const text = readPlistFile(file) ?? readFileSync(file, 'utf8')
   return parseAnyConnectionFile(text, file)
+}
+
+/** A project's own file that describes connections: a .env file or a docker-compose file. */
+export const isProjectFile = (path: string) => PROJECT_ENV_FILE.test(basename(path)) || COMPOSE_FILE.test(basename(path))
+/** Larger files are not a project's .env or compose file. */
+const PROJECT_FILE_LIMIT = 1024 * 1024
+
+function readSmall(path: string): string | undefined {
+  try {
+    const size = statSync(path).size
+    if (size > PROJECT_FILE_LIMIT) throw new Error(`${basename(path)} is larger than 1 MB: not a project's settings file`)
+    return readFileSync(path, 'utf8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw err
+  }
+}
+
+/**
+ * Connections of a project: a folder (its top-level .env files, compose files and prisma/schema.prisma), a .env
+ * file, or a compose file with the .env beside it. Nothing else is read.
+ */
+export function readProject(path: string): Imported[] {
+  const folder = statSync(path).isDirectory()
+  const dir = folder ? path : dirname(path)
+  const files: Record<string, string> = {}
+  const add = (name: string) => {
+    const text = readSmall(join(dir, name))
+    if (text !== undefined) files[name] = text
+  }
+  if (folder) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) if (entry.isFile() && isProjectFile(entry.name)) add(entry.name)
+    add(join('prisma', 'schema.prisma'))
+    if (files[join('prisma', 'schema.prisma')] !== undefined) files['prisma/schema.prisma'] = files[join('prisma', 'schema.prisma')]!
+  } else {
+    add(basename(path))
+    // Compose reads the .env beside it for ${VAR}.
+    if (COMPOSE_FILE.test(basename(path))) add('.env')
+  }
+  return projectConnections(files, basename(dir), { folder })
+}
+
+/** Adds what a project describes (see readProject), like any other import. */
+export async function importProjectConnections(path?: string): Promise<{ added: number; passwords: number; found: number; project: string } | null> {
+  if (!path) {
+    const window = BrowserWindow.getFocusedWindow()
+    const options = { title: 'Import connections from a project folder', properties: ['openDirectory' as const] }
+    const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
+    if (r.canceled || !r.filePaths[0]) return null
+    path = r.filePaths[0]
+  }
+  if (!statSync(path).isDirectory() && !isProjectFile(path)) throw new Error('Not a project folder, .env file or docker-compose file')
+  const items = readProject(path)
+  return { ...addImported(items), found: items.length, project: basename(statSync(path).isDirectory() ? path : dirname(path)) }
 }
 
 function parseAnyConnectionFile(text: string, file: string): Imported[] {
@@ -458,7 +524,10 @@ export async function exportConnections(ids?: string[]): Promise<string | null> 
  */
 export async function importConnections(source: ImportSourceId | 'file'): Promise<{ added: number; passwords: number }> {
   const reader = IMPORT_SOURCES.find((x) => x.id === source)
-  const items = source === 'file' ? await readFileExport() : reader ? await reader.read() : []
+  return addImported(source === 'file' ? await readFileExport() : reader ? await reader.read() : [])
+}
+
+function addImported(items: Imported[]): { added: number; passwords: number } {
   const existing = listConnections()
   let added = 0
   let passwords = 0

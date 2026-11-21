@@ -1966,4 +1966,19 @@ export const cs: Record<string, string> = {
   'list fields (kept as text): {n}': 'pole se seznamem (ponechána jako text): {n}',
   'composite types (columns keep their name): {n}': 'složené typy (sloupce si ponechají jejich název): {n}',
   'The file itself is not changed: Save makes a .dbml model.': 'Samotný soubor se nemění: Uložit z něj udělá model .dbml.',
+  'Paste a connection URL (postgres://…, JDBC, ADO.NET; Supabase, Neon, Amazon RDS, Azure…)': 'Vložte URL připojení (postgres://…, JDBC, ADO.NET; Supabase, Neon, Amazon RDS, Azure…)',
+  "Port 6543 is Supabase's transaction pooler: session settings (default schema, statement timeout, read-only) and transactions across statements don't carry over. Port 5432 keeps the session.":
+    'Port 6543 je transakční pooler Supabase: nastavení relace (výchozí schéma, časový limit příkazu, jen pro čtení) ani transakce přes více příkazů se nezachovají. Port 5432 relaci drží.',
+  'From a file… (.env, docker-compose, export of DB Mastermind, pgAdmin, DataGrip, Workbench, SSMS…)': 'Ze souboru… (.env, docker-compose, export z DB Mastermind, pgAdmin, DataGrip, Workbench, SSMS…)',
+  'From a project folder… (.env, docker-compose, Prisma)': 'Ze složky projektu… (.env, docker-compose, Prisma)',
+  'No connections found in {project}': 'V {project} nejsou žádná připojení',
+  'A project describes them in .env files (DATABASE_URL, DB_HOST…), docker-compose files (database services with a published port) or prisma/schema.prisma.':
+    'Projekt je popisuje v souborech .env (DATABASE_URL, DB_HOST…), v souborech docker-compose (databázové služby se zveřejněným portem) nebo v prisma/schema.prisma.',
+  'Imported {n} connection from {project}': 'Z {project} importováno {n} připojení',
+  'Imported {n} connections from {project}': 'Z {project} importováno {n} připojení',
+  'Imported {n} connections from {project}|few': 'Z {project} importována {n} připojení',
+  'The connections of {project} are already here': 'Připojení z {project} už tu jsou',
+  'Passwords are saved encrypted. Nothing is connected until you open a connection.': 'Hesla se ukládají šifrovaně. Nic se nepřipojí, dokud připojení neotevřete.',
+  'Drop a SQL script or a model (DBML, DeZign, MySQL Workbench, drawDB, Mermaid, Prisma) to open it, a CSV, Parquet, JSON or Excel file to query it with SQL, or a project folder, .env or docker-compose file to import its connections':
+    'Přetáhněte SQL skript nebo model (DBML, DeZign, MySQL Workbench, drawDB, Mermaid, Prisma) a otevře se, soubor CSV, Parquet, JSON či Excel a můžete se na něj ptát v SQL, nebo složku projektu, soubor .env či docker-compose a naimportují se jeho připojení',
 }

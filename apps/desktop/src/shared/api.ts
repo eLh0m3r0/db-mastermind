@@ -703,6 +703,12 @@ export interface MastermindApi {
   addToMcpClient(id: McpClientId): Promise<{ path: string; via: 'cli' | 'file'; backup: boolean }>
   /** New connections added, and existing ones that got a missing password from the import. */
   importConnections(source: ImportSourceId | 'file'): Promise<{ added: number; passwords: number }>
+  /**
+   * Imports the connections a project describes: a folder (its .env files, docker-compose files and
+   * prisma/schema.prisma, top level only), a .env file or a compose file (asks for a folder without `path`).
+   * Null when cancelled.
+   */
+  importProjectConnections(path?: string): Promise<{ added: number; passwords: number; found: number; project: string } | null>
   /** Database tools on this computer with saved connections to import, and how many each has. */
   detectImportSources(): Promise<{ id: ImportSourceId; label: string; count: number }[]>
   /** Writes connections without passwords or keys to a JSON file for colleagues; all when `ids` is empty. */
@@ -926,6 +932,7 @@ export const API_METHODS = [
   'isConnected',
   'parseConnectionString',
   'importConnections',
+  'importProjectConnections',
   'detectImportSources',
   'exportHistory',
   'mcpHttpStatus',
