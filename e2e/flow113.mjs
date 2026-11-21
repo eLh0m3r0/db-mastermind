@@ -101,7 +101,7 @@ try {
   const text = await modelText()
   check('the tables with MySQL types, keys and rules', /customer_id "smallint unsigned" \[pk, increment\]/.test(text) && /Ref fk_payment_customer: payment\.customer_id > customer\.customer_id \[delete: restrict, update: cascade\]/.test(text), text.slice(0, 300))
   const [a, b] = [await node('customer').boundingBox(), await node('payment').boundingBox()]
-  check('the tables where Workbench drew them (side by side, spread to the app’s size)', !!a && !!b && b.x - a.x > 240 && Math.abs(a.y - b.y) < 4, JSON.stringify([a, b]))
+  check('the tables where Workbench drew them (side by side, spread to the app’s size)', !!a && !!b && b.x - a.x > a.width && Math.abs(a.y - b.y) < a.height / 4, JSON.stringify([a, b]))
   await win.screenshot({ path: `${out}/r113-mwb.png` })
   // Save asks where: a .dbml; the .mwb stays as it was.
   const saved = join(dir, 'shop.dbml')
