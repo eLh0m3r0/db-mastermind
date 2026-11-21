@@ -304,3 +304,22 @@ describe('DBML as dbdiagram.io users write it (wave 2, checked against @dbml/cor
     expect(m.errors).toEqual([{ line: 7, message: 'Many-to-many relationships are not in the model: a.id <> b.id' }])
   })
 })
+
+describe('an unclosed bracket (review M5)', () => {
+  it('is an error on its line and the rest of the model is read', () => {
+    const m = parseDbml('Table a {\n  id int [pk\n  name text\n}\n\nTable b {\n  id int [pk]\n}\nRef: a.id > b.id\n')
+    expect(m.errors).toEqual([{ line: 2, message: "Can't read column: id int [pk" }])
+    expect(m.tables.map((t) => [t.name, t.columns.map((c) => c.name)])).toEqual([
+      ['a', ['name']],
+      ['b', ['id']],
+    ])
+    expect(m.tables[0]!.foreignKeys).toHaveLength(1)
+  })
+
+  it('80,000 lines after an unclosed bracket are read in a moment', () => {
+    const start = performance.now()
+    const m = parseDbml(`Table a {\n${Array.from({ length: 80_000 }, (_, i) => `  c${i} int [`).join('\n')}\n}\n`)
+    expect(performance.now() - start).toBeLessThan(2000)
+    expect(m.errors.length).toBe(80_000)
+  })
+})
