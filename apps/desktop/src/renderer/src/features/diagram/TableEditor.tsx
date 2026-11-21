@@ -63,6 +63,7 @@ export function TableEditor({
   labels = [],
   className,
   headerExtra,
+  focusName,
 }: {
   table: DesignTable
   driver: DriverId
@@ -86,6 +87,8 @@ export function TableEditor({
   className?: string
   /** Buttons for the panel's header (pin). */
   headerExtra?: React.ReactNode
+  /** Start in the name field with the name selected (the model's first table: typing names it). */
+  focusName?: boolean
 }) {
   const tr = useT()
   // Foreign keys can only point at tables, not views.
@@ -94,8 +97,10 @@ export function TableEditor({
   const nameInput = useRef<HTMLInputElement>(null)
   const isNew = !table.originalName
   useEffect(() => {
-    if (isNew) nameInput.current?.select()
-  }, [table.id, isNew])
+    if (!isNew && !focusName) return
+    nameInput.current?.focus()
+    nameInput.current?.select()
+  }, [table.id, isNew, focusName])
   // One column shows its details at a time (the one being worked on); the others stay one line each.
   // (By its place: a table not drafted yet gets new column ids each time it is drawn.)
   const [openColumn, setOpenColumn] = useState<number>()
