@@ -103,3 +103,20 @@ describe('hostile models through every generator (seeded fuzz)', () => {
     expect(failures.slice(0, 10)).toEqual([])
   })
 })
+
+describe('referential actions that are none (review N6)', () => {
+  it('are left out with a comment in every generator, never written as code', () => {
+    const col = (name: string, extra: Partial<TableInfo['columns'][number]> = {}) => ({ name, ordinal: 1, dataType: 'integer', nullable: false, defaultValue: null, isPrimaryKey: false, isIdentity: false, comment: null, ...extra })
+    const tables: TableInfo[] = [
+      { name: 'p', type: 'table', comment: null, columns: [col('id', { isPrimaryKey: true })], primaryKey: ['id'], foreignKeys: [], indexes: [{ name: 'p_pkey', columns: ['id'], unique: true, primary: true }] },
+      { name: 'c', type: 'table', comment: null, columns: [col('id', { isPrimaryKey: true }), col('pid'), col('qid')], primaryKey: ['id'], foreignKeys: [{ name: 'c_pid_fkey', columns: ['pid'], refTable: 'p', refColumns: ['id'], onDelete: "CASCADE'),console.log('pwned_action'),('" }, { name: 'c_q', columns: ['qid', 'pid'], refTable: 'p', refColumns: ['id', 'id'], onUpdate: 'SET NULL") ; __import__("os").system("x") ; ("' }], indexes: [{ name: 'c_pkey', columns: ['id'], unique: true, primary: true }] },
+    ]
+    for (const format of ['prisma', 'drizzle', 'sqlalchemy'] as const) {
+      const code = exportCode(format, tables, { database: 'postgres' })
+      const shape = format === 'prisma' ? prismaShape(code, 2) : format === 'drizzle' ? typescriptShape(code) : pythonShape(code)
+      expect(shape, format).toEqual([])
+      expect(code, format).toMatch(/is left out: .* is not a referential action/)
+      expect(code, format).not.toMatch(/onDelete: 'cascade'\),console|ondelete="CASCADE'\)/)
+    }
+  })
+})

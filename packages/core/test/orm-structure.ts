@@ -8,6 +8,12 @@
 /** Characters generated code must never hold raw: everything but `\n` that a language may read as a line end or hide. */
 export const RAW_UNSAFE = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]/
 
+/**
+ * What hostile model text says when it runs: if any of it is in the code outside strings and comments, at any depth
+ * (inside a call's arguments too), model text broke out of the string or comment it was written into.
+ */
+const BREAKOUT = /console\s*\.\s*\w+\s*\(|process\s*\.\s*\w+\s*\(|__import__\s*\(|\.\s*system\s*\(|\beval\s*\(|\brequire\s*\(|\bexec\s*\(/
+
 interface Line {
   text: string
   /** Bracket depth and whether the line starts inside a string or comment. */
@@ -16,8 +22,10 @@ interface Line {
 }
 
 /** Lines with the state each starts in. `quotes`: string delimiters; `comment`: line comment opener; `block`: block comment. */
-function scan(code: string, options: { quotes: string[]; triple?: boolean; comment: string; block?: [string, string] }): Line[] {
-  const out: Line[] = []
+function scan(code: string, options: { quotes: string[]; triple?: boolean; comment: string; block?: [string, string] }): Line[] & { code?: string } {
+  const out: Line[] & { code?: string } = []
+  // The code outside strings and comments, for BREAKOUT.
+  let bare = ''
   let depth = 0
   let inString: string | null = null
   let inBlock = false
@@ -74,8 +82,10 @@ function scan(code: string, options: { quotes: string[]; triple?: boolean; comme
     }
     if ('([{'.includes(ch)) depth++
     else if (')]}'.includes(ch)) depth--
+    bare += ch
     i++
   }
+  out.code = bare
   if (inString || inBlock) throw new Error('the file ends inside a string or comment')
   if (depth !== 0) throw new Error(`brackets don't balance (${depth})`)
   return out
@@ -85,6 +95,7 @@ function scan(code: string, options: { quotes: string[]; triple?: boolean; comme
 export function prismaShape(code: string, tables: number): string[] {
   const problems: string[] = []
   const lines = scan(code, { quotes: ['"'], comment: '//' })
+  if (BREAKOUT.test(lines.code ?? '')) problems.push(`model text in code: ${BREAKOUT.exec(lines.code!)![0]}`)
   const blocks: string[] = []
   for (const l of lines) {
     const t = l.text.trim()
@@ -105,7 +116,9 @@ export function prismaShape(code: string, tables: number): string[] {
 /** Problems with a TypeScript file's shape: a top-level line that isn't an import, an export or a const. */
 export function typescriptShape(code: string): string[] {
   const problems: string[] = []
-  for (const l of scan(code, { quotes: ["'", '"', '`'], comment: '//', block: ['/*', '*/'] })) {
+  const lines = scan(code, { quotes: ["'", '"', '`'], comment: '//', block: ['/*', '*/'] })
+  if (BREAKOUT.test(lines.code ?? '')) problems.push(`model text in code: ${BREAKOUT.exec(lines.code!)![0]}`)
+  for (const l of lines) {
     const t = l.text.trim()
     if (l.inside || !t || l.depth !== 0) continue
     if (!/^(import |export |const |\/\/|\/\*\*|\}|\]\)|\);?$)/.test(t)) problems.push(`top level: ${t.slice(0, 80)}`)
@@ -116,7 +129,9 @@ export function typescriptShape(code: string): string[] {
 /** Problems with a Python module's shape: top-level lines other than imports, classes and tables; class lines other than ours. */
 export function pythonShape(code: string): string[] {
   const problems: string[] = []
-  for (const l of scan(code, { quotes: ['"', "'"], triple: true, comment: '#' })) {
+  const lines = scan(code, { quotes: ['"', "'"], triple: true, comment: '#' })
+  if (BREAKOUT.test(lines.code ?? '')) problems.push(`model text in code: ${BREAKOUT.exec(lines.code!)![0]}`)
+  for (const l of lines) {
     const t = l.text.trim()
     if (l.inside || !t || l.depth !== 0) continue
     const indent = l.text.length - l.text.trimStart().length
