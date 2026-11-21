@@ -317,6 +317,24 @@ jobs:
           sudo rm /etc/apparmor.d/db-mastermind
           sudo chmod 0755 "/opt/DB Mastermind/chrome-sandbox"
           xvfb-run -a node e2e/linux-sandbox.mjs "/opt/DB Mastermind/db-mastermind" refused
+      # Temporary: why the SUID helper's zygote exits with 127 when AppArmor restricts user namespaces (run 44942181815).
+      - name: Diagnose the SUID helper
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          AP=$(command -v apparmor_parser || echo /usr/sbin/apparmor_parser)
+          sudo chmod -x "$AP"
+          sudo apt-get install -y -qq --reinstall ./apps/desktop/release/DB-Mastermind-*-linux-amd64.deb >/dev/null
+          sudo chmod +x "$AP"
+          ls -l "/opt/DB Mastermind/chrome-sandbox"; findmnt -T /opt -o TARGET,OPTIONS
+          for r in 1 0; do
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=$r
+            sudo dmesg -C
+            timeout 25 xvfb-run -a "/opt/DB Mastermind/db-mastermind" --enable-logging=stderr --v=1 > "$RUNNER_TEMP/suid-$r.log" 2>&1; echo "exit $?"
+            grep -v -i -E "dbus|fontconfig|gles|gpu_init" "$RUNNER_TEMP/suid-$r.log" | head -80
+            sudo dmesg | grep -i -E "apparmor|denied|audit" | tail -20
+          done
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
       - name: .deb reinstalled where its profile can't load (SUID helper, sandboxed)
         if: ${{ !cancelled() }}
         run: |
@@ -361,8 +379,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      # As release.yml packs it: no install scripts (esbuild needs none, nothing runs Electron).
-      - run: npm ci --ignore-scripts --no-audit --no-fund
+      # As release.yml packs it: no install scripts (esbuild needs none, nothing runs Electron). Not `npm ci`: the lock
+      # file lacks esbuild's other-platform packages, which npm ci refuses (CI run 44942181815).
+      - run: npm install --ignore-scripts --no-audit --no-fund
       - name: npm pack (prepack builds dist/)
         run: mkdir -p "$RUNNER_TEMP/pack" && npm pack -w packages/mcp --pack-destination "$RUNNER_TEMP/pack"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

@@ -313,8 +313,9 @@ jobs:
           echo "npm=$npm" >> "$GITHUB_OUTPUT"; echo "registry=$registry" >> "$GITHUB_OUTPUT"
           if [ $npm = done ] && [ $registry = done ]; then echo "publish=no" >> "$GITHUB_OUTPUT"; else echo "publish=yes" >> "$GITHUB_OUTPUT"; fi
       # No install scripts: the build is esbuild (its binary comes as an optional dependency, no script needed) and
-      # nothing here starts Electron.
-      - run: npm ci --ignore-scripts --no-audit --no-fund
+      # nothing here starts Electron. Not `npm ci`: the lock file lacks esbuild's other-platform packages, which
+      # npm ci refuses (CI run 44942181815).
+      - run: npm install --ignore-scripts --no-audit --no-fund
       - name: Pack (prepack bundles dist/)
         run: |
           mkdir -p "$RUNNER_TEMP/pack"
