@@ -18,7 +18,8 @@ async function openDemo(t: (key: string) => string) {
   try {
     const id = await api.createSampleDatabase()
     await useConnections.getState().load()
-    await connectAndSelect(id)
+    // A stranger's first look at the demo is its data (orders, with links to customers), not an empty editor.
+    await connectAndSelect(id, { kind: 'table', connectionId: id, table: { name: 'orders' }, title: 'orders' })
   } catch (err) {
     toast({ kind: 'error', message: t('Could not create the sample database'), detail: errorMessage(err) })
   }

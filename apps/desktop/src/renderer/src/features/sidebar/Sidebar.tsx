@@ -22,6 +22,7 @@ import {
   HardDriveDownload,
   HardDriveUpload,
   Download,
+  DatabasePlus,
 } from 'lucide-react'
 import { supportsOtherDatabases, isFileDriver } from '@dbmastermind/core/browser'
 import type { ImportSourceId, StoredConnection } from '@shared/api'
@@ -36,7 +37,7 @@ import { cn, errorMessage, formatBytes, fuzzyScore } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { dismissToast, toast, useUi } from '@/store/ui'
-import { useActiveTab, useWorkspace } from '@/store/workspace'
+import { useActiveTab, useWorkspace, type NewTab } from '@/store/workspace'
 import { connectionDetail, DriverIcon, driverLabel } from '../connections/drivers'
 import { HistoryPanel, SavedQueriesPanel } from './LibraryPanels'
 import { SchemaTree } from './SchemaTree'
@@ -50,7 +51,8 @@ export function useCurrentConnectionId(): string | undefined {
   return tab?.connectionId || selected
 }
 
-export async function connectAndSelect(id: string): Promise<boolean> {
+/** `firstTab`: what to open when the connection has no tab yet (default: an empty query). */
+export async function connectAndSelect(id: string, firstTab?: NewTab): Promise<boolean> {
   const ok = await useConnections.getState().connect(id)
   if (ok) {
     useUi.getState().set({ selectedConnectionId: id })
@@ -58,6 +60,7 @@ export async function connectAndSelect(id: string): Promise<boolean> {
     // Jump to an existing tab of this connection, or start with a query tab.
     const existing = ws.tabs.find((t) => t.connectionId === id)
     if (existing) ws.activate(existing.id)
+    else if (firstTab) ws.open(firstTab)
     else ws.newQuery(id)
   } else if (useConnections.getState().runtime[id]?.status === 'error') {
     const c = useConnections.getState().get(id)
@@ -190,14 +193,15 @@ export function Sidebar() {
         {!isMac && <span className="text-[12px] font-semibold tracking-tight text-fg-muted">DB Mastermind</span>}
         <div className="flex-1" />
         <div className="no-drag flex items-center">
-          <IconButton label={t('All connections')} onClick={() => {
+          <IconButton label={t('Home (all connections)')} onClick={() => {
               useUi.getState().set({ selectedConnectionId: undefined })
               useWorkspace.getState().activate('')
             }}>
             <Home size={14} />
           </IconButton>
-          <IconButton label={t('New connection')} onClick={() => useUi.getState().set({ modal: { kind: 'connection' } })}>
-            <Plus size={15} />
+          {/* Not a bare "+": the tab strip's "+" next to it makes a query tab. */}
+          <IconButton label={`${t('New connection')} (${keys('⇧⌘N')})`} onClick={() => useUi.getState().set({ modal: { kind: 'connection' } })} data-testid="sidebar-new-connection">
+            <DatabasePlus size={14} />
           </IconButton>
           <IconButton label={`${t('Hide sidebar')} (${keys('⌘B')})`} onClick={() => setSidebarShown(false)} data-testid="sidebar-hide">
             <PanelLeftClose size={14} />
@@ -331,6 +335,7 @@ function ConnectionHeader({ connection }: { connection: StoredConnection }) {
 
 function ConnectionList() {
   const list = useConnections((s) => s.list)
+  const homeShown = useWorkspace((s) => !s.tabs.some((tab) => tab.id === s.activeTabId))
   const [filter, setFilter] = useState('')
   const t = useT()
   const groups = useMemo(() => {
@@ -398,7 +403,11 @@ function ConnectionList() {
       <div className="flex gap-1 border-t border-line p-2">
         <button
           type="button"
-          className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md bg-accent text-[12.5px] font-medium text-accent-fg hover:bg-accent-hover"
+          // Next to Home's own "New connection" this one steps back: one filled button per screen part.
+          className={cn(
+            'flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md text-[12.5px] font-medium',
+            homeShown ? 'border border-line bg-bg text-fg hover:bg-hover' : 'bg-accent text-accent-fg hover:bg-accent-hover',
+          )}
           onClick={() => useUi.getState().set({ modal: { kind: 'connection' } })}
         >
           <Plus size={14} /> {t('New connection')}

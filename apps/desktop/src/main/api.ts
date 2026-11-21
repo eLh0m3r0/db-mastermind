@@ -426,7 +426,8 @@ export const api: MastermindApi = {
     for (const [name, content] of Object.entries(SAMPLE_KNOWLEDGE)) await writeFile(join(kbDir, name), content, 'utf8')
     const saved = connections.saveConnection({
       id: existing?.id ?? '',
-      name: 'Demo coffee shop',
+      // Named in the app's language like the group below; a saved connection keeps the name it has.
+      name: existing?.name ?? (getSettings().language === 'cs' ? 'Ukázková kavárna' : 'Demo coffee shop'),
       driver: 'sqlite',
       filePath: file,
       knowledgeBasePath: kbDir,
