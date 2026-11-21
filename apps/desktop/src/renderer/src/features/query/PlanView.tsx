@@ -72,7 +72,7 @@ export function PlanView({ plan, previous, onClose }: { plan: ExplainResult; pre
           onChange={setView}
           options={[
             { value: 'tree', label: t('Tree') },
-            { value: 'raw', label: plan.format.toUpperCase() },
+            { value: 'raw', label: plan.format === 'text' ? t('Text') : plan.format.toUpperCase() },
           ]}
         />
         <IconButton label={t('Close')} onClick={onClose}>

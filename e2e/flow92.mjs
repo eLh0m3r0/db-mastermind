@@ -61,7 +61,8 @@ try {
   const options = ['No database', ...(await win.getByRole('menuitemcheckbox').allInnerTexts())]
   console.log('picker offers:', options.join(' | '))
   await win.getByRole('menuitemcheckbox', { name: options.find((o) => /coffee/i.test(o)) }).click()
-  const compare = win.getByRole('button', { name: /Compare with Demo coffee shop/ })
+  // (The button says Compare with database; the linked database is in its tooltip.)
+  const compare = win.locator('[data-testid="model-compare"][title*="Demo coffee shop"]:visible')
   await compare.waitFor({ timeout: 10000 })
   await compare.click()
   await win.getByRole('button', { name: 'Compare', exact: true }).click()

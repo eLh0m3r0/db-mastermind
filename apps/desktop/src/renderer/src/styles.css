@@ -275,7 +275,7 @@ textarea,
 /* Accent colors: light, then dark. */
 :root.look-blue { --accent: #2563eb; --accent-hover: #1d4fd0; --accent-soft: rgba(37, 99, 235, 0.1); --grid-selected: rgba(37, 99, 235, 0.12); }
 :root.dark.look-blue { --accent: #4f8cff; --accent-hover: #6b9fff; --accent-soft: rgba(79, 140, 255, 0.16); --grid-selected: rgba(79, 140, 255, 0.2); }
-:root.look-teal { --accent: #0f8f8a; --accent-hover: #0b7a76; --accent-soft: rgba(15, 143, 138, 0.1); --grid-selected: rgba(15, 143, 138, 0.13); }
+:root.look-teal { --accent: #0b7a76; --accent-hover: #09665f; --accent-soft: rgba(11, 122, 118, 0.1); --grid-selected: rgba(11, 122, 118, 0.13); }
 :root.dark.look-teal { --accent: #2bb5ae; --accent-hover: #44c7c0; --accent-soft: rgba(43, 181, 174, 0.16); --grid-selected: rgba(43, 181, 174, 0.2); }
 :root.look-green { --accent: #16803c; --accent-hover: #126b32; --accent-soft: rgba(22, 128, 60, 0.1); --grid-selected: rgba(22, 128, 60, 0.13); }
 :root.dark.look-green { --accent: #3fbf6a; --accent-hover: #58cd7f; --accent-soft: rgba(63, 191, 106, 0.16); --grid-selected: rgba(63, 191, 106, 0.2); }
@@ -305,11 +305,11 @@ textarea,
   --bg: #000000; --bg-subtle: #050d07; --bg-muted: #0a170d; --bg-elevated: #06100a;
   --bg-hover: rgba(51, 255, 102, 0.08); --bg-active: rgba(51, 255, 102, 0.16);
   --border: #0f5f28; --border-strong: #1a8a3c;
-  --text: #33ff66; --text-muted: #26c24d; --text-faint: #198a36;
+  --text: #33ff66; --text-muted: #26c24d; --text-faint: #1f9a3f;
   --accent: #33ff66; --accent-hover: #66ff8c; --accent-soft: rgba(51, 255, 102, 0.14); --accent-fg: #000000;
   --danger: #ff5555; --danger-soft: rgba(255, 85, 85, 0.14); --warning: #ffd75f; --warning-soft: rgba(255, 215, 95, 0.14);
   --success: #33ff66; --success-soft: rgba(51, 255, 102, 0.14); --info: #5fd7ff;
-  --grid-header: #050d07; --grid-row-alt: #020703; --grid-selected: rgba(51, 255, 102, 0.22); --null: #198a36;
+  --grid-header: #050d07; --grid-row-alt: #020703; --grid-selected: rgba(51, 255, 102, 0.22); --null: #1f9a3f;
   --font-sans: var(--font-mono);
 }
 :root.look-terminal body { text-shadow: 0 0 4px rgba(51, 255, 102, 0.35); }

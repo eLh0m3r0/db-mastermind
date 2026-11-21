@@ -53,7 +53,8 @@ function useGlobalCommands() {
         const connId = currentConnection
         switch (command) {
           case 'new-query':
-            if (connId) ws.newQuery(connId)
+            // A new tab goes after the last one, where the "+" that also makes it is.
+            if (connId) ws.newQuery(connId, undefined, undefined, { atEnd: true })
             else ui.set({ modal: { kind: 'connection' } })
             break
           case 'new-connection':

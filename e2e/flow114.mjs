@@ -31,7 +31,8 @@ const sslMode = async () => {
 try {
   await win.getByRole('button', { name: 'New connection' }).first().click()
   await win.getByPlaceholder(/Paste a connection URL/).waitFor({ timeout: 10000 })
-  check('the paste field names a few services', /Supabase, Neon/.test((await win.getByPlaceholder(/Paste a connection URL/).getAttribute('placeholder')) ?? ''))
+  // (The services are named in a line under the field: a placeholder that long was cut.)
+  check('the paste field names a few services', /Supabase, Neon/.test(await win.getByTestId('url-services-hint').innerText()))
 
   await paste('postgresql://postgres.abcdefghijklmnop:not-a-real-password@aws-0-eu-central-1.pooler.supabase.com:6543/postgres')
   const line = win.getByTestId('connection-service')

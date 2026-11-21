@@ -27,6 +27,8 @@ try {
   await win.waitForTimeout(800)
   console.log('pending:', await win.getByText(/\d+ changes?$/).first().textContent().catch(() => 'none'))
   await win.screenshot({ path: `${out}/k0-paste.png` })
+  // (Quitting with unsaved edits asks Save / Discard / Cancel now: the test's edits go first.)
+  await win.getByRole('button', { name: 'Discard changes' }).click()
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])
   await win.screenshot({ path: `${out}/99-error.png` })

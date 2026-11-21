@@ -6,6 +6,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { generateText, type LanguageModel } from 'ai'
 import type { AiProviderSettings } from '@shared/api'
+import { explainAiError } from './errors'
 import { cliAvailable, cliLoggedIn, loginHint } from './cli'
 
 export const DEFAULT_MODELS: Partial<Record<AiProviderSettings['id'], string>> = {
@@ -45,13 +46,21 @@ async function getJson(url: string, headers: Record<string, string>): Promise<un
   const res = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    throw new Error(`${res.status} ${res.statusText}${body ? `: ${body.slice(0, 300)}` : ''}`)
+    throw Object.assign(new Error(`${res.status} ${res.statusText}${body ? `: ${body.slice(0, 300)}` : ''}`), { statusCode: res.status, responseBody: body, url })
   }
   return res.json()
 }
 
 /** Lists model ids straight from the provider, so the app never ships a stale model list. */
 export async function listModels(settings: AiProviderSettings): Promise<string[]> {
+  try {
+    return await listModelsRaw(settings)
+  } catch (err) {
+    throw explainAiError(err, settings)
+  }
+}
+
+async function listModelsRaw(settings: AiProviderSettings): Promise<string[]> {
   const ids = (data: unknown, key = 'data') =>
     ((data as Record<string, { id?: string; name?: string }[]>)[key] ?? []).map((m) => m.id ?? m.name ?? '').filter(Boolean)
   switch (settings.id) {
@@ -96,11 +105,15 @@ export async function testProvider(settings: AiProviderSettings): Promise<string
     return `Found ${version}${login?.detail ? `, signed in (${login.detail})` : ''}`
   }
   const started = Date.now()
-  const result = await generateText({
-    model: createModel(settings),
-    prompt: 'Reply with the single word: ready',
-    maxOutputTokens: 16,
-    abortSignal: AbortSignal.timeout(30_000),
-  })
-  return `${result.text.trim().slice(0, 40) || 'OK'} (${Date.now() - started} ms)`
+  try {
+    const result = await generateText({
+      model: createModel(settings),
+      prompt: 'Reply with the single word: ready',
+      maxOutputTokens: 16,
+      abortSignal: AbortSignal.timeout(30_000),
+    })
+    return `${result.text.trim().slice(0, 40) || 'OK'} (${Date.now() - started} ms)`
+  } catch (err) {
+    throw explainAiError(err, settings)
+  }
 }

@@ -29,6 +29,9 @@ const COPY_FORMATS: { id: ResultCopyFormat; label: string; withSql?: boolean }[]
 import type { DriverId } from '@dbmastermind/core/browser'
 import { tp, useT } from '@/lib/i18n'
 
+/** Statements that never change rows: their message names them without a count. */
+const NO_ROW_COUNT = /^\s*(begin|start\s+transaction|commit|end|rollback|savepoint|release|set|use|reset|discard|listen|unlisten|notify|pragma|vacuum|analyze|checkpoint)\b/i
+
 interface ResultTab {
   key: string
   label: string
@@ -273,7 +276,8 @@ export function ResultsPanel({
       {/* @container: in a narrow pane (small window, AI panel open) the timing gives way before the result tabs do. */}
       <div className="@container flex h-8 shrink-0 items-center gap-0.5 border-b border-line bg-subtle px-1.5">
         {/* Many result sets scroll sideways in one line; Messages stays in view next to them. */}
-        <div ref={tabStrip} className="flex min-w-[96px] items-center gap-0.5 overflow-x-auto [scrollbar-width:none]">
+        {/* (Only with result sets: empty, it left a 96 px gap before Messages.) */}
+        <div ref={tabStrip} className={cn('flex items-center gap-0.5 overflow-x-auto [scrollbar-width:none]', tabs.length > 0 ? 'min-w-[96px]' : 'hidden')}>
           {tabs.map((t) => (
             <button
               key={t.key}
@@ -359,7 +363,7 @@ export function ResultsPanel({
               <IconButton
                 // In the narrowest pane Copy and Export stay; pinning gives way.
                 className="@max-[360px]:hidden"
-                label={tr('Keep this result (pin)')}
+                label={tr('Keep this result')}
                 onClick={() =>
                   setPinned((p) => [...p, { ...current, key: `pin:${Date.now()}`, label: tr('Pinned {n}', { n: String(p.length + 1) }) }])
                 }
@@ -370,7 +374,7 @@ export function ResultsPanel({
             {/^\s*(select|with|values|show|table)\b/i.test(current.statement.sql) && (
               <IconButton
                 className="@max-[360px]:hidden"
-                label={tr('Pin to dashboard')}
+                label={tr('Add to dashboard')}
                 onClick={(e) =>
                   void pinToDashboard(e.currentTarget, connectionId, {
                     title: tileTitle(current.result, charts[current.key] ?? null),
@@ -451,7 +455,11 @@ export function ResultsPanel({
                       <div key={ri}>
                         {r.fields.length > 0
                           ? `${tp(r.rowCount, { one: '{n} row returned', many: '{n} rows returned' })}${r.truncated ? ` (${tr('truncated')})` : ''}`
-                          : `${tp(r.affectedRows ?? r.rowCount, { one: '{n} row affected', many: '{n} rows affected' })}${r.command ? ` · ${r.command}` : ''}`}
+                          : // A statement that changes no rows (BEGIN, COMMIT, SET…) says only what it was: SQLite repeats
+                            // the previous statement's count for it.
+                            NO_ROW_COUNT.test(o.sql)
+                            ? (r.command ?? o.sql.trim().split(/\s+/)[0]!.toUpperCase())
+                            : `${tp(r.affectedRows ?? r.rowCount, { one: '{n} row affected', many: '{n} rows affected' })}${r.command ? ` · ${r.command}` : ''}`}
                       </div>
                     ))}
                     {!o.results?.length && 'OK'}

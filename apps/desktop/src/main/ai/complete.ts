@@ -4,6 +4,7 @@ import { assertAiAllowed } from '../managed'
 import { getSettings } from '../settings'
 import { runCli } from './cli'
 import { createModel } from './models'
+import { explainAiError } from './errors'
 
 export function activeProvider(): AiProviderSettings {
   assertAiAllowed()
@@ -21,8 +22,12 @@ export async function completeText(system: string, prompt: string, signal = Abor
     await runCli({ provider: provider.id, prompt, system, model: provider.model, signal, onEvent: (e) => e.type === 'text' && (text += e.text) })
     return text
   }
-  const result = await generateText({ model: createModel(provider), system, prompt, abortSignal: signal })
-  return result.text
+  try {
+    const result = await generateText({ model: createModel(provider), system, prompt, abortSignal: signal })
+    return result.text
+  } catch (err) {
+    throw explainAiError(err, provider)
+  }
 }
 
 /** First JSON object in a model reply (tolerates code fences and prose around it). */

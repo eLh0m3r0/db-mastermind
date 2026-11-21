@@ -51,7 +51,7 @@ try {
   await win.keyboard.press('Enter')
   await palette('ER diagram')
   await tab(/(Query|Dotaz) 1/).click()
-  await win.getByRole('button', { name: /All connections|Všechna připojení/ }).first().click()
+  await win.getByRole('button', { name: /all connections|všechna připojení/i }).first().click()
   await win.getByRole('button', { name: /^(New model|Nový model)$/ }).first().click()
   await win.waitForTimeout(1200)
   await win.locator('.cm-content:visible').first().click().catch(() => {})
@@ -75,7 +75,7 @@ try {
     await shot(name) // 02 Settings → General
     await win.keyboard.press('Escape')
     await tab(/(Query|Dotaz) 1/).click()
-    await win.getByRole('button', { name: /All connections|Všechna připojení/ }).first().click()
+    await win.getByRole('button', { name: /all connections|všechna připojení/i }).first().click()
     await win.waitForTimeout(400)
     await shot(name) // 03 home
     for (const re of [/(Query|Dotaz) 1/, /customers/, /diagram/i, /(model|Model)/]) {

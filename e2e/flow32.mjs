@@ -24,7 +24,7 @@ try {
   await win.getByRole('button', { name: /Demo coffee shop/ }).first().click()
   await win.waitForTimeout(1500)
   await run("SELECT country, count(*) AS customers FROM customers GROUP BY country ORDER BY 2 DESC")
-  await win.getByRole('button', { name: 'Keep this result (pin)' }).click()
+  await win.getByRole('button', { name: 'Keep this result' }).click()
   await run("SELECT city, count(*) AS customers FROM customers GROUP BY city ORDER BY 2 DESC")
   console.log('tabs:', (await win.locator('button', { hasText: /^(Pinned|Result)/ }).allInnerTexts()).map((s) => s.replace(/\s+/g, ' ')).join(' | '))
   await win.screenshot({ path: `${out}/r0-pinned-result.png` })

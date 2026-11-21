@@ -9,7 +9,7 @@ import { forgetRecentModel, queryFile, openModel, recentModels } from '@/lib/fil
 import { useConnections } from '@/store/connections'
 import { toast, useUi } from '@/store/ui'
 import { errorMessage } from '@/lib/utils'
-import { connectionDetail, DriverIcon } from '../connections/drivers'
+import { connectionDetail, connectionSubtitle, DriverIcon } from '../connections/drivers'
 import { connectAndSelect, openImportMenu, StatusDot } from '../sidebar/Sidebar'
 import { useT } from '@/lib/i18n'
 import { LookDecoration } from '@/components/LookDecoration'
@@ -18,7 +18,8 @@ async function openDemo(t: (key: string) => string) {
   try {
     const id = await api.createSampleDatabase()
     await useConnections.getState().load()
-    await connectAndSelect(id)
+    // A stranger's first look at the demo is its data (orders, with links to customers), not an empty editor.
+    await connectAndSelect(id, { kind: 'table', connectionId: id, table: { name: 'orders' }, title: 'orders' })
   } catch (err) {
     toast({ kind: 'error', message: t('Could not create the sample database'), detail: errorMessage(err) })
   }
@@ -79,7 +80,7 @@ export function HomeScreen() {
                       {c.environment === 'production' && <span className="rounded bg-danger px-1 text-[9.5px] font-bold text-white">PROD</span>}
                     </>
                   }
-                  detail={connectionDetail(c)}
+                  detail={connectionSubtitle(c)}
                   extra={<StatusDot id={c.id} />}
                   accent={c.color}
                 />

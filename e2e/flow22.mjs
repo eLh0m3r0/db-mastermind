@@ -20,7 +20,7 @@ const run = async (sql) => {
   await win.waitForTimeout(1200)
 }
 const pin = async (dashboard) => {
-  await win.getByRole('button', { name: 'Pin to dashboard' }).click()
+  await win.getByRole('button', { name: 'Add to dashboard' }).click()
   await win.getByText(dashboard, { exact: true }).last().click()
   await win.waitForTimeout(600)
 }

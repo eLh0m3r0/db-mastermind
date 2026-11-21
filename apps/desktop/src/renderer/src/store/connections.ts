@@ -180,7 +180,8 @@ export const useConnections = create<ConnectionsState>((set, get) => {
       }
     },
     async disconnect(id) {
-      const { settleConnectionTransactions } = await import('./workspace')
+      const { confirmUnsavedEditsOf, settleConnectionTransactions } = await import('./workspace')
+      if (!(await confirmUnsavedEditsOf(id))) return false
       if (!(await settleConnectionTransactions(id))) return false
       stopRetry(id)
       await api.disconnect(id)

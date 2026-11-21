@@ -1,6 +1,6 @@
 import { Kbd } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
-import { keys } from '@/lib/api'
+import { isMac, keys } from '@/lib/api'
 import { useT } from '@/lib/i18n'
 import { appShortcuts } from '@/lib/keymap'
 import { useUi } from '@/store/ui'
@@ -42,7 +42,7 @@ export function ShortcutsModal() {
   const sections = [
     {
       title: t('General'),
-      rows: [...rows('general'), { keys: `${keys('⌘1')} … ${keys('⌘9')}`, label: t('Go to tab 1–9') }, { keys: 'Ctrl+Tab', label: t('Next tab') }],
+      rows: [...rows('general'), { keys: `${keys('⌘1')} … ${keys('⌘8')}`, label: t('Go to tab 1–8') }, { keys: keys('⌘9'), label: t('Last tab') }, { keys: isMac ? '⇧⌘] · Ctrl+Tab' : 'Ctrl+Tab · Ctrl+PageDown', label: t('Next tab') }, { keys: isMac ? '⇧⌘[ · Ctrl+⇧Tab' : 'Ctrl+Shift+Tab · Ctrl+PageUp', label: t('Previous tab') }],
     },
     { title: t('SQL editor'), rows: [...rows('query'), { keys: `${keys('⌘')}-${t('click')}`, label: t("Open a table's structure or a routine's definition") }] },
     {

@@ -21,6 +21,9 @@ interface Ask {
 const usePrompt = create<{ ask?: Ask }>(() => ({}))
 
 /** Asks for a connection's password (none saved, or the server rejected it); null when cancelled. */
+/** True while the password prompt is showing (forms behind it stop showing their own progress). */
+export const usePasswordPromptOpen = () => usePrompt((s) => !!s.ask)
+
 export function askPassword(title: string, user?: string, rejected?: string): Promise<PasswordAnswer | null> {
   return new Promise((resolve) => usePrompt.setState({ ask: { title, user, rejected, resolve } }))
 }

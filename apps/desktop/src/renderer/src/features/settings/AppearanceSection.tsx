@@ -93,6 +93,17 @@ export function AppearanceSection({ settings, set }: { settings: AppSettings; se
             ]}
           />
         </Setting>
+        {/* The owner's one exception to "no new settings": what the tab strip does with more tabs than fit. */}
+        <Setting label={t('When tabs don’t fit')} hint={t('Shrink keeps the selected tab whole and narrows the others while their names still read; past that the strip scrolls.')}>
+          <Segmented
+            value={settings.tabOverflow ?? 'scroll'}
+            onChange={(tabOverflow) => set({ tabOverflow })}
+            options={[
+              { value: 'scroll', label: t('Scroll') },
+              { value: 'shrink', label: t('Shrink') },
+            ]}
+          />
+        </Setting>
       </section>
     </div>
   )

@@ -1,6 +1,6 @@
 // "Design with AI…" asks in a multiline dialog. Enter used to only add a line (⌘Enter sent it) while the AI panel
 // next to it sends on Enter, so the request looked stuck. Enter now sends and Shift+Enter adds a line. No model is
-// needed: a fresh profile has no AI provider, so the request just lands in the panel.
+// needed: a fresh profile has no AI provider, so the AI setup opens and the request waits in the panel.
 import { _electron as electron } from '@playwright/test'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -29,9 +29,13 @@ try {
   if ((await box.inputValue()) !== 'add a reviews table\nwith a rating') throw new Error(`Shift+Enter: ${JSON.stringify(await box.inputValue())}`)
   if (!(await dialog.getByText('Enter to send').isVisible())) throw new Error('no Enter hint')
   await win.keyboard.press('Enter')
-  await dialog.waitFor({ state: 'hidden', timeout: 5000 })
-  // The request reached the assistant panel.
-  await win.getByText('AI assistant').first().waitFor({ timeout: 5000 })
+  // No provider yet (launch UX review, UX-32): the request opens the AI setup instead of failing, and waits in the
+  // assistant panel next to it.
+  await win.getByRole('dialog').filter({ hasText: 'OpenRouter' }).waitFor({ timeout: 5000 })
+  await win.keyboard.press('Escape')
+  await win.getByRole('dialog').waitFor({ state: 'hidden', timeout: 5000 })
+  // The assistant panel is open next to it, offering the setup again.
+  await win.getByText('Connect an AI model').waitFor({ timeout: 5000 })
   console.log('ok')
 } catch (err) {
   await win.screenshot({ path: join(dir, 'flow78-fail.png') }).catch(() => {})

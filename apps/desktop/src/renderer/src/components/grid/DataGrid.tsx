@@ -78,8 +78,10 @@ const numericType = /(int|serial|numeric|decimal|float|double|real|money|number|
 
 function isNumericColumn(field: ResultField, meta: GridColumnMeta | undefined, sample: CellValue | undefined): boolean {
   const t = meta?.dataType ?? field.dataType
-  if (t) return numericType.test(t) && !/interval|point/i.test(t)
-  return typeof sample === 'number'
+  // A type that says nothing (a view's computed column in SQLite reports "any"): the values decide.
+  const untyped = !!t && /^(any|unknown)$/i.test(t.trim())
+  if (t && !untyped) return numericType.test(t) && !/interval|point/i.test(t)
+  return typeof sample === 'number' || (untyped && typeof sample === 'string' && /^-?\d+(\.\d+)?$/.test(sample) && sample.length < 30)
 }
 
 function estimateWidth(field: ResultField, rows: CellValue[][], col: number, dataType?: string): number {
@@ -187,7 +189,7 @@ const Cell = memo(function Cell({
             e.stopPropagation()
             onFkClick()
           }}
-          className="ml-1 shrink-0 rounded text-fg-faint opacity-60 hover:bg-accent-soft hover:text-accent hover:opacity-100"
+          className="relative ml-1 shrink-0 rounded text-fg-faint opacity-60 after:absolute after:-inset-1.5 after:content-[''] hover:bg-accent-soft hover:text-accent hover:opacity-100"
         >
           <ArrowUpRight size={13} />
         </button>

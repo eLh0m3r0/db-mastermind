@@ -6,7 +6,8 @@ import { Checkbox, Field, Input, Segmented } from '@/components/ui/Input'
 import { api } from '@/lib/api'
 import { cn, errorMessage } from '@/lib/utils'
 import { useSettings } from '@/store/settings'
-import { PROVIDERS, providerMeta } from './providers'
+import { PROVIDERS, providerMeta, withProviderEdit } from './providers'
+import { aiProblemText } from '@/lib/ai-problems'
 import { t, tp, useT } from '@/lib/i18n'
 
 export function AiSettingsSection() {
@@ -17,16 +18,12 @@ export function AiSettingsSection() {
   const providers = PROVIDERS.filter((p) => !policies?.allowedAiProviders || policies.allowedAiProviders.includes(p.id))
   const [selected, setSelected] = useState<AiProviderId>(ai.activeProvider ?? providers[0]?.id ?? 'anthropic')
   const [models, setModels] = useState<string[]>([])
-  const [status, setStatus] = useState<{ state: 'idle' | 'busy' | 'ok' | 'error'; message?: string }>({ state: 'idle' })
+  const [status, setStatus] = useState<{ state: 'idle' | 'busy' | 'ok' | 'error'; message?: string; code?: string }>({ state: 'idle' })
   const meta = providerMeta(selected)!
   const t = useT()
   const config: AiProviderSettings = ai.providers.find((p) => p.id === selected) ?? { id: selected, enabled: true }
 
-  const saveProvider = (patch: Partial<AiProviderSettings>) => {
-    const next = { ...config, ...patch }
-    const providers = ai.providers.some((p) => p.id === selected) ? ai.providers.map((p) => (p.id === selected ? next : p)) : [...ai.providers, next]
-    void update({ ai: { ...ai, providers } })
-  }
+  const saveProvider = (patch: Partial<AiProviderSettings>) => void update({ ai: withProviderEdit(ai, selected, patch) })
 
   const fetchModels = async () => {
     setStatus({ state: 'busy' })
@@ -35,7 +32,7 @@ export function AiSettingsSection() {
       setModels(list)
       setStatus({ state: 'ok', message: tp(list.length, { one: '{n} model available', many: '{n} models available' }) })
     } catch (err) {
-      setStatus({ state: 'error', message: errorMessage(err) })
+      setStatus({ state: 'error', message: errorMessage(err), code: (err as { code?: string }).code })
     }
   }
 
@@ -45,7 +42,7 @@ export function AiSettingsSection() {
       const reply = await api.testAiProvider(config)
       setStatus({ state: 'ok', message: reply })
     } catch (err) {
-      setStatus({ state: 'error', message: errorMessage(err) })
+      setStatus({ state: 'error', message: errorMessage(err), code: (err as { code?: string }).code })
     }
   }
 
@@ -142,8 +139,19 @@ export function AiSettingsSection() {
             </span>
           )}
           {status.state === 'error' && (
-            <span className="flex min-w-0 items-center gap-1 text-[12px] text-danger" title={status.message}>
-              <XCircle size={13} className="shrink-0" /> <span className="line-clamp-2">{status.message}</span>
+            <span className="flex min-w-0 items-start gap-1 text-[12px] text-danger" title={status.message} data-testid="ai-test-error">
+              <XCircle size={13} className="mt-px shrink-0" />
+              <span className="flex min-w-0 flex-col">
+                {(() => {
+                  const p = aiProblemText(status.message ?? '', status.code, config, t)
+                  return (
+                    <>
+                      {p.summary && <span className="font-medium text-fg">{p.summary}</span>}
+                      <span className={cn('line-clamp-2', p.summary && 'text-fg-muted')}>{p.detail}</span>
+                    </>
+                  )
+                })()}
+              </span>
             </span>
           )}
         </div>
