@@ -214,3 +214,12 @@ describe('what a script left out reads as the script wrote it (review L10)', () 
     expect(JSON.stringify(skipped)).not.toMatch(/__dbm/)
   })
 })
+
+describe('MySQL 8 key parts and parts the reader cannot take (review N4)', () => {
+  it('a functional key part is an index part, and a part DuckDB refuses never costs the table', async () => {
+    const { tables, skipped } = await tablesFromDdl('CREATE TABLE `people` (\n  `id` int NOT NULL,\n  `name` varchar(100) NOT NULL,\n  `n` int GENERATED ALWAYS AS (char_length(`name`)) STORED,\n  PRIMARY KEY (`id`),\n  KEY `idx_lower` ((lower(`name`))),\n  KEY `idx_mixed` (`name`,(char_length(`name`))),\n  KEY `odd` (`name`) WITH SOMETHING NEW\n);')
+    expect(tables.map((t) => [t.name, t.columns.map((c) => c.name)])).toEqual([['people', ['id', 'name', 'n']]])
+    expect(tables[0]!.indexes.map((i) => [i.name, i.columns])).toEqual(expect.arrayContaining([['idx_lower', ['(lower(`name`))']], ['idx_mixed', ['`name`', '(char_length(`name`))']]]))
+    expect(skipped.map((s) => s.sql)).toEqual(['KEY "odd" ("name") WITH SOMETHING NEW'])
+  })
+})
