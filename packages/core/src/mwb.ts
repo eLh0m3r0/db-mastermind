@@ -119,7 +119,7 @@ function columnDefault(c: GrtObject, type: string): string | null {
  * declares may lie, so the inflated bytes are counted as they come and inflating stops at the limit (a zip bomb
  * never gets to allocate more than one slice beyond it).
  */
-export function mwbDocument(bytes: Uint8Array, limit = FILE_LIMITS.mwbDocument): string {
+export function mwbDocument(bytes: Uint8Array, limit = FILE_LIMITS.mwbDocument, /** Filled with how many bytes were inflated (tests). */ stats?: { inflated: number }): string {
   if (bytes[0] !== 0x50 || bytes[1] !== 0x4b) throw new Error('Not a MySQL Workbench model: the file is not a zip archive')
   const chunks: Uint8Array[] = []
   let total = 0
@@ -141,6 +141,7 @@ export function mwbDocument(bytes: Uint8Array, limit = FILE_LIMITS.mwbDocument):
         return
       }
       total += chunk.length
+      if (stats) stats.inflated = total
       if (total > limit) {
         failure = new Error(`The model's document is larger than ${megabytes(limit)}: not a model this app opens`)
         file.terminate()

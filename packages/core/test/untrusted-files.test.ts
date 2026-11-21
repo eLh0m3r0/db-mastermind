@@ -29,9 +29,9 @@ describe('size limits', () => {
     const honest = zipSync({ 'document.mwb.xml': zeros, 'other.bin': new Uint8Array(1024) }, { level: 9 })
     expect(honest.length).toBeLessThan(1024 * 1024)
     const limit = 8 * 1024 * 1024
-    const before = process.memoryUsage().arrayBuffers
-    const a = timed(() => mwbDocument(honest, limit))
-    expect(a.error?.message).toMatch(/document is larger than 8 MB/)
+    const a = { inflated: 0 }
+    const honestRun = timed(() => mwbDocument(honest, limit, a))
+    expect(honestRun.error?.message).toMatch(/document is larger than 8 MB/)
     // A header that claims 100 bytes: inflating is still counted, and stopped.
     const lying = honest.slice()
     const view = new DataView(lying.buffer)
@@ -40,12 +40,15 @@ describe('size limits', () => {
       if (sig === 0x04034b50) view.setUint32(i + 22, 100, true)
       if (sig === 0x02014b50) view.setUint32(i + 24, 100, true)
     }
-    const b = timed(() => mwbDocument(lying, limit))
-    expect(b.error?.message).toMatch(/document is larger than 8 MB/)
-    expect(a.ms + b.ms).toBeLessThan(2000)
-    // Far less than the 256 MB the bomb holds was ever allocated: the limit and a slice or two (a slice of 16 KB
-    // deflated inflates to about 16 MB).
-    expect(process.memoryUsage().arrayBuffers - before).toBeLessThan(128 * 1024 * 1024)
+    const b = { inflated: 0 }
+    const lyingRun = timed(() => mwbDocument(lying, limit, b))
+    expect(lyingRun.error?.message).toMatch(/document is larger than 8 MB/)
+    expect(honestRun.ms + lyingRun.ms).toBeLessThan(2000)
+    // An honest header is refused before anything is inflated; a lying one stops at the limit and one slice more
+    // (16 KB deflated inflates to about 16 MB), never the 256 MB.
+    expect(a.inflated).toBe(0)
+    expect(b.inflated).toBeGreaterThan(limit)
+    expect(b.inflated).toBeLessThan(limit + 20 * 1024 * 1024)
   })
 
   it('reads a Workbench document nested deeper than any model as no model, without running out of stack', () => {
@@ -117,7 +120,7 @@ describe('nesting, aliases and long lines', () => {
 
 describe('what a file names is cleaned', () => {
   it('table, column and note names lose control characters and are bounded', () => {
-    const m = readModelFile('x.mmd', strToU8(`erDiagram\n  "Evil\u0007‮Table" {\n    int ${long(500, 'n')} PK "a\u0000comment"\n  }\n`))
+    const m = readModelFile('x.mmd', strToU8(`erDiagram\n  "Evil\u0007\u202eTable" {\n    int ${long(500, 'n')} PK "a\u0000comment"\n  }\n`))
     expect(m.tables[0]!.name).toBe('EvilTable')
     expect(m.tables[0]!.columns[0]!.name).toHaveLength(128)
     expect(m.tables[0]!.columns[0]!.comment).toBe('acomment')
