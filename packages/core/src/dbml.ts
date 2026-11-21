@@ -94,6 +94,37 @@ function foldStrings(text: string): string {
   return out
 }
 
+/**
+ * Settings written over several lines (`name varchar [\n  pk,\n  note: '…'\n]`, as dbdiagram.io allows) are
+ * folded onto their first line; the lines they took stay as empty ones, which keeps the line numbers.
+ */
+function foldBrackets(lines: string[]): string[] {
+  const out = [...lines]
+  for (let i = 0; i < out.length; i++) {
+    let depth = 0
+    const count = (line: string) => {
+      let quote: string | null = null
+      for (let k = 0; k < line.length; k++) {
+        const ch = line[k]!
+        if (quote) {
+          if (ch === '\\') k++
+          else if (ch === quote) quote = null
+        } else if (ch === "'" || ch === '"' || ch === '`') quote = ch
+        else if (ch === '[') depth++
+        else if (ch === ']') depth--
+      }
+    }
+    count(out[i]!)
+    for (let j = i + 1; depth > 0 && j < out.length; j++) {
+      count(out[j]!)
+      out[i] = `${out[i]!.trimEnd()} ${out[j]!.trim()}`
+      out[j] = ''
+      if (depth <= 0) i = j
+    }
+  }
+  return out
+}
+
 /** Removes // and /* *\/ comments outside of strings. */
 function stripComments(text: string): string {
   let out = ''
@@ -135,7 +166,7 @@ function parseRefTarget(s: string, defaultSchema?: string): { schema?: string; t
 const ACTION = /(delete|update)\s*:\s*(cascade|restrict|set null|set default|no action)/gi
 
 export function parseDbml(text: string, options: { defaultSchema?: string; /** Database type for columns typed with a DBML Enum. */ enumType?: string } = {}): DbmlModel {
-  const lines = foldStrings(stripComments(text)).split('\n')
+  const lines = foldBrackets(foldStrings(stripComments(text)).split('\n'))
   const tables: TableInfo[] = []
   const enums: Record<string, string[]> = {}
   const groups: Record<string, string[]> = {}
@@ -167,6 +198,21 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
     const m = /^TablePartial\s+("[^"]+"|[\w$]+)[^{]*\{\s*$/i.exec(lines[k]!.trim())
     if (m) partials.set(ident(m[1]!).toLowerCase(), { start: k, end: blockEnd(k) })
   }
+  /**
+   * The entries of a block that opened on line `j` and closed on `close`, with their line numbers: what follows `{`
+   * on the first line (`indexes { (a, b) [pk] }`, as dbdiagram.io writes a short block) and what precedes `}` on
+   * the last one count too.
+   */
+  const entries = (j: number, close: number): { text: string; line: number }[] => {
+    const first = lines[j]!
+    const open = first.indexOf('{')
+    if (close === j) return [{ text: first.slice(open + 1, first.lastIndexOf('}')).trim(), line: j }].filter((e) => e.text)
+    const out = [{ text: first.slice(open + 1).trim(), line: j }]
+    for (let k = j + 1; k < close; k++) out.push({ text: lines[k]!.trim(), line: k })
+    const last = lines[close]!
+    out.push({ text: last.slice(0, last.lastIndexOf('}')).trim(), line: close })
+    return out.filter((e) => e.text)
+  }
   const depth: number[] = []
   /** Reads the rows of a table body (or of a partial injected into it) between two lines. */
   const parseRows = (t: TableInfo, from: number, to: number): void => {
@@ -187,11 +233,11 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
       }
       if (/^checks\s*\{/i.test(row)) {
         const close = blockEnd(j)
-        for (let k = j + 1; k < close; k++) {
-          const m = /^`([^`]*)`\s*(\[(.*)\])?$/.exec(lines[k]!.trim())
+        for (const e of entries(j, close)) {
+          const m = /^`([^`]*)`\s*(\[(.*)\])?$/.exec(e.text)
           const named = /name\s*:\s*('[^']*'|"[^"]*")/i.exec(m?.[3] ?? '')
           if (m) (t.checks ??= []).push({ expression: m[1]!.trim(), ...(named ? { name: unquoteString(named[1]!) } : {}) })
-          else if (lines[k]!.trim()) errors.push({ line: k + 1, message: `Can't read check: ${lines[k]!.trim()}` })
+          else errors.push({ line: e.line + 1, message: `Can't read check: ${e.text}` })
         }
         j = close
         continue
@@ -229,15 +275,13 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
       }
       if (/^Note\s*\{/i.test(row)) {
         const close = blockEnd(j)
-        t.comment = unquoteString(lines.slice(j + 1, close).join('\n').trim())
+        t.comment = unquoteString(entries(j, close).map((e) => e.text).join('\n').trim())
         j = close
         continue
       }
       if (/^indexes\s*\{/i.test(row)) {
         const close = blockEnd(j)
-        for (let k = j + 1; k < close; k++) {
-          const ix = lines[k]!.trim()
-          if (!ix) continue
+        for (const { text: ix, line: k } of entries(j, close)) {
           const m = /^(\([^)]*\)|"[^"]+"|`[^`]+`|[\w$]+)\s*(\[(.*)\])?$/.exec(ix)
           if (!m) {
             errors.push({ line: k + 1, message: `Can't read index: ${ix}` })
@@ -255,7 +299,7 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
         j = close
         continue
       }
-      const col = /^("[^"]+"|`[^`]+`|[\w$]+)\s+("[^"]+"|[\w$.]+(?:\([^)]*\))?(?:\[\])?)\s*(\[(.*)\])?\s*$/.exec(row)
+      const col = /^("[^"]+"|`[^`]+`|[\w$]+)\s+("[^"]+"|[\w$.]+(?:\s*\([^)]*\))?(?:\[\])?)\s*(\[(.*)\])?\s*$/.exec(row)
       if (!col) {
         errors.push({ line: j + 1, message: `Can't read column: ${row}` })
         continue
@@ -271,7 +315,8 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
       const column: ColumnInfo = {
         name,
         ordinal: t.columns.length + 1,
-        dataType: ident(col[2]!),
+        // (`ENUM ("a", "b")`: dbdiagram.io takes a space before the arguments.)
+        dataType: ident(col[2]!).replace(/^([\w$.]+)\s+\(/, '$1('),
         nullable: !(has('not null') || has('pk') || has('primary key')),
         defaultValue: def === undefined ? null : def.startsWith('`') ? def.slice(1, -1) : def,
         isPrimaryKey: has('pk') || has('primary key'),
@@ -345,13 +390,11 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
       i = end + 1
       continue
     }
-    const refLine = /^Ref(?:\s+("[^"]+"|[\w$]+))?\s*:\s*(.+?)\s*(\[([^\]]*)\])?\s*$/i.exec(line)
-    if (refLine) {
-      // `Ref name: …` names the relationship: the name of its foreign key.
-      const refName = refLine[1] ? ident(refLine[1]) : undefined
-      refLine.splice(1, 1)
+    /** `a.x > b.y [delete: cascade]`, the relationship of a Ref line or of a line in a Ref block. */
+    const addRef = (text: string, lineNo: number, refName: string | undefined) => {
+      const m = /^(.+?)\s*(\[([^\]]*)\])?\s*$/.exec(text)
       // The operator is the first <, > or - outside quotes: a name like "user-id" has a hyphen of its own.
-      const body = refLine[1]!
+      const body = m?.[1] ?? text
       let quote: string | null = null
       let at = -1
       for (let k = 0; k < body.length && at === -1; k++) {
@@ -360,10 +403,26 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
         else if (ch === '"' || ch === '`') quote = ch
         else if (ch === '<' || ch === '>' || ch === '-') at = k
       }
+      // `<>` is many-to-many: no foreign key says it.
+      if (body.slice(at, at + 2) === '<>') return void errors.push({ line: lineNo, message: `Many-to-many relationships are not in the model: ${body}` })
       const from = at === -1 ? '' : body.slice(0, at).trim()
       const to = at === -1 ? '' : body.slice(at + 1).trim()
-      if (from && to) refs.push({ line: lineNo, from, op: body[at]!, to, settings: refLine[3] ?? '', name: refName })
+      if (from && to) refs.push({ line: lineNo, from, op: body[at]!, to, settings: m?.[3] ?? '', name: refName })
       else errors.push({ line: lineNo, message: `Can't read reference: ${body}` })
+    }
+    // The long form: `Ref name {` with the relationship on its own line(s).
+    const refBlock = /^Ref(?:\s+("[^"]+"|[\w$]+))?\s*\{/i.exec(line)
+    if (refBlock) {
+      const close = blockEnd(i)
+      const block = entries(i, close)
+      for (const e of block) addRef(e.text, e.line + 1, block.length === 1 && refBlock[1] ? ident(refBlock[1]) : undefined)
+      i = close + 1
+      continue
+    }
+    const refLine = /^Ref(?:\s+("[^"]+"|[\w$]+))?\s*:\s*(.+)$/i.exec(line)
+    if (refLine) {
+      // `Ref name: …` names the relationship: the name of its foreign key.
+      addRef(refLine[2]!.trim(), lineNo, refLine[1] ? ident(refLine[1]) : undefined)
       i++
       continue
     }

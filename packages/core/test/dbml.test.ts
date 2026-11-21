@@ -271,3 +271,36 @@ Note reminder {
     expect(again.tables[1]!.foreignKeys).toHaveLength(2)
   })
 })
+
+describe('DBML as dbdiagram.io users write it (wave 2, checked against @dbml/core)', () => {
+  it('reads a block written on one line: indexes { (a, b) [pk] }', () => {
+    const m = parseDbml("Table order_lines {\n  order_id int\n  line_no int\n  indexes { (order_id, line_no) [pk] }\n}\nTable t {\n  a int\n  b int\n  indexes { (a, b) [unique, name: 'ux_ab'] }\n  checks { `a > 0` }\n  Note { 'Short' }\n}\n")
+    expect(m.errors).toEqual([])
+    expect(m.tables[0]!.primaryKey).toEqual(['order_id', 'line_no'])
+    expect(m.tables[1]!.indexes).toEqual([expect.objectContaining({ name: 'ux_ab', columns: ['a', 'b'], unique: true })])
+    expect(m.tables[1]!.checks).toEqual([{ expression: 'a > 0' }])
+    expect(m.tables[1]!.comment).toBe('Short')
+  })
+
+  it('reads settings written over several lines', () => {
+    const m = parseDbml("Table articles {\n  ref_name varchar [\n    pk,\n    note: 'Manually assigned, [like] this'\n  ]\n  doi varchar [\n    unique\n  ]\n}\nTable later {\n  id int [pk]\n}\n")
+    expect(m.errors).toEqual([])
+    expect(m.tables.map((t) => t.name)).toEqual(['articles', 'later'])
+    expect(m.tables[0]!.columns.map((c) => [c.name, c.isPrimaryKey, c.comment])).toEqual([
+      ['ref_name', true, 'Manually assigned, [like] this'],
+      ['doi', false, null],
+    ])
+  })
+
+  it('reads the long form of a Ref and a type with a space before its arguments', () => {
+    const m = parseDbml('Table groups {\n  group_id int [pk]\n}\nTable elements {\n  id int [pk]\n  group_id int\n  kind ENUM ("rag", "graphrag")\n}\nRef "fk_elements_group" {\n  "groups"."group_id" < "elements"."group_id" [update: no action, delete: cascade]\n}\n')
+    expect(m.errors).toEqual([])
+    expect(m.tables[1]!.foreignKeys).toEqual([expect.objectContaining({ name: 'fk_elements_group', columns: ['group_id'], refTable: 'groups', onDelete: 'CASCADE' })])
+    expect(m.tables[1]!.columns[2]!.dataType).toBe('ENUM("rag", "graphrag")')
+  })
+
+  it('says it does not take a many-to-many relationship (no foreign key says one)', () => {
+    const m = parseDbml('Table a {\n  id int [pk]\n}\nTable b {\n  id int [pk]\n}\nRef: a.id <> b.id\n')
+    expect(m.errors).toEqual([{ line: 7, message: 'Many-to-many relationships are not in the model: a.id <> b.id' }])
+  })
+})
