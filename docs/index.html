@@ -625,22 +625,33 @@ brew install --cask db-mastermind</pre>
     const release = await res.json()
     const version = release.tag_name.replace(/^v/, '')
     const assets = release.assets || []
-    const find = (re) => assets.find((a) => re.test(a.name))
-    const link = (asset, text) => (asset ? `<a href="${asset.browser_download_url}">${text}</a>` : '')
-    let others = ''
+    // Only links into this project's releases are used, whatever the response says; text goes in as text.
+    const ours = (url) => typeof url === 'string' && url.startsWith('https://github.com/eLh0m3r0/db-mastermind/releases/')
+    const find = (re) => assets.find((a) => re.test(a.name) && ours(a.browser_download_url))
+    const link = (asset, text) => {
+      if (!asset) return null
+      const a = document.createElement('a')
+      a.href = asset.browser_download_url
+      a.textContent = text
+      return a
+    }
+    let others = []
     // The Store copy is x64 and the user agent can't tell a Windows on Arm PC or an Intel Mac: the other files are
     // one click away.
-    if (os === 'win') others = link(find(/win-x64-setup\.exe$/), 'Installer') + link(find(/win-x64-portable\.zip$/), 'Portable zip') + link(find(/win-arm64-setup\.exe$/), 'Windows on Arm')
-    else if (os === 'mac') others = link(find(/mac-x64\.dmg$/), 'Intel Mac')
-    else others = link(find(/linux-amd64\.deb$/), '.deb package')
+    if (os === 'win') others = [link(find(/win-x64-setup\.exe$/), 'Installer'), link(find(/win-x64-portable\.zip$/), 'Portable zip'), link(find(/win-arm64-setup\.exe$/), 'Windows on Arm')]
+    else if (os === 'mac') others = [link(find(/mac-x64\.dmg$/), 'Intel Mac')]
+    else others = [link(find(/linux-amd64\.deb$/), '.deb package')]
+    others = others.filter(Boolean)
     // The other files for this system sit next to the button; the release notes join the general links.
     const alt = document.getElementById('download-alt')
-    alt.innerHTML = others
-    alt.hidden = !others
-    const notes = document.getElementById('whats-new')
-    notes.href = release.html_url
-    notes.textContent = `What's new in ${version}`
-    notes.hidden = false
+    alt.replaceChildren(...others)
+    alt.hidden = others.length === 0
+    if (ours(release.html_url)) {
+      const notes = document.getElementById('whats-new')
+      notes.href = release.html_url
+      notes.textContent = `What's new in ${version}`
+      notes.hidden = false
+    }
     if (os === 'win') return
     const pick = os === 'mac' ? find(/mac-arm64\.dmg$/) : find(/linux-x86_64\.AppImage$/) ?? find(/\.AppImage$/)
     if (!pick) return
