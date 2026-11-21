@@ -480,7 +480,7 @@ export type AiEvent =
   | { chatId: string; type: 'approval'; id: string; kind: 'sql' | 'file'; detail: string }
   | { chatId: string; type: 'usage'; inputTokens: number; outputTokens: number }
   | { chatId: string; type: 'done' }
-  | { chatId: string; type: 'error'; message: string }
+  | { chatId: string; type: 'error'; message: string; /** AiProblem's code: the window explains it and offers AI settings. */ code?: string }
 
 export interface WorkspaceState {
   tabs: unknown[]

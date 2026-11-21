@@ -21,6 +21,8 @@ import { providerMeta } from './providers'
 import { refreshTransaction, settleTransactions } from '@/store/transactions'
 import { TransactionBar } from '@/features/query/TransactionBar'
 import { formatDate, t as translate, tp, useT } from '@/lib/i18n'
+import { aiProblemText } from '@/lib/ai-problems'
+import { activeAiProvider, openAiSettings } from '@/lib/ai-error-toast'
 
 type Part =
   | { type: 'text'; text: string }
@@ -32,6 +34,10 @@ interface Message {
   role: 'user' | 'assistant'
   parts: Part[]
   error?: string
+  /** main/ai/errors.ts's code for the error, when it knows what happened. */
+  errorCode?: string
+  /** Instructions that go to the model with the text but aren't shown (Design with AI's: what to reply with). */
+  hidden?: string
 }
 
 interface Chat {
@@ -158,6 +164,7 @@ bridge.on('ai:event', (event: AiEvent) => {
         break
       case 'error':
         msg.error = event.message
+        msg.errorCode = event.code
         return { ...chat, messages, running: false }
       case 'done':
         return { ...chat, messages, running: false }
@@ -194,6 +201,9 @@ export function AiPanel() {
   const activeTab = useActiveTab()
   const [input, setInput] = useState('')
   const [showHistory, setShowHistory] = useState(false)
+  // Hidden instructions and a placeholder that a request (Design with AI) leaves for the next message.
+  const pendingContext = useRef<string | undefined>(undefined)
+  const [placeholder, setPlaceholder] = useState<string>()
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const provider = settings?.ai.providers.find((p) => p.id === settings.ai.activeProvider)
@@ -216,7 +226,9 @@ export function AiPanel() {
     if (!connectionId || !text.trim()) return
     const current = useChats.getState().get(connectionId)
     if (current.running) return
-    const userMsg: Message = { id: uid('m'), role: 'user', parts: [{ type: 'text', text: text.trim() }] }
+    const userMsg: Message = { id: uid('m'), role: 'user', parts: [{ type: 'text', text: text.trim() }], ...(pendingContext.current ? { hidden: pendingContext.current } : {}) }
+    pendingContext.current = undefined
+    setPlaceholder(undefined)
     const messages = [...current.messages, userMsg]
     update(connectionId, () => ({ ...current, messages, running: true }))
     setInput('')
@@ -226,7 +238,7 @@ export function AiPanel() {
     void api.aiChat({
       chatId: current.id,
       connectionId,
-      messages: messages.map((m) => ({ role: m.role, content: messageText(m) || '(tool calls only)' })),
+      messages: messages.map((m) => ({ role: m.role, content: m.hidden ? `${m.hidden}\n\n${messageText(m)}` : messageText(m) || '(tool calls only)' })),
       context,
     })
   }
@@ -235,9 +247,19 @@ export function AiPanel() {
   useEffect(() => {
     if (!aiRequest) return
     useUi.getState().set({ aiRequest: undefined })
-    if (aiRequest.prompt && aiRequest.send && status === 'connected' && !chat?.running) send(aiRequest.prompt)
-    else if (aiRequest.prompt) setInput(aiRequest.prompt)
-    requestAnimationFrame(() => inputRef.current?.focus())
+    void (async () => {
+      // A task of its own (Explain with AI, Design with AI) starts a new chat: it doesn't continue whatever was open.
+      if (aiRequest.newChat && connectionId && useChats.getState().chats[connectionId]?.messages.length) {
+        if (!(await leaveChat(connectionId))) return
+        reset(connectionId)
+        setShowHistory(false)
+      }
+      pendingContext.current = aiRequest.context
+      setPlaceholder(aiRequest.placeholder)
+      if (aiRequest.prompt && aiRequest.send && status === 'connected' && !useChats.getState().chats[connectionId ?? '']?.running) send(aiRequest.prompt)
+      else if (aiRequest.prompt) setInput(aiRequest.prompt)
+      requestAnimationFrame(() => inputRef.current?.focus())
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiRequest])
 
@@ -309,14 +331,17 @@ export function AiPanel() {
     <div className="flex h-full min-h-0 flex-col bg-subtle">
       {/* title-band: a look that colors the title bar colors this header too, so the bar runs on. */}
       <div className="title-band flex h-[38px] shrink-0 items-center gap-1.5 border-b border-line px-2.5">
-        <Sparkles size={14} className="text-accent" />
-        <span className="text-[12.5px] font-semibold">{t('AI assistant')}</span>
-        {meta && (
-          <span className="truncate text-[11px] text-fg-faint" title={provider?.model}>
-            · {meta.label.replace(/ \(.*\)$/, '')}
-            {provider?.model ? ` · ${provider.model}` : ''}
-          </span>
-        )}
+        <Sparkles size={14} className="shrink-0 text-accent" />
+        {/* The title on one line; which provider and model answer goes under it (it used to push the title onto two). */}
+        <div className="flex min-w-0 flex-col leading-tight">
+          <span className="text-[12.5px] font-semibold whitespace-nowrap">{t('AI assistant')}</span>
+          {meta && (
+            <span className="truncate text-[10.5px] text-fg-faint" title={`${meta.label}${provider?.model ? ` · ${provider.model}` : ''}`} data-testid="ai-provider-line">
+              {meta.label.replace(/ \(.*\)$/, '')}
+              {provider?.model ? ` · ${provider.model}` : ''}
+            </span>
+          )}
+        </div>
         <div className="flex-1" />
         <IconButton label={t('Chat history')} disabled={!connectionId} onClick={() => setShowHistory((v) => !v)} className={cn(showHistory && 'bg-muted text-fg')}>
           <History size={13} />
@@ -444,7 +469,7 @@ export function AiPanel() {
                       </div>
                     ),
                   )}
-                  {m.error && <div className="my-2 rounded-md border border-danger/30 bg-danger-soft p-2.5 text-[12px] text-danger select-text">{m.error}</div>}
+                  {m.error && <ChatError message={m.error} code={m.errorCode} />}
                 </div>
               ),
             )}
@@ -472,7 +497,7 @@ export function AiPanel() {
                   }
                 }}
                 rows={Math.min(8, Math.max(2, input.split('\n').length))}
-                placeholder={t('Ask about {name}…', { name: connection.name })}
+                placeholder={placeholder ?? t('Ask about {name}…', { name: connection.name })}
                 className="max-h-48 min-h-[36px] flex-1 resize-none bg-transparent px-1.5 py-1 text-[12.5px] outline-none placeholder:text-fg-faint"
               />
               {chat?.running ? (
@@ -608,6 +633,23 @@ function ChatHistory({
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+/** A failed answer: what happened (in the UI's language), the provider's words, and AI settings when they fix it. */
+function ChatError({ message, code }: { message: string; code?: string }) {
+  const t = useT()
+  const p = aiProblemText(message, code, activeAiProvider(), t)
+  return (
+    <div className="my-2 flex flex-col gap-1 rounded-md border border-danger/30 bg-danger-soft p-2.5 text-[12px] select-text" data-testid="ai-chat-error">
+      {p.summary && <span className="font-medium text-fg">{p.summary}</span>}
+      {p.detail && <span className={p.summary ? 'text-fg-muted' : 'text-danger'}>{p.detail}</span>}
+      {p.settings && (
+        <button type="button" className="self-start font-medium text-accent hover:underline" onClick={openAiSettings}>
+          {t('Open AI settings')}
+        </button>
+      )}
     </div>
   )
 }

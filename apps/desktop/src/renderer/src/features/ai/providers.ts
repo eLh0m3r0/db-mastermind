@@ -1,4 +1,4 @@
-import type { AiProviderId } from '@shared/api'
+import type { AiProviderId, AiProviderSettings, AiSettings } from '@shared/api'
 
 export interface ProviderMeta {
   id: AiProviderId
@@ -26,4 +26,24 @@ export const PROVIDERS: ProviderMeta[] = [
 
 export function providerMeta(id: AiProviderId | undefined): ProviderMeta | undefined {
   return PROVIDERS.find((p) => p.id === id)
+}
+
+/** Enough is filled in to try the provider: its key, or for one without a key its address or model. */
+export function providerReady(meta: ProviderMeta, config: AiProviderSettings): boolean {
+  if (meta.needsKey) return !!config.apiKey?.trim() && (!meta.needsResource || !!config.resourceName?.trim())
+  if (meta.needsBaseUrl) return !!config.baseUrl?.trim() || !!config.model?.trim()
+  return !!config.model?.trim()
+}
+
+/**
+ * The AI settings after a provider's fields change. With no provider in use yet, the first one that is ready becomes
+ * the one in use: people paste a key and close Settings, and AI was still off until "Use this provider".
+ */
+export function withProviderEdit(ai: AiSettings, id: AiProviderId, patch: Partial<AiProviderSettings>): AiSettings {
+  const current = ai.providers.find((p) => p.id === id) ?? { id, enabled: true }
+  const next = { ...current, ...patch }
+  const providers = ai.providers.some((p) => p.id === id) ? ai.providers.map((p) => (p.id === id ? next : p)) : [...ai.providers, next]
+  const meta = providerMeta(id)
+  const activate = !ai.activeProvider && !!meta && providerReady(meta, next)
+  return { ...ai, providers, ...(activate ? { activeProvider: id } : {}) }
 }

@@ -598,12 +598,15 @@ export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: bo
   }
   const fileName = (tab.path ?? tab.source?.path)?.split(/[\\/]/).pop() ?? ''
 
+  // A chat of its own: the instructions go along unseen and the box asks what to store. (Shown in the box, they were
+  // typed over, and the answer then offered to change the linked database instead of the model.)
   const designWithAi = () =>
     askAi({
-      prompt: t(
-        'Help me design a database model in DBML (dbdiagram.io syntax). Ask what it should store if it is not clear, then reply with the complete model in one ```dbml block. Current model:\n\n{model}',
-        { model: text.trim() || '(empty)' },
-      ),
+      newChat: true,
+      placeholder: text.trim() ? t('What should change in the model?') : t('What should the database store?'),
+      context: text.trim()
+        ? `Help me extend this database model in DBML (dbdiagram.io syntax). It is a model, not the connected database: never change the database. Reply with a short explanation and the complete updated model in one \`\`\`dbml block. Current model:\n\n${text.trim()}\n\nWhat to change:`
+        : 'Help me design a new database model in DBML (dbdiagram.io syntax) from the description below. It is a new model, not the connected database: don\'t describe or change that database. If the description leaves something important open, make a reasonable choice and say so. Reply with a short explanation and the complete model in one ```dbml block. Description:',
     })
 
   // TableGroups color their tables (one palette color per group, in file order).
@@ -782,7 +785,7 @@ export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: bo
               ...MODEL_TASKS.map(([label, task]) => ({
                 label: t(label),
                 disabled: !text.trim(),
-                onClick: () => askAi({ prompt: t('{task}\n\nReply with a short explanation and the complete updated model in one ```dbml block, so it can be applied. Current model:\n\n{model}', { task: t(task), model: text.trim() }), send: true }),
+                onClick: () => askAi({ prompt: t('{task}\n\nReply with a short explanation and the complete updated model in one ```dbml block, so it can be applied. Current model:\n\n{model}', { task: t(task), model: text.trim() }), send: true, newChat: true }),
               })),
             ])
           }

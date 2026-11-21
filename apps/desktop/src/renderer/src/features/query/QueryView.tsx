@@ -27,6 +27,7 @@ import { openDefinition } from '@/lib/definitions'
 import { endTransaction, refreshTransaction, useTransactions } from '@/store/transactions'
 import { rememberSessionTables, sessionTablesOf, useSessionTables } from '@/store/session-tables'
 import { useT } from '@/lib/i18n'
+import { aiErrorToast } from '@/lib/ai-error-toast'
 import { confirmAction } from '@/components/ui/ConfirmDialog'
 
 const FORMATTER_LANGUAGE: Record<DriverId, SqlLanguage> = {
@@ -379,7 +380,7 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
       view.focus()
     } catch (err) {
       setInline((v) => (v ? { ...v, busy: false } : v))
-      toast({ kind: 'error', message: t('AI could not write the SQL'), detail: errorMessage(err) })
+      aiErrorToast(t('AI could not write the SQL'), err)
     }
   }, [inline, tab.connectionId, t])
 
@@ -573,6 +574,8 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
           onFixWithAi={(o) => {
             const view = editor.current?.view()
             if (!view || !o.error) return
+            // No provider yet: the AI setup, not an error ("AI could not write the SQL").
+            if (!aiAllowed || !hasProvider) return openInline()
             const from = lastFragmentOffset.current + o.start
             view.dispatch({ selection: { anchor: from, head: Math.min(view.state.doc.length, from + o.sql.length) }, scrollIntoView: true })
             void submitInline(t('Fix this statement. It failed with: {error}', { error: o.error.message }))
