@@ -178,3 +178,14 @@ describe('names an object has of its own (review M4, prototype lookups)', () => 
     expect(services[0]!.connection!.password ?? '').toBe('')
   })
 })
+
+describe('YAML aliases anywhere a compose value is read (review N3)', () => {
+  it('ports with a list for a target, published port or host are no port; the file is read at once', { timeout: 30_000 }, () => {
+    let y = 'x-a0: &a0 ["lol","lol","lol","lol","lol","lol","lol","lol","lol","lol"]\n'
+    for (let i = 1; i <= 8; i++) y += `x-a${i}: &a${i} [${Array(10).fill(`*a${i - 1}`).join(',')}]\n`
+    for (const port of ['- target: *a8\n        published: 5432', '- target: 5432\n        published: *a8', '- target: 5432\n        published: 5433\n        host_ip: *a8', '- *a8']) {
+      const services = servicesFromCompose(`${y}services:\n  db:\n    image: postgres:16\n    ports:\n      ${port}\n`, {}, 'p')
+      expect(services.map((s) => s.published)).toEqual([port.includes('host_ip') ? 5433 : undefined])
+    }
+  })
+})
