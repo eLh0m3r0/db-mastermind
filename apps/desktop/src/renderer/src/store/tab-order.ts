@@ -42,3 +42,19 @@ export function closeTabsPlan(order: string[], ids: string[], active: string | u
   }
   return { remaining, closed, active: active && remaining.includes(active) ? active : keep }
 }
+
+/** A tab is never wider than this (its name is cut with an ellipsis past it, the full name is the tooltip). */
+export const TAB_MAX_WIDTH = 220
+
+/**
+ * Tab widths in Shrink mode: `null` while the natural widths fit (nothing changes). Otherwise the selected tab keeps
+ * its natural width and the others share what is left equally, each at most its own natural width and never below
+ * `floor`; below the floor the strip scrolls as in Scroll mode. The share is worked out as if the selected tab took
+ * the widest a tab can be, so selecting another tab changes the width of those two tabs only and nothing else moves.
+ */
+export function shrinkTabWidths(natural: number[], active: number, available: number, floor: number): number[] | null {
+  const total = natural.reduce((a, b) => a + b, 0)
+  if (natural.length < 2 || total <= available) return null
+  const share = Math.max(floor, Math.floor((available - TAB_MAX_WIDTH) / (natural.length - 1)))
+  return natural.map((w, i) => (i === active ? w : Math.min(w, share)))
+}

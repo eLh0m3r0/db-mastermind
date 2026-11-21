@@ -2021,4 +2021,8 @@ export const cs: Record<string, string> = {
   '{n} changes aren’t in the database yet.|few': '{n} změny ještě nejsou v databázi.',
   'Close tabs to the left': 'Zavřít vše vlevo',
   'Close tabs to the right': 'Zavřít vše vpravo',
+  'When tabs don’t fit': 'Když se záložky nevejdou',
+  'Scroll': 'Posouvat',
+  'Shrink': 'Zužovat',
+  'Shrink keeps the selected tab whole and narrows the others while their names still read; past that the strip scrolls.': 'Zužování nechá vybranou záložku celou a ostatní zúží, dokud jde přečíst jejich název; pak se lišta posouvá.',
 }

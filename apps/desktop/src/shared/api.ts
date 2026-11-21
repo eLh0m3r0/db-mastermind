@@ -172,6 +172,8 @@ export interface AppSettings {
   lookFont?: 'look' | 'standard'
   /** Compact: denser rows in tables and the explorer. */
   density?: 'comfortable' | 'compact'
+  /** What the tab strip does with more tabs than fit: scroll (default) or shrink the inactive ones down to a readable floor. */
+  tabOverflow?: 'scroll' | 'shrink'
   language: 'en' | 'cs'
   pageSize: number
   maxResultRows: number

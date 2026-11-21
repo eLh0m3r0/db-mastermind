@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { closeTabsPlan, nextNumberedTitle, reopenIndex, tabsBeside } from '../src/renderer/src/store/tab-order'
+import { closeTabsPlan, nextNumberedTitle, reopenIndex, shrinkTabWidths, tabsBeside } from '../src/renderer/src/store/tab-order'
 
 describe('new tab names', () => {
   it('takes one more than the highest number in use', () => {
@@ -69,5 +69,30 @@ describe('closing the tabs to the left or right', () => {
   it('closes nothing it does not know (a cancelled question closes nothing: the store is not called)', () => {
     expect(closeTabsPlan(order, [], 'c', 'c')).toEqual({ remaining: order, closed: [], active: 'c' })
     expect(closeTabsPlan(order, ['zz'], 'c', 'c').remaining).toEqual(order)
+  })
+})
+
+describe('Shrink mode widths', () => {
+  it('changes nothing while the natural widths fit', () => {
+    expect(shrinkTabWidths([120, 220, 110], 1, 450, 92)).toBeNull()
+    expect(shrinkTabWidths([200], 0, 100, 92)).toBeNull()
+  })
+
+  it('keeps the selected tab whole and shares the rest equally, never above a tab’s own width', () => {
+    // 1000 px: the selected one 180, the others (1000 - 220) / 5 = 156 each, a short one keeps its 120.
+    expect(shrinkTabWidths([220, 180, 200, 120, 220, 220], 1, 1000, 92)).toEqual([156, 180, 156, 120, 156, 156])
+  })
+
+  it('stops at the floor (the strip then scrolls)', () => {
+    const w = shrinkTabWidths(Array(30).fill(200), 4, 1000, 92)!
+    expect(w[4]).toBe(200)
+    expect(Math.min(...w)).toBe(92)
+  })
+
+  it('selecting another tab changes only the two that trade widths', () => {
+    const natural = [210, 150, 190, 220, 130, 170, 200, 160]
+    const a = shrinkTabWidths(natural, 2, 900, 92)!
+    const b = shrinkTabWidths(natural, 5, 900, 92)!
+    expect(a.map((w, i) => (w !== b[i] ? i : -1)).filter((i) => i >= 0)).toEqual([2, 5])
   })
 })
