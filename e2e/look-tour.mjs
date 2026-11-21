@@ -64,7 +64,7 @@ try {
       await win.waitForTimeout(500)
       await win.screenshot({ path: `${out}/${name}-${i}.png` })
     }
-    await win.getByRole('button', { name: /All connections|Všechna připojení/ }).first().click()
+    await win.getByRole('button', { name: /all connections|všechna připojení/i }).first().click()
     await win.waitForTimeout(400)
     await win.screenshot({ path: `${out}/${name}-5-home.png` })
     await win.getByRole('tab').first().click()

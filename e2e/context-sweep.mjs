@@ -121,10 +121,10 @@ try {
     await win.waitForTimeout(1200)
     await closeAllTabs()
     // The connection list shows when no connection is selected; the home button clears the selection.
-    await win.getByRole('button', { name: /^(All connections|Všechna připojení)$/ }).first().click({ timeout: 2000 }).catch(() => {})
+    await win.getByRole('button', { name: /^(Home \(all connections\)|Domů \(všechna připojení\))$/ }).first().click({ timeout: 2000 }).catch(() => {})
     const row = win.locator(`[data-connection="${name}"]`)
     // An item may select the connection (the sidebar then shows its tree): back to the list before each one.
-    const home = () => win.getByRole('button', { name: /^(All connections|Všechna připojení)$/ }).first().click({ timeout: 2000 }).catch(() => {})
+    const home = () => win.getByRole('button', { name: /^(Home \(all connections\)|Domů \(všechna připojení\))$/ }).first().click({ timeout: 2000 }).catch(() => {})
     await sweepMenuOf('connection', async () => {
       if (!(await row.count())) await home()
       await rightClick(row)()
@@ -133,7 +133,7 @@ try {
     state.current = 'connect'
     await win.reload()
     await win.waitForTimeout(1000)
-    await win.getByRole('button', { name: /^(All connections|Všechna připojení)$/ }).first().click({ timeout: 2000 }).catch(() => {})
+    await win.getByRole('button', { name: /^(Home \(all connections\)|Domů \(všechna připojení\))$/ }).first().click({ timeout: 2000 }).catch(() => {})
     await row.first().click({ timeout: 5000 })
     const tree = await win.locator('[data-node]').first().waitFor({ timeout: 45000 }).then(() => true, () => false)
     if (!tree) {
