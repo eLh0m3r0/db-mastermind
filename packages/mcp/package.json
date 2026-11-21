@@ -60,6 +60,7 @@
   "scripts": {
     "build": "node build.mjs",
     "prepack": "node build.mjs",
+    "version": "node sync-server-json.mjs",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
