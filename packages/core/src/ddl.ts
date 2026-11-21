@@ -1,5 +1,7 @@
 import { qualify, type Dialect } from './dialect.js'
 import { translateTables } from './type-map.js'
+import { oneLine, sqlTextProblem } from './sql-guard.js'
+import { splitStatements } from './sql-split.js'
 import type { ColumnInfo, DriverId, ForeignKeyInfo, IndexInfo, TableInfo, TableRef, CheckInfo } from './types.js'
 
 /**
@@ -470,7 +472,8 @@ function constraintName(prefix: string, table: string, columns: string[]): strin
 }
 
 function literalComment(text: string, driver: DriverId): string {
-  const escaped = text.replaceAll("'", "''")
+  // (MySQL reads a backslash in a string as an escape: `a\` would end no string.)
+  const escaped = (driver === 'mysql' || driver === 'mariadb' ? text.replaceAll('\\', '\\\\') : text).replaceAll("'", "''")
   return driver === 'mssql' ? `N'${escaped}'` : `'${escaped}'`
 }
 
@@ -577,8 +580,132 @@ export interface MigrationOptions {
   uniqueConstraint?: (table: TableRef, name: string | undefined) => boolean | undefined
 }
 
-/** Renders a change set as SQL. `tables` is the live schema (needed by MySQL MODIFY and SQLite rebuilds). */
+/**
+ * Renders a change set as SQL. `tables` is the live schema (needed by MySQL MODIFY and SQLite rebuilds).
+ * Whatever a model gives as SQL (types, defaults, checks, index expressions, collations, actions) is checked first
+ * (guardChanges), and every statement made is checked again: one statement as our splitter reads it (guardStatements).
+ * What fails is left out, and a warning says what and why.
+ */
 export function generateMigration(changes: SchemaChange[], dialect: Dialect, tables: TableInfo[] = [], options: MigrationOptions = {}): Migration {
+  const guarded = guardChanges(changes, dialect, options)
+  const migration = renderMigration(guarded.changes, dialect, tables, guarded.options)
+  return guardStatements({ ...migration, warnings: [...guarded.warnings, ...migration.warnings] }, dialect)
+}
+
+const FK_ACTIONS = new Set(['CASCADE', 'RESTRICT', 'SET NULL', 'SET DEFAULT', 'NO ACTION'])
+/** An index key written as SQL rather than quoted as a column name (see indexKey). */
+const isExpressionKey = (c: string) => /[()]|\s(?:ASC|DESC|NULLS)\b/i.test(c)
+
+/** The model's own SQL pieces checked (sql-guard.ts): a piece with a problem is left out, with a warning. */
+function guardChanges(changes: SchemaChange[], d: Dialect, options: MigrationOptions): { changes: SchemaChange[]; warnings: MigrationWarning[]; options: MigrationOptions } {
+  const warnings: MigrationWarning[] = []
+  const name = (t: TableRef) => `${t.schema ? `${t.schema}.` : ''}${t.name}`
+  const ok = (text: string | null | undefined, what: () => string) => {
+    if (text === null || text === undefined || text === '') return true
+    const problem = sqlTextProblem(text, d.id)
+    if (problem) warnings.push({ level: 'warning', message: `Left out: ${what()}, ${problem}: ${text.slice(0, 200)}` })
+    return !problem
+  }
+  const action = (a: string | undefined, what: () => string) => {
+    if (!a) return undefined
+    const v = a.trim().toUpperCase().replace(/\s+/g, ' ')
+    if (FK_ACTIONS.has(v)) return v
+    warnings.push({ level: 'warning', message: `Left out: ${what()}, not a referential action: ${a.slice(0, 200)}` })
+    return undefined
+  }
+  const column = <T extends DesignColumn>(c: T, table: string): T | undefined => {
+    if (!ok(c.dataType, () => `column ${table}.${c.name} (its type)`)) return undefined
+    const out = { ...c }
+    if (!ok(c.defaultValue, () => `the default of ${table}.${c.name}`)) out.defaultValue = null
+    if (!ok(c.collation, () => `the collation of ${table}.${c.name}`)) delete out.collation
+    return out
+  }
+  const index = <T extends { name?: string; columns: string[]; definition?: string; definitionDriver?: DriverId }>(ix: T, table: string): T | undefined => {
+    if (!ix.columns.every((c) => !isExpressionKey(c) || ok(c, () => `index ${ix.name ?? ''} of ${table}`))) return undefined
+    if (ix.definition && !ok(ix.definition, () => `the server's text of index ${ix.name ?? ''} of ${table}`)) {
+      const { definition: _, definitionDriver: __, ...rest } = ix
+      return rest as T
+    }
+    return ix
+  }
+  const fk = <T extends { name?: string; onDelete?: string; onUpdate?: string }>(k: T, table: string): T => ({
+    ...k,
+    onDelete: action(k.onDelete, () => `ON DELETE of ${k.name ?? 'a foreign key'} of ${table}`),
+    onUpdate: action(k.onUpdate, () => `ON UPDATE of ${k.name ?? 'a foreign key'} of ${table}`),
+  })
+  const out: SchemaChange[] = []
+  for (const c of changes) {
+    switch (c.kind) {
+      case 'create_table': {
+        const t = c.table
+        const label = name(t)
+        const columns = t.columns.flatMap((x) => column(x, label) ?? [])
+        const gone = new Set(t.columns.filter((x) => !columns.some((y) => y.id === x.id)).map((x) => x.name))
+        const uses = (cols: string[]) => cols.some((x) => gone.has(x))
+        out.push({
+          ...c,
+          table: {
+            ...t,
+            columns,
+            primaryKey: t.primaryKey.filter((x) => !gone.has(x)),
+            indexes: t.indexes.filter((ix) => !uses(ix.columns)).flatMap((ix) => index(ix, label) ?? []),
+            foreignKeys: t.foreignKeys.filter((k) => !uses(k.columns)).map((k) => fk(k, label)),
+            ...(t.checks ? { checks: t.checks.filter((k) => ok(k.expression, () => `check ${k.name ?? ''} of ${label}`)) } : {}),
+          },
+        })
+        break
+      }
+      case 'add_column': {
+        const col = column(c.column, name(c.table))
+        if (col) out.push({ ...c, column: col })
+        break
+      }
+      case 'alter_column': {
+        const after = column(c.after, name(c.table))
+        if (after && ok(c.before.dataType, () => `the change of ${name(c.table)}.${c.column} (its type before)`) && ok(c.before.defaultValue, () => `the change of ${name(c.table)}.${c.column} (its default before)`)) out.push({ ...c, after })
+        break
+      }
+      case 'add_index': {
+        const ix = index(c.index, name(c.table))
+        if (ix) out.push({ ...c, index: ix })
+        break
+      }
+      case 'add_foreign_key':
+        out.push({ ...c, fk: fk(c.fk, name(c.table)) })
+        break
+      case 'add_check':
+        if (ok(c.check.expression, () => `check ${c.check.name ?? ''} of ${name(c.table)}`)) out.push(c)
+        break
+      default:
+        out.push(c)
+    }
+  }
+  const domains = options.domains?.filter((x) => ok(x.dataType, () => `domain ${x.name} (its type)`) && ok(x.defaultValue, () => `domain ${x.name} (its default)`) && ok(x.check, () => `domain ${x.name} (its check)`))
+  return { changes: out, warnings, options: domains ? { ...options, domains } : options }
+}
+
+/**
+ * Every statement must still be the statement it was made as, read by our own splitter for this database: one
+ * (two for the T-SQL DECLARE … IF pairs), and nothing left open behind it (a quote or comment that would swallow the
+ * next one). A statement that isn't is not written; a warning says so. Warnings themselves become one line each.
+ */
+function guardStatements(m: Migration, d: Dialect): Migration {
+  const warnings = m.warnings.map((w) => ({ ...w, message: oneLine(w.message) }))
+  const whole = (sql: string) => {
+    const expected = d.id === 'mssql' && /^\s*DECLARE\s+@/i.test(sql) ? 2 : 1
+    const parts = splitStatements(`${sql};\nSELECT 1`, d.id)
+    return parts.length === expected + 1 && parts.at(-1)!.text === 'SELECT 1'
+  }
+  const keep = (list: string[], what: string) =>
+    list.filter((sql) => {
+      if (whole(sql)) return true
+      warnings.push({ level: 'danger', message: oneLine(`Left out of the ${what}: a statement that would not be one statement: ${sql.slice(0, 200)}`) })
+      return false
+    })
+  return { ...m, statements: keep(m.statements, 'script'), rollback: keep(m.rollback, 'rollback'), warnings }
+}
+
+function renderMigration(changes: SchemaChange[], dialect: Dialect, tables: TableInfo[] = [], options: MigrationOptions = {}): Migration {
   // DuckDB can't alter a table once a new table references it: create new tables after the alters.
   if (dialect.id === 'duckdb') changes = [...changes.filter((c) => c.kind !== 'create_table'), ...changes.filter((c) => c.kind === 'create_table')]
   const d = dialect
