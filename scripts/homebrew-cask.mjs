@@ -7,6 +7,15 @@ import { readFileSync } from 'node:fs'
 
 const [version, arm64, x64] = process.argv.slice(2)
 const sha = (file) => createHash('sha256').update(readFileSync(file)).digest('hex')
+// A notarized release (DBM_NOTARIZED=1, release.yml) opens without the Gatekeeper workaround.
+const caveats = process.env.DBM_NOTARIZED === '1'
+  ? ''
+  : `
+  caveats <<~EOS
+    DB Mastermind is not notarized yet. If macOS refuses to open it, run:
+      xattr -dr com.apple.quarantine "/Applications/DB Mastermind.app"
+  EOS
+`
 
 process.stdout.write(`cask "db-mastermind" do
   arch arm: "arm64", intel: "x64"
@@ -33,10 +42,5 @@ process.stdout.write(`cask "db-mastermind" do
     "~/Library/Application Support/DB Mastermind",
     "~/Library/Preferences/dev.dbmastermind.app.plist",
   ]
-
-  caveats <<~EOS
-    DB Mastermind is not notarized yet. If macOS refuses to open it, run:
-      xattr -dr com.apple.quarantine "/Applications/DB Mastermind.app"
-  EOS
-end
+${caveats}end
 `)

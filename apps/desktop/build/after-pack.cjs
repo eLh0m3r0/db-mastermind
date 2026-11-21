@@ -43,6 +43,44 @@ function signWithCertificate(app) {
   }
 }
 
+const DEVELOPER_ID = ['MAC_DEVID_P12', 'MAC_DEVID_PASSWORD', 'APPLE_API_KEY_ID', 'APPLE_API_ISSUER_ID', 'APPLE_API_KEY_P8']
+
+/**
+ * With an Apple Developer ID (all five secrets in DEVELOPER_ID): sign with the hardened runtime, have Apple notarize
+ * the app and staple the ticket to it. This runs before electron-builder makes the .dmg and the .zip from the app, so
+ * both carry the stapled app and latest-mac.yml hashes the final files (a .zip can't be stapled, and stapling the
+ * .dmg afterwards would change it after its hash was written). docs/macos-notarization.md has the whole procedure.
+ */
+function signAndNotarize(app) {
+  const rcodesign = (args) => execFileSync(process.env.RCODESIGN, args, { stdio: 'inherit' })
+  const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'dbm-notarize-'))
+  try {
+    const p12 = path.join(dir, 'developer-id.p12')
+    const password = path.join(dir, 'password')
+    const p8 = path.join(dir, 'api-key.p8')
+    const apiKey = path.join(dir, 'api-key.json')
+    fs.writeFileSync(p12, Buffer.from(process.env.MAC_DEVID_P12, 'base64'), { mode: 0o600 })
+    fs.writeFileSync(password, process.env.MAC_DEVID_PASSWORD, { mode: 0o600 })
+    fs.writeFileSync(p8, process.env.APPLE_API_KEY_P8, { mode: 0o600 })
+    rcodesign(['encode-app-store-connect-api-key', '--output-path', apiKey, process.env.APPLE_API_ISSUER_ID, process.env.APPLE_API_KEY_ID, p8])
+    // --for-notarization: Developer ID required, timestamped, hardened runtime on every Mach-O. Entitlements apply only
+    // where they are scoped: the app itself and each Electron helper app (the renderer runs V8 too).
+    const entitlements = path.join(__dirname, 'entitlements.mac.plist')
+    const scoped = fs
+      .readdirSync(path.join(app, 'Contents', 'Frameworks'))
+      .filter((name) => name.endsWith('.app'))
+      .flatMap((name) => ['--entitlements-xml-file', `Contents/Frameworks/${name}:${entitlements}`])
+    rcodesign(['sign', '--for-notarization', '--p12-file', p12, '--p12-password-file', password, '--entitlements-xml-file', entitlements, ...scoped, app])
+    execFileSync('codesign', ['--verify', '--deep', '--strict', '--verbose=2', app], { stdio: 'inherit' })
+    // Uploads the app (rcodesign zips a bundle itself), waits for Apple's verdict and staples the ticket to the app.
+    rcodesign(['notary-submit', '--api-key-file', apiKey, '--staple', app])
+    execFileSync('xcrun', ['stapler', 'validate', app], { stdio: 'inherit' })
+    execFileSync('spctl', ['--assess', '--type', 'execute', '--verbose=4', app], { stdio: 'inherit' })
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+}
+
 exports.default = async function afterPack(context) {
   pruneDuckDBBindings(context)
   if (context.electronPlatformName !== 'darwin') return
@@ -50,6 +88,13 @@ exports.default = async function afterPack(context) {
   try {
     // Extended attributes (quarantine, Finder info) make codesign refuse to sign.
     execFileSync('xattr', ['-cr', app])
+    const devId = DEVELOPER_ID.filter((name) => process.env[name])
+    // Half a configuration must not quietly ship the old signature: either all five secrets or none.
+    if (devId.length > 0 && devId.length < DEVELOPER_ID.length) throw new Error(`Developer ID signing needs all of ${DEVELOPER_ID.join(', ')}; missing ${DEVELOPER_ID.filter((n) => !devId.includes(n)).join(', ')}`)
+    if (devId.length === DEVELOPER_ID.length) {
+      if (!process.env.RCODESIGN) throw new Error('Developer ID signing needs rcodesign (RCODESIGN)')
+      return signAndNotarize(app)
+    }
     if (process.env.MAC_SIGN_P12 && process.env.RCODESIGN) return signWithCertificate(app)
     execFileSync('codesign', ['--force', '--deep', '--sign', '-', app], { stdio: 'inherit' })
   } catch (err) {

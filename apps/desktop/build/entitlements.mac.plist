@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Only used for Developer ID builds (hardened runtime, notarization; see docs/macos-notarization.md), on the app and
+  its four Electron helpers. V8 compiles JavaScript at run time, which the hardened runtime forbids without these two.
+  No disable-library-validation: every native module (DuckDB, ssh2, cpu-features) and Electron's own dylibs are inside
+  the bundle and signed with the same Developer ID, so library validation passes. Add it only if a library from
+  outside the bundle has to load.
+-->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+  </dict>
+</plist>

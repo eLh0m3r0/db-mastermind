@@ -103,11 +103,17 @@ if (mode === '--plain') {
     const win = await app.firstWindow()
     await win.getByText('sandbox-check').first().waitFor({ timeout: 30_000 })
     console.log('window open, the model file opened in a tab')
-    const main = await app.evaluate(({ app: a, BrowserWindow }) => ({
-      noSandboxSwitch: a.commandLine.hasSwitch('no-sandbox'),
-      appImage: process.env.APPIMAGE ?? null,
-      windows: BrowserWindow.getAllWindows().filter((w) => w.isVisible()).length,
-    }))
+    // The window is created hidden and shown on ready-to-show, which can come after the page has rendered.
+    let main
+    for (let i = 0; i < 30; i++) {
+      main = await app.evaluate(({ app: a, BrowserWindow }) => ({
+        noSandboxSwitch: a.commandLine.hasSwitch('no-sandbox'),
+        appImage: process.env.APPIMAGE ?? null,
+        windows: BrowserWindow.getAllWindows().filter((w) => w.isVisible()).length,
+      }))
+      if (main.windows > 0) break
+      await sleep(1000)
+    }
     console.log(`main process: ${JSON.stringify(main)}`)
     if (main.windows < 1) problems.push('no visible window')
     if (exe.endsWith('.AppImage') && main.appImage !== exe) problems.push(`APPIMAGE is ${main.appImage}, the updater and the MCP path need ${exe}`)
