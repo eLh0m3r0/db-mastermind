@@ -577,6 +577,8 @@ export function toPrisma(tables: TableInfo[], options: CodeOptions = {}): string
   const out: string[] = [
     `// ${HEADER}: the model as \`prisma db pull\` would write it.`,
     '',
+    // (As `prisma init` writes it in Prisma 7: the client goes to generated/prisma beside the prisma/ folder.)
+    '// The client is generated where `prisma init` puts it: change output to suit your project.',
     'generator client {',
     '  provider = "prisma-client"',
     '  output   = "../generated/prisma"',
