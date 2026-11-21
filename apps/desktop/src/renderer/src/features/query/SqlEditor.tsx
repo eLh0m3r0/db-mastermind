@@ -275,7 +275,7 @@ export function SqlEditor({ value, driver, schema, sessionTables, dark, onChange
           highlightActiveLine(),
           highlightSelectionMatches(),
           // In a narrow editor (split view) only "Write SQL…": the keys wrapped under it and read like code.
-          placeholderExt(placeholderElement(tr('Write SQL…'), tr('{run} runs the statement under the cursor, {runAll} runs everything', { run: keys('⌘↵'), runAll: keys('⇧⌘↵') }))),
+          placeholderExt(() => placeholderElement(tr('Write SQL…'), tr('{run} runs the statement under the cursor, {runAll} runs everything', { run: keys('⌘↵'), runAll: keys('⇧⌘↵') }))),
           statementHighlight(() => driverRef.current),
           // Extra completion sources next to the SQL language's own (tables, qualified columns, keywords).
           // Sources need a stable identity: autocompletion matches results to sources by reference.
@@ -432,18 +432,20 @@ function placeholderElement(lead: string, keysHint: string): HTMLElement {
   hint.className = 'cm-placeholder-keys'
   hint.textContent = keysHint
   el.append(hint)
-  // Shown only while it fits on the first line next to "Write SQL…".
-  requestAnimationFrame(function fit() {
-    if (!el.isConnected) return
-    const line = el.closest('.cm-content') as HTMLElement | null
-    if (!line) return
+  // Shown only while "Write SQL…" and the keys fit on one line (in a split pane they wrapped and read like code).
+  const fit = () => {
     hint.style.display = ''
-    const room = line.clientWidth - 40
-    hint.style.display = el.scrollWidth > room || el.getBoundingClientRect().height > parseFloat(getComputedStyle(el).lineHeight) * 1.5 ? 'none' : ''
-    new ResizeObserver(() => {
-      hint.style.display = ''
-      hint.style.display = el.getBoundingClientRect().height > parseFloat(getComputedStyle(el).lineHeight) * 1.5 ? 'none' : ''
-    }).observe(line)
-  })
+    const line = parseFloat(getComputedStyle(el).lineHeight) || 20
+    if (el.getBoundingClientRect().height > line * 1.5) hint.style.display = 'none'
+  }
+  let tries = 0
+  const attach = () => {
+    const content = el.closest('.cm-editor')
+    if (!content) return void (tries++ < 20 && requestAnimationFrame(attach))
+    fit()
+    const observer = new ResizeObserver(() => (el.isConnected ? fit() : observer.disconnect()))
+    observer.observe(content)
+  }
+  requestAnimationFrame(attach)
   return el
 }
