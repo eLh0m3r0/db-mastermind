@@ -58,7 +58,7 @@ import { copyText, errorMessage, formatCount, formatDuration, uid } from '@/lib/
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { toast } from '@/store/ui'
-import { registerTabSaver, setUnsavedEdits, useWorkspace, type TableTab } from '@/store/workspace'
+import { confirmUnsavedEdits, registerTabSaver, setUnsavedEdits, useWorkspace, type TableTab } from '@/store/workspace'
 import { endTransaction, refreshTransaction, useTransactions } from '@/store/transactions'
 import { TransactionBar } from '@/features/query/TransactionBar'
 import { copyRowsAs, EXPORT_FORMATS } from '../results/copy'
@@ -298,9 +298,13 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
     hadTransaction.current = inTransaction
   }, [inTransaction, load, count])
 
-  const confirmDiscard = async () =>
-    pendingCount === 0 ||
-    confirmAction({ title: tp(pendingCount, { one: 'Discard {n} pending change?', many: 'Discard {n} pending changes?' }), confirmLabel: t('Discard'), danger: true })
+  // A new filter, sort or page and Refresh would throw the edits away: the same question as closing the tab.
+  const confirmDiscard = async () => {
+    if (pendingCount === 0) return true
+    const answer = await confirmUnsavedEdits([tab.id])
+    if (answer === 'discarded') setPending(emptyPending())
+    return answer !== false
+  }
 
   const applyFilter = async (group: FilterGroup = draft) => {
     if (!(await confirmDiscard())) return
@@ -907,8 +911,10 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
         {aiReady && (
           <Input
             inputSize="sm"
-            className="w-[300px]"
-            placeholder={t('Describe a filter, e.g. paid orders over 1000 this month')}
+            // Short enough for its narrowest width in both languages; the example is the tooltip.
+            className="w-[300px] min-w-[180px]"
+            placeholder={t('Describe a filter…')}
+            title={t('Describe the rows you want in words, e.g. paid orders over 1000 this month')}
             value={aiFilter}
             disabled={aiBusy}
             onChange={(e) => setAiFilter(e.target.value)}

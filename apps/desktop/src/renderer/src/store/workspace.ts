@@ -243,29 +243,49 @@ export function setUnsavedEdits(tabId: string, count: number): void {
 }
 
 /**
+ * Grid edits that something is about to throw away (closing a tab, a new filter, sort or page, refreshing,
+ * disconnecting, deleting the connection, quitting): one question everywhere, Save / Discard / Cancel. Resolves
+ * 'saved' or 'discarded' when the caller may go on (also when there was nothing to ask about: 'discarded'), false to
+ * stay.
+ */
+export async function confirmUnsavedEdits(ids: string[]): Promise<'saved' | 'discarded' | false> {
+  const edited = ids.filter((id) => (unsavedEdits.get(id) ?? 0) > 0)
+  const n = edited.reduce((sum, id) => sum + (unsavedEdits.get(id) ?? 0), 0)
+  if (n === 0) return 'discarded'
+  const titles = edited.map((id) => useWorkspace.getState().tabs.find((tab) => tab.id === id)?.title ?? '')
+  const choice = await askChoice({
+    title: edited.length === 1 ? t('Save the changes to {table}?', { table: titles[0]! }) : t('Save the changes in {n} tabs?', { n: String(edited.length) }),
+    message: tp(n, { one: '{n} change isn’t in the database yet.', many: '{n} changes aren’t in the database yet.' }),
+    confirmLabel: t('Save'),
+    secondaryLabel: t('Discard'),
+    focusCancel: true,
+  })
+  if (!choice) return false
+  if (choice === 'secondary') return 'discarded'
+  for (const id of edited) {
+    const save = tabSavers.get(id)
+    if (!save || !(await save())) return false
+  }
+  return 'saved'
+}
+
+/** The tabs of a connection with unsaved grid edits, asked about before it is disconnected or deleted. */
+export function confirmUnsavedEditsOf(connectionId: string): Promise<'saved' | 'discarded' | false> {
+  return confirmUnsavedEdits(useWorkspace.getState().tabs.filter((tab) => tab.connectionId === connectionId).map((tab) => tab.id))
+}
+
+// Quitting or closing the window (main asks the page before it goes): every tab's edits.
+Object.assign(window, {
+  __dbmHasUnsavedEdits: () => unsavedEdits.size > 0,
+  __dbmSettleUnsavedEdits: async () => (await confirmUnsavedEdits(useWorkspace.getState().tabs.map((tab) => tab.id))) !== false,
+})
+
+/**
  * True when the tabs can close: none has unsaved grid edits (or the user agrees to discard them), and open
  * transactions in query tabs are committed or rolled back as the user says.
  */
 export async function confirmCloseTabs(ids: string[]): Promise<boolean> {
-  const edited = ids.filter((id) => (unsavedEdits.get(id) ?? 0) > 0)
-  const n = edited.reduce((sum, id) => sum + (unsavedEdits.get(id) ?? 0), 0)
-  if (n > 0) {
-    const titles = edited.map((id) => useWorkspace.getState().tabs.find((tab) => tab.id === id)?.title ?? '')
-    const choice = await askChoice({
-      title: edited.length === 1 ? t('Save the changes to {table}?', { table: titles[0]! }) : t('Save the changes in {n} tabs?', { n: String(edited.length) }),
-      message: tp(n, { one: '{n} change isn’t in the database yet.', many: '{n} changes aren’t in the database yet.' }),
-      confirmLabel: t('Save'),
-      secondaryLabel: t('Discard'),
-      focusCancel: true,
-    })
-    if (!choice) return false
-    if (choice === 'confirm') {
-      for (const id of edited) {
-        const save = tabSavers.get(id)
-        if (!save || !(await save())) return false
-      }
-    }
-  }
+  if (!(await confirmUnsavedEdits(ids))) return false
   // Ask the database, not the window's memory (it may have missed a transaction, e.g. after a reload).
   await refreshTabs(useWorkspace.getState().tabs.filter((tab) => ids.includes(tab.id)))
   return settleTransactions(ids, tabTitle, 'close')

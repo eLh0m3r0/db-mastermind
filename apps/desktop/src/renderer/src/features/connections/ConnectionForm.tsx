@@ -308,10 +308,11 @@ export function ConnectionForm() {
             {(section === 'general' || isFile) && (
               <>
                 {!isFile && !isBigQuery && (
-                  <div className="flex gap-2">
+                  <div className="flex flex-col gap-1">
+                    {/* A placeholder is never cut: the short example in the field, the services in a line under it that wraps. */}
                     <Input
                       className="flex-1 font-mono text-[12px]"
-                      placeholder={t('Paste a connection URL (postgres://…, JDBC, ADO.NET; Supabase, Neon, Amazon RDS, Azure…)')}
+                      placeholder={t('Paste a connection URL (postgres://…, JDBC, ADO.NET)')}
                       value={urlText}
                       onChange={(e) => setUrlText(e.target.value)}
                       onPaste={(e) => {
@@ -329,6 +330,9 @@ export function ConnectionForm() {
                       }}
                       leading={<ClipboardPaste size={13} />}
                     />
+                    <span className="text-[11.5px] leading-snug text-fg-faint" data-testid="url-services-hint">
+                      {t('Hosted services’ URLs work too: Supabase, Neon, Amazon RDS and Aurora, Azure, Google Cloud SQL, Timescale…')}
+                    </span>
                   </div>
                 )}
                 <Field label={t('Name')}>

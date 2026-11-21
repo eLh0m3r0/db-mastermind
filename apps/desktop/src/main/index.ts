@@ -30,11 +30,29 @@ let quitting = false
 let settled = false
 let asking: Promise<boolean> | undefined
 const settleTransactions = (): Promise<boolean> =>
-  (asking ??= settleTransactionsBeforeQuit(db, mainWindow).then((ok) => {
-    settled = ok
-    if (!ok) asking = undefined
-    return ok
-  }))
+  (asking ??= settleUnsavedEdits()
+    .then((ok) => ok && settleTransactionsBeforeQuit(db, mainWindow))
+    .then((ok) => {
+      settled = ok
+      if (!ok) asking = undefined
+      return ok
+    }))
+
+/**
+ * Unsaved grid edits live in the page, which asks Save / Discard / Cancel itself (the same question as closing their
+ * tab). A page that doesn't answer whether it has any (busy, crashed) doesn't keep the app from quitting.
+ */
+let editsSettled = false
+async function settleUnsavedEdits(): Promise<boolean> {
+  const w = mainWindow
+  if (editsSettled || !w || w.isDestroyed()) return true
+  const run = <T>(code: string) => w.webContents.executeJavaScript(code, true) as Promise<T>
+  const has = await Promise.race([run<boolean>('!!window.__dbmHasUnsavedEdits?.()').catch(() => false), new Promise<boolean>((r) => setTimeout(() => r(false), 1500))])
+  if (!has) return true
+  const ok = await run<boolean>('window.__dbmSettleUnsavedEdits ? window.__dbmSettleUnsavedEdits() : true').catch(() => true)
+  if (ok) editsSettled = true
+  return ok !== false
+}
 
 interface WindowState {
   width: number
@@ -58,6 +76,7 @@ function createWindow() {
   // macOS onto the nearest display, which can be a second monitor somebody is working on.
   const main = e2eBackground ? screen.getPrimaryDisplay().workArea : undefined
   const saved = main ? undefined : reachablePosition(state, screen.getAllDisplays().map((d) => d.workArea))
+  editsSettled = false
   mainWindow = new BrowserWindow({
     width: state.width,
     height: state.height,
@@ -85,6 +104,16 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => (e2eBackground ? mainWindow?.showInactive() : mainWindow?.show()))
   mainWindow.on('close', (event) => {
     if (!mainWindow) return
+    // Closing the window drops the page and its unsaved grid edits (on a Mac too, where the app stays): ask first.
+    if (!quitting && !editsSettled) {
+      event.preventDefault()
+      void settleUnsavedEdits().then((ok) => {
+        if (!ok || !mainWindow) return
+        editsSettled = true
+        mainWindow.close()
+      })
+      return
+    }
     // Closing the last window quits on Windows and Linux: ask while the window is still there.
     if (process.platform !== 'darwin' && !quitting && !settled && hasEditorSessions()) {
       event.preventDefault()

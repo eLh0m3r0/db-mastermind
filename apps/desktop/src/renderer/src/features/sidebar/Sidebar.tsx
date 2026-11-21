@@ -37,7 +37,7 @@ import { cn, errorMessage, formatBytes, fuzzyScore } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { dismissToast, toast, useUi } from '@/store/ui'
-import { useActiveTab, useWorkspace, type NewTab } from '@/store/workspace'
+import { confirmUnsavedEditsOf, useActiveTab, useWorkspace, type NewTab } from '@/store/workspace'
 import { explainConnectError } from '@/lib/connect-errors'
 import { connectionDetail, connectionSubtitle, DriverIcon, driverLabel } from '../connections/drivers'
 import { HistoryPanel, SavedQueriesPanel } from './LibraryPanels'
@@ -161,6 +161,8 @@ export function connectionMenu(c: StoredConnection): Parameters<typeof openMenu>
       disabled: !!c.managed || !!c.team,
       onClick: async () => {
         if (await confirmAction({ title: t('Delete connection “{name}”?', { name: c.name }), message: t('Saved queries are kept.'), confirmLabel: t('Delete'), danger: true })) {
+          // Its tabs close with it: unsaved grid edits get the same question as closing them.
+          if (!(await confirmUnsavedEditsOf(c.id))) return
           useWorkspace.getState().closeForConnection(c.id)
           void remove(c.id)
         }

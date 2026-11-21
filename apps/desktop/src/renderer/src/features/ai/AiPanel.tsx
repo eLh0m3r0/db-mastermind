@@ -497,7 +497,7 @@ export function AiPanel() {
                   }
                 }}
                 rows={Math.min(8, Math.max(2, input.split('\n').length))}
-                placeholder={placeholder ?? t('Ask about {name}…', { name: connection.name })}
+                placeholder={placeholder ?? t('Ask about the {name} database…', { name: connection.name })}
                 className="max-h-48 min-h-[36px] flex-1 resize-none bg-transparent px-1.5 py-1 text-[12.5px] outline-none placeholder:text-fg-faint"
               />
               {chat?.running ? (
