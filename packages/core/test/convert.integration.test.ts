@@ -47,3 +47,36 @@ for (const target of engines.filter((e) => e.id !== 'postgres')) {
     })
   })
 }
+
+// A MySQL model's UNSIGNED and ZEROFILL numbers as every other engine's DDL (review M7): each runs there.
+const UNSIGNED: TableInfo[] = [
+  {
+    name: 'conv_numbers',
+    type: 'table',
+    columns: ['int unsigned', 'bigint unsigned', 'smallint unsigned zerofill', 'decimal(10,2) unsigned', 'float unsigned', 'double unsigned zerofill', 'numeric(5) unsigned'].map((dataType, i) => ({ name: `c${i}`, ordinal: i + 1, dataType, nullable: i > 0, defaultValue: null, isPrimaryKey: i === 0, isIdentity: false, comment: null })),
+    primaryKey: ['c0'],
+    foreignKeys: [],
+    indexes: [{ name: 'conv_numbers_pk', columns: ['c0'], unique: true, primary: true }],
+  },
+]
+for (const target of engines.filter((e) => e.id !== 'mysql' && e.id !== 'mariadb')) {
+  describe.skipIf(skip.has(target.id))(`MySQL UNSIGNED as ${target.id} DDL`, () => {
+    it('runs on the target database', async () => {
+      const svc = new DatabaseService()
+      try {
+        const config = await setupEngine(svc, target)
+        const tables = UNSIGNED.map((t) => ({ ...t, schema: target.id === 'mssql' ? 'shop' : undefined }))
+        const drop = `DROP TABLE IF EXISTS ${svc.qualifiedName(config.id, tables[0]!)}`
+        await svc.runScript(config.id, drop)
+        const script = createScript(tables, getDialect(target.id), { translateTypes: true, from: 'mysql' })
+        expect(script).not.toMatch(/unsigned|zerofill/i)
+        const outcomes = await svc.runScript(config.id, script)
+        const failed = outcomes.find((o) => o.error)
+        expect(failed?.error?.message, `${failed?.sql}\n\n${script}`).toBeUndefined()
+        await svc.runScript(config.id, drop)
+      } finally {
+        await svc.disconnectAll()
+      }
+    })
+  })
+}

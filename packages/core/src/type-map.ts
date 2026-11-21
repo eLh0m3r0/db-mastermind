@@ -48,6 +48,9 @@ export function translateType(type: string, to: DriverId, from?: DriverId): stri
   const own = otherEngineType(type.trim(), to)
   if (own) return own
   if (sameEngine(from, to)) return type
+  // UNSIGNED and ZEROFILL are MySQL's alone: any other database refuses `decimal(10,2) unsigned` (whole numbers are
+  // widened above).
+  if (to !== 'mysql' && to !== 'mariadb' && /\b(unsigned|zerofill)\b/i.test(type)) return translateType(type.replace(/\s+(unsigned|zerofill)\b/gi, '').trim(), to, from)
   const f = family(type)
   const mapped = f ? TARGETS[to][f] : undefined
   if (mapped) return mapped
