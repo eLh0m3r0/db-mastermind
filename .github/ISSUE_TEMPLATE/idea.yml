@@ -1,15 +1,15 @@
-name: Nápad / Idea
-description: Co by se vám hodilo nebo co je zbytečně složité. Something you'd find useful, or that's harder than it should be.
-labels: [idea]
+name: Idea
+description: Something you'd find useful, or that is harder than it should be.
+labels: [enhancement]
 body:
   - type: textarea
     id: idea
     attributes:
-      label: Nápad / Idea
-      description: Co chcete udělat a proč — klidně i jak to dnes děláte jinde (Beekeeper, DBeaver, DataGrip…).
+      label: Idea
+      description: What you want to do and why. How you do it elsewhere today (DBeaver, DataGrip, Beekeeper…) helps too. Česky klidně taky.
     validations:
       required: true
   - type: input
     id: version
     attributes:
-      label: Verze aplikace / App version
+      label: App version
