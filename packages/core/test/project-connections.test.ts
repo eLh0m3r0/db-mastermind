@@ -169,3 +169,12 @@ describe('dollar signs, as each format reads them (review L6)', () => {
     expect(services[0]!.connection).toMatchObject({ user: 'app', password: 'pa$word', database: 'shop' })
   })
 })
+
+describe('names an object has of its own (review M4, prototype lookups)', () => {
+  it('a variable named after Object.prototype is no variable, and __proto__ is a plain key', () => {
+    const vars = parseDotenv('U=${constructor}\nV=${toString:-x}\n__proto__=p\nW=${__proto__}\n')
+    expect(Object.entries(vars)).toEqual([['U', ''], ['V', 'x'], ['__proto__', 'p'], ['W', 'p']])
+    const services = servicesFromCompose('services:\n  db:\n    image: postgres:16\n    environment:\n      - constructor\n      - POSTGRES_PASSWORD=${hasOwnProperty}\n    ports: ["5432:5432"]\n', {}, 'p')
+    expect(services[0]!.connection!.password ?? '').toBe('')
+  })
+})

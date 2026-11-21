@@ -13,8 +13,11 @@ import { cleanConnection } from './untrusted.js'
  */
 
 /** `KEY=value` lines: `export`, comments, single quotes (literal), double quotes (escapes), `${VAR}` and `${VAR:-default}` resolved within the file. */
+/** A variable's value: own keys only (a stranger's `${constructor}` is no variable, `__proto__` is a plain key). */
+const own = (map: Record<string, string>, key: string): string | undefined => (Object.hasOwn(map, key) ? map[key] : undefined)
+
 export function parseDotenv(text: string, outer: Record<string, string> = {}): Record<string, string> {
-  const vars: Record<string, string> = {}
+  const vars: Record<string, string> = Object.create(null) as Record<string, string>
   const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/)
   for (let i = 0; i < lines.length; i++) {
     const m = /^\s*(?:export\s+)?([A-Za-z_][\w.-]*)\s*[=:]\s?(.*)$/.exec(lines[i]!)
@@ -59,7 +62,7 @@ export function parseDotenv(text: string, outer: Record<string, string> = {}): R
  */
 export function expand(value: string, vars: Record<string, string>, outer: Record<string, string> = {}, depth = 0, mode: 'compose' | 'dotenv' = 'compose'): string {
   if (depth > 8 || !value.includes('$')) return value
-  const get = (name: string) => vars[name] ?? outer[name]
+  const get = (name: string) => own(vars, name) ?? own(outer, name)
   let out = ''
   let close = -2
   for (let i = 0; i < value.length; ) {
@@ -147,10 +150,10 @@ export function connectionsFromEnv(vars: Record<string, string>, label: string):
   for (const set of SETS) {
     // The DB_* set may be SQLite: a file, no host.
     const sqlite = set.prefix === 'DB_HOST' && set.driver(vars) === 'sqlite'
-    if (!vars[set.host] && !(sqlite && vars.DB_DATABASE)) continue
+    if (!own(vars, set.host) && !(sqlite && own(vars, 'DB_DATABASE'))) continue
     const driver = set.driver(vars)
     if (!driver) continue
-    const pick = (keys: string[]) => keys.map((k) => vars[k]).find((v) => v !== undefined && v !== '')
+    const pick = (keys: string[]) => keys.map((k) => own(vars, k)).find((v) => v !== undefined && v !== '')
     if (sqlite) {
       out.push({ name: `${label} — DB_DATABASE`, driver: 'sqlite', filePath: vars.DB_DATABASE })
       continue
@@ -170,7 +173,7 @@ interface Engine {
   options?: Record<string, string | boolean>
 }
 
-const first = (env: Record<string, string>, ...keys: string[]) => keys.map((k) => env[k]).find((v) => v !== undefined && v !== '')
+const first = (env: Record<string, string>, ...keys: string[]) => keys.map((k) => own(env, k)).find((v) => v !== undefined && v !== '')
 const POSTGRES: Engine = { driver: 'postgres', port: 5432, user: (e) => first(e, 'POSTGRES_USER') ?? 'postgres', password: (e) => first(e, 'POSTGRES_PASSWORD'), database: (e) => first(e, 'POSTGRES_DB') ?? first(e, 'POSTGRES_USER') ?? 'postgres' }
 const MYSQL = (driver: DriverId): Engine => ({
   driver,
@@ -215,7 +218,7 @@ export interface ComposeService {
 
 /** The `environment` of a service as a map (compose writes it as a list or a map). */
 function environmentOf(service: Record<string, unknown>, env: Record<string, string>): Record<string, string> {
-  const out: Record<string, string> = {}
+  const out: Record<string, string> = Object.create(null) as Record<string, string>
   const e = service.environment
   // Only scalars: a YAML alias can make a list of lists of lists, which String() would spell out billions of times.
   const scalar = (v: unknown) => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
@@ -226,14 +229,14 @@ function environmentOf(service: Record<string, unknown>, env: Record<string, str
       const eq = s.indexOf('=')
       // `- KEY` alone takes the value from the environment compose runs in: here, the .env beside the file.
       if (eq === -1) {
-        if (env[s.trim()] !== undefined) out[s.trim()] = env[s.trim()]!
+        if (own(env, s.trim()) !== undefined) out[s.trim()] = own(env, s.trim())!
       } else out[s.slice(0, eq).trim()] = expand(s.slice(eq + 1), {}, env)
     }
   } else if (e && typeof e === 'object') {
     for (const [k, v] of Object.entries(e as Record<string, unknown>)) {
       if (v !== null && v !== undefined && !scalar(v)) continue
       if (v === null || v === undefined) {
-        if (env[k] !== undefined) out[k] = env[k]!
+        if (own(env, k) !== undefined) out[k] = own(env, k)!
       } else out[k] = expand(String(v), {}, env)
     }
   }
@@ -309,7 +312,7 @@ export function connectionFromPrisma(schema: string, env: Record<string, string>
   const block = /datasource\s+\w+\s*\{([^}]*)\}/.exec(schema.replace(/^\s*\/\/.*$/gm, ''))?.[1]
   if (!block) return undefined
   const url = /\burl\s*=\s*(?:env\(\s*"([^"]+)"\s*\)|"([^"]+)")/.exec(block)
-  const value = url?.[1] ? env[url[1]] : url?.[2]
+  const value = url?.[1] ? own(env, url[1]) : url?.[2]
   if (!value || !looksLikeUrl(value)) return undefined
   const c = fromUrl(value)
   return c ? { ...c, name: `${label} — prisma ${url?.[1] ?? 'datasource'}` } : undefined

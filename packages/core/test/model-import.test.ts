@@ -355,3 +355,20 @@ describe('hostile text in a MySQL Workbench model (review L12)', () => {
     expect(createScript(tables, getDialect('mysql'))).not.toMatch(/DROP TABLE/)
   })
 })
+
+describe('a megabyte of what makes a regex backtrack (review M4)', () => {
+  it('Mermaid: a worded relationship line and unclosed Markdown fences are read in a moment', () => {
+    const line = `erDiagram\n  A ${'x to '.repeat(200_000)}!\n`
+    const fences = `${'```mermaid x\n'.repeat(80_000)}erDiagram\n`
+    const start = performance.now()
+    tablesFromMermaid(line)
+    expect(modelFormatOf('a.md', fences)).toBe('mermaid')
+    tablesFromMermaid(fences)
+    expect(performance.now() - start).toBeLessThan(1000)
+  })
+
+  it('still reads a fenced diagram and worded relationships', () => {
+    const m = tablesFromMermaid('# Model\n\n```mermaid\nerDiagram\n  CUSTOMER one or more to zero or many ORDER : places\n  CUSTOMER {\n    int id PK\n  }\n  ORDER {\n    int id PK\n  }\n```\n')
+    expect(m.tables.map((t) => t.name).sort()).toEqual(['CUSTOMER', 'ORDER'])
+  })
+})
