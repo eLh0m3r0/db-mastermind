@@ -40,10 +40,11 @@ export function parseDotenv(text: string, outer: Record<string, string> = {}): R
       }
       if (end === -1) body = first
       value = end === -1 ? body : body.slice(0, end)
-      if (quote === '"') value = expand(value.replace(/\\([nrt"\\$])/g, (_, c: string) => ({ n: '\n', r: '\r', t: '\t' })[c] ?? c), vars, outer)
+      // (An escaped \$ is a dollar sign, never the start of a variable.)
+      if (quote === '"') value = expand(value.replace(/\\([nrt"\\$])/g, (_, c: string) => ({ n: '\n', r: '\r', t: '\t', $: '\u0000' })[c] ?? c), vars, outer, 0, 'dotenv').replaceAll('\u0000', '$')
     } else {
       raw = raw.replace(/\s+#.*$/, '')
-      value = expand(raw, vars, outer)
+      value = expand(raw, vars, outer, 0, 'dotenv')
     }
     vars[key] = value
   }
@@ -51,11 +52,12 @@ export function parseDotenv(text: string, outer: Record<string, string> = {}): R
 }
 
 /**
- * `${VAR}`, `${VAR:-default}`, `${VAR-default}` and `$VAR` from the variables read so far (then `outer`); `$$` is a
- * `$`. One pass over the text (the next `}` is looked up once, not again for every `${`), defaults nested at most
+ * `${VAR}`, `${VAR:-default}` and `${VAR-default}` from the variables read so far (then `outer`). Compose files also
+ * take `$VAR`, and `$$` is a `$` there; a .env file (as most dotenv libraries read one) takes only `${…}`, so a
+ * password such as `pa$word` stays as written. One pass over the text (the next `}` is looked up once, not again for every `${`), defaults nested at most
  * a few deep: a stranger's line of a million `${` costs a moment.
  */
-export function expand(value: string, vars: Record<string, string>, outer: Record<string, string> = {}, depth = 0): string {
+export function expand(value: string, vars: Record<string, string>, outer: Record<string, string> = {}, depth = 0, mode: 'compose' | 'dotenv' = 'compose'): string {
   if (depth > 8 || !value.includes('$')) return value
   const get = (name: string) => vars[name] ?? outer[name]
   let out = ''
@@ -68,7 +70,7 @@ export function expand(value: string, vars: Record<string, string>, outer: Recor
       continue
     }
     const next = value[i + 1]
-    if (next === '$') {
+    if (next === '$' && mode === 'compose') {
       out += '$'
       i += 2
       continue
@@ -83,13 +85,13 @@ export function expand(value: string, vars: Record<string, string>, outer: Recor
       }
       const [, name, op, fallback] = inner
       const v = get(name!)
-      if (op === ':-') out += v ? v : expand(fallback ?? '', vars, outer, depth + 1)
-      else if (op === '-') out += v !== undefined ? v : expand(fallback ?? '', vars, outer, depth + 1)
+      if (op === ':-') out += v ? v : expand(fallback ?? '', vars, outer, depth + 1, mode)
+      else if (op === '-') out += v !== undefined ? v : expand(fallback ?? '', vars, outer, depth + 1, mode)
       else out += v ?? ''
       i = close + 1
       continue
     }
-    const bare = /^[A-Za-z_]\w*/.exec(value.slice(i + 1, i + 257))
+    const bare = mode === 'compose' ? /^[A-Za-z_]\w*/.exec(value.slice(i + 1, i + 257)) : null
     if (bare) {
       out += get(bare[0]) ?? ''
       i += 1 + bare[0].length
