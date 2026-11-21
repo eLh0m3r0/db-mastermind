@@ -13,10 +13,7 @@ import {
   parseDbVisualizer,
   parseHeidiPortable,
   parseMySqlWorkbench,
-  COMPOSE_FILE,
   parsePgAdminServersJson,
-  PROJECT_ENV_FILE,
-  projectConnections,
   parsePgpass,
   parsePlist,
   parseRegQuery,
@@ -32,6 +29,8 @@ import {
 } from '@dbmastermind/core'
 import type { ImportSourceId, StoredConnection } from '@shared/api'
 import { listConnections, saveConnection } from './connections'
+import { checkChosenPath, rememberChosenPath } from './chosen-paths'
+import { isProjectFile, readProject } from './project-files'
 
 type Imported = Omit<ConnectionConfig, 'id'>
 
@@ -262,46 +261,6 @@ async function readFileExport(): Promise<Imported[]> {
   return parseAnyConnectionFile(text, file)
 }
 
-/** A project's own file that describes connections: a .env file or a docker-compose file. */
-export const isProjectFile = (path: string) => PROJECT_ENV_FILE.test(basename(path)) || COMPOSE_FILE.test(basename(path))
-/** Larger files are not a project's .env or compose file. */
-const PROJECT_FILE_LIMIT = 1024 * 1024
-
-function readSmall(path: string): string | undefined {
-  try {
-    const size = statSync(path).size
-    if (size > PROJECT_FILE_LIMIT) throw new Error(`${basename(path)} is larger than 1 MB: not a project's settings file`)
-    return readFileSync(path, 'utf8')
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined
-    throw err
-  }
-}
-
-/**
- * Connections of a project: a folder (its top-level .env files, compose files and prisma/schema.prisma), a .env
- * file, or a compose file with the .env beside it. Nothing else is read.
- */
-export function readProject(path: string): Imported[] {
-  const folder = statSync(path).isDirectory()
-  const dir = folder ? path : dirname(path)
-  const files: Record<string, string> = {}
-  const add = (name: string) => {
-    const text = readSmall(join(dir, name))
-    if (text !== undefined) files[name] = text
-  }
-  if (folder) {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) if (entry.isFile() && isProjectFile(entry.name)) add(entry.name)
-    add(join('prisma', 'schema.prisma'))
-    if (files[join('prisma', 'schema.prisma')] !== undefined) files['prisma/schema.prisma'] = files[join('prisma', 'schema.prisma')]!
-  } else {
-    add(basename(path))
-    // Compose reads the .env beside it for ${VAR}.
-    if (COMPOSE_FILE.test(basename(path))) add('.env')
-  }
-  return projectConnections(files, basename(dir), { folder })
-}
-
 /** Adds what a project describes (see readProject), like any other import. */
 export async function importProjectConnections(path?: string): Promise<{ added: number; passwords: number; found: number; project: string } | null> {
   if (!path) {
@@ -310,7 +269,10 @@ export async function importProjectConnections(path?: string): Promise<{ added: 
     const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
     if (r.canceled || !r.filePaths[0]) return null
     path = r.filePaths[0]
+    rememberChosenPath(path)
   }
+  // From the renderer only a folder or file the user handed to the app (a drop, a dialog, the command line).
+  path = checkChosenPath(path)
   if (!statSync(path).isDirectory() && !isProjectFile(path)) throw new Error('Not a project folder, .env file or docker-compose file')
   const items = readProject(path)
   return { ...addImported(items), found: items.length, project: basename(statSync(path).isDirectory() ? path : dirname(path)) }

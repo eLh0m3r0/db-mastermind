@@ -1,7 +1,8 @@
-import { unzipSync } from 'fflate'
+import { Unzip, UnzipInflate } from 'fflate'
 import type { ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfo } from './types.js'
 import { parseDezignXml, unescapeDezignText, type DezignElement } from './dezign.js'
 import { emptyImport, layoutKey, spreadLayout, type ImportedModel } from './imported-model.js'
+import { checkSize, FILE_LIMITS, megabytes } from './untrusted.js'
 
 /**
  * MySQL Workbench models (.mwb): a zip holding `document.mwb.xml`, Workbench's object tree (GRT) written as nested
@@ -33,7 +34,9 @@ function readGrt(xml: string): { root: GrtObject; byId: Map<string, GrtObject> }
     throw new Error('Not a readable MySQL Workbench model: its document is not well-formed XML')
   }
   const byId = new Map<string, GrtObject>()
-  const convert = (el: DezignElement): Grt => {
+  const convert = (el: DezignElement, depth = 0): Grt => {
+    // (A document nested deeper than any Workbench writes is no model, and would run out of stack.)
+    if (depth > FILE_LIMITS.depth) throw new Error('Not a readable MySQL Workbench model: its document is nested too deeply')
     if (el.tag === 'link') return { $link: textOf(el).trim() }
     const type = attr(el.open, 'type')
     if (type === 'object' || type === 'dict') {
@@ -47,11 +50,11 @@ function readGrt(xml: string): { root: GrtObject; byId: Map<string, GrtObject> }
       }
       for (const k of elements(el)) {
         const key = attr(k.open, 'key')
-        if (key) o[key] = convert(k)
+        if (key) o[key] = convert(k, depth + 1)
       }
       return o
     }
-    if (type === 'list') return elements(el).map(convert)
+    if (type === 'list') return elements(el).map((k) => convert(k, depth + 1))
     if (type === 'int' || type === 'real') return Number(textOf(el))
     return textOf(el)
   }
@@ -111,16 +114,64 @@ function columnDefault(c: GrtObject, type: string): string | null {
   return d
 }
 
-export function tablesFromMwb(bytes: Uint8Array): ImportedModel {
-  let files: Record<string, Uint8Array>
-  try {
-    files = unzipSync(bytes)
-  } catch {
-    throw new Error('Not a MySQL Workbench model: the file is not a zip archive')
+/**
+ * The model's document.mwb.xml, and nothing else of the archive, inflated a slice at a time: the size its header
+ * declares may lie, so the inflated bytes are counted as they come and inflating stops at the limit (a zip bomb
+ * never gets to allocate more than one slice beyond it).
+ */
+export function mwbDocument(bytes: Uint8Array, limit = FILE_LIMITS.mwbDocument): string {
+  if (bytes[0] !== 0x50 || bytes[1] !== 0x4b) throw new Error('Not a MySQL Workbench model: the file is not a zip archive')
+  const chunks: Uint8Array[] = []
+  let total = 0
+  let found = false
+  let done = false
+  let failure: Error | undefined
+  const unzip = new Unzip()
+  unzip.register(UnzipInflate)
+  unzip.onfile = (file) => {
+    if (file.name !== 'document.mwb.xml' || found) return
+    found = true
+    if (file.originalSize !== undefined && file.originalSize > limit) {
+      failure = new Error(`The model's document is larger than ${megabytes(limit)}: not a model this app opens`)
+      return
+    }
+    file.ondata = (err, chunk, final) => {
+      if (err) {
+        failure = new Error('Not a MySQL Workbench model: its document can\'t be inflated')
+        return
+      }
+      total += chunk.length
+      if (total > limit) {
+        failure = new Error(`The model's document is larger than ${megabytes(limit)}: not a model this app opens`)
+        file.terminate()
+        return
+      }
+      chunks.push(chunk)
+      if (final) done = true
+    }
+    file.start()
   }
-  const document = files['document.mwb.xml']
-  if (!document) throw new Error('Not a MySQL Workbench model: there is no document.mwb.xml in it')
-  const { root, byId } = readGrt(new TextDecoder('utf-8').decode(document))
+  // 16 KB of deflated data inflates to at most about 16 MB.
+  const step = 16 * 1024
+  try {
+    for (let i = 0; i < bytes.length && !failure && !done; i += step) unzip.push(bytes.subarray(i, i + step), i + step >= bytes.length)
+  } catch {
+    throw new Error('Not a MySQL Workbench model: the file is not a readable zip archive')
+  }
+  if (failure) throw failure
+  if (!found) throw new Error('Not a MySQL Workbench model: there is no document.mwb.xml in it')
+  const document = new Uint8Array(total)
+  let offset = 0
+  for (const c of chunks) {
+    document.set(c, offset)
+    offset += c.length
+  }
+  return new TextDecoder('utf-8').decode(document)
+}
+
+export function tablesFromMwb(bytes: Uint8Array): ImportedModel {
+  checkSize('The MySQL Workbench model', bytes.length, FILE_LIMITS.mwb, 'a model')
+  const { root, byId } = readGrt(mwbDocument(bytes))
   const model = obj(list(root.physicalModels)[0])
   const catalog = obj(model?.catalog)
   if (!catalog) throw new Error('The MySQL Workbench model has no physical model')

@@ -40,7 +40,10 @@ const bridge = {
   },
   /** Local path of a dropped file (File.path no longer exists in Electron). */
   pathForFile(file: File): string {
-    return webUtils.getPathForFile(file)
+    const path = webUtils.getPathForFile(file)
+    // Main reads a dropped file only when it was dropped (see main/chosen-paths.ts).
+    if (path) ipcRenderer.send('file:dropped', path)
+    return path
   },
   /** The page is ready for files handed to the app after start (see main/opened-files.ts). */
   listenForFiles() {

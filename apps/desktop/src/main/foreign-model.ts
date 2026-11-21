@@ -1,6 +1,6 @@
 import { open, readFile, stat } from 'node:fs/promises'
 import { basename, extname } from 'node:path'
-import { isDrawDb, modelFormatOf, readModelFile, toDbml, type ImportedModel } from '@dbmastermind/core'
+import { checkSize, FILE_LIMITS, isDrawDb, modelFormatOf, readModelFile, toDbml, type ImportedModel } from '@dbmastermind/core'
 import type { OpenedModelFile } from '@shared/api'
 import { paletteIndex } from './palette'
 
@@ -10,7 +10,7 @@ import { paletteIndex } from './palette'
  */
 export const FOREIGN_MODEL = /\.(mwb|mmd|mermaid|prisma|ddb)$/i
 /** A JSON file larger than this is data, never a diagram (it is not read to find out). */
-const LARGEST_DIAGRAM = 32 * 1024 * 1024
+const LARGEST_DIAGRAM = FILE_LIMITS.model
 
 /** Whether a file is a model of another tool: by its extension, and for JSON by its content (a drawDB diagram). */
 export async function isForeignModel(path: string): Promise<boolean> {
@@ -31,6 +31,8 @@ export async function isForeignModel(path: string): Promise<boolean> {
 }
 
 export async function readForeignModel(path: string): Promise<ImportedModel> {
+  // The size first: a stranger's file is not read whole to find out it is too large.
+  checkSize(basename(path), (await stat(path)).size, /\.mwb$/i.test(path) ? FILE_LIMITS.mwb : FILE_LIMITS.model, 'a model')
   const bytes = await readFile(path)
   return readModelFile(basename(path), new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength))
 }

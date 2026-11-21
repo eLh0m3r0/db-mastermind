@@ -17,6 +17,7 @@ import { configureDataDir, dataPath, readJson, writeJson } from './storage'
 import { swapMacUpdateBeforeKill } from './mac-update'
 import { setBeforeInstall, startUpdateChecks } from './updates'
 import { keepChosenSqlFilesIn } from './sql-files'
+import { keepChosenPathsIn, rememberChosenPath } from './chosen-paths'
 import { hasEditorSessions, settleTransactionsBeforeQuit } from './transactions'
 import { explainMissingSandbox } from './linux-sandbox'
 
@@ -124,6 +125,9 @@ function startApp() {
   }
   if (e2eBackground && process.platform === 'darwin') app.setActivationPolicy('accessory')
   keepChosenSqlFilesIn(dataPath('chosen-sql-files.json'))
+  keepChosenPathsIn(dataPath('chosen-paths.json'))
+  // A drop: the preload resolved the path from the dropped File itself (a page can't make up a File with a path).
+  ipcMain.on('file:dropped', (_e, path: unknown) => typeof path === 'string' && rememberChosenPath(path))
   ipcMain.handle(API_CHANNEL, async (_event, method: keyof MastermindApi, args: unknown[]): Promise<IpcResult<unknown>> => {
     const fn = api[method] as ((...a: unknown[]) => Promise<unknown>) | undefined
     if (typeof fn !== 'function') return { ok: false, error: { message: `Unknown method ${String(method)}` } }

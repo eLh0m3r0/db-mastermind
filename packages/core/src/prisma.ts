@@ -14,20 +14,28 @@ export function tablesFromPrisma(text: string): { tables: TableInfo[]; enums: Re
   const docOf = (lines: string[]) => lines.map((l) => /^\s*@@__doc\((".*")\)\s*$/.exec(l)).map((m) => (m ? (JSON.parse(m[1]!) as string) : null))
   const enums: Record<string, string[]> = {}
   const errors: { line: number; message: string }[] = []
-  const blocks = [...clean.matchAll(/^\s*(model|enum|view)\s+(\w+)\s*\{([\s\S]*?)^\s*\}/gm)]
-  /** The `///` lines right above a block. */
-  const modelDocs = new Map(
-    blocks.map((b) => {
-      const before = clean.slice(0, b.index).replace(/\s+$/, '').split('\n')
-      const docs: string[] = []
-      for (let i = before.length - 1; i >= 0; i--) {
-        const d = docOf([before[i]!])[0]
-        if (d === null || d === undefined) break
-        docs.unshift(d)
-      }
-      return [b[2]!, docs.join('\n')]
-    }),
-  )
+  // Blocks found line by line (a block a stranger's file never closes ends where the next one starts, so reading
+  // stays linear), each with the `///` lines right above it.
+  const blocks: [string, string, string, string][] = []
+  const modelDocs = new Map<string, string>()
+  const lines = clean.split('\n')
+  let docs: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const head = /^\s*(model|enum|view)\s+(\w+)\s*\{\s*$/.exec(lines[i]!)
+    if (!head) {
+      const d = docOf([lines[i]!])[0]
+      docs = d !== null && d !== undefined ? [...docs, d] : lines[i]!.trim() ? [] : docs
+      continue
+    }
+    const body: string[] = []
+    let k = i + 1
+    for (; k < lines.length && !/^\s*\}/.test(lines[k]!) && !/^\s*(model|enum|view)\s+\w+\s*\{\s*$/.test(lines[k]!); k++) body.push(lines[k]!)
+    if (k >= lines.length || !/^\s*\}/.test(lines[k]!)) errors.push({ line: i + 1, message: `${head[1]} ${head[2]} is not closed` })
+    blocks.push([lines[i]!, head[1]!, head[2]!, body.join('\n')])
+    modelDocs.set(head[2]!, docs.join('\n'))
+    docs = []
+    i = /^\s*\}/.test(lines[k] ?? '') ? k : k - 1
+  }
   for (const [, kind, name, body] of blocks) {
     if (kind === 'enum') enums[name!] = body!.split('\n').map((l) => l.trim().split(/\s+/)[0]!).filter((v) => /^\w+$/.test(v))
   }

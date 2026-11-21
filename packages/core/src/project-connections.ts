@@ -3,6 +3,7 @@ import { load } from 'js-yaml'
 import { parseConnectionString } from './connection-url.js'
 import type { ImportedConnection } from './connection-imports.js'
 import type { DriverId } from './types.js'
+import { cleanConnection } from './untrusted.js'
 
 /**
  * Connections a project already describes: its `.env` files (a connection URL in any variable, or the DB_*, PG*,
@@ -23,10 +24,21 @@ export function parseDotenv(text: string, outer: Record<string, string> = {}): R
     let value: string
     const quote = raw[0]
     if (quote === "'" || quote === '"' || quote === '`') {
-      // A quoted value may go on over several lines.
-      let body = raw.slice(1)
-      while (!new RegExp(`(^|[^\\\\])${quote}\\s*(#.*)?$`).test(body) && i + 1 < lines.length) body += `\n${lines[++i]}`
-      const end = body.search(new RegExp(`(?<!\\\\)${quote}\\s*(#.*)?$`))
+      // A quoted value may go on over a few lines; each line is looked at once (a quote never closed in a
+      // stranger's file must not make reading it quadratic), and one not closed within them is the line as written.
+      const closing = new RegExp(`(?<!\\\\)${quote}\\s*(#.*)?$`)
+      const first = raw.slice(1)
+      let body = first
+      let end = first.search(closing)
+      for (let k = i + 1; end === -1 && k < Math.min(lines.length, i + 200); k++) {
+        const at = lines[k]!.search(closing)
+        body += `\n${lines[k]}`
+        if (at !== -1) {
+          end = body.length - lines[k]!.length + at
+          i = k
+        }
+      }
+      if (end === -1) body = first
       value = end === -1 ? body : body.slice(0, end)
       if (quote === '"') value = expand(value.replace(/\\([nrt"\\$])/g, (_, c: string) => ({ n: '\n', r: '\r', t: '\t' })[c] ?? c), vars, outer)
     } else {
@@ -38,17 +50,55 @@ export function parseDotenv(text: string, outer: Record<string, string> = {}): R
   return vars
 }
 
-/** `${VAR}`, `${VAR:-default}`, `${VAR-default}` and `$VAR` from the variables read so far (then `outer`); `$$` is a `$`. */
-export function expand(value: string, vars: Record<string, string>, outer: Record<string, string> = {}): string {
+/**
+ * `${VAR}`, `${VAR:-default}`, `${VAR-default}` and `$VAR` from the variables read so far (then `outer`); `$$` is a
+ * `$`. One pass over the text (the next `}` is looked up once, not again for every `${`), defaults nested at most
+ * a few deep: a stranger's line of a million `${` costs a moment.
+ */
+export function expand(value: string, vars: Record<string, string>, outer: Record<string, string> = {}, depth = 0): string {
+  if (depth > 8 || !value.includes('$')) return value
   const get = (name: string) => vars[name] ?? outer[name]
-  return value.replace(/\$\$|\$\{([A-Za-z_]\w*)(?:(:?[-?])([^}]*))?\}|\$([A-Za-z_]\w*)/g, (whole, braced: string | undefined, op: string | undefined, fallback: string | undefined, bare: string | undefined) => {
-    if (whole === '$$') return '$'
-    const name = braced ?? bare!
-    const v = get(name)
-    if (op === ':-') return v ? v : expand(fallback ?? '', vars, outer)
-    if (op === '-') return v !== undefined ? v : expand(fallback ?? '', vars, outer)
-    return v ?? ''
-  })
+  let out = ''
+  let close = -2
+  for (let i = 0; i < value.length; ) {
+    const ch = value[i]!
+    if (ch !== '$') {
+      out += ch
+      i++
+      continue
+    }
+    const next = value[i + 1]
+    if (next === '$') {
+      out += '$'
+      i += 2
+      continue
+    }
+    if (next === '{') {
+      if (close !== -1 && close < i) close = value.indexOf('}', i)
+      const inner = close === -1 ? null : /^([A-Za-z_]\w*)(?:(:?[-?])([\s\S]*))?$/.exec(value.slice(i + 2, close))
+      if (!inner) {
+        out += ch
+        i++
+        continue
+      }
+      const [, name, op, fallback] = inner
+      const v = get(name!)
+      if (op === ':-') out += v ? v : expand(fallback ?? '', vars, outer, depth + 1)
+      else if (op === '-') out += v !== undefined ? v : expand(fallback ?? '', vars, outer, depth + 1)
+      else out += v ?? ''
+      i = close + 1
+      continue
+    }
+    const bare = /^[A-Za-z_]\w*/.exec(value.slice(i + 1, i + 257))
+    if (bare) {
+      out += get(bare[0]) ?? ''
+      i += 1 + bare[0].length
+    } else {
+      out += ch
+      i++
+    }
+  }
+  return out
 }
 
 const URL_SCHEME = /^(postgres|postgresql|pg|mysql|mariadb|mssql|sqlserver|oracle|clickhouse|trino|cockroachdb|jdbc:[a-z]+)(\+[\w-]+)?:/i
@@ -165,8 +215,11 @@ export interface ComposeService {
 function environmentOf(service: Record<string, unknown>, env: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {}
   const e = service.environment
+  // Only scalars: a YAML alias can make a list of lists of lists, which String() would spell out billions of times.
+  const scalar = (v: unknown) => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
   if (Array.isArray(e)) {
     for (const item of e) {
+      if (!scalar(item)) continue
       const s = String(item)
       const eq = s.indexOf('=')
       // `- KEY` alone takes the value from the environment compose runs in: here, the .env beside the file.
@@ -176,6 +229,7 @@ function environmentOf(service: Record<string, unknown>, env: Record<string, str
     }
   } else if (e && typeof e === 'object') {
     for (const [k, v] of Object.entries(e as Record<string, unknown>)) {
+      if (v !== null && v !== undefined && !scalar(v)) continue
       if (v === null || v === undefined) {
         if (env[k] !== undefined) out[k] = env[k]!
       } else out[k] = expand(String(v), {}, env)
@@ -187,7 +241,9 @@ function environmentOf(service: Record<string, unknown>, env: Record<string, str
 /** Where a service's container port is published: `"54329:5432"`, `"127.0.0.1:5433:5432"`, `{ target: 5432, published: 5433 }`. */
 function publishedPort(service: Record<string, unknown>, target: number, env: Record<string, string>): { port: number; host: string } | undefined {
   for (const p of Array.isArray(service.ports) ? service.ports : []) {
+    if (Array.isArray(p)) continue
     if (p && typeof p === 'object') {
+      if (typeof (p as { published?: unknown }).published === 'object') continue
       const o = p as { target?: unknown; published?: unknown; host_ip?: unknown }
       if (Number(o.target) === target && o.published !== undefined) {
         const port = Number(expand(String(o.published), {}, env).split('-')[0])
@@ -301,5 +357,6 @@ export function projectConnections(files: Record<string, string>, label: string,
     const service = services.find((s) => s.published && s.service === c.host)
     return service ? { ...c, host: service.host, port: service.published } : c
   })
-  return uniqueConnections([...services.flatMap((s) => (s.connection ? [s.connection] : [])), ...reachable])
+  // (Names and settings from a stranger's files: one line each, bounded.)
+  return uniqueConnections([...services.flatMap((s) => (s.connection ? [s.connection] : [])), ...reachable]).map(cleanConnection)
 }

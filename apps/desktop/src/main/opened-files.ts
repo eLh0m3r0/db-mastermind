@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { rememberChosenPath } from './chosen-paths'
 
 /**
  * Files the app opens when they are handed to it: SQL scripts, models (its own, DeZign's, MySQL Workbench's, drawDB's,
@@ -21,6 +22,8 @@ export function filesFromArgs(args: string[], cwd = process.cwd()): string[] {
 /** A file to open: sent to the window when it is listening, kept for it otherwise. */
 export function openFileInApp(path: string): void {
   if (!OPENABLE.test(path)) return
+  // Handed over by the system or the command line: the user's choice.
+  rememberChosenPath(resolve(path))
   if (deliver) deliver(path)
   else pending.push(path)
 }

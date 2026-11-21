@@ -68,7 +68,8 @@ import { detectImportSources, exportConnections, importConnections, importProjec
 import { backupDatabase, restoreDatabase } from './backup'
 import { archiveModelVersion, exportDezignModel, listModelVersions, openDezignModel, openModelVersion, saveDezignModel } from './dezign-file'
 import { takeOpenedFiles } from './opened-files'
-import { foreignFormatOf, foreignModelFile, isForeignModel, openForeignModel, readForeignModel } from './foreign-model'
+import { FOREIGN_MODEL, foreignFormatOf, foreignModelFile, isForeignModel, openForeignModel, readForeignModel } from './foreign-model'
+import { checkChosenPath, rememberChosenPath } from './chosen-paths'
 import { saveDiagramPdf } from './diagram-pdf'
 import { aiAccess, turnedOffCentrally } from './ai-access'
 import { managed } from './managed'
@@ -619,7 +620,10 @@ export const api: MastermindApi = {
       const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
       if (r.canceled || !r.filePaths[0]) return null
       path = r.filePaths[0]
+      rememberChosenPath(path)
     }
+    // Another tool's file (and any .json) only when the user handed it to the app: the renderer can't name one.
+    if (FOREIGN_MODEL.test(path) || /\.json$/i.test(path)) path = checkChosenPath(path)
     const ext = extname(path).toLowerCase()
     if (ext === '.dez' || ext === '.dezproj') return openDezignModel(path)
     if (scripts && (ext === '.sql' || ext === '.ddl')) {
@@ -700,6 +704,7 @@ export const api: MastermindApi = {
     const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
     if (r.canceled || !r.filePaths[0]) return null
     const path = r.filePaths[0]
+    rememberChosenPath(path)
     // The format is the file's: its extension, else what its text looks like (a .txt may hold a Prisma schema).
     const source = /\.mwb$/i.test(path) ? '' : await readFile(path, 'utf8')
     if (foreignFormatOf(path, source)) {
@@ -712,13 +717,14 @@ export const api: MastermindApi = {
     const placed = tables.map((t) => ({ ...t, schema: own(t.schema), foreignKeys: t.foreignKeys.map((f) => ({ ...f, refSchema: own(f.refSchema) })) }))
     return { path, dbml: toDbml(placed), skipped }
   },
-  isModelFile: (path) => isForeignModel(path),
+  isModelFile: async (path) => isForeignModel(checkChosenPath(path)),
   async saveCodeFile(text, name) {
     const window = BrowserWindow.getFocusedWindow()
     const ext = extname(name).slice(1).toLowerCase()
     const kinds: Record<string, string> = { prisma: 'Prisma schema', ts: 'TypeScript', py: 'Python' }
     if (!kinds[ext]) throw new Error('Code is saved as .prisma, .ts or .py files')
-    const options = { title: 'Save code', defaultPath: name, filters: [{ name: kinds[ext]!, extensions: [ext] }] }
+    // (Only a name to offer: where it goes is the user's choice in the dialog.)
+    const options = { title: 'Save code', defaultPath: basename(name), filters: [{ name: kinds[ext]!, extensions: [ext] }] }
     const r = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
     if (r.canceled || !r.filePath) return null
     // Only the kind of file the dialog offered: the renderer must not be able to write anything else.

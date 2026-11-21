@@ -66,6 +66,22 @@ try {
   }, billing?.id)
   check('…and it connects too', test === 'PostgreSQL', test)
 
+  // A path the page names by itself (not dropped, picked or given on the command line) is not read.
+  const unasked = join(dir, 'unasked')
+  mkdirSync(unasked)
+  writeFileSync(join(unasked, '.env'), 'DATABASE_URL=postgres://x:y@localhost/z\n')
+  const refused = await win.evaluate(async (path) => {
+    try {
+      await window.mastermind.api.importProjectConnections(path)
+      return 'read'
+    } catch (err) {
+      return String(err?.message ?? err)
+    }
+  }, unasked)
+  check('a folder the user did not hand to the app is not read', /through the app/.test(refused), refused)
+  const json = await win.evaluate(async (path) => window.mastermind.api.isModelFile(path).then(() => 'read', (err) => String(err?.message ?? err)), join(unasked, 'x.json'))
+  check('…nor a .json file', /through the app/.test(json), json)
+
   // The same project again: nothing new.
   await pick(shop)
   await importMenu('From a project folder… (.env, docker-compose, Prisma)')

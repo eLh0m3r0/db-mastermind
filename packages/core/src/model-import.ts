@@ -4,6 +4,7 @@ import { tablesFromPrisma } from './prisma.js'
 import { tablesFromMermaid } from './mermaid.js'
 import { isDrawDb, tablesFromDrawDb } from './drawdb.js'
 import { tablesFromMwb } from './mwb.js'
+import { checkSize, cleanImportedModel, FILE_LIMITS } from './untrusted.js'
 
 export * from './imported-model.js'
 
@@ -23,8 +24,17 @@ export function modelFormatOf(name: string, head: string): ModelFormat | undefin
   return undefined
 }
 
-/** Reads a model file of another tool. `bytes` is the file as it is (an .mwb is a zip). */
+/**
+ * Reads a model file of another tool. `bytes` is the file as it is (an .mwb is a zip). The file may come from
+ * anybody: it is size-limited and what it names is cleaned (untrusted.ts).
+ */
 export function readModelFile(name: string, bytes: Uint8Array): ImportedModel {
+  return cleanImportedModel(readModel(name, bytes))
+}
+
+function readModel(name: string, bytes: Uint8Array): ImportedModel {
+  const file = name.split(/[\\/]/).pop() ?? name
+  checkSize(file, bytes.length, /\.mwb$/i.test(name) ? FILE_LIMITS.mwb : FILE_LIMITS.model, 'a model')
   const text = () => new TextDecoder('utf-8').decode(bytes)
   const isZip = bytes[0] === 0x50 && bytes[1] === 0x4b
   const format = isZip && /\.mwb$/i.test(name) ? 'mwb' : modelFormatOf(name, isZip ? '' : text())

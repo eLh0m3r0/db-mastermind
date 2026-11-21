@@ -76,7 +76,19 @@ function parse(text: string): DrawDbDiagram | undefined {
   const relationships = d.relationships ?? d.references
   if (!Array.isArray(d.tables) || !Array.isArray(relationships)) return undefined
   if (!d.tables.every((t) => t && typeof t === 'object' && Array.isArray((t as DrawDbTable).fields) && typeof (t as DrawDbTable).name === 'string')) return undefined
-  return { ...(d as DrawDbDiagram), relationships }
+  // Fields as drawDB writes them: a name and a type that are text (anything else in a stranger's file is left out).
+  const tables = (d.tables as DrawDbTable[]).map((t) => ({ ...t, fields: t.fields.filter((f) => f && typeof f === 'object' && typeof f.name === 'string' && typeof f.type === 'string' && (typeof f.id === 'string' || typeof f.id === 'number')), indices: Array.isArray(t.indices) ? t.indices.filter((i) => i && Array.isArray(i.fields)) : [] }))
+  const list = <T,>(v: unknown) => (Array.isArray(v) ? (v.filter((x) => x && typeof x === 'object') as T[]) : [])
+  return {
+    ...(d as DrawDbDiagram),
+    tables,
+    relationships: list<DrawDbRelationship>(relationships),
+    notes: list(d.notes),
+    subjectAreas: list(d.subjectAreas ?? d.areas),
+    enums: list<{ name: string; values: string[] }>(d.enums).filter((e) => typeof e.name === 'string' && Array.isArray(e.values)).map((e) => ({ ...e, values: e.values.map(String) })),
+    types: list<{ name: string }>(d.types).filter((t) => typeof t.name === 'string'),
+    views: list(d.views),
+  }
 }
 
 /** A JSON text that is a drawDB diagram (any other JSON is data to query). */
