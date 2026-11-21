@@ -322,19 +322,28 @@ jobs:
         if: ${{ !cancelled() }}
         continue-on-error: true
         run: |
+          set +e
+          sudo apt-get install -y -qq strace >/dev/null
           AP=$(command -v apparmor_parser || echo /usr/sbin/apparmor_parser)
           sudo chmod -x "$AP"
           sudo apt-get install -y -qq --reinstall ./apps/desktop/release/DB-Mastermind-*-linux-amd64.deb >/dev/null
           sudo chmod +x "$AP"
-          ls -l "/opt/DB Mastermind/chrome-sandbox"; findmnt -T /opt -o TARGET,OPTIONS
+          ls -l "/opt/DB Mastermind/chrome-sandbox"; getfacl "/opt/DB Mastermind/chrome-sandbox"; findmnt -T /opt -o TARGET,OPTIONS
           for r in 1 0; do
+            echo "===== apparmor_restrict_unprivileged_userns=$r"
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=$r
             sudo dmesg -C
-            timeout 25 xvfb-run -a "/opt/DB Mastermind/db-mastermind" --enable-logging=stderr --v=1 > "$RUNNER_TEMP/suid-$r.log" 2>&1; echo "exit $?"
-            grep -v -i -E "dbus|fontconfig|gles|gpu_init" "$RUNNER_TEMP/suid-$r.log" | head -80
-            sudo dmesg | grep -i -E "apparmor|denied|audit" | tail -20
+            timeout 25 xvfb-run -a "/opt/DB Mastermind/db-mastermind" --enable-logging=stderr --v=1 > "$RUNNER_TEMP/suid-$r.log" 2>&1
+            echo "exit $?"
+            grep -v -i -E "dbus|fontconfig|gles|gpu_init|font" "$RUNNER_TEMP/suid-$r.log" | grep -i -E "sandbox|zygote|exec|fatal|error|launch|namespace" | head -60
+            echo "--- kernel log"
+            sudo dmesg | grep -i -E "apparmor|denied|audit|sandbox|db-mastermind" | tail -20
+            echo "--- strace (execve, clone, unshare; setuid has no effect under ptrace)"
+            timeout 25 xvfb-run -a strace -f -e trace=execve,unshare,clone,clone3 -o "$RUNNER_TEMP/st-$r.txt" "/opt/DB Mastermind/db-mastermind" > /dev/null 2>&1
+            grep -E "execve|unshare|CLONE_NEWUSER|= -1" "$RUNNER_TEMP/st-$r.txt" | head -40
           done
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
+          exit 0
       - name: .deb reinstalled where its profile can't load (SUID helper, sandboxed)
         if: ${{ !cancelled() }}
         run: |
