@@ -381,6 +381,10 @@ jobs:
       - name: Publish the tested tarball to npm
         if: needs.mcp-pack.outputs.npm != 'done' && steps.auth.outputs.auth != 'none'
         run: |
+          # Checked again here: "Re-run failed jobs" reuses mcp-pack's answer from before the first attempt.
+          if [ "$(npm view "dbmastermind-mcp@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
+            echo "::notice::dbmastermind-mcp@$VERSION is already on npm."; exit 0
+          fi
           # Trusted publishing needs npm 11.5.1 or newer.
           npm install -g --ignore-scripts npm@11.21.2
           npm publish "$TARBALL" --access public --provenance
@@ -417,6 +421,10 @@ jobs:
             sleep 20
           done
           if [ "$(npm view "dbmastermind-mcp@$VERSION" version 2>/dev/null)" != "$VERSION" ]; then echo "::error::dbmastermind-mcp@$VERSION is not on npm"; exit 1; fi
+          NAME=$(node -p "encodeURIComponent(require(process.env.RUNNER_TEMP + '/pack/server.json').name)")
+          if curl -sf -o /dev/null "https://registry.modelcontextprotocol.io/v0.1/servers/$NAME/versions/$VERSION"; then
+            echo "::notice::The MCP registry already lists $VERSION."; exit 0
+          fi
           "$RUNNER_TEMP/mcp-publisher" login github-oidc
           for i in 1 2 3; do "$RUNNER_TEMP/mcp-publisher" publish "$RUNNER_TEMP/pack/server.json" && exit 0; sleep 30; done
           exit 1
