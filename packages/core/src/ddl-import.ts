@@ -179,6 +179,11 @@ const mySqlLiteral = (quoted: string) => literal(quoted).replace(/\\(.)/gs, (_, 
 const unquote = (name: string) => name.trim().replace(/^"([\s\S]*)"$/, '$1')
 /** Joins a table's schema and name into the one name it has inside DuckDB. */
 const JOIN = '__dbm__'
+
+/** Text as the script wrote it: the names this reader gave DuckDB (index of a table, table of a schema) undone. */
+function readable(text: string): string {
+  return text.replace(new RegExp(`([\\w$]*)${IX}`, 'g'), '').replace(new RegExp(`"?([\\w$]+)${JOIN}([\\w$]+)"?`, 'g'), '"$1"."$2"')
+}
 /** Where a column's type ends: the first constraint or option after it. */
 const AFTER_TYPE = /^(NOT|NULL|DEFAULT|PRIMARY|REFERENCES|UNIQUE|CHECK|CONSTRAINT|COLLATE|IDENTITY|GENERATED|AUTO_INCREMENT|AUTOINCREMENT|COMMENT|CHARACTER\s+SET|CHARSET|ON\s+UPDATE|ENCODE|SPARSE|ROWGUIDCOL|FILESTREAM|MASKED|AS|WITH(?!\s+(?:LOCAL\s+)?TIME\s+ZONE)|INVISIBLE|VISIBLE|STORAGE|COLUMN_FORMAT|SRID)\b/i
 const TABLE_PART_WORD = /^(CONSTRAINT|PRIMARY|FOREIGN|UNIQUE|KEY|INDEX|CHECK|FULLTEXT|SPATIAL|PERIOD|EXCLUDE|LIKE)\b/i
@@ -611,7 +616,7 @@ export async function tablesFromDdl(given: string): Promise<DdlImportResult> {
       try {
         await driver.execute(sql)
       } catch (err) {
-        skipped.push({ sql: sql.slice(0, 300), error: err instanceof Error ? err.message.split('\n')[0]! : String(err) })
+        skipped.push({ sql: readable(sql).slice(0, 300), error: readable(err instanceof Error ? err.message.split('\n')[0]! : String(err)) })
       }
     }
     const snapshot = await driver.introspect()

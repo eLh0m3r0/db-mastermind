@@ -206,3 +206,11 @@ describe('a column named key or index is a column (review M9)', () => {
     }
   })
 })
+
+describe('what a script left out reads as the script wrote it (review L10)', () => {
+  it('never shows the names given inside the reader', async () => {
+    const { skipped } = await tablesFromDdl('CREATE SCHEMA app;\nCREATE TABLE app.t (id int);\nCREATE INDEX ix_a ON app.t (nosuch);\nCREATE TABLE u (id int, KEY k_b (missing));\n')
+    expect(skipped.map((s) => s.sql)).toEqual(['CREATE INDEX "ix_a" ON "app"."t" (nosuch)', 'CREATE INDEX "k_b" ON u (missing)'])
+    expect(JSON.stringify(skipped)).not.toMatch(/__dbm/)
+  })
+})
