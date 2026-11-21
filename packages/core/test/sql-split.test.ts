@@ -304,3 +304,12 @@ describe('stripLiterals', () => {
     expect(isReadOnlyScript("SELECT 1 /* don't */ UPDATE t SET a = 1", 'mssql')).toBe(false)
   })
 })
+
+describe('T-SQL [names] with ]] inside (found by the SQL fuzz)', () => {
+  it('a ]] goes on with the name, so a write after it is seen', () => {
+    const sql = "SELECT [a]]' , 1 AS [b] DELETE FROM t --']"
+    expect(stripLiterals(sql, 'mssql')).toMatch(/DELETE FROM t/)
+    expect(isReadOnlyScript(sql, 'mssql')).toBe(false)
+    expect(isReadOnlyScript('SELECT [a]]b] FROM t', 'mssql')).toBe(true)
+  })
+})

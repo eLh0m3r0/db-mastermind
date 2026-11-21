@@ -382,7 +382,8 @@ export function stripLiterals(sql: string, driver?: DriverId): string {
           continue
         }
         if (sql[j] === close) {
-          if (close !== ']' && sql[j + 1] === close) {
+          // (`]]` is a `]` inside a T-SQL [name], as `''` is a quote inside a string: the name goes on.)
+          if (sql[j + 1] === close) {
             j += 2
             continue
           }

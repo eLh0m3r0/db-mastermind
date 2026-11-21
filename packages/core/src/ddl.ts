@@ -616,7 +616,8 @@ function guardChanges(changes: SchemaChange[], d: Dialect, options: MigrationOpt
   const column = <T extends DesignColumn>(c: T, table: string): T | undefined => {
     if (!ok(c.dataType, () => `column ${table}.${c.name} (its type)`)) return undefined
     const out = { ...c }
-    if (!ok(c.defaultValue, () => `the default of ${table}.${c.name}`)) out.defaultValue = null
+    if (typeof c.defaultValue === 'string' && !c.defaultValue.trim()) out.defaultValue = null
+    else if (!ok(c.defaultValue, () => `the default of ${table}.${c.name}`)) out.defaultValue = null
     if (!ok(c.collation, () => `the collation of ${table}.${c.name}`)) delete out.collation
     return out
   }

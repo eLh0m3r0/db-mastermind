@@ -31,6 +31,8 @@ export function isPlainType(type: string): boolean {
   let words = 0
   let named = false
   let closedArgs = false
+  // Tokens in the current argument: one each (`10`, `'a'`, `Point`), never a phrase.
+  let inArg = 0
   for (let i = 0; i < s.length; ) {
     token.lastIndex = i
     const t = token.exec(s)?.[0]
@@ -40,16 +42,21 @@ export function isPlainType(type: string): boolean {
     if (t === '(') {
       if (depth || closedArgs || !words) return false
       depth = 1
+      inArg = 0
       continue
     }
     if (t === ')') {
-      if (!depth) return false
+      if (!depth || !inArg) return false
       depth = 0
       closedArgs = true
       continue
     }
     if (depth) {
-      // Inside the arguments: numbers, literals, words, commas.
+      // Inside the arguments: one number, literal or word each, separated by commas.
+      if (t === ',') {
+        if (!inArg) return false
+        inArg = 0
+      } else if (t === '[' || t === ']' || ++inArg > 1) return false
       continue
     }
     // Numbers, literals and commas belong inside the arguments.
