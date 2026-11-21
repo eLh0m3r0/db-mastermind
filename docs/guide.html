@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getting started | DB Mastermind</title>
+<meta name="description" content="A short guide to DB Mastermind: connect or try the demo database, browse and filter, edit safely, write SQL, diagrams and models, AI and MCP, and where things are.">
+<meta name="author" content="Václav Mudra">
+<link rel="canonical" href="https://dbmastermind.app/guide.html">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="DB Mastermind">
+<meta property="og:title" content="Getting started | DB Mastermind">
+<meta property="og:description" content="A short guide to DB Mastermind: connect or try the demo database, browse and filter, edit safely, write SQL, diagrams and models, AI and MCP, and where things are.">
+<meta property="og:url" content="https://dbmastermind.app/guide.html">
+<meta property="og:image" content="https://dbmastermind.app/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Understand your data. DB Mastermind, a free, open-source database client and data modeler, with a diagram of design, query and see.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Getting started | DB Mastermind">
+<meta name="twitter:description" content="A short guide to DB Mastermind: connect or try the demo database, browse and filter, edit safely, write SQL, diagrams and models, AI and MCP, and where things are.">
+<meta name="twitter:image" content="https://dbmastermind.app/og.png">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/atkinson-hyperlegible-next-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/atkinson-hyperlegible-next-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="site.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <defs>
+      <marker id="crow-many" viewBox="0 0 16 16" refX="15" refY="8" markerWidth="16" markerHeight="16" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M3 8 L15 1 M3 8 L15 8 M3 8 L15 15" fill="none" stroke="currentColor" stroke-width="1.2"/></marker>
+      <marker id="crow-one-s" viewBox="0 0 16 16" refX="15" refY="8" markerWidth="16" markerHeight="16" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M10 2 L10 14 M6 2 L6 14" fill="none" stroke="currentColor" stroke-width="1.2"/></marker>
+      <marker id="crow-one" viewBox="0 0 16 16" refX="15" refY="8" markerWidth="16" markerHeight="16" orient="auto" markerUnits="userSpaceOnUse"><path d="M10 2 L10 14 M6 2 L6 14" fill="none" stroke="currentColor" stroke-width="1.2"/></marker>
+      <marker id="crow-many-e" viewBox="0 0 16 16" refX="15" refY="8" markerWidth="16" markerHeight="16" orient="auto" markerUnits="userSpaceOnUse"><path d="M3 8 L15 1 M3 8 L15 8 M3 8 L15 15" fill="none" stroke="currentColor" stroke-width="1.2"/></marker>
+      <marker id="crow-zero-one" viewBox="0 0 20 16" refX="19" refY="8" markerWidth="20" markerHeight="16" orient="auto" markerUnits="userSpaceOnUse"><circle cx="5" cy="8" r="3.2" class="ring" stroke="currentColor" stroke-width="1.2"/><path d="M13 2 L13 14" fill="none" stroke="currentColor" stroke-width="1.2"/></marker>
+    </defs>
+  <symbol id="i-table" viewBox="0 0 24 24"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r="1" fill="currentColor"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 1 1 0 10h-2M8 12h8"/></symbol>
+</svg>
+<header class="top">
+  <div class="wrap top-in">
+    <a class="brand" href="./"><img src="icon.svg" alt="" width="28" height="28"><span>DB Mastermind</span></a>
+    <nav class="nav" aria-label="Site"><a href="./#design">Design</a><a href="./#query">Query</a><a href="./#see">See</a><a href="./#ai">AI</a><a href="./#mcp">MCP</a><a href="./#privacy">Privacy</a><a href="./#install">Install</a><a href="guide.html">Guide</a><a href="https://github.com/eLh0m3r0/db-mastermind">GitHub</a></nav>
+    <details class="menu">
+      <summary>Contents</summary>
+      <div class="menu-panel">
+        <nav aria-label="Site, compact"><a href="./#design">Design</a><a href="./#query">Query</a><a href="./#see">See</a><a href="./#ai">AI</a><a href="./#mcp">MCP</a><a href="./#privacy">Privacy</a><a href="./#install">Install</a><a href="guide.html">Guide</a><a href="https://github.com/eLh0m3r0/db-mastermind">GitHub</a></nav>
+        <div class="theme-toggle in-menu" role="group" aria-label="Theme">
+          <button type="button" data-choice="system" title="Match the system" aria-label="Match the system"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button>
+          <button type="button" data-choice="light" title="Light" aria-label="Light"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+          <button type="button" data-choice="dark" title="Dark" aria-label="Dark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+        </div>
+      </div>
+    </details>
+    <div class="theme-toggle" role="group" aria-label="Theme">
+      <button type="button" data-choice="system" title="Match the system" aria-label="Match the system"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button>
+      <button type="button" data-choice="light" title="Light" aria-label="Light"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+      <button type="button" data-choice="dark" title="Dark" aria-label="Dark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+    </div>
+  </div>
+</header>
+<main id="main" class="page">
+  <div class="wrap">
+    <h1>Getting started</h1>
+    <p class="lead">From the first connection to diagrams, models, AI and agents. If you have nothing to connect to yet, the demo database has everything this guide shows.</p>
+    <nav class="toc" aria-labelledby="toc-h">
+      <h2 id="toc-h" class="sr-only">In this guide</h2>
+      <ol>
+        <li><a href="#connect">Connect, or try the demo</a></li>
+        <li><a href="#browse">Browse and filter</a></li>
+        <li><a href="#edit">Edit safely</a></li>
+        <li><a href="#sql">Write SQL</a></li>
+        <li><a href="#models">Diagrams and models</a></li>
+        <li><a href="#ai">AI and agents</a></li>
+        <li><a href="#where">Where things are</a></li>
+      </ol>
+    </nav>
+
+    <section id="connect" aria-labelledby="connect-h">
+      <h2 id="connect-h">Connect, or try the demo</h2>
+      <ul>
+        <li><em>New connection</em> (bottom left) offers PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite, DuckDB, ClickHouse, CockroachDB, BigQuery and Trino. Paste a whole connection string into the field at the top and the form fills itself; a hosted service such as Supabase, Neon or Amazon RDS is recognised and TLS is turned on.</li>
+        <li>SQL Server on Windows: choose <em>Windows authentication</em> and leave the password empty.</li>
+        <li><em>Import connections</em> finds the tools on your computer (DBeaver, DataGrip, pgAdmin, SSMS, Azure Data Studio, MySQL Workbench, HeidiSQL and more) or reads a file from a colleague. When a password is missing, the app asks for it when you connect.</li>
+        <li>Drop a <code>.env</code>, a docker-compose file or a project folder on the window: the databases it names become connections. Nothing connects until you open one.</li>
+        <li>Nothing to connect to: click <em>Try the demo database</em> on the start screen, or <em>Query a file</em>.</li>
+        <li>Mark a connection <em>Read-only</em> or as production, and the app asks before every risky operation.</li>
+      </ul>
+      <figure class="shot">
+    <picture class="theme-light">
+      <source type="image/avif" srcset="screenshots/home-1440.avif 1440w, screenshots/home-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/home-1440.webp 1440w, screenshots/home-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/home-1440.png" width="1440" height="900" alt="The start screen: Databases with New connection, Import connections, Try the demo database and Query a file; Models with New model and Open a model." loading="lazy" decoding="async">
+    </picture>
+    <picture class="theme-dark">
+      <source type="image/avif" srcset="screenshots/home-dark-1440.avif 1440w, screenshots/home-dark-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/home-dark-1440.webp 1440w, screenshots/home-dark-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/home-dark-1440.png" width="1440" height="900" alt="The start screen: Databases with New connection, Import connections, Try the demo database and Query a file; Models with New model and Open a model." loading="lazy" decoding="async">
+    </picture>
+    <figcaption>The start screen.</figcaption>
+  </figure>
+      <figure class="shot">
+    <picture class="theme-light">
+      <source type="image/avif" srcset="screenshots/connect-1440.avif 1440w, screenshots/connect-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/connect-1440.webp 1440w, screenshots/connect-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/connect-1440.png" width="1440" height="900" alt="The new connection form with a pasted connection string; the app recognised the hosted service and turned TLS on." loading="lazy" decoding="async">
+    </picture>
+    <picture class="theme-dark">
+      <source type="image/avif" srcset="screenshots/connect-dark-1440.avif 1440w, screenshots/connect-dark-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/connect-dark-1440.webp 1440w, screenshots/connect-dark-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/connect-dark-1440.png" width="1440" height="900" alt="The new connection form with a pasted connection string; the app recognised the hosted service and turned TLS on." loading="lazy" decoding="async">
+    </picture>
+    <figcaption>A pasted connection string fills the form.</figcaption>
+  </figure>
+    </section>
+
+    <section id="browse" aria-labelledby="browse-h">
+      <h2 id="browse-h">Browse and filter</h2>
+      <ul>
+        <li>Double-click a table in the explorer to open its data.</li>
+        <li><em>Filter</em> (Ctrl/⌘ F): groups of AND/OR conditions with more than 25 operators (in list, between, regex, last N days), your own WHERE, or a filter described in words that AI turns into conditions.</li>
+        <li>An arrow in a foreign-key cell opens the row it points to.</li>
+        <li>Right-click a column header to hide, move or pin columns.</li>
+        <li>Export the whole table or result to CSV, Excel, JSON, SQL or Markdown, without a row limit.</li>
+      </ul>
+      <figure class="shot">
+    <picture class="theme-light">
+      <source type="image/avif" srcset="screenshots/table-filters-1440.avif 1440w, screenshots/table-filters-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/table-filters-1440.webp 1440w, screenshots/table-filters-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/table-filters-1440.png" width="1440" height="900" alt="The orders table filtered by two conditions, with the selected row’s details on the right." loading="lazy" decoding="async">
+    </picture>
+    <picture class="theme-dark">
+      <source type="image/avif" srcset="screenshots/table-filters-dark-1440.avif 1440w, screenshots/table-filters-dark-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/table-filters-dark-1440.webp 1440w, screenshots/table-filters-dark-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/table-filters-dark-1440.png" width="1440" height="900" alt="The orders table filtered by two conditions, with the selected row’s details on the right." loading="lazy" decoding="async">
+    </picture>
+    <figcaption>Two conditions and the row details panel.</figcaption>
+  </figure>
+    </section>
+
+    <section id="edit" aria-labelledby="edit-h">
+      <h2 id="edit-h">Edit safely</h2>
+      <ul>
+        <li>Type into cells or paste rows from Excel. Nothing is saved until you apply the change set, and the SQL preview shows what runs.</li>
+        <li>Shift+Enter on a cell opens the value editor, which formats and checks JSON.</li>
+        <li>Turn on <em>Commit changes manually</em> for a connection, and every change waits for your Commit; reads don’t open a transaction.</li>
+        <li>Each query tab has its own session. When a transaction is open, the editor’s bar shows it with its changes and offers Commit and Rollback. Closing a tab, disconnecting or quitting with an open transaction always asks first.</li>
+      </ul>
+    </section>
+
+    <section id="sql" aria-labelledby="sql-h">
+      <h2 id="sql-h">Write SQL</h2>
+      <ul>
+        <li>Ctrl/⌘ Enter runs the statement under the cursor, Shift+Ctrl/⌘ Enter the whole script.</li>
+        <li>Autocomplete knows the schema: after JOIN it suggests related tables with the whole ON clause.</li>
+        <li>Ctrl/⌘ I: describe the query in words and AI writes it. A failed statement gets <em>Fix with AI</em>.</li>
+        <li>Show a result as a chart and pin it to a dashboard. Copy a result as TSV for Excel, JSON or Markdown.</li>
+        <li>Ctrl/⌘ \ shows two tabs side by side, for example a query and a table.</li>
+      </ul>
+      <figure class="shot">
+    <picture class="theme-light">
+      <source type="image/avif" srcset="screenshots/query-1440.avif 1440w, screenshots/query-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/query-1440.webp 1440w, screenshots/query-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/query-1440.png" width="1440" height="900" alt="The SQL editor with autocomplete open after JOIN, suggesting a related table with its ON clause." loading="lazy" decoding="async">
+    </picture>
+    <picture class="theme-dark">
+      <source type="image/avif" srcset="screenshots/query-dark-1440.avif 1440w, screenshots/query-dark-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/query-dark-1440.webp 1440w, screenshots/query-dark-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/query-dark-1440.png" width="1440" height="900" alt="The SQL editor with autocomplete open after JOIN, suggesting a related table with its ON clause." loading="lazy" decoding="async">
+    </picture>
+    <figcaption>Autocomplete after JOIN.</figcaption>
+  </figure>
+      <figure class="shot">
+    <picture class="theme-light">
+      <source type="image/avif" srcset="screenshots/chart-1440.avif 1440w, screenshots/chart-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/chart-1440.webp 1440w, screenshots/chart-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/chart-1440.png" width="1440" height="900" alt="A query’s result shown as a line chart of orders per month." loading="lazy" decoding="async">
+    </picture>
+    <picture class="theme-dark">
+      <source type="image/avif" srcset="screenshots/chart-dark-1440.avif 1440w, screenshots/chart-dark-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/chart-dark-1440.webp 1440w, screenshots/chart-dark-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/chart-dark-1440.png" width="1440" height="900" alt="A query’s result shown as a line chart of orders per month." loading="lazy" decoding="async">
+    </picture>
+    <figcaption>A result as a chart.</figcaption>
+  </figure>
+    </section>
+
+    <section id="models" aria-labelledby="models-h">
+      <h2 id="models-h">Diagrams and models</h2>
+      <ul>
+        <li>Command palette (Ctrl/⌘ K), then <em>Open ER diagram</em>: focus on a table and its neighbours, find the join path between two tables as a ready JOIN, color tables, and save diagrams for subject areas.</li>
+        <li><em>Design</em> edits tables, columns, keys and indexes right on the diagram of a live database. <em>Review migration</em> shows the SQL script, the checks against the existing data and the rollback; you can leave out single changes.</li>
+        <li><em>New model</em> on the start screen starts a model without a database: add tables, columns and relationships on the canvas. The model is a DBML file; <em>Compare with database</em> gives the migration.</li>
+        <li><em>Open a model</em> also takes an SQL script, a Prisma schema, a Mermaid ER diagram, a drawDB file or a MySQL Workbench model. Export a model or a live database as a Prisma schema, Drizzle schema, SQLAlchemy models or TypeScript types from the diagram’s Export menu.</li>
+        <li>DeZign for Databases projects open and save back in place: <a href="dezign.html">what is kept</a>.</li>
+      </ul>
+      <figure class="shot">
+    <picture class="theme-light">
+      <source type="image/avif" srcset="screenshots/diagram-1440.avif 1440w, screenshots/diagram-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/diagram-1440.webp 1440w, screenshots/diagram-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/diagram-1440.png" width="1440" height="900" alt="The ER diagram of the demo database: eight tables with keys and crow’s-foot relationships." loading="lazy" decoding="async">
+    </picture>
+    <picture class="theme-dark">
+      <source type="image/avif" srcset="screenshots/diagram-dark-1440.avif 1440w, screenshots/diagram-dark-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/diagram-dark-1440.webp 1440w, screenshots/diagram-dark-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/diagram-dark-1440.png" width="1440" height="900" alt="The ER diagram of the demo database: eight tables with keys and crow’s-foot relationships." loading="lazy" decoding="async">
+    </picture>
+    <figcaption>The ER diagram of a live database.</figcaption>
+  </figure>
+      <figure class="shot">
+    <picture class="theme-light">
+      <source type="image/avif" srcset="screenshots/modeler-1440.avif 1440w, screenshots/modeler-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/modeler-1440.webp 1440w, screenshots/modeler-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/modeler-1440.png" width="1440" height="900" alt="A model on the canvas with the selected table’s panel open." loading="lazy" decoding="async">
+    </picture>
+    <picture class="theme-dark">
+      <source type="image/avif" srcset="screenshots/modeler-dark-1440.avif 1440w, screenshots/modeler-dark-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/modeler-dark-1440.webp 1440w, screenshots/modeler-dark-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/modeler-dark-1440.png" width="1440" height="900" alt="A model on the canvas with the selected table’s panel open." loading="lazy" decoding="async">
+    </picture>
+    <figcaption>A model, edited on the canvas.</figcaption>
+  </figure>
+      <figure class="shot">
+    <picture class="theme-light">
+      <source type="image/avif" srcset="screenshots/migration-1440.avif 1440w, screenshots/migration-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/migration-1440.webp 1440w, screenshots/migration-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/migration-1440.png" width="1440" height="900" alt="The migration dialog: the changes, the checks against current data, and the SQL script with a Rollback tab." loading="lazy" decoding="async">
+    </picture>
+    <picture class="theme-dark">
+      <source type="image/avif" srcset="screenshots/migration-dark-1440.avif 1440w, screenshots/migration-dark-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/migration-dark-1440.webp 1440w, screenshots/migration-dark-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/migration-dark-1440.png" width="1440" height="900" alt="The migration dialog: the changes, the checks against current data, and the SQL script with a Rollback tab." loading="lazy" decoding="async">
+    </picture>
+    <figcaption>A migration, checked against the data before it runs.</figcaption>
+  </figure>
+    </section>
+
+    <section id="ai" aria-labelledby="ai-h">
+      <h2 id="ai-h">AI and agents</h2>
+      <ul>
+        <li><em>Settings → AI assistant</em>: your own key (Anthropic, OpenAI, OpenRouter, Azure, Gemini), a local Ollama, or your Claude Code or Codex sign-in.</li>
+        <li>Ctrl/⌘ J opens the assistant. It explores the schema, runs read-only queries and asks before any change.</li>
+        <li>A knowledge base is a folder of Markdown notes about a database: what codes and statuses mean, how tables relate. Set it on the connection; AI can write the first version.</li>
+        <li><em>Settings → MCP server → Add to …</em> puts DB Mastermind into Claude Code, Claude Desktop, Codex, Cursor or VS Code. Agents use your connections, read-only unless you say otherwise. <a href="./#mcp">Setup for other agents</a></li>
+      </ul>
+      <figure class="shot">
+    <picture class="theme-light">
+      <source type="image/avif" srcset="screenshots/ai-1440.avif 1440w, screenshots/ai-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/ai-1440.webp 1440w, screenshots/ai-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/ai-1440.png" width="1440" height="900" alt="The AI assistant answering a question about revenue from the knowledge base, with the SQL it ran." loading="lazy" decoding="async">
+    </picture>
+    <picture class="theme-dark">
+      <source type="image/avif" srcset="screenshots/ai-dark-1440.avif 1440w, screenshots/ai-dark-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/ai-dark-1440.webp 1440w, screenshots/ai-dark-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/ai-dark-1440.png" width="1440" height="900" alt="The AI assistant answering a question about revenue from the knowledge base, with the SQL it ran." loading="lazy" decoding="async">
+    </picture>
+    <figcaption>The assistant and the knowledge base.</figcaption>
+  </figure>
+      <figure class="shot">
+    <picture class="theme-light">
+      <source type="image/avif" srcset="screenshots/mcp-settings-1440.avif 1440w, screenshots/mcp-settings-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/mcp-settings-1440.webp 1440w, screenshots/mcp-settings-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/mcp-settings-1440.png" width="1440" height="900" alt="Settings, MCP server: buttons that add DB Mastermind to Claude Code, Claude Desktop, Codex, Cursor and VS Code." loading="lazy" decoding="async">
+    </picture>
+    <picture class="theme-dark">
+      <source type="image/avif" srcset="screenshots/mcp-settings-dark-1440.avif 1440w, screenshots/mcp-settings-dark-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <source type="image/webp" srcset="screenshots/mcp-settings-dark-1440.webp 1440w, screenshots/mcp-settings-dark-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
+      <img src="screenshots/mcp-settings-dark-1440.png" width="1440" height="900" alt="Settings, MCP server: buttons that add DB Mastermind to Claude Code, Claude Desktop, Codex, Cursor and VS Code." loading="lazy" decoding="async">
+    </picture>
+    <figcaption>Adding the MCP server to an agent.</figcaption>
+  </figure>
+    </section>
+
+    <section id="where" aria-labelledby="where-h">
+      <h2 id="where-h">Where things are</h2>
+      <table class="grid keys">
+        <thead><tr><th scope="col">Shortcut</th><th scope="col">Action</th></tr></thead>
+        <tbody>
+          <tr><td><kbd>Ctrl/⌘ K</kbd></td><td>Command palette</td></tr>
+          <tr><td><kbd>Ctrl/⌘ P</kbd></td><td>Open a table</td></tr>
+          <tr><td><kbd>Ctrl/⌘ T</kbd></td><td>New query</td></tr>
+          <tr><td><kbd>Ctrl/⌘ Enter</kbd></td><td>Run the statement</td></tr>
+          <tr><td><kbd>Ctrl+Alt+Shift+Enter</kbd> / <kbd>⌥⇧⌘↵</kbd></td><td>Commit the transaction</td></tr>
+          <tr><td><kbd>Ctrl+Alt+Shift+Backspace</kbd> / <kbd>⌥⇧⌘⌫</kbd></td><td>Roll back the transaction</td></tr>
+          <tr><td><kbd>Ctrl/⌘ I</kbd></td><td>Write SQL with AI</td></tr>
+          <tr><td><kbd>Ctrl/⌘ J</kbd></td><td>AI assistant</td></tr>
+          <tr><td><kbd>Ctrl/⌘ \</kbd></td><td>Split view</td></tr>
+          <tr><td><kbd>Shift+Enter</kbd></td><td>Value editor of a cell</td></tr>
+          <tr><td><kbd>Ctrl/⌘ ,</kbd></td><td>Settings</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li>Every shortcut: <em>Help → Keyboard Shortcuts</em>.</li>
+        <li>Theme, contrast, accent color and density: <em>Settings → Appearance</em>. Language: <em>Settings → General</em>.</li>
+        <li>A team folder (a network drive, OneDrive or a Git repository) shares connections without passwords, saved queries and knowledge bases: <em>Settings → General</em>, and <a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/docs/team-folder.md">how it works</a>.</li>
+        <li>For IT: a managed configuration file adds connections and rules such as AI off: <a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/docs/managed-config.md">managed configuration</a>.</li>
+        <li>Backup and restore: right-click a connection.</li>
+      </ul>
+      <p>Something missing or wrong? <a href="https://github.com/eLh0m3r0/db-mastermind/issues">Open an issue</a>.</p>
+    </section>
+  </div>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <p>DB Mastermind by <a href="https://vaclavmudra.com">Václav Mudra</a>. MIT license.</p>
+    <ul class="foot-links">
+      <li><a href="guide.html">Getting started</a></li>
+      <li><a href="privacy.html">Privacy policy</a></li>
+      <li><a href="dezign.html">For DeZign users</a></li>
+      <li><a href="azure-data-studio.html">Coming from Azure Data Studio</a></li>
+      <li><a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/ROADMAP.md">Roadmap</a></li>
+      <li><a href="https://github.com/eLh0m3r0/db-mastermind/issues">Issues</a></li>
+      <li><a href="https://github.com/eLh0m3r0/db-mastermind/blob/main/SECURITY.md">Security</a></li>
+      <li><a href="https://ko-fi.com/vaclavmudra">Ko-fi</a></li>
+    </ul>
+    <p class="trademark">DeZign for Databases is a trademark of Datanamic. DB Mastermind is not affiliated with or endorsed by Datanamic.</p>
+  </div>
+</footer>
+<script src="site.js" defer></script>
+</body>
+</html>
