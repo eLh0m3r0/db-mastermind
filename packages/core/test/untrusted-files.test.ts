@@ -153,7 +153,7 @@ describe('nesting, aliases and long lines', () => {
   it('a 30 MB single line is no model and is said to be none', { timeout: 30_000 }, () => {
     const line = long(30 * 1024 * 1024, 'x')
     const r = timed(() => readModelFile('one.mmd', strToU8(line)))
-    expect(r.error?.message).toMatch(/erDiagram/)
+    expect(r.error?.message).toMatch(/erDiagram|longer than 64 KB/)
   })
 })
 

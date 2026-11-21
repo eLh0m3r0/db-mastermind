@@ -104,7 +104,7 @@ function columnType(c: GrtObject, byId: Map<string, GrtObject>): string {
 function columnDefault(c: GrtObject, type: string): string | null | undefined {
   if (num(c.defaultValueIsNull) === 1) return null
   const d = str(c.defaultValue)
-    .replace(/\s+ON\s+UPDATE\s+.*$/is, '')
+    .replace(/(?<!\s)\s+ON\s+UPDATE\s+.*$/is, '')
     .trim()
   if (!d || /^null$/i.test(d)) return null
   const quoted = /^'(-?\d+(?:\.\d+)?)'$/.exec(d)

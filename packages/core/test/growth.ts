@@ -27,3 +27,24 @@ export function growth(prepare: (n: number) => () => unknown, n: number): { rati
 
 /** Linear work grows about 4 times; quadratic 16. Anything under 10 is taken as linear. */
 export const LINEAR = 10
+
+/** `growth` for async work (the DDL reader runs DuckDB). */
+export async function growthAsync(prepare: (n: number) => () => Promise<unknown>, n: number): Promise<{ ratio: number; small: number; large: number }> {
+  const best = async (size: number) => {
+    const run = prepare(size)
+    let ms = Infinity
+    for (let i = 0; i < 3; i++) {
+      const start = performance.now()
+      try {
+        await run()
+      } catch {
+        // Refusing the input is an outcome too.
+      }
+      ms = Math.min(ms, performance.now() - start)
+    }
+    return ms
+  }
+  const small = await best(n)
+  const large = await best(4 * n)
+  return { ratio: large / Math.max(small, 2), small, large }
+}

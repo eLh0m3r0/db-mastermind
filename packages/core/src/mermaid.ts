@@ -1,4 +1,5 @@
 import type { ColumnInfo, ForeignKeyInfo, TableInfo } from './types.js'
+import { LINE_LIMIT, normalizeText } from './text-lines.js'
 import { emptyImport, leaveOut, type ImportedModel } from './imported-model.js'
 import { isPlainType } from './foreign-sql.js'
 
@@ -59,10 +60,13 @@ function sources(text: string): string[] {
     }
   }
   const diagrams = fences.length ? fences : [text]
-  return diagrams.filter((d) => /^\s*erDiagram\b/m.test(d.replace(/^---\n[\s\S]*?\n---\n/, '').replace(/^\s*%%.*$/gm, '')))
+  return diagrams.filter((d) => /^[ \t]*erDiagram\b/m.test(d.replace(/^---\n[\s\S]*?\n---\n/, '').replace(/^[ \t]*%%.*$/gm, '')))
 }
 
-export function tablesFromMermaid(text: string): ImportedModel {
+export function tablesFromMermaid(input: string): ImportedModel {
+  // Runs of spaces collapsed before any regex sees the text; an overlong line is an error (text-lines.ts).
+  const { text, tooLong } = normalizeText(input, { quotes: '"', lineComments: ['%%'] })
+  if (tooLong.length) throw new Error(`Line ${tooLong[0]} of the Mermaid diagram is longer than ${LINE_LIMIT / 1024} KB: not a diagram this app reads`)
   const found = sources(text)
   if (!found.length) throw new Error('Not a Mermaid ER diagram: there is no erDiagram in it')
   const out = emptyImport('mermaid')
@@ -70,7 +74,7 @@ export function tablesFromMermaid(text: string): ImportedModel {
   const marked = new Map<TableInfo, Set<string>>()
   const entity = (raw: string): TableInfo => {
     // `name`, `"Quoted name"`, `name["Shown as"]` (the alias is only what the diagram shows).
-    const name = unquote(raw.replace(/\[[^\]]*\]$/, '').replace(/:::[\w-]+$/, ''))
+    const name = unquote(raw.replace(/\[[^[\]]*\]$/, '').replace(/:::[\w-]+$/, ''))
     let t = tables.get(name)
     if (!t) {
       t = { name, type: 'table', comment: null, columns: [], primaryKey: [], foreignKeys: [], indexes: [] }
