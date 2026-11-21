@@ -5,11 +5,12 @@ import { Activity, BookmarkPlus, Hourglass, Play, PlayCircle, Sparkles, Square, 
 import { changesSchema, createdTables, extractParameters, routineObject, supportsManualCommit, isDangerousStatement, splitStatements, type DriverId, type ExplainResult, type QueryParameter, type StatementOutcome } from '@dbmastermind/core/browser'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { Button } from '@/components/ui/Button'
+import { useFitLevel } from '@/components/ui/useFitLevel'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Splitter } from '@/components/ui/Splitter'
 import { api, ApiError, keys } from '@/lib/api'
-import { debounce, errorMessage, uid } from '@/lib/utils'
+import { cn, debounce, errorMessage, uid } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { askAi, toast, useUi } from '@/store/ui'
@@ -45,6 +46,7 @@ const FORMATTER_LANGUAGE: Record<DriverId, SqlLanguage> = {
 /** "Load all rows": no practical limit (the grid is virtualized; exports stream instead). */
 const ALL_ROWS = 10_000_000
 export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
+  const [barRef, barLevel] = useFitLevel<HTMLDivElement>(2)
   const connection = useConnections((s) => s.list.find((c) => c.id === tab.connectionId))
   const schema = useConnections((s) => s.runtime[tab.connectionId]?.schema)
   const connected = useConnections((s) => s.runtime[tab.connectionId]?.status === 'connected')
@@ -423,28 +425,28 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="@container flex h-10 shrink-0 items-center gap-1.5 border-b border-line px-2">
-        {/* The left part gives way (clips) when space runs out; the transaction controls on the right never do. */}
-        {/* In the narrowest pane (small window with the AI panel) Run is an icon and the gaps shrink, so all fit. */}
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden @max-[460px]:gap-0.5">
+      <div className="flex h-10 shrink-0 items-center gap-1.5 border-b border-line px-2">
+        {/* The left part gives way when space runs out (labels first, then Run's own word and the gaps); the
+            transaction controls on the right never do. Labels stay as long as they fit. */}
+        <div ref={barRef} className={cn('flex min-w-0 flex-1 items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden', barLevel >= 2 ? 'gap-0.5' : 'gap-1.5')} data-fit-level={barLevel}>
         {running ? (
           <Button size="sm" variant="danger" icon={<Square size={12} fill="currentColor" />} onClick={cancel}>
             {t('Cancel')}
           </Button>
         ) : (
           <Button size="sm" variant="primary" icon={<Play size={13} fill="currentColor" />} onClick={() => void run('current')} title={`${t('Run statement or selection')} (${keys('⌘↵')})`}>
-            <span className="@max-[460px]:hidden">{t('Run')}</span>
+            {barLevel < 2 && <span>{t('Run')}</span>}
           </Button>
         )}
         <Button size="sm" variant="ghost" icon={<PlayCircle size={14} />} disabled={running} onClick={() => void run('all')} title={`${t('Run whole script')} (${keys('⇧⌘↵')})`}>
-          <span className="@max-[1050px]:hidden">{t('Run all')}</span>
+          {barLevel < 1 && <span>{t('Run all')}</span>}
         </Button>
-        <div className="mx-1 h-5 w-px bg-line @max-[460px]:hidden" />
+        {barLevel < 2 && <div className="mx-1 h-5 w-px shrink-0 bg-line" />}
         <Button size="sm" variant="ghost" icon={<Wand2 size={14} />} onClick={format} title={`${t('Format SQL')} (${keys('⇧⌘F')})`}>
-          <span className="@max-[1050px]:hidden">{t('Format')}</span>
+          {barLevel < 1 && <span>{t('Format')}</span>}
         </Button>
         <Button size="sm" variant="ghost" icon={<BookmarkPlus size={14} />} onClick={() => void save()} title={`${tab.path ? t('Save to {file}', { file: tab.path }) : t('Save query')} (${keys('⌘S')})`}>
-          <span className="@max-[1050px]:hidden">{t('Save')}</span>
+          {barLevel < 1 && <span>{t('Save')}</span>}
         </Button>
         <Button
           size="sm"
@@ -461,11 +463,11 @@ export function QueryView({ tab, active }: { tab: QueryTab; active: boolean }) {
           }
           title={t('Show the execution plan of the statement under the cursor')}
         >
-          <span className="@max-[1050px]:hidden">{t('Explain')}</span>
+          {barLevel < 1 && <span>{t('Explain plan')}</span>}
         </Button>
         {aiAllowed && (
           <Button size="sm" variant="ghost" icon={<Sparkles size={14} />} onClick={openInline} title={`${t('Ask AI')} (${keys('⌘I')})`}>
-            <span className="@max-[1050px]:hidden">{t('Ask AI')}</span>
+            {barLevel < 1 && <span>{t('Ask AI')}</span>}
           </Button>
         )}
         </div>

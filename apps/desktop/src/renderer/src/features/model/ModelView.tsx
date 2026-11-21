@@ -4,9 +4,10 @@ import { bracketMatching, StreamLanguage } from '@codemirror/language'
 import { Compartment, EditorState } from '@codemirror/state'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { EditorView, highlightActiveLine, keymap, lineNumbers } from '@codemirror/view'
-import { ChevronDown, Filter, AlertTriangle, Archive, Database, Eye, MoreHorizontal, Pencil, Shapes, FileCode2, FileInput, FolderOpen, GitCompare, Save, SaveAll, Sparkles, TerminalSquare, Plus } from 'lucide-react'
+import { ChevronDown, Filter, AlertTriangle, Archive, Database, Eye, MoreHorizontal, Pencil, Shapes, FileCode2, FileInput, FolderOpen, GitCompare, Save, SaveAll, Sparkles, TerminalSquare, Plus, Network } from 'lucide-react'
 import { translateTables, translateType, applyGenerationDirectives, generationDirectivesIn, scriptingWithDirectives, tablesWithDirectives, withDezignSql, checkModel, withModelLayout, createScript, dezignDriver, dezignMigrationOptions, dezignWrapScript, dropScript, fixModelIssue, unquotedNames, getDialect, parseDbml, toDbml, updateModelFromDatabase, type DezignSqlObject, type ModelIssue, type SchemaSnapshot } from '@dbmastermind/core/browser'
 import { Button } from '@/components/ui/Button'
+import { useFitLevel } from '@/components/ui/useFitLevel'
 import { openMenu, type MenuItem } from '@/components/ui/ContextMenu'
 import { DRIVERS } from '../connections/drivers'
 import { Segmented, Select } from '@/components/ui/Input'
@@ -146,6 +147,7 @@ function DbmlEditor({ value, dark, onChange, onSave, jumpTo }: { value: string; 
 /** DeZign's ids of the databases a project can be switched to (as a new project is made for them). */
 const SWITCH_TO = { postgres: 'postgresql16', mssql: 'mssqlserver2022', mysql: 'mysql8' } as const
 export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: boolean }) {
+  const [barRef, barLevel] = useFitLevel<HTMLDivElement>(3)
   const t = useT()
   const dark = useSettings((s) => s.dark)
   const updateTab = useWorkspace((s) => s.update)
@@ -659,6 +661,8 @@ export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: bo
     openMenu(anchor, [
       { label: t('Rename…'), icon: <Pencil size={13} />, disabled: model.errors.length > 0 || !model.tables.length, onClick: () => withCanvas('rename') },
       { label: t('Views and code…'), icon: <Eye size={13} />, onClick: () => setViewsOpen({}) },
+      // The subject-area picker shows only once there are areas; the first diagram starts here.
+      ...(areaNames.length === 0 && !(tab.diagrams?.length ?? 0) ? [{ label: t('New diagram…'), icon: <Network size={13} />, disabled: !model.tables.length, onClick: () => void newDiagram() } as MenuItem] : []),
       ...(availableDirectives.length
         ? [
             {
@@ -740,29 +744,30 @@ export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: bo
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* (In a narrow window the less needed labels go first, so the bar stays one line: icons keep their titles.) */}
-      <div className="@container flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-2 py-1.5">
-        <FileCode2 size={15} className="ml-1 text-accent" />
-        <span className="mr-2 max-w-[260px] truncate text-[12.5px] font-medium" title={tab.path ?? tab.source?.path}>
+      {/* One line at every width: labels stay while they fit, then the less needed ones give way (level 1), then Save
+          and More (2), then Compare's own (3); icons keep their titles. */}
+      <div ref={barRef} className="flex shrink-0 flex-nowrap items-center gap-1.5 overflow-x-auto border-b border-line px-2 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" data-fit-level={barLevel}>
+        <FileCode2 size={15} className="ml-1 shrink-0 text-accent" />
+        <span className={cn('mr-2 max-w-[260px] truncate text-[12.5px] font-medium', barLevel >= 3 ? 'min-w-0 shrink' : 'shrink-0')} title={tab.path ?? tab.source?.path}>
           {(tab.path ?? tab.source?.path)?.split(/[\\/]/).pop() ?? t('Unsaved model')}
           {tab.dirty && ' •'}
         </span>
         <Button size="sm" variant="ghost" icon={<FolderOpen size={13} />} onClick={() => void open()} title={t('Open a model or a DeZign project')} aria-label={t('Open…')} data-testid="model-open">
-          <span className="@max-[1100px]:hidden">{t('Open…')}</span>
+          {barLevel < 1 && <span>{t('Open…')}</span>}
         </Button>
-        <Button size="sm" variant="ghost" icon={<Save size={13} />} onClick={() => void save()} title={keys('⌘S')} data-testid="model-save">
-          {t('Save')}
+        <Button size="sm" variant="ghost" icon={<Save size={13} />} onClick={() => void save()} title={`${t('Save')} (${keys('⌘S')})`} aria-label={t('Save')} data-testid="model-save">
+          {barLevel < 2 && t('Save')}
         </Button>
         <Button size="sm" variant="ghost" icon={<SaveAll size={13} />} onClick={() => void save(true)} title={t('Save as a model (.dbml) or a DeZign project (.dez)')} aria-label={t('Save as…')} data-testid="model-save-as">
-          <span className="@max-[1100px]:hidden">{t('Save as…')}</span>
+          {barLevel < 1 && <span>{t('Save as…')}</span>}
         </Button>
         <Button size="sm" variant="ghost" icon={<FileInput size={13} />} onClick={(e) => importMenu(e.currentTarget)} title={t('Tables from a file (SQL, Prisma, Mermaid, drawDB, MySQL Workbench) or from the database')} aria-label={t('Import')} data-testid="model-import">
-          <span className="@max-[1300px]:hidden">{t('Import')}</span>
+          {barLevel < 1 && <span>{t('Import')}</span>}
           <ChevronDown size={12} className="-mr-0.5 opacity-60" />
         </Button>
-        <span className="mx-0.5 h-4 w-px bg-line" />
+        <span className="mx-0.5 h-4 w-px shrink-0 bg-line" />
         <Button size="sm" variant="ghost" icon={<TerminalSquare size={13} />} disabled={!model.tables.length} onClick={(e) => withCanvas('ddl', e.currentTarget)} aria-label={t('SQL DDL')} title={t('SQL DDL')}>
-          <span className="@max-[1300px]:hidden">{t('SQL DDL')}</span>
+          {barLevel < 1 && <span>{t('SQL DDL')}</span>}
         </Button>
         <Button
           size="sm"
@@ -782,13 +787,14 @@ export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: bo
             ])
           }
         >
-          <span className="@max-[1380px]:hidden">{t('Design with AI')}</span>
+          {barLevel < 1 && <span>{t('Design with AI')}</span>}
         </Button>
-        <div className="flex-1" />
-        {model.tables.length > 0 && (
+        <div className="min-w-2 flex-1" />
+        {/* Subject areas only when the model has some: a plain model has nothing to pick (New diagram… is in More). */}
+        {model.tables.length > 0 && (areaNames.length > 0 || (tab.diagrams?.length ?? 0) > 0) && (
           <Select
             inputSize="sm"
-            className="w-40"
+            className="w-40 shrink-0"
             value={area}
             onChange={(e) => (e.target.value === '+' ? void newDiagram() : e.target.value === '~rename' ? void renameDiagram(area.slice(2)) : e.target.value === '~remove' ? void removeDiagram(area.slice(2)) : setArea(e.target.value))}
             title={t('Subject areas: the model’s TableGroups and the diagrams of the project it came from')} data-testid="model-area">
@@ -809,25 +815,27 @@ export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: bo
           </Select>
         )}
         <IssuesChip issues={issues} open={showIssues} onToggle={() => setShowIssues((v) => !v)} />
-        <span className="text-[11.5px] text-fg-faint @max-[1380px]:hidden">{tp(model.tables.length, { one: '{n} table', many: '{n} tables' })}</span>
-        {/* Compare with the linked database; the arrow picks another database or a version/file to compare with. */}
-        <div className="flex">
+        {barLevel < 1 && <span className="shrink-0 text-[11.5px] whitespace-nowrap text-fg-faint">{tp(model.tables.length, { one: '{n} table', many: '{n} tables' })}</span>}
+        {/* Compare with the linked database; the arrow picks another database (the linked one is checked) or a
+            version/file. The button names no database, so it never needs cutting. */}
+        <div className="flex shrink-0">
           <Button
             size="sm"
-            variant="primary"
+            variant={model.tables.length ? 'primary' : 'secondary'}
             icon={<GitCompare size={13} />}
             className="rounded-r-none"
             disabled={model.errors.length > 0 || !model.tables.length}
             onClick={(e) => (connection ? withCanvas('compare') : compareTargetMenu(e.currentTarget, true))}
-            title={connection ? t('Compare the model with the database and generate the migration') : t('Pick the database to compare the model with')}
+            title={connection ? t('Compare the model with {name} and generate the migration', { name: connection.name }) : t('Pick the database to compare the model with')}
+            aria-label={t('Compare with database')}
             data-testid="model-compare"
           >
-            <span className="max-w-60 truncate @max-[1300px]:max-w-40">{connection ? t('Compare with {name}', { name: connection.name }) : t('Compare with database')}</span>
+            {barLevel < 3 && <span>{t('Compare with database')}</span>}
           </Button>
-          <Button size="sm" variant="primary" className="rounded-l-none border-l border-white/25 px-1.5" icon={<ChevronDown size={13} />} onClick={(e) => compareTargetMenu(e.currentTarget.parentElement ?? e.currentTarget, false)} aria-label={t('Compare with…')} title={t('Compare with…')} data-testid="model-compare-menu" />
+          <Button size="sm" variant={model.tables.length ? 'primary' : 'secondary'} className={cn('rounded-l-none px-1.5', model.tables.length ? 'border-l border-white/25' : 'border-l-0')} icon={<ChevronDown size={13} />} onClick={(e) => compareTargetMenu(e.currentTarget.parentElement ?? e.currentTarget, false)} aria-label={t('Compare with…')} title={t('Compare with…')} data-testid="model-compare-menu" />
         </div>
-        <Button size="sm" variant="ghost" icon={<MoreHorizontal size={14} />} onClick={(e) => moreMenu(e.currentTarget)} title={t('More')} data-testid="model-more">
-          {t('More')}
+        <Button size="sm" variant="ghost" icon={<MoreHorizontal size={14} />} onClick={(e) => moreMenu(e.currentTarget)} title={t('More')} aria-label={t('More')} data-testid="model-more">
+          {barLevel < 2 && t('More')}
         </Button>
         {renameOpen && (
           <BatchRenameModal
