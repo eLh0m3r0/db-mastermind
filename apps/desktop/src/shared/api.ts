@@ -19,6 +19,8 @@ import type {
   DezignUserProperty,
   DezignLabel,
   DriverId,
+  LeftOutKind,
+  ModelFormat,
   Grant,
   Principal,
   ExplainResult,
@@ -523,6 +525,28 @@ export interface OpenedModelFile {
     /** Fingerprint of the model as read: saving back is refused when the source has changed since. */
     hash: string
   }
+  /**
+   * Set when the file is a model of another tool (MySQL Workbench, drawDB, Mermaid, Prisma): it opens as a new,
+   * unsaved model and the file is never written.
+   */
+  foreign?: ForeignModelInfo
+}
+
+/** What a model of another tool brought along (and what it could not). */
+export interface ForeignModelInfo {
+  format: ModelFormat
+  tables: number
+  relationships: number
+  /** The database the model was drawn for, where the file says. */
+  database?: DriverId
+  /** Table positions, keyed `schema.table` (`.table` without a schema). */
+  positions: Record<string, { x: number; y: number }>
+  /** Table colors (series palette index 1–8). */
+  colors: Record<string, number>
+  notes: DiagramNote[]
+  boxes: DiagramBox[]
+  diagrams: ModelDiagram[]
+  leftOut: Partial<Record<LeftOutKind, number>>
 }
 
 /** A named diagram of a model: a subset of its tables with their own layout. */
@@ -773,7 +797,16 @@ export interface MastermindApi {
   takeOpenedFiles(): Promise<string[]>
   /** Writes an edited model back into the DeZign project it came from. */
   saveDezignModel(request: DezignSaveRequest): Promise<DezignSaveOutcome>
-  importDdlFile(): Promise<{ path: string; dbml: string; skipped: { sql: string; error: string }[] } | null>
+  /**
+   * Reads tables for a model from a file: a SQL script (pg_dump, mysqldump, SSMS…), a Prisma schema, a MySQL
+   * Workbench model, a drawDB diagram or a Mermaid ER diagram (asks for the file). `foreign` carries the layout and
+   * what was left out of the other tools' formats.
+   */
+  importDdlFile(): Promise<{ path: string; dbml: string; skipped: { sql: string; error: string }[]; foreign?: ForeignModelInfo } | null>
+  /** Whether a file handed to the app is a model (a drawDB .json) or data to query (any other .json). */
+  isModelFile(path: string): Promise<boolean>
+  /** Saves generated code (Prisma, Drizzle, SQLAlchemy, TypeScript) through a save dialog suggesting `name`; null when cancelled. */
+  saveCodeFile(text: string, name: string): Promise<string | null>
   /** A data file opens in the built-in DuckDB with a first SELECT; a SQLite/DuckDB database file as its own connection (`database`). */
   queryFile(path?: string): Promise<{ connectionId: string; sql: string; title: string; database?: boolean } | null>
 
@@ -939,6 +972,8 @@ export const API_METHODS = [
   'openModelVersion',
   'archiveModelVersion',
   'importDdlFile',
+  'isModelFile',
+  'saveCodeFile',
   'saveSqlFile',
   'saveImageFile',
   'saveDiagramPdf',

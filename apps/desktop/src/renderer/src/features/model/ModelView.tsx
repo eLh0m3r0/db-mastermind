@@ -20,7 +20,7 @@ import { useSettings } from '@/store/settings'
 import { askAi, toast, useUi } from '@/store/ui'
 import { useWorkspace, type DiagramTab, type ModelTab } from '@/store/workspace'
 import { DiagramView, followRenames } from '../diagram/DiagramView'
-import { describeDezignChanges, modelTabFromFile, sqlObjectsScript } from './open-model'
+import { describeDezignChanges, foreignModelNotice, modelTabFromFile, sqlObjectsScript } from './open-model'
 import { DomainsModal, domainsOfText, withDomains, type ModelDomainDef } from './domains'
 import { editableViews, ViewsModal } from './views'
 import { ObjectBrowser, type BrowserRequest } from './ObjectBrowser'
@@ -481,11 +481,21 @@ export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: bo
     try {
       const r = await api.importDdlFile()
       if (!r) return
-      if (text.trim() && !(await confirmAction({ title: t('Replace the model with the tables from {file}?', { file: r.path.split(/[\\/]/).pop() ?? '' }), confirmLabel: t('Replace'), danger: true }))) return
+      const file = r.path.split(/[\\/]/).pop() ?? ''
+      if (text.trim() && !(await confirmAction({ title: t('Replace the model with the tables from {file}?', { file }), confirmLabel: t('Replace'), danger: true }))) return
+      if (r.foreign) {
+        // Another tool's model brings its diagram along: where its tables were, their colors, notes and frames.
+        const f = r.foreign
+        const keyed = (key: string) => (key.startsWith('.') ? `${liveSchema?.defaultSchema ?? ''}${key}` : key)
+        const rekey = <T,>(map: Record<string, T>) => Object.fromEntries(Object.entries(map).map(([key, v]) => [keyed(key), v]))
+        editModel(r.dbml, { positions: rekey(f.positions), colors: Object.keys(f.colors).length ? rekey(f.colors) : undefined, notes: f.notes.length ? f.notes : undefined, boxes: f.boxes.length ? f.boxes : undefined, diagrams: f.diagrams.length ? f.diagrams.map((d) => ({ ...d, tables: d.tables.map(keyed), positions: rekey(d.positions), colors: rekey(d.colors ?? {}) })) : undefined, ...(f.database && !tab.source ? { sqlDatabase: f.database } : {}) })
+        foreignModelNotice(file, f, false)
+        return
+      }
       editModel(r.dbml)
       if (r.skipped.length) toast({ kind: 'warning', message: tp(r.skipped.length, { one: '{n} statement could not be read', many: '{n} statements could not be read' }), detail: r.skipped.map((x) => `${x.error}\n  ${x.sql.split('\n')[0]}`).join('\n') })
     } catch (err) {
-      toast({ kind: 'error', message: t('Could not import the SQL file'), detail: errorMessage(err) })
+      toast({ kind: 'error', message: t('Could not import the file'), detail: errorMessage(err) })
     }
   }
 
@@ -641,7 +651,7 @@ export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: bo
   /** Tables from elsewhere: a SQL script, or the linked database. */
   const importMenu = (anchor: HTMLElement) =>
     openMenu(anchor, [
-      { label: t('SQL script or Prisma schema…'), icon: <FileInput size={13} />, onClick: () => void importDdl() },
+      { label: t('SQL, Prisma, Mermaid, drawDB or MySQL Workbench file…'), icon: <FileInput size={13} />, onClick: () => void importDdl() },
       { label: t('From database'), icon: <Database size={13} />, disabled: !connection, submenu: fromDatabaseItems() },
     ])
   /** The model's less frequent tools; what only a DeZign project has sits in its own submenu. */
@@ -746,7 +756,7 @@ export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: bo
         <Button size="sm" variant="ghost" icon={<SaveAll size={13} />} onClick={() => void save(true)} title={t('Save as a model (.dbml) or a DeZign project (.dez)')} aria-label={t('Save as…')} data-testid="model-save-as">
           <span className="@max-[1100px]:hidden">{t('Save as…')}</span>
         </Button>
-        <Button size="sm" variant="ghost" icon={<FileInput size={13} />} onClick={(e) => importMenu(e.currentTarget)} title={t('Tables from a SQL script or from the database')} aria-label={t('Import')} data-testid="model-import">
+        <Button size="sm" variant="ghost" icon={<FileInput size={13} />} onClick={(e) => importMenu(e.currentTarget)} title={t('Tables from a file (SQL, Prisma, Mermaid, drawDB, MySQL Workbench) or from the database')} aria-label={t('Import')} data-testid="model-import">
           <span className="@max-[1300px]:hidden">{t('Import')}</span>
           <ChevronDown size={12} className="-mr-0.5 opacity-60" />
         </Button>
@@ -943,6 +953,7 @@ export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: bo
               key={`${documentId}|${area}`}
               model={diagram ? snapshot : shown}
               modelDriver={dezignDriver(tab.sqlDatabase)}
+              modelEnums={model.enums}
               domains={domains}
               userProperties={tab.userProperties}
               labels={tab.labels}

@@ -134,3 +134,29 @@ describe('dbm check / diff / dictionary', () => {
     expect(await dbm('drop-everything')).toMatchObject({ code: 1, stderr: expect.stringMatching(/Unknown command/) })
   })
 })
+
+describe('dbm export', () => {
+  it('writes code for a model file, for the database its Project block names', async () => {
+    const path = join(dir, 'export.dbml')
+    writeFileSync(path, "Project shop {\n  database_type: 'MySQL'\n}\n\nEnum status {\n  new\n  paid\n}\n\nTable customers {\n  id int [pk, increment]\n  name varchar(100) [not null]\n}\n\nTable orders {\n  id int [pk, increment]\n  customer_id int [not null, ref: > customers.id]\n  status status [not null]\n}\n")
+    const prisma = await dbm('export', path, '--format', 'prisma')
+    expect(prisma.code).toBe(0)
+    expect(prisma.stdout).toContain('provider = "mysql"')
+    expect(prisma.stdout).toMatch(/customers\s+customers\s+@relation\(fields: \[customer_id\], references: \[id\]/)
+    expect(prisma.stderr).toMatch(/2 tables as Prisma schema for mysql/)
+    const out = join(dir, 'schema.ts')
+    expect((await dbm('export', path, '--format', 'drizzle', '--out', out)).code).toBe(0)
+    expect(readFileSync(out, 'utf8')).toContain("from 'drizzle-orm/mysql-core'")
+    expect((await dbm('export', path, '--format', 'typescript')).stdout).toContain("export type Status = 'new' | 'paid';")
+    expect((await dbm('export', path, '--format', 'sqlalchemy', '--database', 'postgres')).stdout).toContain('class Orders(Base):')
+  })
+
+  it('writes code for a live database, and says what it can not do', async () => {
+    const r = await dbm('export', '--url', url, '--format', 'prisma')
+    expect(r.code).toBe(0)
+    expect(r.stdout).toContain('provider = "sqlite"')
+    expect(r.stdout).toMatch(/model customers \{/)
+    expect(await dbm('export', '--url', url, '--format', 'cobol')).toMatchObject({ code: 1, stderr: expect.stringMatching(/--format is one of prisma, drizzle, sqlalchemy, typescript/) })
+    expect(await dbm('export', join(dir, 'export.dbml'), '--format', 'drizzle', '--database', 'mssql')).toMatchObject({ code: 1, stderr: expect.stringMatching(/not made for mssql/) })
+  })
+})

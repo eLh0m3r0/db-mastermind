@@ -18,8 +18,10 @@ import { swapMacUpdateBeforeKill } from './mac-update'
 import { setBeforeInstall, startUpdateChecks } from './updates'
 import { keepChosenSqlFilesIn } from './sql-files'
 import { hasEditorSessions, settleTransactionsBeforeQuit } from './transactions'
+import { explainMissingSandbox } from './linux-sandbox'
 
 configureDataDir()
+explainMissingSandbox()
 
 let mainWindow: BrowserWindow | null = null
 let quitting = false

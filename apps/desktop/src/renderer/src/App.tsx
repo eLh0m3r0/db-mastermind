@@ -170,7 +170,7 @@ function useFileDrop() {
       e.stopPropagation()
       const file = [...(e.dataTransfer?.files ?? [])].find((f) => SQL_FILE.test(f.name) || MODEL_FILE.test(f.name) || QUERYABLE_FILE.test(f.name))
       if (file) openFile(bridge.pathForFile(file))
-      else toast({ kind: 'info', message: t('Drop a SQL script or a model (DBML, DeZign) to open it, or a CSV, Parquet, JSON or Excel file to query it with SQL') })
+      else toast({ kind: 'info', message: t('Drop a SQL script or a model (DBML, DeZign, MySQL Workbench, drawDB, Mermaid, Prisma) to open it, or a CSV, Parquet, JSON or Excel file to query it with SQL') })
     }
     window.addEventListener('dragover', onDragOver)
     window.addEventListener('drop', onDrop, true)

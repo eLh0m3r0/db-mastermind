@@ -23,7 +23,7 @@ try {
   await win.keyboard.press('Enter')
   await win.waitForTimeout(1000)
   await win.locator('[data-testid="model-import"]:visible').click()
-  await win.getByRole('menuitem', { name: 'SQL script or Prisma schema…' }).click()
+  await win.getByRole('menuitem', { name: 'SQL, Prisma, Mermaid, drawDB or MySQL Workbench file…' }).click()
   await win.waitForTimeout(1500)
   const text = await win.locator('.cm-content:visible').first().innerText()
   console.log('tables:', ['Table users', 'Table Post', 'Table Profile', 'Table Membership', 'Enum Role'].map((s) => text.includes(s)))

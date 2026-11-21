@@ -70,8 +70,8 @@ appx:
   languages: [en-US, cs-CZ]
 linux:
   executableName: db-mastermind
-  # Ubuntu 24.04+ restricts the user namespaces Chromium's sandbox needs; AppImages can't ship a SUID helper.
-  executableArgs: ['--no-sandbox']
+  # No --no-sandbox: the .deb's install script lets Chromium's sandbox work (an AppArmor profile that allows user
+  # namespaces on Ubuntu 23.10+, the SUID helper where namespaces are missing). CI's linux-sandbox job proves it.
   category: Development
   target:
     - target: AppImage
@@ -80,6 +80,10 @@ linux:
       arch: [x64]
   maintainer: DB Mastermind contributors
 appImage:
+  # An AppImage can't carry the SUID helper or an AppArmor profile: its AppRun tries `unshare -Ur true` and adds
+  # --no-sandbox only when user namespaces are refused (the app then says why on stderr, main/linux-sandbox.ts).
+  # The empty list keeps electron-builder from writing --no-sandbox into the AppImage's .desktop entry by default.
+  executableArgs: []
   # No version in the name: electron-updater replaces a version-less AppImage in place, while a versioned one is
   # renamed and the old file deleted, which breaks launchers and the MCP path agents were given.
   artifactName: DB-Mastermind-linux-${arch}.${ext}

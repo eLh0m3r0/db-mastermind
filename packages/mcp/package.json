@@ -1,7 +1,8 @@
 {
   "name": "dbmastermind-mcp",
   "version": "1.4.0",
-  "description": "MCP server for databases (PostgreSQL, SQL Server, MySQL, MariaDB, SQLite): schema exploration, read-only queries and a Markdown knowledge base for Claude Code, Codex, Cursor and other agents. Part of DB Mastermind.",
+  "mcpName": "io.github.eLh0m3r0/dbmastermind-mcp",
+  "description": "MCP server and command line for databases: PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite, DuckDB, ClickHouse, BigQuery, Trino and CockroachDB. Read-only by default; schema tools, queries and a Markdown knowledge base for Claude Code, Codex, Cursor and other agents. Part of DB Mastermind.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -13,30 +14,52 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE",
+    "server.json"
   ],
   "keywords": [
     "mcp",
+    "mcp-server",
     "model-context-protocol",
-    "postgres",
-    "sqlserver",
-    "mysql",
-    "sqlite",
     "database",
+    "sql",
+    "postgres",
+    "postgresql",
+    "sqlserver",
+    "mssql",
+    "oracle",
+    "mysql",
+    "mariadb",
+    "sqlite",
+    "duckdb",
+    "clickhouse",
+    "bigquery",
+    "trino",
+    "cockroachdb",
     "claude",
-    "codex"
+    "codex",
+    "cursor",
+    "cli"
   ],
   "repository": {
     "type": "git",
     "url": "https://github.com/eLh0m3r0/db-mastermind.git",
     "directory": "packages/mcp"
   },
-  "homepage": "https://github.com/eLh0m3r0/db-mastermind/tree/main/packages/mcp",
+  "bugs": {
+    "url": "https://github.com/eLh0m3r0/db-mastermind/issues"
+  },
+  "homepage": "https://dbmastermind.app",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.16"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "node build.mjs",
+    "prepack": "node build.mjs",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

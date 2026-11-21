@@ -1,6 +1,6 @@
 import { DuckDBDriver } from './drivers/duckdb.js'
 import { splitStatements } from './sql-split.js'
-import type { TableInfo } from './types.js'
+import type { IndexInfo, TableInfo } from './types.js'
 
 export interface DdlImportResult {
   tables: TableInfo[]
@@ -18,6 +18,17 @@ function outsideStrings(sql: string, change: (code: string) => string): string {
   }
   return out + change(sql.slice(last))
 }
+
+/**
+ * MySQL runs what its versioned comments hold (`/*!50705 location GEOMETRY *\/`, as the Sakila script declares a
+ * column): so does the reader. Literals are left alone.
+ */
+function mySqlVersioned(sql: string): string {
+  return sql.replace(/'(?:[^']|'')*'|\/\*!\d*\s?([\s\S]*?)\*\//g, (whole, inner: string | undefined) => (inner === undefined ? whole : ` ${inner} `))
+}
+
+/** DuckDB's index names are its schema's, other databases' their table's: inside DuckDB an index is named for both. */
+const IX = '__dbmix__'
 
 /** Smooths over dialect syntax DuckDB doesn't speak (MySQL, SQL Server, PostgreSQL extras). */
 function normalize(sql: string): string {
@@ -46,6 +57,8 @@ function normalize(sql: string): string {
       .replace(/\bUNSIGNED\b/gi, '')
       .replace(/\b(N?VARCHAR|NCHAR|VARBINARY)\s*\(\s*MAX\s*\)/gi, '$1')
       .replace(/\bON\s+UPDATE\s+CURRENT_TIMESTAMP(\(\d*\))?/gi, '')
+      // A spatial column's SRID (MySQL 8).
+      .replace(/\bSRID\s+\d+/gi, '')
       .replace(/\bWITH\s*\((?:[^()]|\([^)]*\))*\)\s*(ON\s+"?PRIMARY"?)?/gi, '')
       .replace(/\bON\s+PRIMARY\b/gi, '')
       .replace(/\bCLUSTERED\b|\bNONCLUSTERED\b/gi, '')
@@ -83,22 +96,34 @@ function stripLeadingComments(sql: string): string {
   }
 }
 
-/** MySQL declares indexes inside CREATE TABLE (`KEY name (cols)`): move them to CREATE INDEX statements. */
-function extractInlineIndexes(statement: string): string[] {
+/**
+ * MySQL declares indexes inside CREATE TABLE (`KEY name (cols)`): move them to CREATE INDEX statements. One without a
+ * name is named after its first column, as MySQL names it. FULLTEXT and SPATIAL indexes DuckDB can't make are kept
+ * aside (`special`) and added to the table as they are written.
+ */
+function extractInlineIndexes(statement: string, special?: Map<string, IndexInfo[]>): string[] {
   const m = new RegExp(`^\\s*CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(${NAME})\\s*\\(`, 'i').exec(statement)
   if (!m) return [statement]
   const indexes: string[] = []
   const lines = statement.split('\n')
   const kept: string[] = []
   for (const line of lines) {
-    const ix = /^\s*(UNIQUE\s+|FULLTEXT\s+|SPATIAL\s+)?(?:KEY|INDEX)\s+("[^"]+"|[\w$]+)\s*(\([^)]*\))\s*,?\s*$/i.exec(line)
+    const ix = /^\s*(UNIQUE\s+|FULLTEXT\s+|SPATIAL\s+)?(?:KEY|INDEX)(?:\s+("[^"]+"|[\w$]+))?\s*(\([^)]*\))\s*,?\s*$/i.exec(line)
     if (!ix) {
       kept.push(line)
       continue
     }
-    if (/FULLTEXT|SPATIAL/i.test(ix[1] ?? '')) continue
+    const columns = names(ix[3]!.slice(1, -1).replace(/\(\d+\)/g, ''))
+    const name = ix[2] ? unquote(ix[2]) : columns[0] ?? 'key'
+    const kind = ix[1]?.trim().toUpperCase()
+    if (kind === 'FULLTEXT' || kind === 'SPATIAL') {
+      const table = unquote(m[1]!.match(/"[^"]+"|[\w$]+/g)!.at(-1)!)
+      const parts = ix[3]!.slice(1, -1).split(',').map((p) => p.trim().replace(/^"([^"]+)"/, '`$1`'))
+      special?.set(table.toLowerCase(), [...(special.get(table.toLowerCase()) ?? []), { name, columns, unique: false, primary: false, method: kind, definition: `CREATE ${kind} INDEX \`${name}\` ON \`${table.split(JOIN).pop()}\` (${parts.join(', ')})`, definitionDriver: 'mysql' }])
+      continue
+    }
     const cols = ix[3]!.replace(/\(\d+\)/g, '')
-    indexes.push(`CREATE ${ix[1]?.trim().toUpperCase() === 'UNIQUE' ? 'UNIQUE ' : ''}INDEX ${ix[2]} ON ${m[1]} ${cols}`)
+    indexes.push(`CREATE ${kind === 'UNIQUE' ? 'UNIQUE ' : ''}INDEX "${name}" ON ${m[1]} ${cols}`)
   }
   // Removing lines can leave a dangling comma before the closing parenthesis.
   const body = kept.join('\n').replace(/,(\s*\n\s*\))/, '$1')
@@ -504,7 +529,8 @@ function asDeclared(tables: TableInfo[], script: string): TableInfo[] {
  * Tables from a SQL DDL script (pg_dump --schema-only, mysqldump --no-data, SSMS "script as CREATE"…), read by
  * running it in a scratch in-memory DuckDB. Statements DuckDB can't run are reported and skipped.
  */
-export async function tablesFromDdl(script: string): Promise<DdlImportResult> {
+export async function tablesFromDdl(given: string): Promise<DdlImportResult> {
+  const script = mySqlVersioned(given)
   const driver = new DuckDBDriver({ id: 'ddl-import', name: 'ddl-import', driver: 'duckdb' })
   await driver.connect()
   const skipped: DdlImportResult['skipped'] = []
@@ -515,10 +541,14 @@ export async function tablesFromDdl(script: string): Promise<DdlImportResult> {
     const mangled = outsideStrings(normalize(script), (code) => code.replace(/(?<![\w$".])("[^"]+"|[\w$]+)\s*\.\s*("[^"]+"|[\w$]+)/g, (whole, a: string, b: string) => (schemas.has(unquote(a).toLowerCase()) ? `"${unquote(a)}${JOIN}${unquote(b)}"` : whole)))
     // Foreign keys are taken as written and left out of what DuckDB runs (see withoutForeignKeys).
     const keysOf = new Map<string, DeclaredKey[]>()
-    const statements = foldConstraints(splitStatements(mangled, 'postgres').flatMap((s) => extractInlineIndexes(stripLeadingComments(s.text)))).map((statement) => {
+    const special = new Map<string, IndexInfo[]>()
+    const statements = foldConstraints(splitStatements(mangled, 'postgres').flatMap((s) => extractInlineIndexes(stripLeadingComments(s.text), special))).map((statement) => {
       const { sql, table, keys } = withoutForeignKeys(statement)
       if (table) keysOf.set(table, [...(keysOf.get(table) ?? []), ...keys])
-      return sql.replace(/\bON\s+(DELETE|UPDATE)\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION)/gi, '')
+      // Two tables may each have an index of the same name (MySQL, SQL Server): inside DuckDB it says its table.
+      const index = new RegExp(`^(\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?)("[^"]+"|[\\w$]+)(\\s+ON\\s+(?:ONLY\\s+)?)(${NAME})`, 'i').exec(sql)
+      const named = index ? `${index[1]}"${unquote(index[4]!.match(/"[^"]+"|[\w$]+/g)!.at(-1)!)}${IX}${unquote(index[2]!)}"${index[3]}${index[4]}${sql.slice(index[0].length)}` : sql
+      return named.replace(/\bON\s+(DELETE|UPDATE)\s+(CASCADE|SET\s+NULL|SET\s+DEFAULT|RESTRICT|NO\s+ACTION)/gi, '')
     })
     // Other schemas than the default ones become DuckDB schemas.
     // CREATE SCHEMA statements in the script are fine to fail: the schemas are created up front.
@@ -547,7 +577,8 @@ export async function tablesFromDdl(script: string): Promise<DdlImportResult> {
                 continue
               }
             }
-            const type = /Type with name "?([\w$.]+)"? does not exist/i.exec(message)?.[1]
+            // (DuckDB names the extension a type such as GEOMETRY would come from: it is still unknown here.)
+            const type = /Type with name "?([\w$.]+)"? (?:does not exist|is not in the catalog)/i.exec(message)?.[1]
             if (!type) break
             // (Quoted too: a type of another schema is written "app__dbm__order_status" here.)
             const name = type.replace(/[.$]/g, '\\$&')
@@ -570,6 +601,7 @@ export async function tablesFromDdl(script: string): Promise<DdlImportResult> {
     const byName = new Map(snapshot.tables.map((t) => [t.name.toLowerCase(), t]))
     const tables = snapshot.tables.map((t) => ({
       ...t,
+      indexes: [...t.indexes.map((i) => (i.name.includes(IX) ? { ...i, name: i.name.slice(i.name.indexOf(IX) + IX.length) } : i)), ...(special.get(t.name.toLowerCase()) ?? [])],
       foreignKeys: (keysOf.get(t.name.toLowerCase()) ?? []).flatMap((k): TableInfo['foreignKeys'] => {
         const target = byName.get(k.refTable.toLowerCase())
         // A key without its columns points at the other table's primary key.

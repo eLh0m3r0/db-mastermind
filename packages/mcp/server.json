@@ -1,0 +1,35 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.eLh0m3r0/dbmastermind-mcp",
+  "title": "DB Mastermind",
+  "description": "Explore and query PostgreSQL, SQL Server, Oracle, MySQL, SQLite and more. Read-only by default.",
+  "websiteUrl": "https://dbmastermind.app",
+  "repository": {
+    "url": "https://github.com/eLh0m3r0/db-mastermind",
+    "source": "github",
+    "subfolder": "packages/mcp"
+  },
+  "version": "1.4.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "dbmastermind-mcp",
+      "version": "1.4.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "named",
+          "name": "--url",
+          "description": "Connection URL: postgres://, mysql://, mariadb://, sqlserver://, oracle://, sqlite:///path, duckdb://, clickhouse://, trino://, or a JDBC / ADO.NET string. ${ENV_VAR} placeholders are expanded.",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string",
+          "placeholder": "postgres://user:${PGPASSWORD}@localhost:5432/shop"
+        }
+      ]
+    }
+  ]
+}

@@ -230,6 +230,109 @@ jobs:
           path: ui-shots
           if-no-files-found: ignore
 
+  # Linux packages run inside Chromium's sandbox where the system allows it, proven from the running renderer
+  # (seccomp filter + own PID namespace, e2e/linux-sandbox.mjs). The .deb on Ubuntu 24.04 as it is (its install
+  # script loads an AppArmor profile that allows user namespaces); the AppImage first as the system is (fallback to
+  # --no-sandbox with one stderr line), then sandboxed once user namespaces are allowed. Also checked: the .desktop
+  # launcher's command, a file given on the command line, a start with no arguments (how electron-updater restarts a
+  # replaced AppImage) and the --mcp path agents are given.
+  linux-sandbox:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install --no-audit --no-fund
+      - run: npm run build -w packages/mcp
+      - name: Package (AppImage and .deb)
+        working-directory: apps/desktop
+        run: npx electron-vite build && npx electron-builder --linux AppImage deb --x64 --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: The system as it is
+        run: |
+          lsb_release -ds
+          sysctl kernel.apparmor_restrict_unprivileged_userns
+          if unshare -Ur true; then echo "unprivileged user namespaces: allowed"; else echo "unprivileged user namespaces: refused"; fi
+      - name: Install the .deb
+        run: |
+          sudo apt-get install -y ./apps/desktop/release/DB-Mastermind-*-linux-amd64.deb
+          stat -c '%a %U %n' "/opt/DB Mastermind/chrome-sandbox"
+          sudo aa-status | grep -F db-mastermind
+          grep '^Exec=' /usr/share/applications/db-mastermind.desktop
+          if grep -q -- '--no-sandbox' /usr/share/applications/db-mastermind.desktop; then echo "::error::the .desktop entry still passes --no-sandbox"; exit 1; fi
+          readlink -f "$(command -v db-mastermind)"
+      - name: .deb, started from the command line with a file (sandboxed)
+        run: xvfb-run -a node e2e/linux-sandbox.mjs /usr/bin/db-mastermind sandboxed
+      - name: .deb, the .desktop launcher's command without arguments (sandboxed)
+        run: xvfb-run -a node e2e/linux-sandbox.mjs "/opt/DB Mastermind/db-mastermind" sandboxed --plain
+      - name: .deb, MCP server as agents start it
+        run: xvfb-run -a node e2e/smoke.mjs "/opt/DB Mastermind/db-mastermind"
+      - name: AppImage, prepared like a download
+        run: |
+          # The AppImage runtime mounts itself with FUSE 2, which Ubuntu 24.04 doesn't install by default.
+          if ! ldconfig -p | grep -q 'libfuse.so.2'; then sudo apt-get install -y libfuse2t64; fi
+          mkdir -p "$RUNNER_TEMP/apps"
+          cp apps/desktop/release/DB-Mastermind-linux-x86_64.AppImage "$RUNNER_TEMP/apps/"
+          chmod +x "$RUNNER_TEMP/apps/DB-Mastermind-linux-x86_64.AppImage"
+          echo "APPIMAGE_FILE=$RUNNER_TEMP/apps/DB-Mastermind-linux-x86_64.AppImage" >> "$GITHUB_ENV"
+      - name: AppImage on the system as it is (fallback with the stderr line)
+        run: |
+          xvfb-run -a node e2e/linux-sandbox.mjs "$APPIMAGE_FILE" fallback
+          xvfb-run -a node e2e/linux-sandbox.mjs "$APPIMAGE_FILE" fallback --plain
+      - name: AppImage, MCP server as agents start it
+        run: xvfb-run -a node e2e/smoke.mjs "$APPIMAGE_FILE"
+      - name: Allow unprivileged user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: AppImage with user namespaces allowed (sandboxed)
+        run: |
+          xvfb-run -a node e2e/linux-sandbox.mjs "$APPIMAGE_FILE" sandboxed
+          xvfb-run -a node e2e/linux-sandbox.mjs "$APPIMAGE_FILE" sandboxed --plain
+
+  # The npm package as it would be published: packed once, then installed from the tarball into an empty folder on
+  # every OS and started the way users start it (npx dbmastermind-mcp over stdio, npx dbm query) against SQLite.
+  mcp-pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install --no-audit --no-fund
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - name: npm pack (prepack builds dist/)
+        run: mkdir -p "$RUNNER_TEMP/pack" && npm pack -w packages/mcp --pack-destination "$RUNNER_TEMP/pack"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcp-tarball
+          path: ${{ runner.temp }}/pack/*.tgz
+          retention-days: 7
+
+  mcp-package:
+    needs: mcp-pack
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        # 22.16 is the package's engines floor (node:sqlite's StatementSync.columns()).
+        node: ['22.16', '24']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: mcp-tarball
+          path: ${{ runner.temp }}/pack
+      - name: Install the tarball and run it
+        run: node packages/mcp/test/packed-package.mjs --tarball "${{ runner.temp }}/pack"
+
   # SQL Server Windows (integrated) authentication through msnodesqlv8 + ODBC, against LocalDB.
   windows-auth:
     runs-on: windows-latest

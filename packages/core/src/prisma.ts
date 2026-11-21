@@ -6,10 +6,28 @@ import type { ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfo } from './types.j
  * Relation-only fields (the "other side" of a relation, lists) don't become columns.
  */
 export function tablesFromPrisma(text: string): { tables: TableInfo[]; enums: Record<string, string[]>; errors: { line: number; message: string }[] } {
-  const clean = text.replace(/\/\/.*$/gm, '')
+  // `///` comments document the model or field below them: they are kept as a marker line, other comments go.
+  // (Not the warnings `prisma db pull` writes there itself.)
+  const clean = text
+    .replace(/^[ \t]*\/\/\/[ \t]?(.*)$/gm, (line, doc: string) => (/prisma client|pris\.ly|underlying (table|view) does not/i.test(doc) ? '' : `@@__doc(${JSON.stringify(doc.trim())})`))
+    .replace(/\/\/.*$/gm, '')
+  const docOf = (lines: string[]) => lines.map((l) => /^\s*@@__doc\((".*")\)\s*$/.exec(l)).map((m) => (m ? (JSON.parse(m[1]!) as string) : null))
   const enums: Record<string, string[]> = {}
   const errors: { line: number; message: string }[] = []
   const blocks = [...clean.matchAll(/^\s*(model|enum|view)\s+(\w+)\s*\{([\s\S]*?)^\s*\}/gm)]
+  /** The `///` lines right above a block. */
+  const modelDocs = new Map(
+    blocks.map((b) => {
+      const before = clean.slice(0, b.index).replace(/\s+$/, '').split('\n')
+      const docs: string[] = []
+      for (let i = before.length - 1; i >= 0; i--) {
+        const d = docOf([before[i]!])[0]
+        if (d === null || d === undefined) break
+        docs.unshift(d)
+      }
+      return [b[2]!, docs.join('\n')]
+    }),
+  )
   for (const [, kind, name, body] of blocks) {
     if (kind === 'enum') enums[name!] = body!.split('\n').map((l) => l.trim().split(/\s+/)[0]!).filter((v) => /^\w+$/.test(v))
   }
@@ -36,9 +54,17 @@ export function tablesFromPrisma(text: string): { tables: TableInfo[]; enums: Re
     const indexes: IndexInfo[] = []
     const foreignKeys: ForeignKeyInfo[] = []
     const table = tableName(model)
+    let doc: string[] = []
     for (const raw of body.split('\n')) {
       const line = raw.trim()
       if (!line) continue
+      const d = docOf([line])[0]
+      if (d !== null && d !== undefined) {
+        doc.push(d)
+        continue
+      }
+      const comment = doc.length ? doc.join('\n') : null
+      doc = []
       const block = /^@@(id|unique|index)\(\s*(?:fields:\s*)?\[([^\]]*)\]([^)]*)\)/.exec(line)
       if (block) {
         const names = listArg(block[2]!).map(col)
@@ -98,13 +124,13 @@ export function tablesFromPrisma(text: string): { tables: TableInfo[]; enums: Re
         defaultValue,
         isPrimaryKey: false,
         isIdentity: identity,
-        comment: null,
+        comment,
       } as ColumnInfo)
       if (/@id\b/.test(attrs)) primaryKey.push(name)
       if (/@unique\b/.test(attrs)) indexes.push({ name: `${table}_${name}_key`, columns: [name], unique: true, primary: false, constraint: true })
     }
     for (const c of columns) c.isPrimaryKey = primaryKey.includes(c.name)
-    tables.push({ name: table, type: 'table', columns, primaryKey, indexes, foreignKeys, comment: null } as TableInfo)
+    tables.push({ name: table, type: 'table', columns, primaryKey, indexes, foreignKeys, comment: modelDocs.get(model) || null } as TableInfo)
   }
   return { tables, enums, errors }
 }
