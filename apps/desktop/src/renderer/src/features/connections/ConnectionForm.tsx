@@ -211,7 +211,7 @@ export function ConnectionForm() {
       onClose={close}
       title={existing ? t('Edit {name}', { name: existing.name }) : t('New connection')}
       width={680}
-      bodyClassName="p-0"
+      bodyClassName="flex flex-col overflow-hidden p-0"
       footer={
         <>
           {/* (While the password prompt is up, it is what's being waited for: no spinners behind it.) */}
@@ -239,9 +239,10 @@ export function ConnectionForm() {
           {t('Managed by your organization: server settings come from the managed configuration and changes to them are reset. Fill in your own user name and password.')}
         </div>
       )}
-      <div className="flex min-h-[440px]">
+      {/* The fields scroll; why a connection failed stays in sight under them. */}
+      <div className="flex min-h-[min(440px,60vh)] flex-1">
         {/* Driver picker */}
-        <div className="flex w-[170px] shrink-0 flex-col gap-0.5 border-r border-line bg-subtle p-2">
+        <div className="flex w-[170px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-line bg-subtle p-2">
           {DRIVERS.map((d) => (
             <Fragment key={d.id}>
               <button
@@ -276,7 +277,7 @@ export function ConnectionForm() {
           ))}
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {!isFile && (
             <div className="flex gap-1 border-b border-line px-4 pt-3">
               {((isBigQuery ? ['general', 'advanced'] : ['general', 'ssl', 'ssh', 'advanced']) as Section[]).map((s) => (
@@ -298,7 +299,7 @@ export function ConnectionForm() {
           )}
 
           <form
-            className="flex flex-col gap-3 overflow-auto p-4"
+            className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-4"
             onSubmit={(e) => {
               e.preventDefault()
               void submit(true)
