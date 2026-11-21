@@ -186,3 +186,23 @@ describe('MySQL as Workbench, a live database and a script see it (wave 2, Sakil
     expect(compareSchemas(named, tables, { model: true, driver: 'mysql' }).map((c) => c.kind)).toEqual(['add_index'])
   })
 })
+
+describe('a column named key or index is a column (review M9)', () => {
+  it('in a one-line and a multi-line CREATE TABLE, next to real inline keys', async () => {
+    for (const script of [
+      'CREATE TABLE settings (id int NOT NULL, `key` varchar(100) NOT NULL, `index` int, value text, PRIMARY KEY (id), KEY idx_key (`key`), UNIQUE KEY (`index`));',
+      'CREATE TABLE settings (\n  id int NOT NULL,\n  `key` varchar(100) NOT NULL,\n  `index` int,\n  value text,\n  PRIMARY KEY (id),\n  KEY idx_key (`key`),\n  UNIQUE KEY (`index`)\n);',
+      // (PostgreSQL takes both names unquoted: pg_dump writes them so.)
+      'CREATE TABLE settings (\n  id int NOT NULL,\n  key varchar(100) NOT NULL,\n  index int,\n  value text,\n  PRIMARY KEY (id),\n  KEY idx_key (key),\n  UNIQUE KEY (index)\n);',
+      'CREATE TABLE settings (id int NOT NULL, key varchar(100) NOT NULL, index int, value text, PRIMARY KEY (id), KEY idx_key (key), UNIQUE KEY (index));',
+    ]) {
+      const { tables, skipped } = await tablesFromDdl(script)
+      expect(skipped).toEqual([])
+      expect(tables[0]!.columns.map((c) => [c.name, c.dataType])).toEqual([['id', 'int'], ['key', 'varchar(100)'], ['index', 'int'], ['value', 'text']])
+      expect(tables[0]!.indexes.filter((i) => !i.primary).map((i) => [i.name, i.columns, i.unique])).toEqual([['idx_key', ['key'], false], ['index', ['index'], true]])
+      // Compared with the same table as a model: nothing to drop.
+      const model = parseDbml("Table settings {\n  id int [pk]\n  key \"varchar(100)\" [not null]\n  index int\n  value text\n\n  indexes {\n    key [name: 'idx_key']\n    index [unique, name: 'index']\n  }\n}\n").tables
+      expect(compareSchemas(model, tables, { model: true, driver: 'mysql' }).map((c) => c.kind)).toEqual([])
+    }
+  })
+})
