@@ -57,12 +57,14 @@ if apparmor_status --enabled > /dev/null 2>&1; then
 fi
 
 # --- DB Mastermind addition (everything above is electron-builder 26.15.3's own after-install.tpl, unchanged) ---
-# The test above runs `unshare` as root, which can create user namespaces even where ordinary users can't. Without
-# --no-sandbox in the launcher, Chromium then finds neither user namespaces nor a SUID helper and refuses to start.
-# Where users can't get user namespaces, use the SUID helper instead:
-#   - user.max_user_namespaces = 0 or kernel.unprivileged_userns_clone = 0 (Debian-style kernels, hardened kernels);
+# The test above runs `unshare` as root, which can create user namespaces even where ordinary users can't. Where they
+# can't, Chromium's only other sandbox is the SUID helper, and that can't work here: Chromium runs it by a command line
+# it splits at spaces, and this app lives in "/opt/DB Mastermind" (CI run 44943689826: execve("/opt/DB", …) ENOENT).
+# Without a sandbox Chromium refuses to start, so the menu entry then starts the app with --no-sandbox, as every
+# version before 1.5 did, and this script says so. Users can't create user namespaces when:
+#   - user.max_user_namespaces = 0 or kernel.unprivileged_userns_clone = 0 (older Debian defaults, hardened kernels);
 #   - AppArmor restricts unprivileged user namespaces (Ubuntu 23.10+) and this app's profile isn't loaded (AppArmor
-#     too old for the profile, apparmor_parser missing or failing, installed in a chroot).
+#     too old for the profile, apparmor_parser missing or failing).
 users_get_userns() {
   [ -L /proc/self/ns/user ] || return 1
   [ "$(cat /proc/sys/user/max_user_namespaces 2>/dev/null || echo 1)" != 0 ] || return 1
@@ -72,6 +74,9 @@ users_get_userns() {
   fi
   return 0
 }
-if ! users_get_userns; then
-  chmod 4755 '/opt/${sanitizedProductName}/chrome-sandbox' || true
+DBM_DESKTOP='/usr/share/applications/${executable}.desktop'
+DBM_BIN='/opt/${sanitizedProductName}/${executable}'
+if ! users_get_userns && [ -f "$DBM_DESKTOP" ] && ! grep -q -- '--no-sandbox' "$DBM_DESKTOP"; then
+  sed -i "s|^Exec=\"$DBM_BIN\" %U\$|Exec=\"$DBM_BIN\" --no-sandbox %U|" "$DBM_DESKTOP"
+  echo "DB Mastermind: this system doesn't let applications create user namespaces, so the app starts without Chromium's sandbox (--no-sandbox in its menu entry). To run it sandboxed, allow them (e.g. sysctl kernel.unprivileged_userns_clone=1, or load /etc/apparmor.d/db-mastermind) and reinstall the package."
 fi

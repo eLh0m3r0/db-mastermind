@@ -307,57 +307,33 @@ jobs:
           xvfb-run -a node e2e/linux-sandbox.mjs "$APPIMAGE_FILE" sandboxed --plain || rc=1
           exit $rc
       # Where ordinary users can't create user namespaces although root can, electron-builder's own install test (run
-      # as root) leaves chrome-sandbox without SUID, and the app would refuse to start. Reproduced here as on Ubuntu
-      # when the app's AppArmor profile can't be loaded: restriction on, profile gone, apparmor_parser unusable.
-      - name: .deb as electron-builder's own install script would leave it, without the profile (must refuse)
+      # as root) can't tell, and Chromium's SUID helper can't help either: Chromium splits its path at the space in
+      # "/opt/DB Mastermind" (run 44943689826). Reproduced as on Ubuntu when the app's AppArmor profile can't be
+      # loaded: restriction on, profile gone, apparmor_parser unusable.
+      - name: .deb without user namespaces for users, started as before this change (Chromium refuses)
         if: ${{ !cancelled() }}
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
           sudo apparmor_parser -R /etc/apparmor.d/db-mastermind
           sudo rm /etc/apparmor.d/db-mastermind
-          sudo chmod 0755 "/opt/DB Mastermind/chrome-sandbox"
           xvfb-run -a node e2e/linux-sandbox.mjs "/opt/DB Mastermind/db-mastermind" refused
-      # Temporary: why the SUID helper's zygote exits with 127 when AppArmor restricts user namespaces (run 44942181815).
-      - name: Diagnose the SUID helper
-        if: ${{ !cancelled() }}
-        continue-on-error: true
-        run: |
-          set +e
-          sudo apt-get install -y -qq strace >/dev/null
-          AP=$(command -v apparmor_parser || echo /usr/sbin/apparmor_parser)
-          sudo chmod -x "$AP"
-          sudo apt-get install -y -qq --reinstall ./apps/desktop/release/DB-Mastermind-*-linux-amd64.deb >/dev/null
-          sudo chmod +x "$AP"
-          ls -l "/opt/DB Mastermind/chrome-sandbox"; getfacl "/opt/DB Mastermind/chrome-sandbox"; findmnt -T /opt -o TARGET,OPTIONS
-          for r in 1 0; do
-            echo "===== apparmor_restrict_unprivileged_userns=$r"
-            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=$r
-            sudo dmesg -C
-            timeout 25 xvfb-run -a "/opt/DB Mastermind/db-mastermind" --enable-logging=stderr --v=1 > "$RUNNER_TEMP/suid-$r.log" 2>&1
-            echo "exit $?"
-            grep -v -i -E "dbus|fontconfig|gles|gpu_init|font" "$RUNNER_TEMP/suid-$r.log" | grep -i -E "sandbox|zygote|exec|fatal|error|launch|namespace" | head -60
-            echo "--- kernel log"
-            sudo dmesg | grep -i -E "apparmor|denied|audit|sandbox|db-mastermind" | tail -20
-            echo "--- strace (execve, clone, unshare; setuid has no effect under ptrace)"
-            timeout 25 xvfb-run -a strace -f -e trace=execve,unshare,clone,clone3 -o "$RUNNER_TEMP/st-$r.txt" "/opt/DB Mastermind/db-mastermind" > /dev/null 2>&1
-            grep -E "execve|unshare|CLONE_NEWUSER|= -1" "$RUNNER_TEMP/st-$r.txt" | head -40
-          done
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
-          exit 0
-      - name: .deb reinstalled where its profile can't load (SUID helper, sandboxed)
+      - name: .deb installed where its profile can't load (menu entry falls back to --no-sandbox)
         if: ${{ !cancelled() }}
         run: |
           AP=$(command -v apparmor_parser || echo /usr/sbin/apparmor_parser)
           sudo chmod -x "$AP"
-          sudo apt-get install -y --reinstall ./apps/desktop/release/DB-Mastermind-*-linux-amd64.deb
+          sudo apt-get install -y --reinstall ./apps/desktop/release/DB-Mastermind-*-linux-amd64.deb 2>&1 | grep -E "DB Mastermind|AppArmor"
           sudo chmod +x "$AP"
-          stat -c '%a %U %n' "/opt/DB Mastermind/chrome-sandbox"
-          if [ "$(stat -c %a "/opt/DB Mastermind/chrome-sandbox")" != 4755 ]; then echo "::error::chrome-sandbox is not SUID"; exit 1; fi
           if [ -e /etc/apparmor.d/db-mastermind ]; then echo "::error::the profile was installed after all"; exit 1; fi
-          rc=0
-          xvfb-run -a node e2e/linux-sandbox.mjs /usr/bin/db-mastermind sandboxed || rc=1
-          xvfb-run -a node e2e/linux-sandbox.mjs "/opt/DB Mastermind/db-mastermind" sandboxed --plain || rc=1
-          exit $rc
+          grep '^Exec=' /usr/share/applications/db-mastermind.desktop
+          xvfb-run -a node e2e/linux-sandbox.mjs /usr/share/applications/db-mastermind.desktop fallback --plain
+      - name: .deb reinstalled where users get user namespaces again (menu entry sandboxed)
+        if: ${{ !cancelled() }}
+        run: |
+          sudo apt-get install -y --reinstall ./apps/desktop/release/DB-Mastermind-*-linux-amd64.deb 2>&1 | grep -E "DB Mastermind|AppArmor" || true
+          grep '^Exec=' /usr/share/applications/db-mastermind.desktop
+          if grep -q -- '--no-sandbox' /usr/share/applications/db-mastermind.desktop; then echo "::error::--no-sandbox stayed in the menu entry"; exit 1; fi
+          xvfb-run -a node e2e/linux-sandbox.mjs /usr/share/applications/db-mastermind.desktop sandboxed --plain
 
   # Code generated from models, checked by the tools themselves (packages/core/test/orm-export.tools.test.ts): pinned
   # prisma, drizzle-orm and typescript from npm into a temp folder, SQLAlchemy from pip in a venv. Needs the network.

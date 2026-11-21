@@ -2,7 +2,8 @@
 //
 //   node e2e/linux-sandbox.mjs <executable> sandboxed|fallback|refused [--plain]
 //
-// <executable> is the installed .deb's binary or an .AppImage. The answer comes from the running processes, not from
+// <executable> is the installed .deb's binary, an .AppImage, or a .desktop file whose Exec line is started as it is
+// (with --plain; that is what the menu launcher runs). The answer comes from the running processes, not from
 // the command line: a sandboxed renderer runs under a seccomp-bpf filter (`Seccomp: 2` in /proc/<pid>/status) inside
 // its own PID namespace (two numbers in `NSpid`); with --no-sandbox it has neither. chrome://sandbox, Chromium's own
 // report, is printed as well when Electron serves it.
@@ -72,7 +73,8 @@ function judge(list) {
 function judgeStderr(stderr, complete) {
   const line = stderr.split('\n').find((l) => SANDBOX_LINE.test(l))
   if (line) console.log(`stderr: ${line}`)
-  if (complete && expect === 'fallback' && !line) problems.push('no stderr line explaining the missing sandbox')
+  // The AppImage says why on stderr; the .deb said so when it was installed.
+  if (complete && expect === 'fallback' && exe.endsWith('.AppImage') && !line) problems.push('no stderr line explaining the missing sandbox')
   if (expect === 'sandboxed' && line) problems.push('the missing-sandbox line was printed although the sandbox is on')
   if (/FATAL|SUID sandbox helper/.test(stderr)) problems.push(`Chromium complained:\n${stderr.split('\n').filter((l) => /FATAL|sandbox/i.test(l)).join('\n')}`)
 }
@@ -91,8 +93,15 @@ if (expect === 'refused') {
     } catch {}
   } else if (!line) problems.push(`exited (${code}) without a sandbox error:\n${stderr}`)
 } else if (mode === '--plain') {
+  // A .desktop file: its Exec line, quoted words kept together, field codes (%U) dropped.
+  let [command, ...args] = [exe, ...[]]
+  if (exe.endsWith('.desktop')) {
+    const execLine = /^Exec=(.*)$/m.exec(readFileSync(exe, 'utf8'))?.[1] ?? ''
+    console.log(`Exec=${execLine}`)
+    ;[command, ...args] = [...execLine.matchAll(/"([^"]*)"|(\S+)/g)].map((m) => m[1] ?? m[2]).filter((w) => !/^%[fFuU]$/.test(w))
+  }
   // The process group is killed at the end: the AppImage runtime, the app and its helpers.
-  const child = spawn(exe, [], { env: { ...env, APPIMAGE_SILENT_INSTALL: 'true' }, detached: true, stdio: ['ignore', 'ignore', 'pipe'] })
+  const child = spawn(command, args, { env: { ...env, APPIMAGE_SILENT_INSTALL: 'true' }, detached: true, stdio: ['ignore', 'ignore', 'pipe'] })
   let stderr = ''
   child.stderr.on('data', (d) => (stderr += d))
   let found = []
