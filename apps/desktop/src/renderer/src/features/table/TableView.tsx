@@ -58,7 +58,7 @@ import { copyText, errorMessage, formatCount, formatDuration, uid } from '@/lib/
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { toast } from '@/store/ui'
-import { setUnsavedEdits, useWorkspace, type TableTab } from '@/store/workspace'
+import { registerTabSaver, setUnsavedEdits, useWorkspace, type TableTab } from '@/store/workspace'
 import { endTransaction, refreshTransaction, useTransactions } from '@/store/transactions'
 import { TransactionBar } from '@/features/query/TransactionBar'
 import { copyRowsAs, EXPORT_FORMATS } from '../results/copy'
@@ -72,6 +72,7 @@ import { lockHolder } from './lock-holder'
 import { saveErrorText } from './save-errors'
 import { useAiAllowed } from '../ai/AiPermissions'
 import { tp, useT } from '@/lib/i18n'
+import { aiErrorToast } from '@/lib/ai-error-toast'
 import { askText, confirmAction } from '@/components/ui/ConfirmDialog'
 
 /** Text, NULL, or an SQL expression the database evaluates on save (shown as `= expr` in the grid). */
@@ -178,7 +179,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
       setShowFilters(true)
       applyFilter(group)
     } catch (err) {
-      toast({ kind: 'error', message: t('Could not build a filter'), detail: errorMessage(err) })
+      aiErrorToast(t('Could not build a filter'), err)
     } finally {
       setAiBusy(false)
     }
@@ -522,7 +523,8 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
     }
   }
 
-  const applyChanges = async () => {
+  /** True when everything pending reached the database (or its transaction). */
+  const applyChanges = async (): Promise<boolean> => {
     setSaving(true)
     try {
       const changes = buildChanges()
@@ -543,6 +545,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
       countedKey.current = null
       void load()
       void count()
+      return true
     } catch (err) {
       if (session) void refreshTransaction(tab.id, tab.connectionId)
       // Rows a query tab changed and hasn't committed yet: name the tab and offer to go there.
@@ -558,7 +561,7 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
             : t(errorMessage(err))
         if (preview !== null) setApplyError(message)
         toast({ kind: 'warning', message: t('Not saved: the rows are locked'), detail: message, action: holder ? { label: t('Go to the tab'), run: () => ws.activate(holder.id) } : undefined })
-        return
+        return false
       }
       // In the open review dialog the reason sits next to the SQL; otherwise a toast says it.
       // (The pending edits stay in the grid either way: only a save that went through clears them.)
@@ -566,10 +569,15 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
       const reason = saveErrorText(errorMessage(err), t)
       if (preview !== null) setApplyError(reason)
       else toast({ kind: 'error', message: tooMany ? t('Not saved: the change would touch several rows') : t('Changes were rolled back'), detail: reason })
+      return false
     } finally {
       setSaving(false)
     }
   }
+  // Closing the tab (or the app) can save the edits from its question, without coming back here first.
+  const saveRef = useRef(applyChanges)
+  saveRef.current = applyChanges
+  useEffect(() => registerTabSaver(tab.id, () => saveRef.current()), [tab.id])
 
   const followForeignKey = (row: number, col: number) => {
     if (!schema || !table) return
@@ -649,14 +657,15 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
           setShowFilters(true)
         } },
         { label: t('Profile values…'), icon: <BarChart3 size={13} />, onClick: () => setProfiling(name) },
+        'separator',
         { label: t('Copy column name'), icon: <Copy size={13} />, onClick: () => void copyText(name) },
+        { label: t('Copy column values'), onClick: () => sel && void copyText(selectionToTsv(viewFields, viewRows, sel)) },
         'separator',
         { label: t('Hide column'), icon: <EyeOff size={13} />, disabled: view.length <= 1, onClick: () => updateColumnPrefs({ hidden: [...(columnPrefs.hidden ?? []), name] }) },
         { label: t('Pin columns up to here'), icon: <Pin size={13} />, disabled: columnPrefs.pinned === name, onClick: () => updateColumnPrefs({ pinned: name }) },
         ...(columnPrefs.pinned ? [{ label: t('Unpin columns'), icon: <PinOff size={13} />, onClick: () => updateColumnPrefs({ pinned: undefined }) }] : []),
         { label: t('Move left'), disabled: view[0] === pos.col, onClick: () => moveColumn(name, -1) },
         { label: t('Move right'), disabled: view.at(-1) === pos.col, onClick: () => moveColumn(name, 1) },
-        { label: t('Copy column values'), onClick: () => sel && void copyText(selectionToTsv(viewFields, viewRows, sel)) },
       ])
       return
     }
@@ -756,7 +765,12 @@ export function TableView({ tab, active, focused = active }: { tab: TableTab; ac
       }
     }
     openMenu(anchor, [
-      { label: total !== null ? t('All {n} rows (with filter)', { n: formatCount(total) }) : t('All rows (with filter)'), submenu: EXPORT_FORMATS.map((f) => ({ label: f.label, onClick: () => void run(f.id, 'all') })) },
+      // "(filtered)" only when a filter is applied: it said "(with filter)" on every table.
+      {
+        label: countActiveConditions(appliedFilter) > 0
+          ? total !== null ? t('All {n} rows (filtered)', { n: formatCount(total) }) : t('All rows (filtered)')
+          : total !== null ? t('All {n} rows', { n: formatCount(total) }) : t('All rows'),
+        submenu: EXPORT_FORMATS.map((f) => ({ label: f.label, onClick: () => void run(f.id, 'all') })) },
       { label: t('Current page ({n} rows)', { n: formatCount(displayRows.length) }), submenu: EXPORT_FORMATS.map((f) => ({ label: f.label, onClick: () => void run(f.id, 'page') })) },
     ])
   }

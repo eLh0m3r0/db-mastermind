@@ -283,7 +283,7 @@ export function TableEditor({
                   )}
                   <Input
                     inputSize="sm"
-                    className="h-6 w-[118px] font-mono text-[12px]"
+                    className="h-6 w-auto max-w-[45%] min-w-[118px] shrink-0 font-mono text-[12px] [field-sizing:content]"
                     list="dbm-types"
                     value={c.dataType}
                     onChange={(e) => setColumn(c.id, { dataType: e.target.value })}

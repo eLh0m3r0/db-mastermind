@@ -86,7 +86,8 @@ export function functionCompletionSource(getSchema: () => SchemaSnapshot | undef
       e.signatures.push(sig)
       own.set(label, e)
     }
-    const options = [...own.values(), ...sqlFunctions(driver).filter((f) => !own.has(f.name))].map((f) => functionOption(f))
+    // CURRENT_DATE and the like are written without parentheses: the keyword list offers them, once.
+    const options = [...own.values(), ...sqlFunctions(driver).filter((f) => !own.has(f.name) && !NILADIC.has(f.name.toLowerCase()))].map((f) => functionOption(f))
     return { from: word?.from ?? ctx.pos, options, validFor: /^[\w$]*$/ }
   }
 }
@@ -130,6 +131,25 @@ export function columnCompletionSource(getSchema: () => SchemaSnapshot | undefin
   }
 }
 
+/** SQL's functions written without parentheses; as calls (current_date()) they are wrong, and they were listed twice. */
+const NILADIC = new Set(['current_date', 'current_time', 'current_timestamp', 'current_user', 'session_user', 'localtime', 'localtimestamp', 'current_role', 'current_catalog'])
+
+/**
+ * SQLite's own keywords (sqlite.org/lang_keywords.html): lang-sql's SQLite dialect also offers standard SQL words
+ * SQLite doesn't know (CUBE, CURRENT_PATH, CURSOR …).
+ */
+const SQLITE_KEYWORDS = new Set(
+  `abort action add after all alter always analyze and as asc attach autoincrement before begin between by cascade case cast check
+  collate column commit conflict constraint create cross current current_date current_time current_timestamp database default
+  deferrable deferred delete desc detach distinct do drop each else end escape except exclude exclusive exists explain fail
+  filter first following for foreign from full generated glob group groups having if ignore immediate in index indexed
+  initially inner insert instead intersect into is isnull join key last left like limit match materialized natural no not
+  nothing notnull null nulls of offset on or order others outer over partition plan pragma preceding primary query raise
+  range recursive references regexp reindex release rename replace restrict returning right rollback row rows savepoint
+  select set strict table temp temporary then ties to transaction trigger true false unbounded union unique update using
+  vacuum values view virtual when where window with without rowid`.split(/\s+/),
+)
+
 /** Keywords that are only ever written as calls; LEFT, REPLACE, POSITION … stay keywords (LEFT JOIN, REPLACE INTO). */
 const CALL_ONLY = new Set(['coalesce', 'nullif', 'greatest', 'least', 'lower', 'upper', 'abs'])
 
@@ -149,6 +169,7 @@ export function keywordsWithoutFunctions(source: CompletionSource, getDriver: ()
         ...r,
         options: r.options
           .filter((o) => o.type === 'type' || !names.has(o.label.toLowerCase()))
+          .filter((o) => getDriver() !== 'sqlite' || o.type !== 'keyword' || SQLITE_KEYWORDS.has(o.label.toLowerCase()))
           .map((o) => (lowerCase ? { ...o, label: o.label.toLowerCase() } : o)),
       }
     return res instanceof Promise ? res.then(strip) : strip(res)

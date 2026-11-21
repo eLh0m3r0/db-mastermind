@@ -4,7 +4,7 @@ import { useT } from '@/lib/i18n'
 import { copyText, formatCount } from '@/lib/utils'
 import { toast } from '@/store/ui'
 import { selectionBounds, type GridSelection } from './DataGrid'
-import { selectionStats } from './selection-stats'
+import { formatStat, selectionStats } from './selection-stats'
 
 /**
  * Count / sum / average / min / max of the selected cells (distinct values for text), shown only with two or more
@@ -20,12 +20,10 @@ export function SelectionStatsBar({ fields, rows, selection, dataTypes }: { fiel
     return s.cells >= 2 ? s : null
   }, [fields, rows, selection, dataTypes])
   if (!stats) return null
-  /** Exact decimal text shown with digit grouping; past what a double holds exactly, as it is. */
-  const number = (text: string) => {
-    const [whole = '', fraction = ''] = text.replace('-', '').split('.')
-    if (whole.length + fraction.length > 15) return text
-    return Number(text).toLocaleString(undefined, { minimumFractionDigits: fraction.length, maximumFractionDigits: fraction.length })
-  }
+  // Exact values, grouped as the app groups numbers; the average to the values' own scale (at least 2, at most 4).
+  const number = (text: string) => formatStat(text)
+  const scale = Math.max(...[stats.sum, stats.min, stats.max].map((x) => (x?.split('.')[1] ?? '').length))
+  const average = (text: string) => formatStat(text, Math.min(4, Math.max(2, scale)))
   const item = (label: string, shown: string, raw: string) => (
     <button
       key={label}
@@ -46,7 +44,7 @@ export function SelectionStatsBar({ fields, rows, selection, dataTypes }: { fiel
   } else if (stats.sum !== undefined) {
     parts.push(
       item(t('Sum'), number(stats.sum), stats.sum),
-      item(t('Avg'), number(stats.avg!), stats.avg!),
+      item(t('Avg'), average(stats.avg!), stats.avg!),
       item(t('Min'), number(stats.min!), stats.min!),
       item(t('Max'), number(stats.max!), stats.max!),
     )

@@ -4,7 +4,7 @@ import type { DiagramNote, ModelDiagram, DiagramBox, DiagramDisplay, SqlFileForm
 import { api } from '@/lib/api'
 import { debounce, uid } from '@/lib/utils'
 import { t, tp } from '@/lib/i18n'
-import { confirmAction } from '@/components/ui/ConfirmDialog'
+import { askChoice } from '@/components/ui/ConfirmDialog'
 import { refreshTransaction, settleTransactions, useTransactions } from './transactions'
 import { persistedTabs } from './persisted-tabs'
 import { forgetSessionTables } from './session-tables'
@@ -219,6 +219,16 @@ interface WorkspaceState {
 /** Unsaved grid edits per table tab: they live in the tab's view, so closing it would drop them silently. */
 const unsavedEdits = new Map<string, number>()
 
+/** How each table tab with edits saves them: closing it can save instead of discarding. */
+const tabSavers = new Map<string, () => Promise<boolean>>()
+
+export function registerTabSaver(tabId: string, save: () => Promise<boolean>): () => void {
+  tabSavers.set(tabId, save)
+  return () => {
+    if (tabSavers.get(tabId) === save) tabSavers.delete(tabId)
+  }
+}
+
 /** Where each closed tab stood, so reopening puts it back there. */
 const closedIndex = new Map<string, number>()
 
@@ -237,8 +247,25 @@ export function setUnsavedEdits(tabId: string, count: number): void {
  * transactions in query tabs are committed or rolled back as the user says.
  */
 export async function confirmCloseTabs(ids: string[]): Promise<boolean> {
-  const n = ids.reduce((sum, id) => sum + (unsavedEdits.get(id) ?? 0), 0)
-  if (n > 0 && !(await confirmAction({ title: tp(n, { one: 'Discard {n} pending change?', many: 'Discard {n} pending changes?' }), confirmLabel: t('Discard'), danger: true }))) return false
+  const edited = ids.filter((id) => (unsavedEdits.get(id) ?? 0) > 0)
+  const n = edited.reduce((sum, id) => sum + (unsavedEdits.get(id) ?? 0), 0)
+  if (n > 0) {
+    const titles = edited.map((id) => useWorkspace.getState().tabs.find((tab) => tab.id === id)?.title ?? '')
+    const choice = await askChoice({
+      title: edited.length === 1 ? t('Save the changes to {table}?', { table: titles[0]! }) : t('Save the changes in {n} tabs?', { n: String(edited.length) }),
+      message: tp(n, { one: '{n} change isn’t in the database yet.', many: '{n} changes aren’t in the database yet.' }),
+      confirmLabel: t('Save'),
+      secondaryLabel: t('Discard'),
+      focusCancel: true,
+    })
+    if (!choice) return false
+    if (choice === 'confirm') {
+      for (const id of edited) {
+        const save = tabSavers.get(id)
+        if (!save || !(await save())) return false
+      }
+    }
+  }
   // Ask the database, not the window's memory (it may have missed a transaction, e.g. after a reload).
   await refreshTabs(useWorkspace.getState().tabs.filter((tab) => ids.includes(tab.id)))
   return settleTransactions(ids, tabTitle, 'close')

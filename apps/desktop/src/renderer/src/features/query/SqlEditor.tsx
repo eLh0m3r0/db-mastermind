@@ -111,6 +111,7 @@ export function editorTheme(dark: boolean): Extension {
         '.cm-panels': { backgroundColor: 'var(--bg-subtle)', color: 'var(--text)', borderColor: 'var(--border)' },
         '.cm-panel.cm-search input, .cm-panel.cm-search button': { fontSize: '12px' },
         '.cm-placeholder': { color: 'var(--text-faint)' },
+        '.cm-placeholder .cm-placeholder-keys': { marginLeft: '2.2em' },
         // Warnings are quiet: a wavy underline in the warning color, the explanation on hover.
         '.cm-lintRange-warning': { backgroundImage: 'none', textDecoration: 'underline wavy color-mix(in srgb, var(--warning) 75%, transparent)', textUnderlineOffset: '3px' },
         '.cm-tooltip-lint': { padding: '0' },
@@ -273,7 +274,8 @@ export function SqlEditor({ value, driver, schema, sessionTables, dark, onChange
           rectangularSelection(),
           highlightActiveLine(),
           highlightSelectionMatches(),
-          placeholderExt(tr('Write SQL…   {run} runs the statement under the cursor, {runAll} runs everything', { run: keys('⌘↵'), runAll: keys('⇧⌘↵') })),
+          // In a narrow editor (split view) only "Write SQL…": the keys wrapped under it and read like code.
+          placeholderExt(placeholderElement(tr('Write SQL…'), tr('{run} runs the statement under the cursor, {runAll} runs everything', { run: keys('⌘↵'), runAll: keys('⇧⌘↵') }))),
           statementHighlight(() => driverRef.current),
           // Extra completion sources next to the SQL language's own (tables, qualified columns, keywords).
           // Sources need a stable identity: autocompletion matches results to sources by reference.
@@ -420,4 +422,28 @@ export function SqlEditor({ value, driver, schema, sessionTables, dark, onChange
   }))
 
   return <div ref={host} className="h-full min-h-0 overflow-hidden" />
+}
+
+/** "Write SQL…" and, when the line has room for it, the keys that run it. */
+function placeholderElement(lead: string, keysHint: string): HTMLElement {
+  const el = document.createElement('span')
+  el.append(lead)
+  const hint = document.createElement('span')
+  hint.className = 'cm-placeholder-keys'
+  hint.textContent = keysHint
+  el.append(hint)
+  // Shown only while it fits on the first line next to "Write SQL…".
+  requestAnimationFrame(function fit() {
+    if (!el.isConnected) return
+    const line = el.closest('.cm-content') as HTMLElement | null
+    if (!line) return
+    hint.style.display = ''
+    const room = line.clientWidth - 40
+    hint.style.display = el.scrollWidth > room || el.getBoundingClientRect().height > parseFloat(getComputedStyle(el).lineHeight) * 1.5 ? 'none' : ''
+    new ResizeObserver(() => {
+      hint.style.display = ''
+      hint.style.display = el.getBoundingClientRect().height > parseFloat(getComputedStyle(el).lineHeight) * 1.5 ? 'none' : ''
+    }).observe(line)
+  })
+  return el
 }
