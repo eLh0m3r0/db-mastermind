@@ -96,31 +96,45 @@ function foldStrings(text: string): string {
 
 /**
  * Settings written over several lines (`name varchar [\n  pk,\n  note: '…'\n]`, as dbdiagram.io allows) are
- * folded onto their first line; the lines they took stay as empty ones, which keeps the line numbers.
+ * folded onto their first line; the lines they took stay as empty ones, which keeps the line numbers. A bracket that
+ * isn't closed within a few lines, before the block ends or the next column or block starts, is left as it is: its
+ * line is then an error of its own, and everything after it is read as usual (never swallowed).
  */
 function foldBrackets(lines: string[]): string[] {
   const out = [...lines]
+  /** The bracket depth a line leaves (strings skipped). */
+  const depthOf = (line: string, start: number) => {
+    let depth = start
+    let quote: string | null = null
+    for (let k = 0; k < line.length; k++) {
+      const ch = line[k]!
+      if (quote) {
+        if (ch === '\\') k++
+        else if (ch === quote) quote = null
+      } else if (ch === "'" || ch === '"' || ch === '`') quote = ch
+      else if (ch === '[') depth++
+      else if (ch === ']') depth--
+    }
+    return depth
+  }
+  // What can't be the inside of a column's settings: a block's end or start, or another column (`name type`).
+  // (Keywords as written: a setting inside the brackets is `note:` or `ref:`, lower case.)
+  const boundary = (line: string) => /^\s*\}/.test(line) || /^\s*(Table|Ref|Enum|TableGroup|TablePartial|Project|Records)\b/.test(line) || /^\s*(Note|indexes|checks)\s*\{/i.test(line) || (/^\s*("[^"]+"|`[^`]+`|[\w$]+)\s+("[^"]+"|[\w$.]+)(\s*\([^)]*\))?\s*(\[.*)?$/.test(line) && !/^\s*(not\s+null|primary\s+key)\b/i.test(line))
   for (let i = 0; i < out.length; i++) {
-    let depth = 0
-    const count = (line: string) => {
-      let quote: string | null = null
-      for (let k = 0; k < line.length; k++) {
-        const ch = line[k]!
-        if (quote) {
-          if (ch === '\\') k++
-          else if (ch === quote) quote = null
-        } else if (ch === "'" || ch === '"' || ch === '`') quote = ch
-        else if (ch === '[') depth++
-        else if (ch === ']') depth--
+    let depth = depthOf(out[i]!, 0)
+    if (depth <= 0) continue
+    let close = -1
+    for (let j = i + 1; j < Math.min(out.length, i + 50) && !boundary(out[j]!); j++) {
+      depth = depthOf(out[j]!, depth)
+      if (depth <= 0) {
+        close = j
+        break
       }
     }
-    count(out[i]!)
-    for (let j = i + 1; depth > 0 && j < out.length; j++) {
-      count(out[j]!)
-      out[i] = `${out[i]!.trimEnd()} ${out[j]!.trim()}`
-      out[j] = ''
-      if (depth <= 0) i = j
-    }
+    if (close === -1) continue
+    out[i] = [out[i]!.trimEnd(), ...out.slice(i + 1, close + 1).map((l) => l.trim())].join(' ')
+    for (let j = i + 1; j <= close; j++) out[j] = ''
+    i = close
   }
   return out
 }
@@ -332,8 +346,9 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
         // A custom setting: the attribute package (DeZign) the column comes from.
         ...(value('package') ? { package: unquoteString(value('package')!) } : {}),
       }
-      // A table's own column wins over an injected one of the same name; so does a later partial.
-      const earlier = t.columns.findIndex((c) => c.name.toLowerCase() === name.toLowerCase())
+      // A table's own column wins over an injected one of the same name; so does a later partial. (The same name:
+      // `email` and `Email` are two columns, as @dbml/core and case-sensitive databases read them.)
+      const earlier = t.columns.findIndex((c) => c.name === name)
       if (earlier !== -1) {
         t.columns.splice(earlier, 1)
         t.primaryKey = t.primaryKey.filter((c) => c !== name)

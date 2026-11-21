@@ -72,6 +72,25 @@ describe('ClickHouse', () => {
   })
 })
 
+// With progress headers the response is 200 before the query ends: an error after that arrives in the body, and
+// must still be an error (review L11), in a result and in a stream (export).
+describe('ClickHouse: a query that fails after it started sending', () => {
+  const late = "SELECT number, throwIf(number = 1500, 'late failure') AS x FROM numbers(2000) WHERE sleepEachRow(0.001) = 0 SETTINGS max_block_size = 100, http_headers_progress_interval_ms = 100"
+  it('is an error, not fewer rows', async () => {
+    const [outcome] = await db.runScript(id, late)
+    expect(outcome?.error?.message).toMatch(/late failure|FUNCTION_THROW_IF_VALUE_IS_NON_ZERO/)
+  })
+
+  it('ends a stream with the error after the rows sent before it', async () => {
+    let rows = 0
+    const read = async () => {
+      for await (const batch of db.streamQuery(id, late, { batchSize: 100 })) rows += batch.rows.length
+    }
+    await expect(read()).rejects.toThrow(/late failure|FUNCTION_THROW_IF_VALUE_IS_NON_ZERO|Cannot parse|Unexpected/)
+    expect(rows).toBeLessThanOrEqual(1500)
+  })
+})
+
 describe('ClickHouse client warnings (npm package testing)', () => {
   it('connects and queries without the client warning about progress headers on stderr', async () => {
     const said: string[] = []

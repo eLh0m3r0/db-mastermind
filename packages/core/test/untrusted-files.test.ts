@@ -1,5 +1,6 @@
 import { strToU8, zipSync } from 'fflate'
 import { describe, expect, it } from 'vitest'
+import { growth, LINEAR } from './growth.js'
 import { FILE_LIMITS, mwbDocument, parseDbml, parseDotenv, readModelFile, servicesFromCompose, projectConnections, tablesFromMermaid, tablesFromPrisma } from '../src/index.js'
 
 /**
@@ -23,15 +24,17 @@ describe('size limits', () => {
     expect(() => readModelFile('huge.mwb', new Uint8Array(FILE_LIMITS.mwb + 1))).toThrow(/larger than 64 MB/)
   })
 
-  it('inflates nothing but document.mwb.xml, and stops a zip bomb at the limit even when its header lies', () => {
-    // 256 MB of zeros, which deflate to about 256 KB; the limit here is 8 MB.
-    const zeros = new Uint8Array(256 * 1024 * 1024)
-    const honest = zipSync({ 'document.mwb.xml': zeros, 'other.bin': new Uint8Array(1024) }, { level: 9 })
-    expect(honest.length).toBeLessThan(1024 * 1024)
-    const limit = 8 * 1024 * 1024
-    const before = process.memoryUsage().arrayBuffers
-    const a = timed(() => mwbDocument(honest, limit))
-    expect(a.error?.message).toMatch(/document is larger than 8 MB/)
+  // Cheap by construction (CI runners are several times slower than a Mac): a document of 2 MB that compresses
+  // about tenfold against a limit of 256 KB, so a lying header is caught a few 16 KB slices in; what is asserted is
+  // the bytes inflated, never the time.
+  it('inflates nothing but document.mwb.xml, and stops a zip bomb at the limit even when its header lies', { timeout: 30_000 }, () => {
+    const text = Array.from({ length: 70_000 }, (_, i) => `<value key="k${i % 997}">${(i * 7919) % 100_003}</value>\n`).join('')
+    const document = strToU8(text)
+    const honest = zipSync({ 'document.mwb.xml': document, 'other.bin': new Uint8Array(1024) }, { level: 9 })
+    const limit = 256 * 1024
+    expect(document.length).toBeGreaterThan(8 * limit)
+    const a = { inflated: 0 }
+    expect(() => mwbDocument(honest, limit, a)).toThrow(/document is larger than 0\.3 MB|document is larger than/)
     // A header that claims 100 bytes: inflating is still counted, and stopped.
     const lying = honest.slice()
     const view = new DataView(lying.buffer)
@@ -40,28 +43,29 @@ describe('size limits', () => {
       if (sig === 0x04034b50) view.setUint32(i + 22, 100, true)
       if (sig === 0x02014b50) view.setUint32(i + 24, 100, true)
     }
-    const b = timed(() => mwbDocument(lying, limit))
-    expect(b.error?.message).toMatch(/document is larger than 8 MB/)
-    expect(a.ms + b.ms).toBeLessThan(2000)
-    // Far less than the 256 MB the bomb holds was ever allocated: the limit and a slice or two (a slice of 16 KB
-    // deflated inflates to about 16 MB).
-    expect(process.memoryUsage().arrayBuffers - before).toBeLessThan(128 * 1024 * 1024)
+    const b = { inflated: 0 }
+    expect(() => mwbDocument(lying, limit, b)).toThrow(/document is larger than/)
+    // An honest header is refused before anything is inflated; a lying one stops at the limit and a slice more
+    // (16 KB deflated inflates to 16 KB × the ratio), long before the end of the document.
+    const slice = 16 * 1024 * (document.length / honest.length)
+    expect(a.inflated).toBe(0)
+    expect(b.inflated).toBeGreaterThan(limit)
+    expect(b.inflated).toBeLessThanOrEqual(limit + 2 * slice)
+    expect(b.inflated).toBeLessThan(document.length / 2)
   })
 
-  it('reads a Workbench document nested deeper than any model as no model, without running out of stack', () => {
+  it('reads a Workbench document nested deeper than any model as no model, without running out of stack', { timeout: 30_000 }, () => {
     const depth = 100_000
     const xml = `<?xml version="1.0"?><data><value type="object" struct-name="workbench.Document" id="d">${'<value type="list" key="x">'.repeat(depth)}${'</value>'.repeat(depth)}</value></data>`
     const r = timed(() => readModelFile('deep.mwb', zipSync({ 'document.mwb.xml': strToU8(xml) })))
     expect(r.error?.message).toMatch(/nested too deeply/)
-    expect(r.ms).toBeLessThan(3000)
   })
 })
 
 describe('nesting, aliases and long lines', () => {
-  it('a drawDB file of 100,000 nested arrays or with fields that are not fields is refused or read, quickly', () => {
+  it('a drawDB file of 100,000 nested arrays or with fields that are not fields is refused or read', { timeout: 30_000 }, () => {
     const deep = `{"tables":[{"name":"t","fields":${'['.repeat(100_000)}${']'.repeat(100_000)}}],"relationships":[]}`
     const r = timed(() => readModelFile('deep.json', strToU8(deep)))
-    expect(r.ms).toBeLessThan(2000)
     // (Fields that aren't objects with a name and a type are left out; the table stays.)
     expect(r.error ?? r.value?.tables.length).toBe(1)
     const odd = JSON.stringify({ tables: [{ id: 1, name: 't', x: 'a', y: null, fields: [{ id: 1, name: 'ok', type: 'INT' }, { id: 2, name: { $gt: 1 }, type: 7 }, null, 5], indices: 'x' }], relationships: [{ startTableId: 1 }, null] })
@@ -70,54 +74,92 @@ describe('nesting, aliases and long lines', () => {
     expect(m.positions).toEqual({})
   })
 
-  it('a compose file of aliases that would spell out billions of entries, or nested 100,000 deep, is read quickly', () => {
+  // (Spelled out, the aliases would never end: finishing at all is the check; the timeout is only a backstop.)
+  it('a compose file of aliases that would spell out billions of entries, or nested 100,000 deep, is read', { timeout: 30_000 }, () => {
     const laughs = ['a: &a ["x","x","x","x","x","x","x","x","x","x"]', ...Array.from({ length: 8 }, (_, i) => `${String.fromCharCode(98 + i)}: &${String.fromCharCode(98 + i)} [${Array(10).fill(`*${String.fromCharCode(97 + i)}`).join(',')}]`)].join('\n')
     const bomb = `${laughs}\nservices:\n  db:\n    image: postgres:16\n    environment: *i\n    ports: [*i, "5432:5432"]\n  other:\n    <<: *i\n`
     const r = timed(() => servicesFromCompose(bomb, {}, 'p'))
     expect(r.error).toBeUndefined()
     expect(r.value!.map((s) => [s.service, s.published])).toEqual([['db', 5432]])
-    expect(r.ms).toBeLessThan(1000)
     const deep = timed(() => servicesFromCompose(`services: ${'['.repeat(100_000)}${']'.repeat(100_000)}`, {}, 'p'))
-    expect(deep.ms).toBeLessThan(2000)
     expect(deep.error?.message ?? '').toMatch(/^$|Not a readable compose file/)
   })
 
-  it('adversarial lines of 100,000 characters take a moment, not minutes', () => {
-    const lines: [string, () => unknown][] = [
-      ['Mermaid relationship-like', () => tablesFromMermaid(`erDiagram\n  A ||--o{ ${long(100_000, 'B ')}`)],
-      ['Mermaid worded', () => tablesFromMermaid(`erDiagram\n  A ${long(100_000, 'one or more to ')} B`)],
-      ['Mermaid attribute', () => tablesFromMermaid(`erDiagram\n  A {\n    ${long(100_000, 'a ')}\n  }`)],
-      ['Mermaid attribute with keys', () => tablesFromMermaid(`erDiagram\n  A {\n    int x ${long(100_000, 'PK, ')}"\n  }`)],
-      ['DBML column', () => parseDbml(`Table t {\n  ${long(100_000, 'a ')}[\n}`)],
-      ['DBML one-line block', () => parseDbml(`Table t {\n  id int\n  indexes { ${long(100_000, '(a, ')} }\n}`)],
-      ['DBML unclosed settings', () => parseDbml(`Table t {\n  id int [${'\n  x'.repeat(50_000)}\n}`)],
-      ['DBML Ref', () => parseDbml(`Ref: ${long(100_000, 'a.')} > b.c`)],
-      ['.env value', () => parseDotenv(`A=${long(100_000, '${B:-${C')}`)],
-      ['.env unclosed quote over 50,000 lines', () => parseDotenv(`A="x${'\nB=y'.repeat(50_000)}`)],
-      ['.env many variables', () => parseDotenv(Array.from({ length: 50_000 }, (_, i) => `V${i}=\${V${i - 1}:-x}`).join('\n'))],
-      ['Prisma unclosed models', () => tablesFromPrisma(Array.from({ length: 20_000 }, (_, i) => `model m${i} {\n  id Int @id`).join('\n'))],
-      ['Prisma attribute', () => tablesFromPrisma(`model m {\n  id Int ${long(100_000, '@default(')}\n}`)],
+  // Linear, measured as growth from 25,000 to 100,000 characters (or lines): the time itself differs by machine.
+  it('adversarial lines grow linearly, not quadratically', { timeout: 60_000 }, () => {
+    const lines: [string, (n: number) => () => unknown][] = [
+      ['Mermaid relationship-like', (n) => {
+        const input = `erDiagram\n  A ||--o{ ${long(n, 'B ')}`
+        return () => tablesFromMermaid(input)
+      }],
+      ['Mermaid worded', (n) => {
+        const input = `erDiagram\n  A ${long(n, 'one or more to ')} B`
+        return () => tablesFromMermaid(input)
+      }],
+      ['Mermaid attribute', (n) => {
+        const input = `erDiagram\n  A {\n    ${long(n, 'a ')}\n  }`
+        return () => tablesFromMermaid(input)
+      }],
+      ['Mermaid attribute with keys', (n) => {
+        const input = `erDiagram\n  A {\n    int x ${long(n, 'PK, ')}"\n  }`
+        return () => tablesFromMermaid(input)
+      }],
+      ['DBML column', (n) => {
+        const input = `Table t {\n  ${long(n, 'a ')}[\n}`
+        return () => parseDbml(input)
+      }],
+      ['DBML one-line block', (n) => {
+        const input = `Table t {\n  id int\n  indexes { ${long(n, '(a, ')} }\n}`
+        return () => parseDbml(input)
+      }],
+      ['DBML unclosed settings', (n) => {
+        const input = `Table t {\n  id int [${'\n  x'.repeat(n / 2)}\n}`
+        return () => parseDbml(input)
+      }],
+      ['DBML Ref', (n) => {
+        const input = `Ref: ${long(n, 'a.')} > b.c`
+        return () => parseDbml(input)
+      }],
+      ['.env value', (n) => {
+        const input = `A=${long(n, '${B:-${C')}`
+        return () => parseDotenv(input)
+      }],
+      ['.env unclosed quote', (n) => {
+        const input = `A="x${'\nB=y'.repeat(n / 2)}`
+        return () => parseDotenv(input)
+      }],
+      ['.env many variables', (n) => {
+        const input = Array.from({ length: n / 2 }, (_, i) => `V${i}=\${V${i - 1}:-x}`).join('\n')
+        return () => parseDotenv(input)
+      }],
+      ['Prisma unclosed models', (n) => {
+        const input = Array.from({ length: n / 5 }, (_, i) => `model m${i} {\n  id Int @id`).join('\n')
+        return () => tablesFromPrisma(input)
+      }],
+      ['Prisma attribute', (n) => {
+        const input = `model m {\n  id Int ${long(n, '@default(')}\n}`
+        return () => tablesFromPrisma(input)
+      }],
     ]
-    const times: string[] = []
+    const report: string[] = []
     for (const [label, run] of lines) {
-      const r = timed(run)
-      times.push(`${label} ${Math.round(r.ms)} ms`)
-      expect(r.ms, label).toBeLessThan(1500)
+      const g = growth(run, 25_000)
+      report.push(`${label} ×${g.ratio.toFixed(1)} (${g.small.toFixed(1)} → ${g.large.toFixed(1)} ms)`)
+      expect(g.ratio, label).toBeLessThan(LINEAR)
     }
-    console.log(times.join(' · '))
+    console.log(report.join(' · '))
   })
 
-  it('a 30 MB single line is no model and is said to be none, quickly', () => {
+  it('a 30 MB single line is no model and is said to be none', { timeout: 30_000 }, () => {
     const line = long(30 * 1024 * 1024, 'x')
     const r = timed(() => readModelFile('one.mmd', strToU8(line)))
     expect(r.error?.message).toMatch(/erDiagram/)
-    expect(r.ms).toBeLessThan(3000)
   })
 })
 
 describe('what a file names is cleaned', () => {
   it('table, column and note names lose control characters and are bounded', () => {
-    const m = readModelFile('x.mmd', strToU8(`erDiagram\n  "Evil\u0007‮Table" {\n    int ${long(500, 'n')} PK "a\u0000comment"\n  }\n`))
+    const m = readModelFile('x.mmd', strToU8(`erDiagram\n  "Evil\u0007\u202eTable" {\n    int ${long(500, 'n')} PK "a\u0000comment"\n  }\n`))
     expect(m.tables[0]!.name).toBe('EvilTable')
     expect(m.tables[0]!.columns[0]!.name).toHaveLength(128)
     expect(m.tables[0]!.columns[0]!.comment).toBe('acomment')

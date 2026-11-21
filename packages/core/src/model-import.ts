@@ -16,7 +16,11 @@ export function modelFormatOf(name: string, head: string): ModelFormat | undefin
   if (ext === 'mmd' || ext === 'mermaid') return 'mermaid'
   if (ext === 'ddb') return 'drawdb'
   if (ext === 'json') return isDrawDb(head) ? 'drawdb' : undefined
-  if (ext === 'md' || ext === 'markdown') return /```\s*mermaid[\s\S]*?\berDiagram\b/.test(head) ? 'mermaid' : undefined
+  if (ext === 'md' || ext === 'markdown') {
+    // (A fence somewhere before the last erDiagram: a lazy regex over the text backtracks through every fence.)
+    const at = head.lastIndexOf('erDiagram')
+    return at !== -1 && /```\s*mermaid/.test(head.slice(0, at)) ? 'mermaid' : undefined
+  }
   // A script picked in the Import dialog may be any of them: the content says which.
   if (/^\s*(?:%%.*\n\s*)*erDiagram\b/m.test(head) && !/\bCREATE\s+TABLE\b/i.test(head)) return 'mermaid'
   if (/^\s*(model|datasource|generator)\s+\w+\s*\{/m.test(head)) return 'prisma'

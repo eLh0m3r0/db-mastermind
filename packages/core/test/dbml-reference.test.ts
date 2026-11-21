@@ -86,23 +86,33 @@ function ourCounts(text: string): { counts: Counts; errors: number } {
   }
 }
 
+/**
+ * Our own cases next to the public files (review findings): an unclosed bracket (the reference refuses the file; we
+ * must say so on its line and still read the rest) and columns whose names differ only in case.
+ */
+const OWN: { name: string; text: string }[] = [
+  { name: 'own-unclosed-bracket.dbml', text: 'Table a {\n  id int [pk\n  name text\n}\n\nTable b {\n  id int [pk]\n  a_id int [ref: > a.id]\n}\n' },
+  { name: 'own-case.dbml', text: "Table users {\n  id int [pk]\n  email text\n  Email text [note: 'other']\n}\n\nTable Users {\n  id int [pk]\n}\n" },
+]
+
 describe.skipIf(!run)('DBML: our reader against @dbml/core on public files', () => {
   it('reads what the reference reads, or says what it did not take', { timeout: 600_000 }, () => {
     const parse = referenceParser()
-    const files = readdirSync(join(folder!, 'dbml')).map((f) => join(folder!, 'dbml', f))
+    const files = [...readdirSync(join(folder!, 'dbml')).map((f) => ({ name: f, text: readFileSync(join(folder!, 'dbml', f), 'utf8') })), ...OWN]
     let compared = 0
     let referenceRefused = 0
     const totals = { reference: Object.fromEntries(KEYS.map((k) => [k, 0])) as Record<keyof Counts, number>, ours: Object.fromEntries(KEYS.map((k) => [k, 0])) as Record<keyof Counts, number> }
     const differing: string[] = []
     const silent: string[] = []
-    for (const file of files) {
-      const text = readFileSync(file, 'utf8')
+    const acceptedSilently: string[] = []
+    for (const { name, text } of files) {
       let reference: Counts
       try {
         reference = referenceCounts(parse(text))
       } catch {
-        // Not valid DBML for dbdiagram.io either: nothing to compare with.
+        // Not valid DBML for dbdiagram.io either: nothing to compare with, but our reader must say what it didn't take.
         referenceRefused++
+        if (OWN.some((o) => o.name === name) && !parseDbml(text).errors.length) acceptedSilently.push(name)
         continue
       }
       compared++
@@ -113,7 +123,7 @@ describe.skipIf(!run)('DBML: our reader against @dbml/core on public files', () 
       }
       const diff = KEYS.filter((k) => reference[k] !== ours.counts[k])
       if (!diff.length) continue
-      const line = `${file.split('/').pop()}: ${diff.map((k) => `${k} ${ours.counts[k]}/${reference[k]}`).join(', ')}`
+      const line = `${name}: ${diff.map((k) => `${k} ${ours.counts[k]}/${reference[k]}`).join(', ')}`
       differing.push(line)
       // Fewer than the reference with no error line: lost silently.
       if (diff.some((k) => ours.counts[k] < reference[k]) && !ours.errors) silent.push(line)
@@ -124,5 +134,6 @@ describe.skipIf(!run)('DBML: our reader against @dbml/core on public files', () 
     expect(compared).toBeGreaterThanOrEqual(50)
     // A file may differ where our reader says why (an error line: many-to-many, which the model has no key for).
     expect(silent).toEqual([])
+    expect(acceptedSilently).toEqual([])
   })
 })

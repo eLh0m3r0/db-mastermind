@@ -32,6 +32,18 @@ export function inlineClickHouseParams(sql: string, params: unknown[] = []): str
   })
 }
 
+/** One line of a JSONCompactEachRow response; a line that isn't one is the error that ended the query. */
+function rowOf(line: string): unknown[] {
+  try {
+    const row: unknown = JSON.parse(line)
+    if (Array.isArray(row)) return row
+  } catch {
+    // Not JSON: below.
+  }
+  const text = line.trim()
+  throw new Error(/DB::Exception/.test(text) ? text.replace(/\s*\(version [^)]*\)\s*$/, '') : `ClickHouse ended the result with something that is not a row: ${text.slice(0, 300)}`)
+}
+
 /**
  * ClickHouse over its HTTP interface. Analytics-first: queries, schema, streaming and exports; row editing is not
  * offered (ClickHouse has no row-level UPDATE), and scripts run without transactions.
@@ -52,6 +64,10 @@ export class ClickHouseDriver implements DatabaseDriver {
       cancel_http_readonly_queries_on_client_close: 1,
       send_progress_in_http_headers: 1,
       http_headers_progress_interval_ms: '110000',
+      // Once the response has started (a progress header, or enough rows), an error can only come in the body.
+      // ClickHouse would write it as one more row of the format, which reads as data; as plain text it is no row,
+      // and rowOf turns it into the error it is.
+      http_write_exception_in_output_format: 0,
     }
   }
 
@@ -97,7 +113,8 @@ export class ClickHouseDriver implements DatabaseDriver {
       }
       const limit = options.maxRows === undefined ? {} : { max_result_rows: String(options.maxRows + 1), result_overflow_mode: 'break' as const }
       const rs = await this.db.query({ query, format: 'JSONCompactEachRowWithNamesAndTypes', abort_signal: options.signal, clickhouse_settings: { ...this.settings, ...limit }, ...session })
-      const [names = [], types = [], ...data] = await rs.json<unknown[]>()
+      const lines = (await rs.text()).split('\n').filter((l) => l.trim())
+      const [names = [], types = [], ...data] = lines.map(rowOf)
       let rows = data as unknown[][]
       const truncated = options.maxRows !== undefined && rows.length > options.maxRows
       if (truncated) rows = rows.slice(0, options.maxRows)
@@ -131,7 +148,7 @@ export class ClickHouseDriver implements DatabaseDriver {
       const size = options.batchSize ?? 1000
       for await (const rows of rs.stream()) {
         for (const row of rows) {
-          const values = row.json<unknown[]>()
+          const values = rowOf(row.text)
           if (!names) {
             names = values as string[]
             continue

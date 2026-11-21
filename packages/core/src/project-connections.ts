@@ -13,8 +13,11 @@ import { cleanConnection } from './untrusted.js'
  */
 
 /** `KEY=value` lines: `export`, comments, single quotes (literal), double quotes (escapes), `${VAR}` and `${VAR:-default}` resolved within the file. */
+/** A variable's value: own keys only (a stranger's `${constructor}` is no variable, `__proto__` is a plain key). */
+const own = (map: Record<string, string>, key: string): string | undefined => (Object.hasOwn(map, key) ? map[key] : undefined)
+
 export function parseDotenv(text: string, outer: Record<string, string> = {}): Record<string, string> {
-  const vars: Record<string, string> = {}
+  const vars: Record<string, string> = Object.create(null) as Record<string, string>
   const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/)
   for (let i = 0; i < lines.length; i++) {
     const m = /^\s*(?:export\s+)?([A-Za-z_][\w.-]*)\s*[=:]\s?(.*)$/.exec(lines[i]!)
@@ -40,10 +43,11 @@ export function parseDotenv(text: string, outer: Record<string, string> = {}): R
       }
       if (end === -1) body = first
       value = end === -1 ? body : body.slice(0, end)
-      if (quote === '"') value = expand(value.replace(/\\([nrt"\\$])/g, (_, c: string) => ({ n: '\n', r: '\r', t: '\t' })[c] ?? c), vars, outer)
+      // (An escaped \$ is a dollar sign, never the start of a variable.)
+      if (quote === '"') value = expand(value.replace(/\\([nrt"\\$])/g, (_, c: string) => ({ n: '\n', r: '\r', t: '\t', $: '\u0000' })[c] ?? c), vars, outer, 0, 'dotenv').replaceAll('\u0000', '$')
     } else {
       raw = raw.replace(/\s+#.*$/, '')
-      value = expand(raw, vars, outer)
+      value = expand(raw, vars, outer, 0, 'dotenv')
     }
     vars[key] = value
   }
@@ -51,13 +55,14 @@ export function parseDotenv(text: string, outer: Record<string, string> = {}): R
 }
 
 /**
- * `${VAR}`, `${VAR:-default}`, `${VAR-default}` and `$VAR` from the variables read so far (then `outer`); `$$` is a
- * `$`. One pass over the text (the next `}` is looked up once, not again for every `${`), defaults nested at most
+ * `${VAR}`, `${VAR:-default}` and `${VAR-default}` from the variables read so far (then `outer`). Compose files also
+ * take `$VAR`, and `$$` is a `$` there; a .env file (as most dotenv libraries read one) takes only `${…}`, so a
+ * password such as `pa$word` stays as written. One pass over the text (the next `}` is looked up once, not again for every `${`), defaults nested at most
  * a few deep: a stranger's line of a million `${` costs a moment.
  */
-export function expand(value: string, vars: Record<string, string>, outer: Record<string, string> = {}, depth = 0): string {
+export function expand(value: string, vars: Record<string, string>, outer: Record<string, string> = {}, depth = 0, mode: 'compose' | 'dotenv' = 'compose'): string {
   if (depth > 8 || !value.includes('$')) return value
-  const get = (name: string) => vars[name] ?? outer[name]
+  const get = (name: string) => own(vars, name) ?? own(outer, name)
   let out = ''
   let close = -2
   for (let i = 0; i < value.length; ) {
@@ -68,7 +73,7 @@ export function expand(value: string, vars: Record<string, string>, outer: Recor
       continue
     }
     const next = value[i + 1]
-    if (next === '$') {
+    if (next === '$' && mode === 'compose') {
       out += '$'
       i += 2
       continue
@@ -83,13 +88,13 @@ export function expand(value: string, vars: Record<string, string>, outer: Recor
       }
       const [, name, op, fallback] = inner
       const v = get(name!)
-      if (op === ':-') out += v ? v : expand(fallback ?? '', vars, outer, depth + 1)
-      else if (op === '-') out += v !== undefined ? v : expand(fallback ?? '', vars, outer, depth + 1)
+      if (op === ':-') out += v ? v : expand(fallback ?? '', vars, outer, depth + 1, mode)
+      else if (op === '-') out += v !== undefined ? v : expand(fallback ?? '', vars, outer, depth + 1, mode)
       else out += v ?? ''
       i = close + 1
       continue
     }
-    const bare = /^[A-Za-z_]\w*/.exec(value.slice(i + 1, i + 257))
+    const bare = mode === 'compose' ? /^[A-Za-z_]\w*/.exec(value.slice(i + 1, i + 257)) : null
     if (bare) {
       out += get(bare[0]) ?? ''
       i += 1 + bare[0].length
@@ -145,10 +150,10 @@ export function connectionsFromEnv(vars: Record<string, string>, label: string):
   for (const set of SETS) {
     // The DB_* set may be SQLite: a file, no host.
     const sqlite = set.prefix === 'DB_HOST' && set.driver(vars) === 'sqlite'
-    if (!vars[set.host] && !(sqlite && vars.DB_DATABASE)) continue
+    if (!own(vars, set.host) && !(sqlite && own(vars, 'DB_DATABASE'))) continue
     const driver = set.driver(vars)
     if (!driver) continue
-    const pick = (keys: string[]) => keys.map((k) => vars[k]).find((v) => v !== undefined && v !== '')
+    const pick = (keys: string[]) => keys.map((k) => own(vars, k)).find((v) => v !== undefined && v !== '')
     if (sqlite) {
       out.push({ name: `${label} — DB_DATABASE`, driver: 'sqlite', filePath: vars.DB_DATABASE })
       continue
@@ -168,7 +173,7 @@ interface Engine {
   options?: Record<string, string | boolean>
 }
 
-const first = (env: Record<string, string>, ...keys: string[]) => keys.map((k) => env[k]).find((v) => v !== undefined && v !== '')
+const first = (env: Record<string, string>, ...keys: string[]) => keys.map((k) => own(env, k)).find((v) => v !== undefined && v !== '')
 const POSTGRES: Engine = { driver: 'postgres', port: 5432, user: (e) => first(e, 'POSTGRES_USER') ?? 'postgres', password: (e) => first(e, 'POSTGRES_PASSWORD'), database: (e) => first(e, 'POSTGRES_DB') ?? first(e, 'POSTGRES_USER') ?? 'postgres' }
 const MYSQL = (driver: DriverId): Engine => ({
   driver,
@@ -213,7 +218,7 @@ export interface ComposeService {
 
 /** The `environment` of a service as a map (compose writes it as a list or a map). */
 function environmentOf(service: Record<string, unknown>, env: Record<string, string>): Record<string, string> {
-  const out: Record<string, string> = {}
+  const out: Record<string, string> = Object.create(null) as Record<string, string>
   const e = service.environment
   // Only scalars: a YAML alias can make a list of lists of lists, which String() would spell out billions of times.
   const scalar = (v: unknown) => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
@@ -224,14 +229,14 @@ function environmentOf(service: Record<string, unknown>, env: Record<string, str
       const eq = s.indexOf('=')
       // `- KEY` alone takes the value from the environment compose runs in: here, the .env beside the file.
       if (eq === -1) {
-        if (env[s.trim()] !== undefined) out[s.trim()] = env[s.trim()]!
+        if (own(env, s.trim()) !== undefined) out[s.trim()] = own(env, s.trim())!
       } else out[s.slice(0, eq).trim()] = expand(s.slice(eq + 1), {}, env)
     }
   } else if (e && typeof e === 'object') {
     for (const [k, v] of Object.entries(e as Record<string, unknown>)) {
       if (v !== null && v !== undefined && !scalar(v)) continue
       if (v === null || v === undefined) {
-        if (env[k] !== undefined) out[k] = env[k]!
+        if (own(env, k) !== undefined) out[k] = own(env, k)!
       } else out[k] = expand(String(v), {}, env)
     }
   }
@@ -307,7 +312,7 @@ export function connectionFromPrisma(schema: string, env: Record<string, string>
   const block = /datasource\s+\w+\s*\{([^}]*)\}/.exec(schema.replace(/^\s*\/\/.*$/gm, ''))?.[1]
   if (!block) return undefined
   const url = /\burl\s*=\s*(?:env\(\s*"([^"]+)"\s*\)|"([^"]+)")/.exec(block)
-  const value = url?.[1] ? env[url[1]] : url?.[2]
+  const value = url?.[1] ? own(env, url[1]) : url?.[2]
   if (!value || !looksLikeUrl(value)) return undefined
   const c = fromUrl(value)
   return c ? { ...c, name: `${label} — prisma ${url?.[1] ?? 'datasource'}` } : undefined

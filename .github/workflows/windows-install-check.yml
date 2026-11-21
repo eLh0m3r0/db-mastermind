@@ -32,13 +32,15 @@ jobs:
             arch: arm64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Download the installers
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Through the environment, never pasted into the script.
+          TAG: ${{ inputs.tag }}
         run: |
-          $tag = '${{ inputs.tag }}'
+          $tag = $env:TAG
           if (-not $tag) { $tag = gh release view -R $env:GITHUB_REPOSITORY --json tagName -q .tagName }
           gh release download $tag -R $env:GITHUB_REPOSITORY -p "*-win-${{ matrix.arch }}-setup.exe" -p "*-win-setup.exe" -D setup
           Get-ChildItem setup | Format-Table Name, Length
@@ -48,7 +50,7 @@ jobs:
       - name: Install with the ${{ matrix.arch }} installer
         shell: pwsh
         run: ./.github/scripts/windows-install-check.ps1 -Setup (Get-ChildItem setup/*-win-${{ matrix.arch }}-setup.exe | Select-Object -First 1).FullName
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
@@ -76,8 +78,8 @@ jobs:
     if: inputs.build
     runs-on: windows-11-arm
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm

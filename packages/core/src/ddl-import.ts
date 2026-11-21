@@ -109,7 +109,7 @@ function extractInlineIndexes(statement: string, special?: Map<string, IndexInfo
   // The table's parts at the top level, so a key written on the same line as other parts is found too.
   const kept: string[] = []
   for (const part of topLevel(statement.slice(start, end))) {
-    const ix = /^(UNIQUE\s+|FULLTEXT\s+|SPATIAL\s+)?(?:KEY|INDEX)(?:\s+("[^"]+"|[\w$]+))?\s*(\([\s\S]*\))(?:\s+(?:USING\s+\w+|COMMENT\s+'(?:[^']|'')*'|INVISIBLE|VISIBLE))*$/i.exec(part)
+    const ix = !TABLE_PART.test(part) ? null : /^(UNIQUE\s+|FULLTEXT\s+|SPATIAL\s+)?(?:KEY|INDEX)(?:\s+("[^"]+"|[\w$]+))?\s*(\([\s\S]*\))(?:\s+(?:USING\s+\w+|COMMENT\s+'(?:[^']|'')*'|INVISIBLE|VISIBLE))*$/i.exec(part)
     if (!ix) {
       kept.push(part)
       continue
@@ -179,9 +179,28 @@ const mySqlLiteral = (quoted: string) => literal(quoted).replace(/\\(.)/gs, (_, 
 const unquote = (name: string) => name.trim().replace(/^"([\s\S]*)"$/, '$1')
 /** Joins a table's schema and name into the one name it has inside DuckDB. */
 const JOIN = '__dbm__'
+
+/** Text as the script wrote it: the names this reader gave DuckDB (index of a table, table of a schema) undone. */
+function readable(text: string): string {
+  return text.replace(new RegExp(`([\\w$]*)${IX}`, 'g'), '').replace(new RegExp(`"?([\\w$]+)${JOIN}([\\w$]+)"?`, 'g'), '"$1"."$2"')
+}
 /** Where a column's type ends: the first constraint or option after it. */
 const AFTER_TYPE = /^(NOT|NULL|DEFAULT|PRIMARY|REFERENCES|UNIQUE|CHECK|CONSTRAINT|COLLATE|IDENTITY|GENERATED|AUTO_INCREMENT|AUTOINCREMENT|COMMENT|CHARACTER\s+SET|CHARSET|ON\s+UPDATE|ENCODE|SPARSE|ROWGUIDCOL|FILESTREAM|MASKED|AS|WITH(?!\s+(?:LOCAL\s+)?TIME\s+ZONE)|INVISIBLE|VISIBLE|STORAGE|COLUMN_FORMAT|SRID)\b/i
-const TABLE_PART = /^(CONSTRAINT|PRIMARY|FOREIGN|UNIQUE|KEY|INDEX|CHECK|FULLTEXT|SPATIAL|PERIOD|EXCLUDE|LIKE)\b/i
+const TABLE_PART_WORD = /^(CONSTRAINT|PRIMARY|FOREIGN|UNIQUE|KEY|INDEX|CHECK|FULLTEXT|SPATIAL|PERIOD|EXCLUDE|LIKE)\b/i
+/**
+ * A key, constraint or index of a CREATE TABLE rather than a column. A column may be named `key` or `index`
+ * (`key varchar(100)`): a key's parentheses list columns (names, maybe with a prefix length or ASC/DESC), a type's
+ * hold numbers or quoted values.
+ */
+const TABLE_PART = {
+  test(part: string): boolean {
+    if (!TABLE_PART_WORD.test(part)) return false
+    const key = /^(?:KEY|INDEX)\b\s*(?:("[^"]+"|`[^`]+`|[\w$]+)\s*)?\(([^)]*)\)/i.exec(part)
+    if (!/^(KEY|INDEX)\b/i.test(part)) return true
+    if (!key) return false
+    return key[2]!.split(',').every((item) => /^\s*("[^"]+"|`[^`]+`|[A-Za-z_$][\w$]*)\s*(\(\s*\d+\s*\))?\s*(ASC|DESC)?\s*$/i.test(item))
+  },
+}
 
 /** Where a quoted string, quoted name or comment that starts at `i` ends (exclusive), or -1 when none starts there. */
 function skipQuoted(text: string, i: number): number {
@@ -597,7 +616,7 @@ export async function tablesFromDdl(given: string): Promise<DdlImportResult> {
       try {
         await driver.execute(sql)
       } catch (err) {
-        skipped.push({ sql: sql.slice(0, 300), error: err instanceof Error ? err.message.split('\n')[0]! : String(err) })
+        skipped.push({ sql: readable(sql).slice(0, 300), error: readable(err instanceof Error ? err.message.split('\n')[0]! : String(err)) })
       }
     }
     const snapshot = await driver.introspect()

@@ -5,12 +5,28 @@ import type { ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfo } from './types.j
  * optional fields, defaults, @id/@@id, @unique/@@unique, @@index, relations (with onDelete/onUpdate) and enums.
  * Relation-only fields (the "other side" of a relation, lists) don't become columns.
  */
+/** A line without its `//` comment; `//` inside a string (a URL in a default or a documentation line) stays. */
+function withoutComment(line: string): string {
+  let quoted = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]!
+    if (quoted) {
+      if (ch === '\\') i++
+      else if (ch === '"') quoted = false
+    } else if (ch === '"') quoted = true
+    else if (ch === '/' && line[i + 1] === '/') return line.slice(0, i)
+  }
+  return line
+}
+
 export function tablesFromPrisma(text: string): { tables: TableInfo[]; enums: Record<string, string[]>; errors: { line: number; message: string }[] } {
   // `///` comments document the model or field below them: they are kept as a marker line, other comments go.
   // (Not the warnings `prisma db pull` writes there itself.)
   const clean = text
     .replace(/^[ \t]*\/\/\/[ \t]?(.*)$/gm, (line, doc: string) => (/prisma client|pris\.ly|underlying (table|view) does not/i.test(doc) ? '' : `@@__doc(${JSON.stringify(doc.trim())})`))
-    .replace(/\/\/.*$/gm, '')
+    .split('\n')
+    .map(withoutComment)
+    .join('\n')
   const docOf = (lines: string[]) => lines.map((l) => /^\s*@@__doc\((".*")\)\s*$/.exec(l)).map((m) => (m ? (JSON.parse(m[1]!) as string) : null))
   const enums: Record<string, string[]> = {}
   const errors: { line: number; message: string }[] = []

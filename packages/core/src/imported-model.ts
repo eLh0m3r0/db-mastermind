@@ -42,6 +42,21 @@ export type LeftOutKind =
   | 'scalarLists'
   /** drawDB's composite types (columns typed with one keep the type's name). */
   | 'customTypes'
+  /** Defaults, checks and types that aren't plain SQL (kept as a note on the column, never run). */
+  | 'defaults'
+  | 'checks'
+  | 'types'
+
+/**
+ * What a file said that isn't taken as SQL (foreign-sql.ts): a line of the column's comment says it, and it is
+ * counted as left out.
+ */
+export function leaveOut(model: ImportedModel, column: { comment?: string | null }, kind: 'defaults' | 'checks' | 'types', tool: string, text: string): void {
+  const what = { defaults: 'default', checks: 'check', types: 'type' }[kind]
+  const line = `${tool} ${what} (not taken): ${text.replace(/\s+/g, ' ').trim().slice(0, 500)}`
+  column.comment = column.comment ? `${column.comment}\n${line}` : line
+  model.leftOut[kind] = (model.leftOut[kind] ?? 0) + 1
+}
 
 export const emptyImport = (format: ModelFormat): ImportedModel => ({ format, tables: [], enums: {}, positions: {}, colors: {}, notes: [], boxes: [], diagrams: [], leftOut: {} })
 

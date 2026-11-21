@@ -1,5 +1,6 @@
 import type { ColumnInfo, ForeignKeyInfo, TableInfo } from './types.js'
-import { emptyImport, type ImportedModel } from './imported-model.js'
+import { emptyImport, leaveOut, type ImportedModel } from './imported-model.js'
+import { isPlainType } from './foreign-sql.js'
 
 /**
  * Mermaid ER diagrams (`erDiagram`, also inside a Markdown ```mermaid fence): entities with their attributes
@@ -43,7 +44,20 @@ const singular = (s: string) => s.replace(/ies$/i, 'y').replace(/(s|x|z|ch|sh)es
 
 /** The erDiagram sources in a text: the text itself, or each ```mermaid fence of a Markdown file. */
 function sources(text: string): string[] {
-  const fences = [...text.matchAll(/^\s*(`{3,}|~{3,})\s*mermaid\b[^\n]*\n([\s\S]*?)^\s*\1/gm)].map((m) => m[2]!)
+  // Line by line (a regex over the text backtracks through every unclosed fence).
+  const fences: string[] = []
+  let open: { fence: string; lines: string[] } | undefined
+  for (const line of text.split('\n')) {
+    if (open) {
+      if (line.trim().startsWith(open.fence) && /^[`~]*\s*$/.test(line.trim())) {
+        fences.push(open.lines.join('\n') + '\n')
+        open = undefined
+      } else open.lines.push(line)
+    } else {
+      const start = /^\s*(`{3,}|~{3,})\s*mermaid\b/.exec(line)
+      if (start) open = { fence: start[1]!, lines: [] }
+    }
+  }
   const diagrams = fences.length ? fences : [text]
   return diagrams.filter((d) => /^\s*erDiagram\b/m.test(d.replace(/^---\n[\s\S]*?\n---\n/, '').replace(/^\s*%%.*$/gm, '')))
 }
@@ -68,7 +82,8 @@ export function tablesFromMermaid(text: string): ImportedModel {
   const relationships: { left: TableInfo; right: TableInfo; l: Side; r: Side; label: string }[] = []
   const ENTITY = String.raw`("[^"]+"|[A-Za-z_][\w-]*(?:\[[^\]]*\])?)`
   const SYMBOL = new RegExp(`^${ENTITY}\\s*(\\|o|\\|\\||\\}o|\\}\\|)(--|\\.\\.)(o\\||\\|\\||o\\{|\\|\\{)\\s*${ENTITY}\\s*(?::\\s*(.*))?$`)
-  const WORDED = new RegExp(`^${ENTITY}\\s+(.+?)\\s+(?:optionally\\s+)?to\\s+(.+?)\\s+${ENTITY}\\s*(?::\\s*(.*))?$`, 'i')
+  // (Cardinality words are short: bounded, so a long line can't make the two lazy groups backtrack for ever.)
+  const WORDED = new RegExp(`^${ENTITY}\\s+(.{1,64}?)\\s+(?:optionally\\s+)?to\\s+(.{1,64}?)\\s+${ENTITY}\\s*(?::\\s*(.*))?$`, 'i')
   for (const source of found) {
     const lines = source.replace(/^---\n[\s\S]*?\n---\n/, '').split('\n')
     let i = lines.findIndex((l) => /^\s*erDiagram\b/.test(l))
@@ -107,8 +122,10 @@ export function tablesFromMermaid(text: string): ImportedModel {
           if (!m) continue
           const name = m[2]!.replace(/^\*/, '')
           const keys = (m[3] ?? '').split(',').map((k) => k.trim())
-          const column: ColumnInfo = { name, ordinal: t.columns.length + 1, dataType: sqlType(m[1]!.replace(/^\*/, '')), nullable: !keys.includes('PK'), defaultValue: null, isPrimaryKey: keys.includes('PK') || m[2]!.startsWith('*'), isIdentity: false, comment: m[4]?.trim() || null }
+          const typed = sqlType(m[1]!.replace(/^\*/, ''))
+          const column: ColumnInfo = { name, ordinal: t.columns.length + 1, dataType: isPlainType(typed) ? typed : 'text', nullable: !keys.includes('PK'), defaultValue: null, isPrimaryKey: keys.includes('PK') || m[2]!.startsWith('*'), isIdentity: false, comment: m[4]?.trim() || null }
           if (column.isPrimaryKey) column.nullable = false
+          if (column.dataType !== typed) leaveOut(out, column, 'types', 'Mermaid', typed)
           if (t.columns.some((c) => c.name === name)) continue
           t.columns.push(column)
           if (column.isPrimaryKey) t.primaryKey.push(name)

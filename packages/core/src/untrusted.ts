@@ -14,6 +14,8 @@ export const FILE_LIMITS = {
   mwb: 64 * 1024 * 1024,
   /** Its document.mwb.xml once inflated (checked while inflating: a header may lie). */
   mwbDocument: 128 * 1024 * 1024,
+  /** A DeZign for Databases file (one file of a project, or a whole .dez): only to refuse what never ends. */
+  dezign: 512 * 1024 * 1024,
   /** A project's .env, compose or Prisma file. */
   project: 1024 * 1024,
   /** Nesting of XML and JSON a model may have (Workbench's own documents nest about 15 deep). */
@@ -28,8 +30,8 @@ export function checkSize(name: string, size: number, limit: number, what: strin
 }
 
 // C0 and C1 controls, DEL, and the bidirectional overrides that make a name read differently from what it is.
-const CONTROL = /[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/g
-const CONTROL_KEEP_LINES = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‪-‮⁦-⁩]/g
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g
+const CONTROL_KEEP_LINES = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g
 
 /** A name for the UI, a connection or a table: one line, no control characters, at most `max` characters. */
 export function cleanName(value: string, max = 128): string {

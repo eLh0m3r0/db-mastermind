@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { copyFile, mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, open, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative, sep } from 'node:path'
 import { app } from 'electron'
-import { archiveDezignVersion, assembleDezignProject, dezignAsFolder, dezignDomainsNote, dezignDomainsOfModel, dezignDatabaseFor, dezignObjectEdits, listDezignVersions, newDezignProject, parseDbml, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '@dbmastermind/core'
+import { archiveDezignVersion, assembleDezignProject, dezignAsFolder, dezignDomainsNote, dezignDomainsOfModel, dezignDatabaseFor, dezignObjectEdits, FILE_LIMITS, listDezignVersions, newDezignProject, parseDbml, readCapped, readDezign, saveToDezign, toDbml, type DezignFile, type TableInfo } from '@dbmastermind/core'
 import type { DezignSaveOutcome, DezignSaveRequest, ModelExportLayout, ModelVersion, OpenedModelFile } from '@shared/api'
 import { dataPath } from './storage'
 import { paletteFill, paletteIndex } from './palette'
@@ -35,12 +35,15 @@ async function projectFiles(projectFile: string): Promise<DezignFile[]> {
   const out: DezignFile[] = []
   // A large project has thousands of small files: read them a batch at a time, not all at once.
   for (let i = 0; i < paths.length; i += 64) {
-    out.push(...(await Promise.all(paths.slice(i, i + 64).map(async (path) => ({ path, text: await readFile(join(dir, path), 'latin1') })))))
+    out.push(...(await Promise.all(paths.slice(i, i + 64).map(async (path) => ({ path, text: await readDezignFile(join(dir, path)) })))))
   }
   return out
 }
 
-const load = async (path: string): Promise<DezignFile[]> => (isProject(path) ? projectFiles(path) : [{ path: basename(path), text: await readFile(path, 'latin1') }])
+/** A DeZign file as the binary string the reader decodes; a FIFO or device is refused, a file is read up to the cap. */
+const readDezignFile = async (path: string) => (await readCapped(path, { limit: FILE_LIMITS.dezign, what: 'a DeZign model' })).toString('latin1')
+
+const load = async (path: string): Promise<DezignFile[]> => (isProject(path) ? projectFiles(path) : [{ path: basename(path), text: await readDezignFile(path) }])
 
 function read(files: DezignFile[], project: boolean) {
   // DeZign writes the Windows code page of the machine it ran on; the user's language is the best guess for short texts.
@@ -243,7 +246,7 @@ export async function listModelVersions(path: string): Promise<ModelVersion[]> {
   if (ext !== '.dez' && ext !== '.dezproj') return []
   let versions: ModelVersion[]
   if (!isProject(path)) {
-    versions = listDezignVersions(await readFile(path, 'latin1'), { fallbackEncoding: fallbackEncoding() }).map((v, i) => ({ id: String(i), ...v }))
+    versions = listDezignVersions(await readDezignFile(path), { fallbackEncoding: fallbackEncoding() }).map((v, i) => ({ id: String(i), ...v }))
   } else {
     const dir = await archiveDir(path)
     if (!dir) return []
@@ -294,10 +297,10 @@ export async function archiveModelVersion(path: string, request: { label?: strin
 
 /** An archived version of a DeZign project as a DBML model. */
 export async function openModelVersion(path: string, id: string): Promise<OpenedModelFile> {
-  if (!isProject(path)) return opened(path, readDezign(await readFile(path, 'latin1'), { archived: Number(id), fallbackEncoding: fallbackEncoding() }))
+  if (!isProject(path)) return opened(path, readDezign(await readDezignFile(path), { archived: Number(id), fallbackEncoding: fallbackEncoding() }))
   const dir = await archiveDir(path)
   // The id is a file name out of the list: nothing else in the folder, and nothing outside it, can be asked for.
   if (!dir || basename(id) !== id || !(await readdir(dir)).includes(id)) throw new Error('The archived version is not in the project')
-  const version = (await readFile(join(dir, id), 'latin1')).replace(/^\uFEFF?\s*<\?xml[^>]*\?>\s*/, '')
+  const version = (await readDezignFile(join(dir, id))).replace(/^\uFEFF?\s*<\?xml[^>]*\?>\s*/, '')
   return opened(path, readDezign(`<dezign>\n${version}\n</dezign>`, { archived: 0, fallbackEncoding: fallbackEncoding() }))
 }

@@ -174,3 +174,24 @@ describe('code from a model', () => {
     expect(ts).toContain('created_at: Date;')
   })
 })
+
+describe('bit by database (review M8: as prisma db pull reads it)', () => {
+  const bits = parseDbml('Table bits {\n  id int [pk]\n  a bit\n  b "bit(1)"\n  c "bit(8)"\n}\n').tables
+  it('PostgreSQL: bit strings', () => {
+    const prisma = toPrisma(bits, { database: 'postgres' })
+    expect(prisma).toMatch(/a\s+String\?\s+@db\.Bit\(1\)/)
+    expect(prisma).toMatch(/b\s+String\?\s+@db\.Bit\(1\)/)
+    expect(prisma).toMatch(/c\s+String\?\s+@db\.Bit\(8\)/)
+    expect(toTypeScript(bits, { database: 'postgres' })).toMatch(/a: string \| null;\n {2}b: string \| null;/)
+    expect(toDrizzle(bits, { database: 'postgres' })).not.toMatch(/boolean\(/)
+    expect(toSqlAlchemy(bits, { database: 'postgres' })).not.toMatch(/Boolean\(/)
+  })
+  it('MySQL: bit and bit(1) are flags, bit(8) bytes; SQL Server: bit is a flag', () => {
+    const prisma = toPrisma(bits, { database: 'mysql' })
+    expect(prisma).toMatch(/a\s+Boolean\?\s+@db\.Bit\(1\)/)
+    expect(prisma).toMatch(/b\s+Boolean\?\s+@db\.Bit\(1\)/)
+    expect(prisma).toMatch(/c\s+Bytes\?\s+@db\.Bit\(8\)/)
+    expect(toPrisma(bits, { database: 'mssql' })).toMatch(/a\s+Boolean\?/)
+    expect(toTypeScript(bits, { database: 'mssql' })).toMatch(/a: boolean \| null;/)
+  })
+})

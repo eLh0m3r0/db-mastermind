@@ -1,7 +1,8 @@
 import { Unzip, UnzipInflate } from 'fflate'
 import type { ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfo } from './types.js'
 import { parseDezignXml, unescapeDezignText, type DezignElement } from './dezign.js'
-import { emptyImport, layoutKey, spreadLayout, type ImportedModel } from './imported-model.js'
+import { emptyImport, layoutKey, leaveOut, spreadLayout, type ImportedModel } from './imported-model.js'
+import { isPlainType, plainDefault } from './foreign-sql.js'
 import { checkSize, FILE_LIMITS, megabytes } from './untrusted.js'
 
 /**
@@ -100,7 +101,7 @@ function columnType(c: GrtObject, byId: Map<string, GrtObject>): string {
  * A default as SQL: Workbench keeps it as typed, `ON UPDATE …` included (that part is no default), and a number's
  * as MySQL reports it, quoted ('4.99'): written as the number, as the SQL reader writes it (ddl-import.ts).
  */
-function columnDefault(c: GrtObject, type: string): string | null {
+function columnDefault(c: GrtObject, type: string): string | null | undefined {
   if (num(c.defaultValueIsNull) === 1) return null
   const d = str(c.defaultValue)
     .replace(/\s+ON\s+UPDATE\s+.*$/is, '')
@@ -111,7 +112,7 @@ function columnDefault(c: GrtObject, type: string): string | null {
     const text = quoted[1]!
     return text.replace(/[-.]/g, '').replace(/^0+/, '').length <= 15 ? String(Number(text)) : text
   }
-  return d
+  return plainDefault(d)
 }
 
 /**
@@ -119,7 +120,7 @@ function columnDefault(c: GrtObject, type: string): string | null {
  * declares may lie, so the inflated bytes are counted as they come and inflating stops at the limit (a zip bomb
  * never gets to allocate more than one slice beyond it).
  */
-export function mwbDocument(bytes: Uint8Array, limit = FILE_LIMITS.mwbDocument): string {
+export function mwbDocument(bytes: Uint8Array, limit = FILE_LIMITS.mwbDocument, /** Filled with how many bytes were inflated (tests). */ stats?: { inflated: number }): string {
   if (bytes[0] !== 0x50 || bytes[1] !== 0x4b) throw new Error('Not a MySQL Workbench model: the file is not a zip archive')
   const chunks: Uint8Array[] = []
   let total = 0
@@ -141,6 +142,7 @@ export function mwbDocument(bytes: Uint8Array, limit = FILE_LIMITS.mwbDocument):
         return
       }
       total += chunk.length
+      if (stats) stats.inflated = total
       if (total > limit) {
         failure = new Error(`The model's document is larger than ${megabytes(limit)}: not a model this app opens`)
         file.terminate()
@@ -198,19 +200,26 @@ export function tablesFromMwb(bytes: Uint8Array): ImportedModel {
         .map((c, i) => {
           if (c.$id) columnName.set(c.$id, str(c.name))
           const generated = num(c.generated) === 1
-          const dataType = columnType(c, byId)
-          return {
+          // Types, defaults and collations are SQL the file gives as text: taken only when plain (foreign-sql.ts).
+          const typed = columnType(c, byId)
+          const dataType = isPlainType(typed) ? typed : 'text'
+          const defaultValue = columnDefault(c, dataType)
+          const collation = str(c.collationName)
+          const column: ColumnInfo = {
             name: str(c.name),
             ordinal: i + 1,
             dataType,
             nullable: num(c.isNotNull) !== 1,
-            defaultValue: columnDefault(c, dataType),
+            defaultValue: defaultValue ?? null,
             isPrimaryKey: false,
             isIdentity: num(c.autoIncrement) === 1,
             comment: str(c.comment) || null,
             ...(generated ? { isGenerated: true } : {}),
-            ...(str(c.collationName) ? { collation: str(c.collationName) } : {}),
+            ...(/^[A-Za-z0-9_]+$/.test(collation) ? { collation } : {}),
           }
+          if (dataType !== typed) leaveOut(out, column, 'types', 'MySQL Workbench', typed)
+          if (defaultValue === undefined) leaveOut(out, column, 'defaults', 'MySQL Workbench', str(c.defaultValue))
+          return column
         })
       const table: TableInfo = { ...(qualified ? { schema: str(s.name) } : {}), name: str(t.name), type: 'table', comment: str(t.comment) || null, columns, primaryKey: [], foreignKeys: [], indexes: [] }
       if (t.$id) tableOf.set(t.$id, table)

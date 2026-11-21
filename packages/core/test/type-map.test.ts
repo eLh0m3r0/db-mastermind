@@ -114,3 +114,15 @@ describe('type translation', () => {
     expect(sql).toContain('[created] datetimeoffset DEFAULT SYSDATETIME()')
   })
 })
+
+describe('MySQL UNSIGNED and ZEROFILL elsewhere (review M7)', () => {
+  it('leave every numeric type for the databases that have neither', () => {
+    for (const to of ['postgres', 'mssql', 'sqlite', 'oracle', 'duckdb'] as const) {
+      for (const type of ['decimal(10,2) unsigned', 'float unsigned', 'double unsigned zerofill', 'numeric(5) unsigned', 'int unsigned']) {
+        expect(translateType(type, to), `${type} → ${to}`).not.toMatch(/unsigned|zerofill/i)
+      }
+    }
+    expect(translateType('decimal(10,2) unsigned', 'mysql')).toBe('decimal(10,2) unsigned')
+    expect(translateType('decimal(10,2) unsigned', 'postgres')).toBe('decimal(10,2)')
+  })
+})

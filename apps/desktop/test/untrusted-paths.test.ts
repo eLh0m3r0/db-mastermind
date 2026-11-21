@@ -59,3 +59,45 @@ describe('a project folder from a stranger', () => {
     expect(() => readProject(big)).toThrow(/\.env is larger than 1 MB/)
   })
 })
+
+describe("a project's SQLite file (review L7)", () => {
+  it('is the project folder\'s when relative, and not taken when it points out of the folder', () => {
+    const project = join(dir, 'laravel')
+    mkdirSync(project)
+    writeFileSync(join(project, '.env'), 'DB_CONNECTION=sqlite\nDB_DATABASE=database/database.sqlite\n')
+    expect(readProject(project).map((c) => c.filePath)).toEqual([join(project, 'database', 'database.sqlite')])
+    writeFileSync(join(project, '.env'), 'DB_CONNECTION=sqlite\nDB_DATABASE=../../elsewhere.db\n')
+    expect(readProject(project)).toEqual([])
+    writeFileSync(join(project, '.env'), 'DB_CONNECTION=sqlite\nDB_DATABASE=/etc/hosts\n')
+    expect(readProject(project)).toEqual([])
+  })
+})
+
+describe.skipIf(process.platform === 'win32')('files that never end or block (review M2)', () => {
+  // (A FIFO read would block for ever and /dev/zero never ends: finishing at all is the check.)
+  it('a project folder with a FIFO .env and prisma/schema.prisma -> /dev/zero is read', { timeout: 30_000 }, async () => {
+    const { execFileSync } = await import('node:child_process')
+    const project = join(dir, 'never-ends')
+    mkdirSync(join(project, 'prisma'), { recursive: true })
+    execFileSync('mkfifo', [join(project, '.env')])
+    symlinkSync('/dev/zero', join(project, 'prisma', 'schema.prisma'))
+    writeFileSync(join(project, 'docker-compose.yml'), 'services:\n  db:\n    image: postgres:16\n    ports: ["5432:5432"]\n')
+    expect(readProject(project).map((c) => c.driver)).toEqual(['postgres'])
+    // The FIFO picked itself: refused, not waited on.
+    expect(() => readProject(join(project, '.env'))).toThrow()
+  })
+
+  it('a model that is a link to /dev/zero, a FIFO, or larger than it says is refused while reading', { timeout: 30_000 }, async () => {
+    const { execFileSync } = await import('node:child_process')
+    const { readForeignModel, isForeignModel } = await import('../src/main/foreign-model')
+    const zero = join(dir, 'zero.prisma')
+    symlinkSync('/dev/zero', zero)
+    await expect(readForeignModel(zero)).rejects.toThrow(/not a plain file/)
+    const fifo = join(dir, 'fifo.mmd')
+    execFileSync('mkfifo', [fifo])
+    await expect(readForeignModel(fifo)).rejects.toThrow(/not a plain file/)
+    const json = join(dir, 'fifo.json')
+    execFileSync('mkfifo', [json])
+    expect(await isForeignModel(json)).toBe(false)
+  })
+})

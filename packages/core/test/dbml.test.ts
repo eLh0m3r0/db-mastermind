@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { growth, LINEAR } from './growth.js'
 import { compareSchemas, designFromDbml, diffTables, parseDbml, toDbml, type TableInfo } from '../src/index.js'
 
 const source = `
@@ -302,5 +303,34 @@ describe('DBML as dbdiagram.io users write it (wave 2, checked against @dbml/cor
   it('says it does not take a many-to-many relationship (no foreign key says one)', () => {
     const m = parseDbml('Table a {\n  id int [pk]\n}\nTable b {\n  id int [pk]\n}\nRef: a.id <> b.id\n')
     expect(m.errors).toEqual([{ line: 7, message: 'Many-to-many relationships are not in the model: a.id <> b.id' }])
+  })
+})
+
+describe('an unclosed bracket (review M5)', () => {
+  it('is an error on its line and the rest of the model is read', () => {
+    const m = parseDbml('Table a {\n  id int [pk\n  name text\n}\n\nTable b {\n  id int [pk]\n}\nRef: a.id > b.id\n')
+    expect(m.errors).toEqual([{ line: 2, message: "Can't read column: id int [pk" }])
+    expect(m.tables.map((t) => [t.name, t.columns.map((c) => c.name)])).toEqual([
+      ['a', ['name']],
+      ['b', ['id']],
+    ])
+    expect(m.tables[0]!.foreignKeys).toHaveLength(1)
+  })
+
+  it('lines after an unclosed bracket each say so, in time that grows linearly', { timeout: 60_000 }, () => {
+    const text = (n: number) => `Table a {\n${Array.from({ length: n }, (_, i) => `  c${i} int [`).join('\n')}\n}\n`
+    expect(parseDbml(text(1000)).errors.length).toBe(1000)
+    const g = growth((n) => {
+      const input = text(n)
+      return () => parseDbml(input)
+    }, 10_000)
+    expect(g.ratio).toBeLessThan(LINEAR)
+  })
+})
+
+describe('names that differ only in case', () => {
+  it('are two columns', () => {
+    const m = parseDbml("Table users {\n  id int [pk]\n  email text\n  Email text [note: 'other']\n}\n")
+    expect(m.tables[0]!.columns.map((c) => c.name)).toEqual(['id', 'email', 'Email'])
   })
 })

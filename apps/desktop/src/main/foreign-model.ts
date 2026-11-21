@@ -1,6 +1,6 @@
-import { open, readFile, stat } from 'node:fs/promises'
+import { open, stat } from 'node:fs/promises'
 import { basename, extname } from 'node:path'
-import { checkSize, FILE_LIMITS, isDrawDb, modelFormatOf, readModelFile, toDbml, type ImportedModel } from '@dbmastermind/core'
+import { FILE_LIMITS, isDrawDb, modelFormatOf, readCapped, readModelFile, toDbml, type ImportedModel } from '@dbmastermind/core'
 import type { OpenedModelFile } from '@shared/api'
 import { paletteIndex } from './palette'
 
@@ -16,24 +16,27 @@ const LARGEST_DIAGRAM = FILE_LIMITS.model
 export async function isForeignModel(path: string): Promise<boolean> {
   if (FOREIGN_MODEL.test(path)) return true
   if (extname(path).toLowerCase() !== '.json') return false
-  const size = (await stat(path).catch(() => null))?.size ?? 0
-  if (!size || size > LARGEST_DIAGRAM) return false
+  const info = await stat(path).catch(() => null)
+  if (!info?.isFile() || !info.size || info.size > LARGEST_DIAGRAM) return false
   // A drawDB export starts with an object; a JSON data file is often an array (and then not read whole).
   const handle = await open(path, 'r')
   try {
-    const head = Buffer.alloc(Math.min(size, 256))
+    const head = Buffer.alloc(Math.min(info.size, 256))
     await handle.read(head, 0, head.length, 0)
-    if (!/^\s*\{/.test(head.toString('utf8').replace(/^﻿/, ''))) return false
+    if (!/^\s*\{/.test(head.toString('utf8').replace(/^\ufeff/, ''))) return false
   } finally {
     await handle.close()
   }
-  return isDrawDb((await readFile(path, 'utf8')).replace(/^﻿/, ''))
+  const text = await readCapped(path, { limit: LARGEST_DIAGRAM, what: 'a model' }).then(
+    (b) => b.toString('utf8'),
+    () => '',
+  )
+  return isDrawDb(text.replace(/^\ufeff/, ''))
 }
 
 export async function readForeignModel(path: string): Promise<ImportedModel> {
-  // The size first: a stranger's file is not read whole to find out it is too large.
-  checkSize(basename(path), (await stat(path)).size, /\.mwb$/i.test(path) ? FILE_LIMITS.mwb : FILE_LIMITS.model, 'a model')
-  const bytes = await readFile(path)
+  // Only a plain file, and never more than the limit (counted while reading: a size can lie, /dev/zero has none).
+  const bytes = await readCapped(path, { limit: /\.mwb$/i.test(path) ? FILE_LIMITS.mwb : FILE_LIMITS.model, what: 'a model' })
   return readModelFile(basename(path), new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength))
 }
 

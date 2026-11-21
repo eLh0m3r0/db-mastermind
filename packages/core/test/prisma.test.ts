@@ -83,3 +83,12 @@ describe('tablesFromPrisma', () => {
     expect(back.tables.find((x) => x.name === 'Post')!.foreignKeys[0]).toMatchObject({ refTable: 'users', onDelete: 'CASCADE' })
   })
 })
+
+describe('// inside strings (review L5)', () => {
+  it('keeps documentation and defaults that hold a URL', () => {
+    const { tables, errors } = tablesFromPrisma('/// See https://example.com/docs for the rules\nmodel site {\n  id  Int    @id\n  /// The home page, e.g. https://example.com\n  url String @default("https://example.com/") // a comment\n}\n')
+    expect(errors).toEqual([])
+    expect(tables[0]!.comment).toBe('See https://example.com/docs for the rules')
+    expect(tables[0]!.columns[1]).toMatchObject({ name: 'url', comment: 'The home page, e.g. https://example.com', defaultValue: "'https://example.com/'" })
+  })
+})

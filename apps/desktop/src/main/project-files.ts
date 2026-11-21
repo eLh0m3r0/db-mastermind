@@ -1,24 +1,22 @@
-import { lstatSync, readdirSync, readFileSync } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
-import { COMPOSE_FILE, FILE_LIMITS, megabytes, PROJECT_ENV_FILE, projectConnections, type ImportedConnection } from '@dbmastermind/core'
+import { lstatSync, readdirSync } from 'node:fs'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { COMPOSE_FILE, FILE_LIMITS, NotAFileError, PROJECT_ENV_FILE, projectConnections, readCappedSync, type ImportedConnection } from '@dbmastermind/core'
 
 /** A project's own file that describes connections: a .env file or a docker-compose file. */
 export const isProjectFile = (path: string) => PROJECT_ENV_FILE.test(basename(path)) || COMPOSE_FILE.test(basename(path))
 
 /**
  * One file of the project, if it is a plain file of at most 1 MB. A link is not followed: in a folder from a
- * stranger, `.env` may point at ~/.ssh/id_rsa or another project's secrets.
+ * stranger, `.env` may point at ~/.ssh/id_rsa or another project's secrets. A FIFO or a device is skipped, and
+ * reading stops at the limit (the size a file reports is not trusted).
  */
 function readPlain(path: string): string | undefined {
-  let stat
   try {
-    stat = lstatSync(path)
-  } catch {
-    return undefined
+    return readCappedSync(path, { limit: FILE_LIMITS.project, what: "a project's settings file", follow: false }).toString('utf8')
+  } catch (err) {
+    if (err instanceof NotAFileError || (err as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw err
   }
-  if (!stat.isFile()) return undefined
-  if (stat.size > FILE_LIMITS.project) throw new Error(`${basename(path)} is larger than ${megabytes(FILE_LIMITS.project)}: not a project's settings file`)
-  return readFileSync(path, 'utf8')
 }
 
 /**
@@ -53,5 +51,12 @@ export function readProject(path: string): ImportedConnection[] {
     // Compose reads the .env beside it for ${VAR}.
     if (COMPOSE_FILE.test(basename(path))) add('.env')
   }
-  return projectConnections(files, basename(dir), { folder })
+  // A SQLite file a project names (Laravel's DB_DATABASE=database/database.sqlite) is the project's own: a relative
+  // path is the folder's, and a path out of the folder (a stranger's .env naming ~/x.db) is not taken.
+  return projectConnections(files, basename(dir), { folder }).flatMap((c) => {
+    if (c.driver !== 'sqlite' || !c.filePath) return [c]
+    const full = resolve(dir, c.filePath)
+    const inside = relative(dir, full)
+    return inside && !inside.startsWith('..') && !isAbsolute(inside) ? [{ ...c, filePath: full }] : []
+  })
 }

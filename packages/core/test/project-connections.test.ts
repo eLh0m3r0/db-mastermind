@@ -42,7 +42,7 @@ describe('.env files', () => {
         'DOLLAR=a$$b',
       ].join('\n'),
     )
-    expect(vars).toEqual({ DB_USER: 'shop', DB_PASS: 'p@ss $NOT # kept', DB_NAME: 'shop_dev', HOST: 'localhost', URL: 'postgres://shop:p@ss $NOT # kept@localhost:5432/shop_dev', MULTI: 'line one\nline two', EMPTY: '', DOLLAR: 'a$b' })
+    expect(vars).toEqual({ DB_USER: 'shop', DB_PASS: 'p@ss $NOT # kept', DB_NAME: 'shop_dev', HOST: 'localhost', URL: 'postgres://shop:p@ss $NOT # kept@localhost:5432/shop_dev', MULTI: 'line one\nline two', EMPTY: '', DOLLAR: 'a$$b' })
   })
 
   it('finds connection URLs in any variable and the DB_*, PG* and MYSQL_* sets', () => {
@@ -155,5 +155,26 @@ describe('a project folder', () => {
   it('reads a Prisma datasource written as a URL or from the environment', () => {
     expect(connectionFromPrisma('datasource db {\n  provider = "mysql"\n  url = "mysql://root:pw@localhost:3306/app"\n}', {}, 'app')).toMatchObject({ driver: 'mysql', database: 'app', password: 'pw' })
     expect(connectionFromPrisma('datasource db {\n  provider = "postgresql"\n  url = env("MISSING")\n}', {}, 'app')).toBeUndefined()
+  })
+})
+
+describe('dollar signs, as each format reads them (review L6)', () => {
+  it('.env: only ${VAR} is a variable, a password with $ stays, nothing in single quotes', () => {
+    const vars = parseDotenv("USER=app\nPASS=pa$word\nTWO=a$$b\nQUOTED='${USER}'\nURL=postgres://${USER}:${PASS}@db/x\nESCAPED=\"\\${USER}\"\n")
+    expect(vars).toEqual({ USER: 'app', PASS: 'pa$word', TWO: 'a$$b', QUOTED: '${USER}', URL: 'postgres://app:pa$word@db/x', ESCAPED: '${USER}' })
+  })
+
+  it('compose: $VAR and ${VAR} are variables, $$ is a dollar sign', () => {
+    const services = servicesFromCompose('services:\n  db:\n    image: postgres:16\n    environment:\n      POSTGRES_USER: $USER\n      POSTGRES_PASSWORD: "pa$$word"\n      POSTGRES_DB: ${DB:-shop}\n    ports: ["5432:5432"]\n', { USER: 'app' }, 'p')
+    expect(services[0]!.connection).toMatchObject({ user: 'app', password: 'pa$word', database: 'shop' })
+  })
+})
+
+describe('names an object has of its own (review M4, prototype lookups)', () => {
+  it('a variable named after Object.prototype is no variable, and __proto__ is a plain key', () => {
+    const vars = parseDotenv('U=${constructor}\nV=${toString:-x}\n__proto__=p\nW=${__proto__}\n')
+    expect(Object.entries(vars)).toEqual([['U', ''], ['V', 'x'], ['__proto__', 'p'], ['W', 'p']])
+    const services = servicesFromCompose('services:\n  db:\n    image: postgres:16\n    environment:\n      - constructor\n      - POSTGRES_PASSWORD=${hasOwnProperty}\n    ports: ["5432:5432"]\n', {}, 'p')
+    expect(services[0]!.connection!.password ?? '').toBe('')
   })
 })

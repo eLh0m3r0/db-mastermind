@@ -26,6 +26,9 @@ const FOREIGN_LEFT_OUT: [keyof ForeignModelInfo['leftOut'], string][] = [
   ['brokenRelationships', 'relationships to tables or columns the file does not have: {n}'],
   ['scalarLists', 'list fields (kept as text): {n}'],
   ['customTypes', 'composite types (columns keep their name): {n}'],
+  ['defaults', "defaults that aren't plain SQL (a note on the column says them): {n}"],
+  ['checks', "checks that aren't plain SQL (a note on the column says them): {n}"],
+  ['types', "types that aren't plain SQL (text, a note on the column says them): {n}"],
 ]
 
 /** The notice after another tool's model was opened or imported: what came over and what could not, with counts. */

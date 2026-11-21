@@ -1,8 +1,9 @@
 // Linux: does a packaged build start, and is its renderer really inside Chromium's sandbox?
 //
-//   node e2e/linux-sandbox.mjs <executable> sandboxed|fallback [--plain]
+//   node e2e/linux-sandbox.mjs <executable> sandboxed|fallback|refused [--plain]
 //
-// <executable> is the installed .deb's binary or an .AppImage. The answer comes from the running processes, not from
+// <executable> is the installed .deb's binary, an .AppImage, or a .desktop file whose Exec line is started as it is
+// (with --plain; that is what the menu launcher runs). The answer comes from the running processes, not from
 // the command line: a sandboxed renderer runs under a seccomp-bpf filter (`Seccomp: 2` in /proc/<pid>/status) inside
 // its own PID namespace (two numbers in `NSpid`); with --no-sandbox it has neither. chrome://sandbox, Chromium's own
 // report, is printed as well when Electron serves it.
@@ -10,6 +11,8 @@
 // Default: launched through Playwright (with chromiumSandbox: true, or Playwright itself adds --no-sandbox) with a
 // model file as its argument, which must open in a tab. --plain: started with no arguments at all, the way
 // electron-updater starts a replaced AppImage after an update, and watched from outside.
+// "refused": the system offers Chromium no sandbox at all (no user namespaces for users, no SUID helper); the app must
+// stop with Chromium's sandbox error rather than run unsandboxed. Always a plain start.
 // "fallback" with --plain also expects the one stderr line that explains why the AppImage runs without the sandbox
 // (only a plain start reads stderr from its first byte).
 import { _electron as electron } from '@playwright/test'
@@ -19,8 +22,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const [exe, expect, mode] = process.argv.slice(2)
-if (!exe || !['sandboxed', 'fallback'].includes(expect)) {
-  console.error('usage: node e2e/linux-sandbox.mjs <executable> sandboxed|fallback [--plain]')
+if (!exe || !['sandboxed', 'fallback', 'refused'].includes(expect)) {
+  console.error('usage: node e2e/linux-sandbox.mjs <executable> sandboxed|fallback|refused [--plain]')
   process.exit(2)
 }
 const dir = mkdtempSync(join(tmpdir(), 'dbm-sandbox-'))
@@ -70,14 +73,35 @@ function judge(list) {
 function judgeStderr(stderr, complete) {
   const line = stderr.split('\n').find((l) => SANDBOX_LINE.test(l))
   if (line) console.log(`stderr: ${line}`)
-  if (complete && expect === 'fallback' && !line) problems.push('no stderr line explaining the missing sandbox')
+  // The AppImage says why on stderr; the .deb said so when it was installed.
+  if (complete && expect === 'fallback' && exe.endsWith('.AppImage') && !line) problems.push('no stderr line explaining the missing sandbox')
   if (expect === 'sandboxed' && line) problems.push('the missing-sandbox line was printed although the sandbox is on')
   if (/FATAL|SUID sandbox helper/.test(stderr)) problems.push(`Chromium complained:\n${stderr.split('\n').filter((l) => /FATAL|sandbox/i.test(l)).join('\n')}`)
 }
 
-if (mode === '--plain') {
+if (expect === 'refused') {
+  const child = spawn(exe, [], { env, detached: true, stdio: ['ignore', 'ignore', 'pipe'] })
+  let stderr = ''
+  child.stderr.on('data', (d) => (stderr += d))
+  const code = await Promise.race([new Promise((r) => child.once('exit', (c, sig) => r(c ?? sig))), sleep(30_000).then(() => 'still running')])
+  const line = stderr.split('\n').find((l) => /sandbox/i.test(l))
+  console.log(`exit: ${code}${line ? `\nstderr: ${line.trim()}` : ''}`)
+  if (code === 'still running') {
+    problems.push(`started although no sandbox is possible: renderers ${JSON.stringify(renderers(child.pid).map((r) => [r.seccomp, r.nspid]))}`)
+    try {
+      process.kill(-child.pid, 'SIGTERM')
+    } catch {}
+  } else if (!line) problems.push(`exited (${code}) without a sandbox error:\n${stderr}`)
+} else if (mode === '--plain') {
+  // A .desktop file: its Exec line, quoted words kept together, field codes (%U) dropped.
+  let [command, ...args] = [exe, ...[]]
+  if (exe.endsWith('.desktop')) {
+    const execLine = /^Exec=(.*)$/m.exec(readFileSync(exe, 'utf8'))?.[1] ?? ''
+    console.log(`Exec=${execLine}`)
+    ;[command, ...args] = [...execLine.matchAll(/"([^"]*)"|(\S+)/g)].map((m) => m[1] ?? m[2]).filter((w) => !/^%[fFuU]$/.test(w))
+  }
   // The process group is killed at the end: the AppImage runtime, the app and its helpers.
-  const child = spawn(exe, [], { env: { ...env, APPIMAGE_SILENT_INSTALL: 'true' }, detached: true, stdio: ['ignore', 'ignore', 'pipe'] })
+  const child = spawn(command, args, { env: { ...env, APPIMAGE_SILENT_INSTALL: 'true' }, detached: true, stdio: ['ignore', 'ignore', 'pipe'] })
   let stderr = ''
   child.stderr.on('data', (d) => (stderr += d))
   let found = []
