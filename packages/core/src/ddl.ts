@@ -1326,7 +1326,11 @@ export function guessRenames(source: TableInfo[], target: TableInfo[]): RenameGu
  * source is a model, which names things on purpose) a new table always goes to the schema it names and keeps
  * the names of its relationships and indexes.
  */
-export function compareSchemas(source: TableInfo[], target: TableInfo[], options: { keepExtra?: boolean; model?: boolean; renames?: RenameGuess[] } & DiffOptions = {}): SchemaChange[] {
+export function compareSchemas(
+  source: TableInfo[],
+  target: TableInfo[],
+  options: { keepExtra?: boolean; model?: boolean; renames?: RenameGuess[]; /** The database the target is (or its script is for): MySQL makes some indexes by itself. */ driver?: DriverId } & DiffOptions = {},
+): SchemaChange[] {
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
   const tableRenames = (options.renames ?? []).filter((r) => r.kind === 'table')
   const columnRenames = (options.renames ?? []).filter((r) => r.kind === 'column')
@@ -1423,9 +1427,12 @@ export function compareSchemas(source: TableInfo[], target: TableInfo[], options
       }
     }
     // MySQL makes an index for a foreign key whose columns no index leads, named after the key: a model (a
-    // Workbench model, a live database) lists it, a script leaves it to MySQL. The same index, so no change.
+    // Workbench model, a live database) lists it, a script leaves it to MySQL. The same index, so no change. (Only
+    // there: elsewhere an index named like its key is the user's own, and missing.)
+    const makesKeyIndexes = options.driver === 'mysql' || options.driver === 'mariadb'
     draft.indexes = draft.indexes.filter(
       (i) =>
+        !makesKeyIndexes ||
         matchedIndexes.has(i) ||
         i.unique ||
         !draft.foreignKeys.some((f) => f.originalName && same(f.name ?? '', i.name ?? '') && cols(f.columns) === cols(i.columns)) ||

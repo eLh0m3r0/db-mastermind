@@ -87,7 +87,7 @@ describe.skipIf(!folder)('models of other tools, real files', () => {
     const fromScript = plain(script.tables.filter((t) => t.type === 'table'))
     console.log(`Sakila: ${mwb.tables.length} tables in the model (${fromModel.length} of sakila), ${fromScript.length} in the script, ${script.skipped.length} script statements skipped (views DuckDB can't run); left out of the model: ${JSON.stringify(mwb.leftOut)}; ${Object.keys(mwb.positions).length} positions, ${mwb.diagrams.length} more diagrams`)
     expect(fromModel.map((t) => t.name).sort()).toEqual(fromScript.map((t) => t.name).sort())
-    const changes = compareSchemas(fromModel, fromScript, { model: true })
+    const changes = compareSchemas(fromModel, fromScript, { model: true, driver: 'mysql' })
     // UNSIGNED, BOOLEAN DEFAULT TRUE ≡ tinyint(1) DEFAULT 1 and the index MySQL makes for a foreign key compare as
     // the same now. What remains is a difference of the two files themselves: Workbench's film_text.film_id has no
     // UNSIGNED flag, the script's has.

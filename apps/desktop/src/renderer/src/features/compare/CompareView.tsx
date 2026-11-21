@@ -119,8 +119,8 @@ export function CompareView({ tab }: { tab: CompareTab }) {
   const changes = useMemo(() => {
     if (!snapshots || !sides) return []
     // A model names its schemas on purpose: its new tables go there unless a schema of the database was picked.
-    return compareSchemas(sides.source, sides.target, { keepExtra, model: tab.sourceModel !== undefined && !tab.targetSchema, checkChanged: snapshots.checkChanged, renames: guesses.filter((g) => !declined.has(guessKey(g))) })
-  }, [snapshots, sides, guesses, declined, tab.targetSchema, tab.sourceModel, keepExtra])
+    return compareSchemas(sides.source, sides.target, { keepExtra, model: tab.sourceModel !== undefined && !tab.targetSchema, checkChanged: snapshots.checkChanged, renames: guesses.filter((g) => !declined.has(guessKey(g))), driver })
+  }, [snapshots, sides, guesses, declined, tab.targetSchema, tab.sourceModel, keepExtra, driver])
 
   const byTable = useMemo(() => {
     const map = new Map<string, SchemaChange[]>()

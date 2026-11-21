@@ -262,7 +262,7 @@ CREATE TABLE store_log (id INT NOT NULL, staff_id TINYINT UNSIGNED, PRIMARY KEY 
       const script = await tablesFromDdl(SCRIPT)
       expect(script.skipped).toEqual([])
       const fromScript = plain(script.tables)
-      const describe = (a: TableInfo[], b: TableInfo[]) => compareSchemas(a, b, { model: true }).map((c) => `${c.kind} ${c.table.name} ${'column' in c ? String(c.column) : ''}${'index' in c ? String((c.index as { name?: string }).name) : ''}${'name' in c ? String(c.name) : ''}`)
+      const describe = (a: TableInfo[], b: TableInfo[]) => compareSchemas(a, b, { model: true, driver: 'mysql' }).map((c) => `${c.kind} ${c.table.name} ${'column' in c ? String(c.column) : ''}${'index' in c ? String((c.index as { name?: string }).name) : ''}${'name' in c ? String(c.name) : ''}`)
       expect({
         modelVsLive: describe(MODEL, live),
         dumpVsLive: describe(dump, live),

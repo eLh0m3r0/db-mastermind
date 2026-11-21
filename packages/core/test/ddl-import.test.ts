@@ -174,11 +174,15 @@ describe('MySQL as Workbench, a live database and a script see it (wave 2, Sakil
   it('BOOLEAN DEFAULT TRUE is tinyint(1) DEFAULT 1, and the index MySQL makes for a foreign key is no difference', async () => {
     const workbench = parseDbml("Table store {\n  id \"tinyint unsigned\" [pk]\n  active \"tinyint(1)\" [not null, default: 1]\n}\nTable rental {\n  id int [pk]\n  store_id \"tinyint unsigned\" [not null]\n\n  indexes {\n    store_id [name: 'fk_rental_store']\n  }\n}\nRef fk_rental_store: rental.store_id > store.id\n").tables
     const { tables } = await tablesFromDdl('CREATE TABLE store (id TINYINT UNSIGNED NOT NULL, active BOOLEAN NOT NULL DEFAULT TRUE, PRIMARY KEY (id));\nCREATE TABLE rental (id INT NOT NULL, store_id TINYINT UNSIGNED NOT NULL, PRIMARY KEY (id), CONSTRAINT fk_rental_store FOREIGN KEY (store_id) REFERENCES store (id));')
-    expect(compareSchemas(workbench, tables, { model: true })).toEqual([])
+    expect(compareSchemas(workbench, tables, { model: true, driver: 'mysql' })).toEqual([])
+    expect(compareSchemas(workbench, tables, { model: true, driver: 'mariadb' })).toEqual([])
+    // Elsewhere nothing makes that index: one named like its key is the user's own, and missing.
+    expect(compareSchemas(workbench, tables, { model: true, driver: 'postgres' }).map((c) => c.kind)).toEqual(['add_index'])
+    expect(compareSchemas(workbench, tables, { model: true }).map((c) => c.kind)).toEqual(['add_index'])
     // A flag's other value, or an index of another name, still is one.
     const off = parseDbml("Table store {\n  id \"tinyint unsigned\" [pk]\n  active \"tinyint(1)\" [not null, default: 0]\n}\n").tables
-    expect(compareSchemas(off, tables.filter((t) => t.name === 'store'), { model: true }).map((c) => c.kind)).toEqual(['alter_column'])
+    expect(compareSchemas(off, tables.filter((t) => t.name === 'store'), { model: true, driver: 'mysql' }).map((c) => c.kind)).toEqual(['alter_column'])
     const named = workbench.map((t) => ({ ...t, indexes: t.indexes.map((i) => (i.name === 'fk_rental_store' ? { ...i, name: 'ix_store' } : i)) }))
-    expect(compareSchemas(named, tables, { model: true }).map((c) => c.kind)).toEqual(['add_index'])
+    expect(compareSchemas(named, tables, { model: true, driver: 'mysql' }).map((c) => c.kind)).toEqual(['add_index'])
   })
 })

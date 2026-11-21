@@ -292,7 +292,7 @@ async function diff(o: Options, db: DatabaseService, io: DbmIo): Promise<number>
   const conditions = `${uncompared} check condition${uncompared === 1 ? '' : 's'} with the same name in both`
   const where = config.readOnly ? 'on a read-only connection (--allow-writes lets diff compare them)' : 'on this database'
   const note = uncompared ? `(${conditions} could not be compared ${where}.)\n` : ''
-  const changes = compareSchemas(model.tables, live.tables, { keepExtra: !o.dropExtra, model: true, checkChanged })
+  const changes = compareSchemas(model.tables, live.tables, { keepExtra: !o.dropExtra, model: true, checkChanged, driver: config.driver })
   if (!changes.length) {
     io.stderr(uncompared ? `No differences were found, but ${conditions} could not be compared ${where}.\n` : 'The database matches the model.\n')
     return 0
