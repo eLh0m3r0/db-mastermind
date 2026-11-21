@@ -55,9 +55,10 @@ jobs:
           fi
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "DB Mastermind ${TAG#v}" --notes-file "$NOTES"
 
+  # Conditions downstream of a job that may be skipped name their status check (see mcp-publish).
   desktop:
     needs: create-release
-    if: ${{ !inputs.mcp_only }}
+    if: ${{ !cancelled() && !inputs.mcp_only && needs.create-release.result == 'success' }}
     # Uploads to the release and pushes the Homebrew cask to main.
     permissions:
       contents: write
@@ -231,7 +232,7 @@ jobs:
   winget:
     needs: desktop
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: ${{ !cancelled() && needs.desktop.result == 'success' && startsWith(github.ref, 'refs/tags/v') }}
     # Works only with its own WINGET_TOKEN.
     permissions: {}
     env:
@@ -334,9 +335,12 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  # Runs whenever mcp-pack succeeded, and decides itself whether there is anything to publish. Its condition must name
+  # its status check: with only the implicit success(), Actions skips it on an mcp_only run because create-release
+  # (mcp-pack's own dependency) was skipped.
   mcp-publish:
     needs: mcp-pack
-    if: needs.mcp-pack.outputs.publish == 'yes'
+    if: ${{ !cancelled() && needs.mcp-pack.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -345,8 +349,21 @@ jobs:
       MCP_PUBLISHER_VERSION: v1.8.8
       VERSION: ${{ needs.mcp-pack.outputs.version }}
     steps:
+      - name: Anything to publish?
+        id: go
+        env:
+          PUBLISH: ${{ needs.mcp-pack.outputs.publish }}
+        run: |
+          if [[ "$GITHUB_REF" != refs/tags/v* ]]; then
+            echo "::notice::Nothing is published from $GITHUB_REF: run the workflow from the release tag."; echo "go=no" >> "$GITHUB_OUTPUT"
+          elif [ "$PUBLISH" != yes ]; then
+            echo "::notice::dbmastermind-mcp $VERSION is already on npm and in the MCP registry."; echo "go=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=yes" >> "$GITHUB_OUTPUT"
+          fi
       # Which npm credential exists, decided without its value ever entering a step's environment.
       - name: npm credentials
+        if: steps.go.outputs.go == 'yes'
         id: auth
         env:
           TRUSTED: ${{ vars.NPM_TRUSTED_PUBLISHING }}
@@ -356,10 +373,12 @@ jobs:
           echo "auth=$auth" >> "$GITHUB_OUTPUT"
           echo "npm credentials: $auth"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: steps.go.outputs.go == 'yes'
         with:
           name: mcp-release
           path: ${{ runner.temp }}/pack
       - name: The files are this release's
+        if: steps.go.outputs.go == 'yes'
         run: |
           cd "$RUNNER_TEMP/pack"
           ls -la
@@ -376,11 +395,12 @@ jobs:
           if ! cmp -s server.json <(tar -xOzf "$1" package/server.json); then echo "::error::server.json differs from the tarball's"; exit 1; fi
           echo "TARBALL=$RUNNER_TEMP/pack/$1" >> "$GITHUB_ENV"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        if: steps.go.outputs.go == 'yes'
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
       - name: Publish the tested tarball to npm
-        if: needs.mcp-pack.outputs.npm != 'done' && steps.auth.outputs.auth != 'none'
+        if: steps.go.outputs.go == 'yes' && needs.mcp-pack.outputs.npm != 'done' && steps.auth.outputs.auth != 'none'
         run: |
           # Checked again here: "Re-run failed jobs" reuses mcp-pack's answer from before the first attempt.
           if [ "$(npm view "dbmastermind-mcp@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
@@ -393,13 +413,13 @@ jobs:
           # The token only in this step; with trusted publishing it stays empty and npm uses OIDC.
           NODE_AUTH_TOKEN: ${{ steps.auth.outputs.auth == 'token' && secrets.NPM_TOKEN || '' }}
       - name: No npm credentials
-        if: needs.mcp-pack.outputs.npm != 'done' && steps.auth.outputs.auth == 'none'
+        if: steps.go.outputs.go == 'yes' && needs.mcp-pack.outputs.npm != 'done' && steps.auth.outputs.auth == 'none'
         run: echo "::notice::dbmastermind-mcp $VERSION is not published to npm; add the NPM_TOKEN secret, or set the repository variable NPM_TRUSTED_PUBLISHING to 1 once npm trusts this workflow."
       - name: Install cosign
-        if: needs.mcp-pack.outputs.registry != 'done'
+        if: steps.go.outputs.go == 'yes' && needs.mcp-pack.outputs.registry != 'done'
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Download and verify mcp-publisher
-        if: needs.mcp-pack.outputs.registry != 'done'
+        if: steps.go.outputs.go == 'yes' && needs.mcp-pack.outputs.registry != 'done'
         run: |
           set -euo pipefail
           archive="mcp-publisher_linux_amd64.tar.gz"
@@ -411,7 +431,7 @@ jobs:
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" "$RUNNER_TEMP/$archive"
           tar xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" mcp-publisher
       - name: Publish to the MCP registry
-        if: needs.mcp-pack.outputs.registry != 'done'
+        if: steps.go.outputs.go == 'yes' && needs.mcp-pack.outputs.registry != 'done'
         env:
           AUTH: ${{ steps.auth.outputs.auth }}
         run: |

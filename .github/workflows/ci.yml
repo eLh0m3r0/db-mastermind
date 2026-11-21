@@ -317,23 +317,69 @@ jobs:
           sudo apparmor_parser -R /etc/apparmor.d/db-mastermind
           sudo rm /etc/apparmor.d/db-mastermind
           xvfb-run -a node e2e/linux-sandbox.mjs "/opt/DB Mastermind/db-mastermind" refused
-      - name: .deb installed where its profile can't load (menu entry falls back to --no-sandbox)
+      # The rows of the decision table in build/linux/after-install.tpl that this runner can produce.
+      - name: .deb rows of the install-time decision (profile can't load, restriction off, chroot, kernel settings)
         if: ${{ !cancelled() }}
         run: |
+          set -u
+          ENTRY=/usr/share/applications/db-mastermind.desktop
+          SANDBOX="/opt/DB Mastermind/chrome-sandbox"
           AP=$(command -v apparmor_parser || echo /usr/sbin/apparmor_parser)
-          sudo chmod -x "$AP"
-          sudo apt-get install -y --reinstall ./apps/desktop/release/DB-Mastermind-*-linux-amd64.deb 2>&1 | grep -E "DB Mastermind|AppArmor"
-          sudo chmod +x "$AP"
-          if [ -e /etc/apparmor.d/db-mastermind ]; then echo "::error::the profile was installed after all"; exit 1; fi
-          grep '^Exec=' /usr/share/applications/db-mastermind.desktop
-          xvfb-run -a node e2e/linux-sandbox.mjs /usr/share/applications/db-mastermind.desktop fallback --plain
-      - name: .deb reinstalled where users get user namespaces again (menu entry sandboxed)
-        if: ${{ !cancelled() }}
-        run: |
-          sudo apt-get install -y --reinstall ./apps/desktop/release/DB-Mastermind-*-linux-amd64.deb 2>&1 | grep -E "DB Mastermind|AppArmor" || true
-          grep '^Exec=' /usr/share/applications/db-mastermind.desktop
-          if grep -q -- '--no-sandbox' /usr/share/applications/db-mastermind.desktop; then echo "::error::--no-sandbox stayed in the menu entry"; exit 1; fi
-          xvfb-run -a node e2e/linux-sandbox.mjs /usr/share/applications/db-mastermind.desktop sandboxed --plain
+          reinstall() { sudo apt-get install -y --reinstall ./apps/desktop/release/DB-Mastermind-*-linux-amd64.deb 2>&1 | grep -E "DB Mastermind|AppArmor" || true; grep '^Exec=' "$ENTRY"; stat -c '%a %n' "$SANDBOX"; }
+          flagged() { grep -q -- '--no-sandbox' "$ENTRY"; }
+          unload() { sudo apparmor_parser -R /etc/apparmor.d/db-mastermind 2>/dev/null || true; sudo rm -f /etc/apparmor.d/db-mastermind; }
+          rc=0
+          fail() { echo "::error::$1"; rc=1; }
+
+          echo "== restriction on, profile can't load: --no-sandbox, and the menu entry starts"
+          sudo sysctl -qw kernel.apparmor_restrict_unprivileged_userns=1; unload
+          sudo chmod -x "$AP"; reinstall; sudo chmod +x "$AP"
+          [ -e /etc/apparmor.d/db-mastermind ] && fail "the profile was installed after all"
+          flagged || fail "no --no-sandbox although users can't create user namespaces"
+          [ "$(stat -c %a "$SANDBOX")" = 755 ] || fail "chrome-sandbox should be 0755"
+          xvfb-run -a node e2e/linux-sandbox.mjs "$ENTRY" fallback --plain || rc=1
+
+          echo "== restriction off, profile can't load: sandboxed"
+          sudo sysctl -qw kernel.apparmor_restrict_unprivileged_userns=0; unload
+          sudo chmod -x "$AP"; reinstall; sudo chmod +x "$AP"
+          flagged && fail "--no-sandbox although users can create user namespaces"
+          xvfb-run -a node e2e/linux-sandbox.mjs "$ENTRY" sandboxed --plain || rc=1
+          sudo sysctl -qw kernel.apparmor_restrict_unprivileged_userns=1
+
+          echo "== in a chroot (image build: the profile is copied, not loaded): sandboxed, and sandboxed after 'boot'"
+          unload
+          sudo cp /usr/bin/ischroot /usr/bin/ischroot.real && sudo cp /bin/true /usr/bin/ischroot
+          reinstall
+          sudo mv /usr/bin/ischroot.real /usr/bin/ischroot
+          flagged && fail "--no-sandbox written in a chroot"
+          sudo apparmor_parser -r /etc/apparmor.d/db-mastermind
+          xvfb-run -a node e2e/linux-sandbox.mjs "$ENTRY" sandboxed --plain || rc=1
+
+          if [ -e /proc/sys/kernel/unprivileged_userns_clone ]; then
+            echo "== kernel.unprivileged_userns_clone = 0: --no-sandbox"
+            sudo sysctl -qw kernel.unprivileged_userns_clone=0
+            reinstall
+            flagged || fail "no --no-sandbox with unprivileged_userns_clone=0"
+            xvfb-run -a node e2e/linux-sandbox.mjs "$ENTRY" fallback --plain || rc=1
+            sudo sysctl -qw kernel.unprivileged_userns_clone=1
+          else
+            echo "== kernel.unprivileged_userns_clone: not in this kernel, row not testable here"
+          fi
+
+          echo "== user.max_user_namespaces = 0 (root can't either: the stock script sets 4755): --no-sandbox, 0755"
+          MAX=$(cat /proc/sys/user/max_user_namespaces)
+          sudo sysctl -qw user.max_user_namespaces=0
+          reinstall
+          flagged || fail "no --no-sandbox with max_user_namespaces=0"
+          [ "$(stat -c %a "$SANDBOX")" = 755 ] || fail "chrome-sandbox should be 0755, the SUID helper can't work from this path"
+          xvfb-run -a node e2e/linux-sandbox.mjs "$ENTRY" fallback --plain || rc=1
+          sudo sysctl -qw user.max_user_namespaces="$MAX"
+
+          echo "== back to normal, profile loaded: sandboxed"
+          reinstall
+          flagged && fail "--no-sandbox stayed in the menu entry"
+          xvfb-run -a node e2e/linux-sandbox.mjs "$ENTRY" sandboxed --plain || rc=1
+          exit $rc
 
   # Code generated from models, checked by the tools themselves (packages/core/test/orm-export.tools.test.ts): pinned
   # prisma, drizzle-orm and typescript from npm into a temp folder, SQLAlchemy from pip in a venv. Needs the network.
@@ -377,6 +423,7 @@ jobs:
 
   mcp-package:
     needs: mcp-pack
+    if: ${{ !cancelled() && needs.mcp-pack.result == 'success' }}
     strategy:
       fail-fast: false
       matrix:
