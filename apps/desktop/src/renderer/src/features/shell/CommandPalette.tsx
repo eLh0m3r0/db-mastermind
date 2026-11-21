@@ -72,7 +72,7 @@ export function CommandPalette() {
     { id: 'model-new', label: t('New model (DBML)'), icon: <FileCode2 size={14} />, run: () => openTab({ kind: 'model', connectionId: modelConnection(connectionId), title: t('Model'), text: '' }, { reuse: false }) },
     {
       id: 'model-open',
-      label: t('Open model (DBML, DeZign)…'),
+      label: t('Open model (DBML, DeZign, MySQL Workbench, drawDB, Mermaid, Prisma)…'),
       icon: <FileCode2 size={14} />,
       shortcut: keys('⌘O'),
       run: () => void openModel(),

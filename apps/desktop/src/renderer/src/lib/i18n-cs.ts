@@ -1154,6 +1154,7 @@ export const cs: Record<string, string> = {
   'Model (DBML)': 'Model (DBML)',
   'New model (DBML)': 'Nový model (DBML)',
   'Open model (DBML, DeZign)…': 'Otevřít model (DBML, DeZign)…',
+  'Open model (DBML, DeZign, MySQL Workbench, drawDB, Mermaid, Prisma)…': 'Otevřít model (DBML, DeZign, MySQL Workbench, drawDB, Mermaid, Prisma)…',
   'Open a model': 'Otevřít model',
   'A database model: DBML, or a DeZign for Databases project (.dez, .dezproj). No connection needed': 'Databázový model: DBML nebo projekt z DeZign for Databases (.dez, .dezproj). Připojení není potřeba',
   'No database': 'Bez databáze',

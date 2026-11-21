@@ -35,7 +35,8 @@ export function foreignModelNotice(file: string, info: ForeignModelInfo, opened:
     kind: leftOut.length ? 'warning' : 'success',
     message: tp(info.tables, { one: '{source}: {n} table', many: '{source}: {n} tables' }, { source: `${t(SOURCES[info.format])} ${file}` }),
     detail: [
-      tp(info.relationships, { one: '{n} relationship', many: '{n} relationships' }) + (Object.keys(info.positions).length ? ` · ${t('the diagram as it was drawn')}` : ''),
+      // (Lines may show run together: each ends as a sentence.)
+      `${tp(info.relationships, { one: '{n} relationship', many: '{n} relationships' })}${Object.keys(info.positions).length ? ` · ${t('the diagram as it was drawn')}` : ''}.`,
       leftOut.length ? `${t('Not taken from the file:')} ${leftOut.join(' · ')}.` : '',
       opened ? t('The file itself is not changed: Save makes a .dbml model.') : '',
     ]

@@ -39,10 +39,10 @@ export function openMenu(event: { clientX: number; clientY: number; preventDefau
   useMenu.getState().open({ x: event.clientX, y: event.clientY, items })
 }
 
-function MenuList({ items, x, y, onDone, level = 0 }: { items: MenuItem[]; x: number; y: number; onDone: () => void; level?: number }) {
+function MenuList({ items, x, y, onDone, level = 0, flipX }: { items: MenuItem[]; x: number; y: number; onDone: () => void; level?: number; /** A submenu that has no room on the right opens left of this (its parent item's left edge). */ flipX?: number }) {
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ x, y })
-  const [sub, setSub] = useState<{ index: number; x: number; y: number } | null>(null)
+  const [sub, setSub] = useState<{ index: number; x: number; y: number; left: number } | null>(null)
   const [focus, setFocus] = useState(-1)
 
   useLayoutEffect(() => {
@@ -50,10 +50,10 @@ function MenuList({ items, x, y, onDone, level = 0 }: { items: MenuItem[]; x: nu
     if (!el) return
     const r = el.getBoundingClientRect()
     setPos({
-      x: x + r.width > window.innerWidth - 4 ? Math.max(4, (level ? x - r.width - 180 : window.innerWidth - r.width - 4)) : x,
+      x: x + r.width > window.innerWidth - 4 ? Math.max(4, level ? (flipX ?? x - 180) - r.width - 2 : window.innerWidth - r.width - 4) : x,
       y: y + r.height > window.innerHeight - 4 ? Math.max(4, window.innerHeight - r.height - 4) : y,
     })
-  }, [x, y, level])
+  }, [x, y, level, flipX])
 
   useEffect(() => {
     if (level !== 0) return
@@ -101,14 +101,14 @@ function MenuList({ items, x, y, onDone, level = 0 }: { items: MenuItem[]; x: nu
               setFocus(i)
               if (item.submenu) {
                 const r = e.currentTarget.getBoundingClientRect()
-                setSub({ index: i, x: r.right + 2, y: r.top - 4 })
+                setSub({ index: i, x: r.right + 2, y: r.top - 4, left: r.left })
               } else setSub(null)
             }}
             onClick={(e) => {
               // A click opens a submenu too (touchpads, or when the pointer arrived without a hover).
               if (item.submenu) {
                 const r = e.currentTarget.getBoundingClientRect()
-                setSub({ index: i, x: r.right + 2, y: r.top - 4 })
+                setSub({ index: i, x: r.right + 2, y: r.top - 4, left: r.left })
                 return
               }
               onDone()
@@ -129,7 +129,7 @@ function MenuList({ items, x, y, onDone, level = 0 }: { items: MenuItem[]; x: nu
         ),
       )}
       {sub && items[sub.index] !== 'separator' && (items[sub.index] as { submenu?: MenuItem[] }).submenu && (
-        <MenuList items={(items[sub.index] as { submenu: MenuItem[] }).submenu} x={sub.x} y={sub.y} onDone={onDone} level={level + 1} />
+        <MenuList items={(items[sub.index] as { submenu: MenuItem[] }).submenu} x={sub.x} y={sub.y} flipX={sub.left} onDone={onDone} level={level + 1} />
       )}
     </div>
   )

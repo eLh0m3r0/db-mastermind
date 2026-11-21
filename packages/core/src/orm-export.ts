@@ -922,7 +922,8 @@ export function toDrizzle(tables: TableInfo[], options: CodeOptions = {}): strin
     }
     const pk = t.primaryKey.filter((c) => t.columns.some((x) => x.name === c))
     // A foreign key with a name of its own is kept in the table's config with it (`.references()` has no name).
-    const ownName = (fk: ForeignKeyInfo) => !!fk.name && fk.name !== defaultFkName(t.name, fk.columns)
+    // SQLite's have none: the names the app shows for them are made up.
+    const ownName = (fk: ForeignKeyInfo) => dialect !== 'sqlite' && !!fk.name && fk.name !== defaultFkName(t.name, fk.columns)
     const singleFks = new Map(t.foreignKeys.filter((fk) => fk.columns.length === 1 && model.target(t, fk) && !ownName(fk)).map((fk) => [fk.columns[0]!, fk]))
     const lines: string[] = []
     let numberedOnce = false
@@ -1160,6 +1161,8 @@ export function toSqlAlchemy(tables: TableInfo[], options: CodeOptions = {}): st
     const schema = target ? model.schemaOf(target) : model.schemaOf({ schema: fk.refSchema ?? t.schema })
     return (column: string) => `${schema ? `${schema}.` : ''}${target?.name ?? fk.refTable}.${column}`
   }
+  // (SQLite's foreign keys have no names: the ones the app shows are made up.)
+  const fkName = (fk: ForeignKeyInfo) => !!fk.name && database !== 'sqlite'
   const action = (fk: ForeignKeyInfo) => [fk.onDelete && fk.onDelete !== 'NO ACTION' ? `ondelete=${doubleQuoted(fk.onDelete)}` : '', fk.onUpdate && fk.onUpdate !== 'NO ACTION' ? `onupdate=${doubleQuoted(fk.onUpdate)}` : ''].filter(Boolean)
   for (const t of ordered) {
     const schema = model.schemaOf(t)
@@ -1170,7 +1173,7 @@ export function toSqlAlchemy(tables: TableInfo[], options: CodeOptions = {}): st
     for (const fk of t.foreignKeys.filter((x) => x.columns.length > 1)) {
       sa.add('ForeignKeyConstraint')
       const to = fkTarget(t, fk)
-      tableArgs.push(`ForeignKeyConstraint([${fk.columns.map((c) => doubleQuoted(c)).join(', ')}], [${fk.refColumns.map((c) => doubleQuoted(to(c))).join(', ')}]${[...action(fk), ...(fk.name ? [`name=${doubleQuoted(fk.name)}`] : [])].map((a) => `, ${a}`).join('')})`)
+      tableArgs.push(`ForeignKeyConstraint([${fk.columns.map((c) => doubleQuoted(c)).join(', ')}], [${fk.refColumns.map((c) => doubleQuoted(to(c))).join(', ')}]${[...action(fk), ...(fkName(fk) ? [`name=${doubleQuoted(fk.name)}`] : [])].map((a) => `, ${a}`).join('')})`)
     }
     const singleUnique = new Set<string>()
     const seen = new Set<string>()
@@ -1201,7 +1204,7 @@ export function toSqlAlchemy(tables: TableInfo[], options: CodeOptions = {}): st
       const fk = singleFks.get(c.name)
       if (fk) {
         sa.add('ForeignKey')
-        args.push(`ForeignKey(${[doubleQuoted(fkTarget(t, fk)(fk.refColumns[0]!)), ...action(fk), ...(fk.name ? [`name=${doubleQuoted(fk.name)}`] : [])].join(', ')})`)
+        args.push(`ForeignKey(${[doubleQuoted(fkTarget(t, fk)(fk.refColumns[0]!)), ...action(fk), ...(fkName(fk) ? [`name=${doubleQuoted(fk.name)}`] : [])].join(', ')})`)
       }
       const d = defaultOf(c, type)
       if (d?.kind === 'autoincrement') {
