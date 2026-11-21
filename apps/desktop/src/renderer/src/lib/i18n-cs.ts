@@ -489,7 +489,7 @@ export const cs: Record<string, string> = {
   'Auto layout': 'Automatické rozložení',
   'Discard design': 'Zahodit návrh',
   'Design changes to the schema on the diagram and generate a migration script': 'Navrhněte změny schématu v diagramu a vygenerujte migrační skript',
-  'Focus on table…': 'Zaměřit na tabulku…',
+  'Focus on table…': 'Najít tabulku…',
   'Keys only': 'Jen klíče',
   'Show whole schema': 'Zobrazit celé schéma',
   'Edit table': 'Upravit tabulku',
@@ -970,7 +970,9 @@ export const cs: Record<string, string> = {
   'Export results': 'Exportovat výsledky',
   'General': 'Obecné',
   'SQL editor': 'SQL editor',
-  'Go to tab 1–9': 'Přejít na kartu 1–9',
+  'Go to tab 1–8': 'Přejít na kartu 1–8',
+  'Last tab': 'Poslední karta',
+  'Previous tab': 'Předchozí karta',
   'Next tab': 'Další karta',
   'click': 'klik',
   "Open a table's structure or a routine's definition": 'Otevřít strukturu tabulky nebo definici rutiny',
@@ -1981,4 +1983,11 @@ export const cs: Record<string, string> = {
   'Passwords are saved encrypted. Nothing is connected until you open a connection.': 'Hesla se ukládají šifrovaně. Nic se nepřipojí, dokud připojení neotevřete.',
   'Drop a SQL script or a model (DBML, DeZign, MySQL Workbench, drawDB, Mermaid, Prisma) to open it, a CSV, Parquet, JSON or Excel file to query it with SQL, or a project folder, .env or docker-compose file to import its connections':
     'Přetáhněte SQL skript nebo model (DBML, DeZign, MySQL Workbench, drawDB, Mermaid, Prisma) a otevře se, soubor CSV, Parquet, JSON či Excel a můžete se na něj ptát v SQL, nebo složku projektu, soubor .env či docker-compose a naimportují se jeho připojení',
+  // Launch UX pass
+  'Open tabs': 'Otevřené karty',
+  'Home (all connections)': 'Domů (všechna připojení)',
+  'Text': 'Text',
+  'Explain plan': 'Plán dotazu',
+  'Compare the model with {name} and generate the migration': 'Porovnat model s {name} a vytvořit migrační skript',
+  'Double-click to change, drag a column’s dot to relate': 'Dvojklikem upravíte, tažením z tečky sloupce vytvoříte vazbu',
 }

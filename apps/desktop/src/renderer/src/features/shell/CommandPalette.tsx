@@ -16,6 +16,7 @@ import { useUi } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
 import { DriverIcon } from '../connections/drivers'
 import { connectAndSelect, useCurrentConnectionId } from '../sidebar/Sidebar'
+import { TAB_ICONS } from './TabBar'
 import { t as translate, useT } from '@/lib/i18n'
 
 /** Server activity on one of its sections: the connection's open activity tab, or a new one. */
@@ -35,6 +36,9 @@ export function CommandPalette() {
   const schema = useConnections((s) => (connectionId ? s.runtime[connectionId]?.schema : undefined))
   const connections = useConnections((s) => s.list)
   const openTab = useWorkspace((s) => s.open)
+  const openTabs = useWorkspace((s) => s.tabs)
+  const activeTabId = useWorkspace((s) => s.activeTabId)
+  const activate = useWorkspace((s) => s.activate)
   const [search, setSearch] = useState('')
   const t = useT()
   const close = () => {
@@ -106,6 +110,12 @@ export function CommandPalette() {
     (c) => c.label,
   )
   const shownConnections = byScore(connections, query, (c) => c.name)
+  // Open tabs, to reach one scrolled out of the tab strip (the selected one is left out: it is already in front).
+  const shownTabs = byScore(
+    openTabs.filter((x) => x.id !== activeTabId),
+    query,
+    (x) => x.title,
+  )
   const tableGroup = tables.length > 0 && connectionId && (
     <Command.Group heading={t('Tables')}>
       {tables.map((t) => (
@@ -142,6 +152,23 @@ export function CommandPalette() {
             <Command.Group heading={t('Commands')}>
               {shownCommands.map((c) => (
                 <Item key={c.id} value={c.id} onSelect={() => run(c.run)} icon={c.icon} label={c.label} shortcut={c.shortcut} />
+              ))}
+            </Command.Group>
+          )}
+          {mode === 'commands' && shownTabs.length > 0 && (
+            <Command.Group heading={t('Open tabs')}>
+              {shownTabs.map((x) => (
+                <Item
+                  key={x.id}
+                  value={`tab ${x.id}`}
+                  onSelect={() => run(() => activate(x.id))}
+                  icon={(() => {
+                    const Icon = TAB_ICONS[x.kind]
+                    return <Icon size={14} />
+                  })()}
+                  label={x.title}
+                  hint={connections.find((c) => c.id === x.connectionId)?.name}
+                />
               ))}
             </Command.Group>
           )}

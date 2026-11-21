@@ -8,6 +8,7 @@ import { confirmAction } from '@/components/ui/ConfirmDialog'
 import { refreshTransaction, settleTransactions, useTransactions } from './transactions'
 import { persistedTabs } from './persisted-tabs'
 import { forgetSessionTables } from './session-tables'
+import { nextNumberedTitle, reopenIndex } from './tab-order'
 
 interface BaseTab {
   id: string
@@ -203,7 +204,8 @@ interface WorkspaceState {
   closed: Tab[]
   restored: boolean
   restore(): Promise<void>
-  open(tab: NewTab, options?: { reuse?: boolean }): string
+  /** `atEnd`: after the last tab (the "+" and ⌘T), else right after the selected one. */
+  open(tab: NewTab, options?: { reuse?: boolean; atEnd?: boolean }): string
   close(id: string): void
   closeOthers(id: string): void
   closeForConnection(connectionId: string): void
@@ -211,15 +213,23 @@ interface WorkspaceState {
   activate(id: string): void
   update(id: string, patch: Partial<Tab>): void
   move(fromId: string, toId: string): void
-  newQuery(connectionId: string, sql?: string, title?: string): string
+  newQuery(connectionId: string, sql?: string, title?: string, options?: { atEnd?: boolean }): string
 }
 
 /** Unsaved grid edits per table tab: they live in the tab's view, so closing it would drop them silently. */
 const unsavedEdits = new Map<string, number>()
 
+/** Where each closed tab stood, so reopening puts it back there. */
+const closedIndex = new Map<string, number>()
+
+/** The tabs with unsaved grid edits, for the tab strip's unsaved mark. */
+export const useUnsavedEdits = create<{ ids: string[] }>(() => ({ ids: [] }))
+
 export function setUnsavedEdits(tabId: string, count: number): void {
   if (count > 0) unsavedEdits.set(tabId, count)
   else unsavedEdits.delete(tabId)
+  const ids = [...unsavedEdits.keys()]
+  if (ids.join() !== useUnsavedEdits.getState().ids.join()) useUnsavedEdits.setState({ ids })
 }
 
 /**
@@ -316,7 +326,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       }
       const id = uid('tab')
       const active = get().activeTabId
-      const index = tabs.findIndex((t) => t.id === active)
+      const index = options.atEnd ? -1 : tabs.findIndex((t) => t.id === active)
       const next = [...tabs]
       next.splice(index === -1 ? tabs.length : index + 1, 0, { ...tab, id } as Tab)
       commit(next, id)
@@ -335,6 +345,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       // A table tab with manual commit has a session too (releasing one that never ran anything is a no-op).
       if (tab.kind === 'query' || tab.kind === 'table') void api.releaseSession(tab.connectionId, tab.id).catch(() => {})
       forgetSessionTables(tab.id)
+      closedIndex.set(tab.id, index)
       commit(next, active, { closed: [tab, ...closed].slice(0, 20) })
     },
     closeOthers(id) {
@@ -354,7 +365,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     reopen() {
       const [tab, ...rest] = get().closed
       if (!tab) return
-      commit([...get().tabs, tab], tab.id, { closed: rest })
+      const tabs = [...get().tabs]
+      tabs.splice(reopenIndex(closedIndex.get(tab.id), tabs.length), 0, tab)
+      closedIndex.delete(tab.id)
+      commit(tabs, tab.id, { closed: rest })
     },
     activate(id) {
       commit(get().tabs, id)
@@ -385,9 +399,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       tabs.splice(to, 0, tab!)
       commit(tabs, get().activeTabId)
     },
-    newQuery(connectionId, sql = '', title) {
-      const count = get().tabs.filter((t) => t.kind === 'query').length
-      return get().open({ kind: 'query', connectionId, title: title ?? t('Query {n}', { n: count + 1 }), sql }, { reuse: false })
+    newQuery(connectionId, sql = '', title, options) {
+      const name = title ?? nextNumberedTitle(get().tabs.map((tab) => tab.title), t('Query {n}', { n: '{n}' }))
+      return get().open({ kind: 'query', connectionId, title: name, sql }, { reuse: false, atEnd: options?.atEnd })
     },
   }
 })
