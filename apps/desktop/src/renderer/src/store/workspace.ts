@@ -8,7 +8,7 @@ import { askChoice } from '@/components/ui/ConfirmDialog'
 import { refreshTransaction, settleTransactions, useTransactions } from './transactions'
 import { persistedTabs } from './persisted-tabs'
 import { forgetSessionTables } from './session-tables'
-import { nextNumberedTitle, reopenIndex } from './tab-order'
+import { closeTabsPlan, nextNumberedTitle, reopenIndex } from './tab-order'
 
 interface BaseTab {
   id: string
@@ -208,6 +208,8 @@ interface WorkspaceState {
   open(tab: NewTab, options?: { reuse?: boolean; atEnd?: boolean }): string
   close(id: string): void
   closeOthers(id: string): void
+  /** Closes these tabs (all on one side of `keep`); they can be reopened one by one, each back in its place. */
+  closeTabs(ids: string[], keep: string): void
   closeForConnection(connectionId: string): void
   reopen(): void
   activate(id: string): void
@@ -402,6 +404,30 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       commit(
         tabs.filter((t) => t.id === id),
         id,
+      )
+    },
+    closeTabs(ids, keep) {
+      const { tabs, activeTabId, closed } = get()
+      const plan = closeTabsPlan(
+        tabs.map((t) => t.id),
+        ids,
+        activeTabId,
+        keep,
+      )
+      if (!plan.closed.length) return
+      const byId = new Map(tabs.map((t) => [t.id, t]))
+      for (const { id, index } of plan.closed) {
+        const tab = byId.get(id)!
+        if (tab.kind === 'query' || tab.kind === 'table') void api.releaseSession(tab.connectionId, tab.id).catch(() => {})
+        forgetSessionTables(tab.id)
+        closedIndex.set(id, index)
+      }
+      // The last closed (the leftmost) is the first ⇧⌘T brings back.
+      const reopenable = [...plan.closed].reverse().map(({ id }) => byId.get(id)!)
+      commit(
+        plan.remaining.map((id) => byId.get(id)!),
+        plan.active,
+        { closed: [...reopenable, ...closed].slice(0, 20) },
       )
     },
     closeForConnection(connectionId) {

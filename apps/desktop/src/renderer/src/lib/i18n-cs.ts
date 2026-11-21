@@ -2019,4 +2019,6 @@ export const cs: Record<string, string> = {
   '{n} change isn’t in the database yet.': '{n} změna ještě není v databázi.',
   '{n} changes aren’t in the database yet.': '{n} změn ještě není v databázi.',
   '{n} changes aren’t in the database yet.|few': '{n} změny ještě nejsou v databázi.',
+  'Close tabs to the left': 'Zavřít vše vlevo',
+  'Close tabs to the right': 'Zavřít vše vpravo',
 }

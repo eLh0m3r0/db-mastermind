@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { useConnections } from '@/store/connections'
 import { useUi } from '@/store/ui'
 import { confirmCloseTabs, useUnsavedEdits, useWorkspace, type Tab } from '@/store/workspace'
+import { tabsBeside } from '@/store/tab-order'
 import { useTransactions } from '@/store/transactions'
 import { useCurrentConnectionId } from '../sidebar/Sidebar'
 import { useT } from '@/lib/i18n'
@@ -28,7 +29,7 @@ export function TabBar() {
   }
   const tabs = useWorkspace((s) => s.tabs)
   const activeId = useWorkspace((s) => s.activeTabId)
-  const { activate, close, closeOthers, move, newQuery, update, splitRight, unsplit } = useWorkspace()
+  const { activate, close, closeOthers, closeTabs, move, newQuery, update, splitRight, unsplit } = useWorkspace()
   const split = useWorkspace((s) => s.split)
   const connections = useConnections((s) => s.list)
   const runtime = useConnections((s) => s.runtime)
@@ -104,6 +105,19 @@ export function TabBar() {
     openMenu(e, [
       { label: t('Close'), shortcut: keys('⌘W'), onClick: () => closeTab(tab.id) },
       { label: t('Close others'), onClick: () => void confirmCloseTabs(tabs.filter((x) => x.id !== tab.id).map((x) => x.id)).then((ok) => ok && closeOthers(tab.id)) },
+      // Every tab on that side, through the same questions as Close others (Cancel closes nothing).
+      ...(['left', 'right'] as const).map((side) => {
+        const ids = tabsBeside(
+          tabs.map((x) => x.id),
+          tab.id,
+          side,
+        )
+        return {
+          label: side === 'left' ? t('Close tabs to the left') : t('Close tabs to the right'),
+          disabled: ids.length === 0,
+          onClick: () => void confirmCloseTabs(ids).then((ok) => ok && closeTabs(ids, tab.id)),
+        }
+      }),
       'separator',
       { label: t('Open to the side'), icon: <Columns2 size={13} />, disabled: tabs.length < 2 || split?.right === tab.id, onClick: () => splitRight(tab.id) },
       ...(split ? [{ label: t('Close split view'), onClick: () => unsplit() }] : []),

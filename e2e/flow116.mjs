@@ -144,6 +144,61 @@ try {
   }
   await size(1280)
 
+  // Close tabs to the left / right (right-click menu): order, disabled at the ends, the selection, reopening.
+  await setTabs(10, false, 0)
+  const menuOf = async (index) => {
+    await win.locator('[role="tab"]').nth(index).click({ button: 'right' })
+    await win.waitForTimeout(250)
+    const items = win.getByRole('menu').last().getByRole('menuitem')
+    const labels = (await items.allInnerTexts()).map((x) => x.split('\n')[0].trim())
+    const disabled = async (name) => win.getByRole('menuitem', { name, exact: true }).isDisabled()
+    return { labels, left: await disabled('Close tabs to the left'), right: await disabled('Close tabs to the right') }
+  }
+  let m = await menuOf(0)
+  check('menu: Close, Close others, then Close tabs to the left / to the right', JSON.stringify(m.labels.slice(0, 4)) === JSON.stringify(['Close', 'Close others', 'Close tabs to the left', 'Close tabs to the right']), JSON.stringify(m.labels))
+  check('first tab: "to the left" disabled, "to the right" enabled', m.left && !m.right, JSON.stringify(m))
+  await win.keyboard.press('Escape')
+  m = await menuOf(9)
+  check('last tab: "to the right" disabled, "to the left" enabled', m.right && !m.left, JSON.stringify(m))
+  await win.keyboard.press('Escape')
+  const before = (await strip()).titles
+  await win.keyboard.press('Meta+8')
+  await menuOf(4)
+  await win.getByRole('menuitem', { name: 'Close tabs to the right', exact: true }).click()
+  await win.waitForTimeout(400)
+  s = await strip()
+  check('to the right: the 5 tabs after it are gone, the right-clicked one selected (the selected one was closed), in view', s.titles.length === 5 && s.titles.join() === before.slice(0, 5).join() && s.active === 4 && s.activeInView && s.plus, JSON.stringify(s.titles))
+  for (let i = 0; i < 5; i++) {
+    await win.keyboard.press('Meta+Shift+t')
+    await win.waitForTimeout(150)
+  }
+  s = await strip()
+  check('⇧⌘T five times brings them back, each in its place', s.titles.join() === before.join(), JSON.stringify(s.titles))
+  await win.keyboard.press('Meta+2')
+  await menuOf(3)
+  await win.getByRole('menuitem', { name: 'Close tabs to the left', exact: true }).click()
+  await win.waitForTimeout(400)
+  s = await strip()
+  check('to the left: the 3 before it are gone, the right-clicked one selected, in view', s.titles.join() === before.slice(3).join() && s.active === 0 && s.activeInView && s.plus, JSON.stringify(s.titles))
+  // A table with unsaved edits among them: the question comes first, and Cancel closes nothing.
+  await api('saveWorkspace', { tabs: [{ id: 'q0', kind: 'query', connectionId: connId, title: 'Q one', sql: '' }, { id: 'tt', kind: 'table', connectionId: connId, table: { name: 'orders' }, title: 'orders' }, { id: 'q2', kind: 'query', connectionId: connId, title: 'Q two', sql: '' }, { id: 'q3', kind: 'query', connectionId: connId, title: 'Q three', sql: '' }], activeTabId: 'tt' })
+  await win.reload()
+  await win.locator('[role="gridcell"]').first().waitFor({ timeout: 15000 })
+  await win.locator('[role="gridcell"]').nth(6).dblclick()
+  await win.keyboard.press('Meta+a')
+  await win.keyboard.type('x')
+  await win.keyboard.press('Enter')
+  await win.waitForTimeout(300)
+  await menuOf(3)
+  await win.getByRole('menuitem', { name: 'Close tabs to the left', exact: true }).click()
+  await win.getByRole('dialog').waitFor({ timeout: 3000 })
+  check('unsaved edits among them: Save / Discard / Cancel first', (await win.getByRole('dialog').innerText()).includes('Save the changes to orders?'))
+  await win.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click()
+  await win.waitForTimeout(300)
+  check('Cancel closes nothing', (await strip()).titles.length === 4)
+  await win.getByRole('button', { name: 'Discard changes' }).click()
+  await win.waitForTimeout(300)
+
   // Keyboard: the strip is one Tab stop; arrows select, Delete closes; the close buttons are out of the Tab order.
   await setTabs(4, false, 1)
   const tabStops = await win.evaluate(() => [...document.querySelectorAll('[role="tablist"] [tabindex="0"], [role="tablist"] button:not([tabindex="-1"])')].length)
