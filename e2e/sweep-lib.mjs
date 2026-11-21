@@ -107,7 +107,7 @@ export async function startSweep({ out, lang }) {
 
   /** Closes what an action opened: dialogs, menus, extra tabs. */
   /**
-   * Closing a table tab with unsaved cell edits (Set NULL, Clone row) asks "Discard N pending changes?": Escape keeps
+   * Closing a table tab with unsaved cell edits (Set NULL, Clone row) asks Save / Discard / Cancel: Escape keeps
    * the tab, so a sweep that only pressed Escape tried again and again on the same question. Discard is the answer.
    */
   async function answerDiscard() {

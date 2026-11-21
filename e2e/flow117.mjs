@@ -54,6 +54,18 @@ const reachable = (port) => new Promise((resolve) => {
   s.once('error', () => resolve(false))
 })
 const dialog = () => win.getByRole('dialog').last()
+/** Whether a field's placeholder fits in it (measured with its own font). */
+const placeholderFits = (selector) =>
+  win.evaluate((selector) => {
+    const i = [...document.querySelectorAll(selector)].find((x) => x.offsetWidth > 0)
+    if (!i) return { found: false }
+    const cs = getComputedStyle(i)
+    const c = document.createElement('canvas').getContext('2d')
+    c.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`
+    const need = Math.ceil(c.measureText(i.placeholder).width + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight))
+    return { found: true, fits: need <= i.clientWidth, need, width: i.clientWidth, placeholder: i.placeholder }
+  }, selector)
+const size = (w, h) => app.evaluate(({ BrowserWindow }, [w, h]) => BrowserWindow.getAllWindows()[0].setSize(w, h), [w, h])
 const connectionError = () => win.getByTestId('connection-error').innerText().catch(() => '')
 const testWith = async (url) => {
   const field = dialog().locator('input').first()
@@ -94,6 +106,17 @@ try {
   })
   check('the explanation is in sight above the buttons (the fields scroll, it doesn’t)', errorInSight)
   await win.screenshot({ path: join(out, 'r117-connection-error.png') })
+
+  // The URL field's placeholder is never cut, at 1280 and 900 px; the hosted services are named in a line under it.
+  for (const [w, h] of [[1280, 800], [900, 560]]) {
+    await size(w, h)
+    await win.waitForTimeout(300)
+    const url = await placeholderFits('[role="dialog"] input[placeholder^="Paste a connection URL"]')
+    check(`${w} px: the URL placeholder fits`, url.fits, JSON.stringify(url))
+  }
+  check('the hosted services are named under the field', (await win.getByTestId('url-services-hint').innerText()).includes('Supabase'))
+  await size(1280, 800)
+  await win.waitForTimeout(300)
 
   // Toasts while a dialog is open: at the top, never over its buttons; the same notice twice is one toast.
   const field = dialog().locator('input').first()
@@ -141,6 +164,44 @@ try {
   await win.waitForTimeout(500)
   check('…and the value is in the database', (await win.locator('[role="gridcell"]').nth(6).innerText()).includes('shipped-e2e'))
 
+  // Every way of throwing edits away asks the same question: Refresh, a new sort, a new page.
+  const editCell = async (text) => {
+    await win.locator('[role="gridcell"]').nth(6).dblclick()
+    await win.keyboard.press('Meta+a')
+    await win.keyboard.type(text)
+    await win.keyboard.press('Enter')
+    await win.waitForTimeout(300)
+  }
+  const asked = async () => {
+    await dialog().waitFor({ timeout: 3000 }).catch(() => {})
+    const texts = await dialog().locator('button').allInnerTexts().catch(() => [])
+    return (await dialog().innerText().catch(() => '')).includes('Save the changes to orders?') && ['Save', 'Discard', 'Cancel'].every((b) => texts.some((x) => x.trim() === b))
+  }
+  await editCell('refresh-e2e')
+  await win.getByRole('button', { name: 'Refresh (⌘R)' }).click()
+  check('Refresh with unsaved edits asks Save / Discard / Cancel', await asked())
+  await dialog().getByRole('button', { name: 'Cancel' }).click()
+  await win.waitForTimeout(300)
+  check('…Cancel keeps the edit', (await win.locator('[role="gridcell"]').nth(6).innerText()).includes('refresh-e2e'))
+  await win.locator('[role="columnheader"]').nth(3).click({ button: 'right' })
+  await win.getByRole('menuitem', { name: 'Sort descending' }).click()
+  check('a new sort asks the same', await asked())
+  await dialog().getByRole('button', { name: 'Cancel' }).click()
+  await win.getByRole('button', { name: 'Next page' }).click()
+  check('a new page asks the same', await asked())
+  await dialog().getByRole('button', { name: 'Discard', exact: true }).click()
+  await win.waitForTimeout(800)
+  check('…Discard drops the edit and turns the page', (await win.locator('[role="gridcell"]').first().innerText()).trim() === '201' && !(await win.locator('[data-testid="tab-unsaved"]').count()))
+  // Closing the window (quitting goes the same way) asks too, and Cancel keeps the window.
+  await editCell('quit-e2e')
+  void app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close())
+  check('closing the window with unsaved edits asks the same', await asked())
+  await dialog().getByRole('button', { name: 'Cancel' }).click()
+  await win.waitForTimeout(400)
+  check('…Cancel keeps the window and the edit', (await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)) === 1 && (await win.locator('[data-testid="tab-unsaved"]').count()) === 1)
+  await win.getByRole('button', { name: 'Discard changes' }).click()
+  await win.waitForTimeout(300)
+
   // AI: a local provider set up and closed, without "Use this provider", is in use and answers.
   await menu('toggle-ai')
   await win.getByRole('button', { name: 'Set up AI' }).click()
@@ -156,6 +217,10 @@ try {
   await win.getByText('The demo has 7 tables.').waitFor({ timeout: 20000 }).catch(() => {})
   check('the assistant answers through the local provider', await win.getByText('The demo has 7 tables.').count() > 0, requests.join(' '))
   await win.screenshot({ path: join(out, 'r117-ai-ready.png') })
+  check('the assistant’s box names the database: "Ask about the … database…"', (await win.locator('textarea[placeholder^="Ask about"]').getAttribute('placeholder')) === 'Ask about the Demo coffee shop database…')
+  // The table's plain-words filter: its placeholder fits, the example is its tooltip.
+  const filterField = await placeholderFits('input[placeholder^="Describe a filter"]')
+  check('the plain-words filter placeholder fits (AI panel open, 1280 px)', filterField.found && filterField.fits, JSON.stringify(filterField))
 
   // A wrong address: explained, with Open AI settings.
   fake.close()

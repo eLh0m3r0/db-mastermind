@@ -94,7 +94,7 @@ const rightClick = (locator) => async () => {
 }
 
 async function closeAllTabs() {
-  // (closeLastTab answers "Discard N pending changes?": Set NULL or Clone row on the previous item left an edit.)
+  // (closeLastTab answers the Save / Discard / Cancel question with Discard: Set NULL or Clone row on the previous item left an edit.)
   for (let i = 0; i < 30 && (await win.locator('[role="tab"]').count()) > 0; i++) await closeLastTab()
 }
 
