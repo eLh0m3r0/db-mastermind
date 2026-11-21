@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { growth, LINEAR } from './growth.js'
 import { compareSchemas, designFromDbml, diffTables, parseDbml, toDbml, type TableInfo } from '../src/index.js'
 
 const source = `
@@ -316,11 +317,14 @@ describe('an unclosed bracket (review M5)', () => {
     expect(m.tables[0]!.foreignKeys).toHaveLength(1)
   })
 
-  it('80,000 lines after an unclosed bracket are read in a moment', () => {
-    const start = performance.now()
-    const m = parseDbml(`Table a {\n${Array.from({ length: 80_000 }, (_, i) => `  c${i} int [`).join('\n')}\n}\n`)
-    expect(performance.now() - start).toBeLessThan(2000)
-    expect(m.errors.length).toBe(80_000)
+  it('lines after an unclosed bracket each say so, in time that grows linearly', { timeout: 60_000 }, () => {
+    const text = (n: number) => `Table a {\n${Array.from({ length: n }, (_, i) => `  c${i} int [`).join('\n')}\n}\n`
+    expect(parseDbml(text(1000)).errors.length).toBe(1000)
+    const g = growth((n) => {
+      const input = text(n)
+      return () => parseDbml(input)
+    }, 10_000)
+    expect(g.ratio).toBeLessThan(LINEAR)
   })
 })
 

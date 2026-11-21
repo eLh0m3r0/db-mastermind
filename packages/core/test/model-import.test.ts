@@ -1,5 +1,6 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import { describe, expect, it } from 'vitest'
+import { growth, LINEAR } from './growth.js'
 import { createScript, getDialect, isDrawDb, modelFormatOf, parseDbml, readModelFile, tablesFromDrawDb, tablesFromMermaid, tablesFromMwb, toDbml, toMermaid, toPrisma } from '../src/index.js'
 
 // Every fixture here is written by hand in the tool's format (other projects' files never go into the repository).
@@ -357,14 +358,23 @@ describe('hostile text in a MySQL Workbench model (review L12)', () => {
 })
 
 describe('a megabyte of what makes a regex backtrack (review M4)', () => {
-  it('Mermaid: a worded relationship line and unclosed Markdown fences are read in a moment', () => {
-    const line = `erDiagram\n  A ${'x to '.repeat(200_000)}!\n`
-    const fences = `${'```mermaid x\n'.repeat(80_000)}erDiagram\n`
-    const start = performance.now()
-    tablesFromMermaid(line)
-    expect(modelFormatOf('a.md', fences)).toBe('mermaid')
-    tablesFromMermaid(fences)
-    expect(performance.now() - start).toBeLessThan(1000)
+  it('Mermaid: a worded relationship line and unclosed Markdown fences take time that grows linearly', { timeout: 60_000 }, () => {
+    expect(modelFormatOf('a.md', `${'```mermaid x\n'.repeat(1000)}erDiagram\n`)).toBe('mermaid')
+    const cases: [string, (n: number) => () => unknown][] = [
+      ['worded line', (n) => {
+        const line = `erDiagram\n  A ${'x to '.repeat(n)}!\n`
+        return () => tablesFromMermaid(line)
+      }],
+      ['fence sniff', (n) => {
+        const fences = `${'```mermaid x\n'.repeat(n)}erDiagram\n`
+        return () => modelFormatOf('a.md', fences)
+      }],
+      ['fences read', (n) => {
+        const fences = `${'```mermaid x\n'.repeat(n)}erDiagram\n`
+        return () => tablesFromMermaid(fences)
+      }],
+    ]
+    for (const [label, prepare] of cases) expect(growth(prepare, 10_000).ratio, label).toBeLessThan(LINEAR)
   })
 
   it('still reads a fenced diagram and worded relationships', () => {

@@ -71,7 +71,8 @@ describe("the reviewer's cases (H1)", () => {
 })
 
 describe('hostile models through every generator (seeded fuzz)', () => {
-  it('declare exactly their tables, whatever their names, comments, defaults, enum values and types', () => {
+  // (4200 files: a second on a Mac, several on CI runners.)
+  it('declare exactly their tables, whatever their names, comments, defaults, enum values and types', { timeout: 120_000 }, () => {
     const failures: string[] = []
     let files = 0
     const start = performance.now()
