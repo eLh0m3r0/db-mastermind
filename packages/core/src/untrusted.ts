@@ -14,6 +14,8 @@ export const FILE_LIMITS = {
   mwb: 64 * 1024 * 1024,
   /** Its document.mwb.xml once inflated (checked while inflating: a header may lie). */
   mwbDocument: 128 * 1024 * 1024,
+  /** A DeZign for Databases file (one file of a project, or a whole .dez): only to refuse what never ends. */
+  dezign: 512 * 1024 * 1024,
   /** A project's .env, compose or Prisma file. */
   project: 1024 * 1024,
   /** Nesting of XML and JSON a model may have (Workbench's own documents nest about 15 deep). */
