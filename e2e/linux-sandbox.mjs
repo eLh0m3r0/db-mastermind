@@ -1,6 +1,6 @@
 // Linux: does a packaged build start, and is its renderer really inside Chromium's sandbox?
 //
-//   node e2e/linux-sandbox.mjs <executable> sandboxed|fallback [--plain]
+//   node e2e/linux-sandbox.mjs <executable> sandboxed|fallback|refused [--plain]
 //
 // <executable> is the installed .deb's binary or an .AppImage. The answer comes from the running processes, not from
 // the command line: a sandboxed renderer runs under a seccomp-bpf filter (`Seccomp: 2` in /proc/<pid>/status) inside
@@ -10,6 +10,8 @@
 // Default: launched through Playwright (with chromiumSandbox: true, or Playwright itself adds --no-sandbox) with a
 // model file as its argument, which must open in a tab. --plain: started with no arguments at all, the way
 // electron-updater starts a replaced AppImage after an update, and watched from outside.
+// "refused": the system offers Chromium no sandbox at all (no user namespaces for users, no SUID helper); the app must
+// stop with Chromium's sandbox error rather than run unsandboxed. Always a plain start.
 // "fallback" with --plain also expects the one stderr line that explains why the AppImage runs without the sandbox
 // (only a plain start reads stderr from its first byte).
 import { _electron as electron } from '@playwright/test'
@@ -19,8 +21,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const [exe, expect, mode] = process.argv.slice(2)
-if (!exe || !['sandboxed', 'fallback'].includes(expect)) {
-  console.error('usage: node e2e/linux-sandbox.mjs <executable> sandboxed|fallback [--plain]')
+if (!exe || !['sandboxed', 'fallback', 'refused'].includes(expect)) {
+  console.error('usage: node e2e/linux-sandbox.mjs <executable> sandboxed|fallback|refused [--plain]')
   process.exit(2)
 }
 const dir = mkdtempSync(join(tmpdir(), 'dbm-sandbox-'))
@@ -75,7 +77,20 @@ function judgeStderr(stderr, complete) {
   if (/FATAL|SUID sandbox helper/.test(stderr)) problems.push(`Chromium complained:\n${stderr.split('\n').filter((l) => /FATAL|sandbox/i.test(l)).join('\n')}`)
 }
 
-if (mode === '--plain') {
+if (expect === 'refused') {
+  const child = spawn(exe, [], { env, detached: true, stdio: ['ignore', 'ignore', 'pipe'] })
+  let stderr = ''
+  child.stderr.on('data', (d) => (stderr += d))
+  const code = await Promise.race([new Promise((r) => child.once('exit', (c, sig) => r(c ?? sig))), sleep(30_000).then(() => 'still running')])
+  const line = stderr.split('\n').find((l) => /sandbox/i.test(l))
+  console.log(`exit: ${code}${line ? `\nstderr: ${line.trim()}` : ''}`)
+  if (code === 'still running') {
+    problems.push(`started although no sandbox is possible: renderers ${JSON.stringify(renderers(child.pid).map((r) => [r.seccomp, r.nspid]))}`)
+    try {
+      process.kill(-child.pid, 'SIGTERM')
+    } catch {}
+  } else if (!line) problems.push(`exited (${code}) without a sandbox error:\n${stderr}`)
+} else if (mode === '--plain') {
   // The process group is killed at the end: the AppImage runtime, the app and its helpers.
   const child = spawn(exe, [], { env: { ...env, APPIMAGE_SILENT_INSTALL: 'true' }, detached: true, stdio: ['ignore', 'ignore', 'pipe'] })
   let stderr = ''

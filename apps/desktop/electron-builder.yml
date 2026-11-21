@@ -71,7 +71,7 @@ appx:
 linux:
   executableName: db-mastermind
   # No --no-sandbox: the .deb's install script lets Chromium's sandbox work (an AppArmor profile that allows user
-  # namespaces on Ubuntu 23.10+, the SUID helper where namespaces are missing). CI's linux-sandbox job proves it.
+  # namespaces on Ubuntu 23.10+, the SUID helper where users can't create them). CI's linux-sandbox job proves both.
   category: Development
   target:
     - target: AppImage
@@ -79,6 +79,10 @@ linux:
     - target: deb
       arch: [x64]
   maintainer: DB Mastermind contributors
+deb:
+  # electron-builder's after-install plus a SUID fallback where users can't create user namespaces (its own test runs
+  # as root, which always can); see the comment at the end of that file.
+  afterInstall: build/linux/after-install.tpl
 appImage:
   # An AppImage can't carry the SUID helper or an AppArmor profile: its AppRun tries `unshare -Ur true` and adds
   # --no-sandbox only when user namespaces are refused (the app then says why on stderr, main/linux-sandbox.ts).
