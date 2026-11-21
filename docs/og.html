@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex">
+<title>Social image | DB Mastermind</title>
+<!-- The source of og.png (1200×630): node scripts/site-images.mjs --og -->
+<link rel="stylesheet" href="site.css">
+<style>
+  body { width: 1200px; height: 630px; overflow: hidden; margin: 0; }
+  .og { position: relative; width: 1200px; height: 630px; padding: 72px 72px 0; background-color: var(--paper); background-image: radial-gradient(circle, var(--dots) 1px, transparent 1.3px); background-size: 16px 16px; background-position: -8px -8px; }
+  .og .brand { font-size: 22px; gap: 12px; }
+  .og h1 { font-size: 72px; margin-top: 44px; white-space: nowrap; }
+  .og .lead { font-size: 24px; color: var(--ink); margin-top: 28px; max-width: 22ch; }
+  .og .url { position: absolute; left: 72px; bottom: 56px; font-size: 21px; color: var(--slate); }
+  .og .dg-box { position: absolute; display: block; right: 72px; top: 300px; width: 672px; height: 160px; }
+  .og .node { position: absolute; left: calc(var(--x) * 1px); top: 0; width: 200px; }
+  .og .node-h { height: 32px; padding: 0 10px; gap: 6px; font-size: 13px; }
+  .og .node-h .g { width: 12px; height: 12px; }
+  .og .node-schema { font-size: 12px; }
+  .og .node li a { min-height: 0; height: 24px; padding: 0 10px; gap: 6px; font-size: 13px; }
+  .og .type { font-size: 12px; }
+  .og .dg-lines { display: block; position: absolute; inset: 0; overflow: visible; color: var(--slate); }
+  .og .dg-lines path { fill: none; stroke: currentColor; stroke-width: 1.3; }
+  .og .hero-text { position: relative; z-index: 1; }
+</style>
+</head>
+<body>
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <defs>
+      <marker id="crow-many" viewBox="0 0 16 16" refX="15" refY="8" markerWidth="16" markerHeight="16" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M3 8 L15 1 M3 8 L15 8 M3 8 L15 15" fill="none" stroke="currentColor" stroke-width="1.2"/></marker>
+      <marker id="crow-one-s" viewBox="0 0 16 16" refX="15" refY="8" markerWidth="16" markerHeight="16" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M10 2 L10 14 M6 2 L6 14" fill="none" stroke="currentColor" stroke-width="1.2"/></marker>
+      <marker id="crow-one" viewBox="0 0 16 16" refX="15" refY="8" markerWidth="16" markerHeight="16" orient="auto" markerUnits="userSpaceOnUse"><path d="M10 2 L10 14 M6 2 L6 14" fill="none" stroke="currentColor" stroke-width="1.2"/></marker>
+      <marker id="crow-many-e" viewBox="0 0 16 16" refX="15" refY="8" markerWidth="16" markerHeight="16" orient="auto" markerUnits="userSpaceOnUse"><path d="M3 8 L15 1 M3 8 L15 8 M3 8 L15 15" fill="none" stroke="currentColor" stroke-width="1.2"/></marker>
+      <marker id="crow-zero-one" viewBox="0 0 20 16" refX="19" refY="8" markerWidth="20" markerHeight="16" orient="auto" markerUnits="userSpaceOnUse"><circle cx="5" cy="8" r="3.2" class="ring" stroke="currentColor" stroke-width="1.2"/><path d="M13 2 L13 14" fill="none" stroke="currentColor" stroke-width="1.2"/></marker>
+    </defs>
+  <symbol id="i-table" viewBox="0 0 24 24"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r="1" fill="currentColor"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 1 1 0 10h-2M8 12h8"/></symbol>
+</svg>
+<div class="og">
+  <div class="hero-text">
+    <span class="brand"><img src="icon.svg" alt="" width="40" height="40"><span>DB Mastermind</span></span>
+    <h1>Understand your data.</h1>
+    <p class="lead">A free, open-source database client and data modeler for Windows, macOS and Linux.</p>
+  </div>
+  <div class="dg-box">
+    <svg class="dg-lines" aria-hidden="true" width="672" height="160" viewBox="0 0 672 160">
+      <path d="M 236 69 L 224 69 Q 218 69 218 63 L 218 51 Q 218 45 212 45 L 200 45" marker-start="url(#crow-many)" marker-end="url(#crow-one)"/>
+      <path d="M 472 69 L 460 69 Q 454 69 454 63 L 454 51 Q 454 45 448 45 L 436 45" marker-start="url(#crow-many)" marker-end="url(#crow-one)"/>
+    </svg>
+    <section class="node" style="--x:0;--y:0">
+        <p class="node-h"><svg class="g g-table" aria-hidden="true" focusable="false"><use href="#i-table"/></svg><span class="node-name">design</span><span class="node-schema">modeler</span></p>
+        <ul><li><a><svg class="g g-key" aria-hidden="true" focusable="false"><use href="#i-key"/></svg><span class="col pk">schema</span><span class="type">dbml</span></a></li><li><a><span class="g"></span><span class="col">diagrams</span><span class="type">live</span></a></li><li><a><span class="g"></span><span class="col">migrations</span><span class="type">checked</span></a></li><li><a><span class="g"></span><span class="col">code</span><span class="type">prisma…</span></a></li></ul>
+      </section>
+    <section class="node" style="--x:236;--y:0">
+        <p class="node-h"><svg class="g g-table" aria-hidden="true" focusable="false"><use href="#i-table"/></svg><span class="node-name">query</span><span class="node-schema">client</span></p>
+        <ul><li><a><svg class="g g-key" aria-hidden="true" focusable="false"><use href="#i-key"/></svg><span class="col pk">result</span><span class="type">rows</span></a></li><li><a><svg class="g g-link" aria-hidden="true" focusable="false"><use href="#i-link"/></svg><span class="col">schema</span><span class="type">design</span></a></li><li><a><span class="g"></span><span class="col">filters</span><span class="type">no SQL</span></a></li><li><a><span class="g"></span><span class="col">autocomplete</span><span class="type">SQL</span></a></li></ul>
+      </section>
+    <section class="node" style="--x:472;--y:0">
+        <p class="node-h"><svg class="g g-table" aria-hidden="true" focusable="false"><use href="#i-table"/></svg><span class="node-name">see</span><span class="node-schema">charts</span></p>
+        <ul><li><a><svg class="g g-key" aria-hidden="true" focusable="false"><use href="#i-key"/></svg><span class="col pk">chart</span><span class="type">bar, line</span></a></li><li><a><svg class="g g-link" aria-hidden="true" focusable="false"><use href="#i-link"/></svg><span class="col">result</span><span class="type">query</span></a></li><li><a><span class="g"></span><span class="col">dashboards</span><span class="type">live</span></a></li></ul>
+      </section>
+  </div>
+  <p class="url">dbmastermind.app</p>
+</div>
+</body>
+</html>
