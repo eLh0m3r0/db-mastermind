@@ -382,3 +382,22 @@ describe('a megabyte of what makes a regex backtrack (review M4)', () => {
     expect(m.tables.map((t) => t.name).sort()).toEqual(['CUSTOMER', 'ORDER'])
   })
 })
+
+describe('Workbench index parts and referential actions (review N1)', () => {
+  it('an expression part the grammar refuses leaves the index out; an action that is none is a note', () => {
+    const files = unzipSync(workbenchModel())
+    const xml = strFromU8(files['document.mwb.xml']!)
+    // The email index gets an expression part; the first foreign key a rule that is no action.
+    const hostile = xml
+      .replace('<link type="object" struct-name="db.Column" key="referencedColumn">c2</link>', '<value type="string" key="expression">a)); DROP TABLE victim; CREATE TABLE z ((q</value>')
+      .replace(/(key="deleteRule">)[^<]*(<)/, '$1CASCADE; DROP TABLE victim$2')
+    expect(hostile).not.toBe(xml)
+    const m = tablesFromMwb(zipSync({ ...files, 'document.mwb.xml': strToU8(hostile) }))
+    const customer = m.tables.find((t) => t.name === 'customer')!
+    expect(customer.indexes.map((i) => i.name)).not.toContain('idx_email')
+    expect(m.leftOut.indexes).toBe(1)
+    expect(JSON.stringify(m.tables.flatMap((t) => t.foreignKeys))).not.toMatch(/victim/)
+    const tables = m.tables.map((t) => ({ ...t, comment: null, columns: t.columns.map((c) => ({ ...c, comment: null })) }))
+    expect(createScript(tables, getDialect('mysql'))).not.toMatch(/victim/)
+  })
+})

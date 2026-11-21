@@ -1,7 +1,7 @@
 import type { CheckInfo, ColumnInfo, DriverId, ForeignKeyInfo, IndexInfo, TableInfo } from './types.js'
 import { classifyType } from './type-map.js'
 import { emptyImport, layoutKey, leaveOut, type ImportedModel } from './imported-model.js'
-import { isPlainCheck, isPlainType, plainDefault } from './foreign-sql.js'
+import { isPlainCheck, isPlainType, plainDefault, plainIndexPart, readsDoubleQuotesAsNames } from './foreign-sql.js'
 
 /**
  * drawDB diagrams (drawdb.app): its JSON export and its `.ddb` save files, the same JSON with a title and an author.
@@ -124,6 +124,7 @@ export function tablesFromDrawDb(text: string): ImportedModel {
   if (types.size) out.leftOut.customTypes = types.size
   if (d.views?.length) out.leftOut.views = d.views.length
 
+  const quoting = { doubleQuotes: readsDoubleQuotesAsNames(out.database) }
   const byId = new Map<string, { source: DrawDbTable; table: TableInfo }>()
   const key = (id: Id) => String(id)
   for (const t of d.tables) {
@@ -142,19 +143,31 @@ export function tablesFromDrawDb(text: string): ImportedModel {
       if (dataType !== typed) leaveOut(out, column, 'types', 'drawDB', typed)
       if (defaultValue === undefined) leaveOut(out, column, 'defaults', 'drawDB', String(f.default))
       const check = typeof f.check === 'string' ? f.check.trim() : ''
-      if (check && isPlainCheck(check)) checks.push({ expression: check, column: f.name })
+      if (check && isPlainCheck(check, quoting)) checks.push({ expression: check, column: f.name })
       else if (check) leaveOut(out, column, 'checks', 'drawDB', check)
       if (f.unique && !f.primary) indexes.push({ name: `${t.name}_${f.name}_key`, columns: [f.name], unique: true, primary: false, constraint: true })
     }
-    const fieldName = (id: Id) => t.fields.find((f) => key(f.id) === key(id))?.name ?? (typeof id === 'string' ? id : undefined)
-    for (const ix of t.indices ?? []) {
-      // Older files name the fields; newer ones may give their ids.
-      const cols = ix.fields.map((f) => (t.fields.some((x) => x.name === f) ? String(f) : fieldName(f))).filter((c): c is string => !!c)
-      if (cols.length) indexes.push({ name: ix.name || `${t.name}_${cols.join('_')}_idx`, columns: cols, unique: !!ix.unique, primary: false })
+    // Index parts are the table's fields (older files name them, newer ones give their ids); anything else must be an
+    // expression the check grammar takes, or the index is left out (with a note on the table).
+    const names = t.fields.map((f) => f.name)
+    const part = (f: unknown) => {
+      const field = t.fields.find((x) => x.name === f) ?? t.fields.find((x) => key(x.id) === key(f as Id))
+      return field ? field.name : typeof f === 'string' ? plainIndexPart(f, names, quoting) : undefined
     }
-    for (const u of t.uniqueConstraints ?? []) if (u.fields.length) indexes.push({ name: u.name, columns: [...u.fields], unique: true, primary: false, constraint: true })
+    const leftOutIndexes: string[] = []
+    for (const ix of t.indices ?? []) {
+      const cols = ix.fields.map(part)
+      if (cols.length && cols.every((c): c is string => !!c)) indexes.push({ name: ix.name || `${t.name}_${cols.join('_')}_idx`, columns: cols, unique: !!ix.unique, primary: false })
+      else if (cols.length) leftOutIndexes.push(`${typeof ix.name === 'string' ? ix.name : ''} (${ix.fields.map(String).join(', ')})`)
+    }
+    for (const u of t.uniqueConstraints ?? []) {
+      if (!Array.isArray(u.fields) || !u.fields.length) continue
+      if (u.fields.every((f) => names.includes(f))) indexes.push({ name: u.name, columns: [...u.fields], unique: true, primary: false, constraint: true })
+      else leftOutIndexes.push(`${typeof u.name === 'string' ? u.name : ''} (${u.fields.map(String).join(', ')})`)
+    }
     const primaryKey = t.fields.filter((f) => f.primary).map((f) => f.name)
     const table: TableInfo = { name: t.name, type: 'table', comment: t.comment?.trim() || null, columns, primaryKey, foreignKeys: [], indexes: primaryKey.length ? [{ name: `${t.name}_pkey`, columns: primaryKey, unique: true, primary: true }, ...indexes] : indexes, ...(checks.length ? { checks } : {}) }
+    for (const ix of leftOutIndexes) leaveOut(out, table, 'indexes', 'drawDB', ix)
     byId.set(key(t.id), { source: t, table })
   }
 

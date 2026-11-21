@@ -29,6 +29,8 @@ const FOREIGN_LEFT_OUT: [keyof ForeignModelInfo['leftOut'], string][] = [
   ['defaults', "defaults that aren't plain SQL (a note on the column says them): {n}"],
   ['checks', "checks that aren't plain SQL (a note on the column says them): {n}"],
   ['types', "types that aren't plain SQL (text, a note on the column says them): {n}"],
+  ['indexes', 'indexes on something that is neither a column nor a plain expression (a note on the table says them): {n}'],
+  ['actions', 'referential actions that are none (a note on the table says them): {n}'],
 ]
 
 /** The notice after another tool's model was opened or imported: what came over and what could not, with counts. */

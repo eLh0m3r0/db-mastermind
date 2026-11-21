@@ -1968,6 +1968,8 @@ export const cs: Record<string, string> = {
   "defaults that aren't plain SQL (a note on the column says them): {n}": 'výchozí hodnoty, které nejsou prostým SQL (uvádí je poznámka u sloupce): {n}',
   "checks that aren't plain SQL (a note on the column says them): {n}": 'kontroly, které nejsou prostým SQL (uvádí je poznámka u sloupce): {n}',
   "types that aren't plain SQL (text, a note on the column says them): {n}": 'typy, které nejsou prostým SQL (text, uvádí je poznámka u sloupce): {n}',
+  'indexes on something that is neither a column nor a plain expression (a note on the table says them): {n}': 'indexy nad něčím, co není sloupec ani prostý výraz (uvádí je poznámka u tabulky): {n}',
+  'referential actions that are none (a note on the table says them): {n}': 'referenční akce, které žádnými nejsou (uvádí je poznámka u tabulky): {n}',
   'The file itself is not changed: Save makes a .dbml model.': 'Samotný soubor se nemění: Uložit z něj udělá model .dbml.',
   'Paste a connection URL (postgres://…, JDBC, ADO.NET; Supabase, Neon, Amazon RDS, Azure…)': 'Vložte URL připojení (postgres://…, JDBC, ADO.NET; Supabase, Neon, Amazon RDS, Azure…)',
   "Port 6543 is Supabase's transaction pooler: session settings (default schema, statement timeout, read-only) and transactions across statements don't carry over. Port 5432 keeps the session.":

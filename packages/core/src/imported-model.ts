@@ -46,13 +46,17 @@ export type LeftOutKind =
   | 'defaults'
   | 'checks'
   | 'types'
+  /** Indexes with a part that is neither a column nor a plain expression. */
+  | 'indexes'
+  /** Referential actions that aren't one (CASCADE, RESTRICT, SET NULL, SET DEFAULT, NO ACTION). */
+  | 'actions'
 
 /**
  * What a file said that isn't taken as SQL (foreign-sql.ts): a line of the column's comment says it, and it is
  * counted as left out.
  */
-export function leaveOut(model: ImportedModel, column: { comment?: string | null }, kind: 'defaults' | 'checks' | 'types', tool: string, text: string): void {
-  const what = { defaults: 'default', checks: 'check', types: 'type' }[kind]
+export function leaveOut(model: ImportedModel, column: { comment?: string | null }, kind: 'defaults' | 'checks' | 'types' | 'indexes' | 'actions', tool: string, text: string): void {
+  const what = { defaults: 'default', checks: 'check', types: 'type', indexes: 'index', actions: 'referential action' }[kind]
   const line = `${tool} ${what} (not taken): ${text.replace(/\s+/g, ' ').trim().slice(0, 500)}`
   column.comment = column.comment ? `${column.comment}\n${line}` : line
   model.leftOut[kind] = (model.leftOut[kind] ?? 0) + 1
