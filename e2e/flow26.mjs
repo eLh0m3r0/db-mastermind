@@ -36,6 +36,8 @@ try {
   // Reopen the table: layout is remembered.
   await win.keyboard.press('Escape')
   console.log('pending:', await win.getByText(/\d+ changes?$/).first().textContent().catch(() => 'none'))
+  // (Quitting with unsaved edits asks Save / Discard / Cancel now: the test's edit goes first.)
+  await win.getByRole('button', { name: 'Discard changes' }).click()
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])
   await win.screenshot({ path: `${out}/99-error.png` })
