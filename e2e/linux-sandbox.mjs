@@ -10,7 +10,8 @@
 // Default: launched through Playwright (with chromiumSandbox: true, or Playwright itself adds --no-sandbox) with a
 // model file as its argument, which must open in a tab. --plain: started with no arguments at all, the way
 // electron-updater starts a replaced AppImage after an update, and watched from outside.
-// "fallback" also expects the one stderr line that explains why the AppImage runs without the sandbox.
+// "fallback" with --plain also expects the one stderr line that explains why the AppImage runs without the sandbox
+// (only a plain start reads stderr from its first byte).
 import { _electron as electron } from '@playwright/test'
 import { spawn } from 'node:child_process'
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
@@ -65,10 +66,11 @@ function judge(list) {
   }
 }
 
-function judgeStderr(stderr) {
+/** `complete`: stderr was read from the very start (Playwright hands it over only after the app has started). */
+function judgeStderr(stderr, complete) {
   const line = stderr.split('\n').find((l) => SANDBOX_LINE.test(l))
   if (line) console.log(`stderr: ${line}`)
-  if (expect === 'fallback' && !line) problems.push('no stderr line explaining the missing sandbox')
+  if (complete && expect === 'fallback' && !line) problems.push('no stderr line explaining the missing sandbox')
   if (expect === 'sandboxed' && line) problems.push('the missing-sandbox line was printed although the sandbox is on')
   if (/FATAL|SUID sandbox helper/.test(stderr)) problems.push(`Chromium complained:\n${stderr.split('\n').filter((l) => /FATAL|sandbox/i.test(l)).join('\n')}`)
 }
@@ -87,7 +89,7 @@ if (mode === '--plain') {
   await sleep(2000)
   if (child.exitCode !== null) problems.push(`exited with ${child.exitCode}:\n${stderr}`)
   judge(renderers(child.pid))
-  judgeStderr(stderr)
+  judgeStderr(stderr, true)
   try {
     process.kill(-child.pid, 'SIGTERM')
   } catch {}
@@ -132,7 +134,7 @@ if (mode === '--plain') {
   } finally {
     await app.close().catch(() => {})
   }
-  judgeStderr(stderr)
+  judgeStderr(stderr, false)
 }
 
 if (problems.length) {

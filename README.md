@@ -111,7 +111,7 @@ Or download from [Releases](https://github.com/eLh0m3r0/db-mastermind/releases/l
 | **Windows, no installation** (no admin rights, settings stay in the folder) | `DB-Mastermind-<version>-win-x64-portable.zip` → unzip → run `DB Mastermind.exe` |
 | Windows installer (per user, no admin) | `DB-Mastermind-<version>-win-x64-setup.exe` |
 | macOS Apple Silicon / Intel | `DB-Mastermind-<version>-mac-arm64.dmg` / `-mac-x64.dmg` |
-| Linux | `DB-Mastermind-<version>-linux-x86_64.AppImage` or `-linux-amd64.deb` |
+| Linux | `DB-Mastermind-linux-x86_64.AppImage` or `DB-Mastermind-<version>-linux-amd64.deb` |
 
 The downloads aren't signed with a certificate Windows trusts or notarized by Apple yet (the Store version is
 signed by Microsoft).
@@ -119,6 +119,11 @@ signed by Microsoft).
 (then *Open* once more), or run
 `xattr -dr com.apple.quarantine "/Applications/DB Mastermind.app"`. **Windows**: if SmartScreen warns, choose
 *More info → Run anyway*.
+
+**Linux**: the `.deb` runs inside Chromium's sandbox (its install script adds an AppArmor profile that allows it on
+Ubuntu 23.10 and later). The AppImage uses the sandbox where the system lets applications create user namespaces;
+where it doesn't (Ubuntu 23.10 and later by default) it starts without it and says so in the terminal, so prefer the
+`.deb` there. On Ubuntu 24.04 the AppImage needs FUSE 2: `sudo apt install libfuse2t64`.
 
 With [Scoop](https://scoop.sh) on Windows (portable, updates with `scoop update`, keeps your data):
 
