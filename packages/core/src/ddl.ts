@@ -246,6 +246,13 @@ const normDefault = (value: string | null | undefined) => {
   return v.includes("'") ? v : v.toLowerCase()
 }
 /**
+ * A generated column's expression as compared: databases give it back in their own spelling (SQL Server
+ * `([price]*(3))`, MySQL `(\`price\` * 3)`, Oracle `"PRICE"*3`), so quotes, brackets, parentheses, spaces and case
+ * don't count. (An expression that differs only in its parentheses is taken as the same.)
+ */
+const looseExpression = (value: string | null | undefined) => (value ?? '').replace(/'(?:[^']|'')*'/g, (s) => `\u0000${s}\u0000`).split('\u0000').map((part, i) => (i % 2 ? part : part.replace(/[\s()"`[\]]/g, '').toLowerCase())).join('')
+
+/**
  * The same default of a flag: MySQL keeps BOOLEAN as tinyint(1), so `DEFAULT TRUE` in a script is `1` in the
  * database (and in a Workbench model).
  */
@@ -372,7 +379,7 @@ export function diffTable(original: TableInfo | undefined, draftIn: DesignTable,
       type: !byDomain && typesDiffer(col.dataType, before.dataType),
       // PostgreSQL makes a serial column NOT NULL whatever the model says.
       nullable: col.nullable !== before.nullable && !(isSerialType(col.dataType) && !before.nullable),
-      default: normDefault(col.defaultValue) !== normDefault(before.defaultValue) && !(byDomain && !before.defaultValue) && !sameFlag(col, before),
+      default: (col.generated || before.isGenerated ? looseExpression(col.defaultValue) !== looseExpression(before.defaultValue) : normDefault(col.defaultValue) !== normDefault(before.defaultValue)) && !(byDomain && !before.defaultValue) && !sameFlag(col, before),
       comment: (col.comment ?? null) !== (before.comment ?? null),
     }
     if (diff.type || diff.nullable || diff.default || diff.comment) {
@@ -1054,6 +1061,18 @@ function renderMigration(changes: SchemaChange[], dialect: Dialect, tables: Tabl
         const { before, after, changes: c } = change
         const t = q(change.table)
         const col = id(after.name)
+        // A generated column's expression can't be changed in place on most databases (PostgreSQL before 17, MySQL
+        // and MariaDB for STORED, SQL Server, Oracle): it is dropped and added again. Its values are computed again
+        // from the other columns, so nothing is lost (its position in the table may change).
+        if ((before.isGenerated || after.generated) && (c.default || c.type || !!before.isGenerated !== !!after.generated)) {
+          const add = (column: DesignColumn) => (d.id === 'oracle' ? `ALTER TABLE ${t} ADD (${columnDefinition(column, d)})` : `ALTER TABLE ${t} ADD ${d.id === 'mssql' ? '' : 'COLUMN '}${columnDefinition(column, d)}`)
+          const was: DesignColumn = { id: '', name: before.name, dataType: before.dataType, nullable: before.nullable, defaultValue: before.defaultValue ?? null, ...(before.isGenerated ? { generated: before.generatedStored === false ? ('virtual' as const) : ('stored' as const) } : {}) }
+          if (d.id === 'mssql' && !before.isGenerated) statements.push(mssqlDropDefault(change.table, before.name, ++mssqlVar, d))
+          statements.push(`ALTER TABLE ${t} DROP COLUMN ${id(before.name)}`, add(after))
+          rollback.unshift(`ALTER TABLE ${t} DROP COLUMN ${col}`, add(was))
+          warnings.push({ level: after.generated && before.isGenerated ? 'info' : 'warning', message: after.generated && before.isGenerated ? `${change.table.name}.${after.name} is a generated column: it is dropped and added again with the new expression (its values are computed again, its place in the table may change).` : `${change.table.name}.${after.name} changes between a stored and a generated column: it is dropped and added again, and the values it held are not kept.` })
+          break
+        }
         if (c.type && isNarrowing(before.dataType, after.dataType)) {
           warnings.push({ level: 'warning', message: `${change.table.name}.${after.name}: ${before.dataType} → ${after.dataType} may fail or truncate existing values.` })
         }
