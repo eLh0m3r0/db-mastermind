@@ -22,10 +22,15 @@ jobs:
     permissions:
       contents: write
     steps:
+      # No token in .git/config: only the step that creates the release gets one. The repository is public, so the
+      # fetch below needs none.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
-      # A release (and everything that publishes from it) is made only from a commit that is on main.
+          persist-credentials: false
+      # A release (and everything that publishes from it) is made only from a commit that is on main. Push main and
+      # the tag in one `git push --atomic origin main vX.Y.Z` (or main first): a tag that arrives before main fails here
+      # and needs a re-run once main is pushed.
       - name: The tag is on main
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -164,27 +169,36 @@ jobs:
           files=$(find . -maxdepth 1 -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.blockmap' -o -name 'latest*.yml' \) | sort)
           echo "$files"
           for attempt in 1 2 3; do gh release upload "$GITHUB_REF_NAME" $files --clobber -R "$GITHUB_REPOSITORY" && break; sleep 20; done
+      # Packaging steps run without any token; only the upload and push steps below get one, and only on tag runs.
       - name: Scoop manifest
         if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           V="${GITHUB_REF_NAME#v}"
           node scripts/scoop-manifest.mjs "$V" "apps/desktop/release/DB-Mastermind-$V-win-x64-portable.zip" "apps/desktop/release/DB-Mastermind-$V-win-arm64-portable.zip" > db-mastermind.json
           cat db-mastermind.json
-          gh release upload "$GITHUB_REF_NAME" db-mastermind.json --clobber
+      - name: Upload the Scoop manifest
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" db-mastermind.json --clobber -R "$GITHUB_REPOSITORY"
       - name: MSI package (x64, for Intune / SCCM)
         if: runner.os == 'Windows'
         working-directory: apps/desktop
         shell: bash
-        run: |
-          npx electron-builder --win msi --x64 --prepackaged release/win-unpacked --publish never
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then gh release upload "$GITHUB_REF_NAME" release/*.msi --clobber -R "$GITHUB_REPOSITORY"; fi
+        run: npx electron-builder --win msi --x64 --prepackaged release/win-unpacked --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Upload the MSI
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
+        working-directory: apps/desktop
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: gh release upload "$GITHUB_REF_NAME" release/*.msi --clobber -R "$GITHUB_REPOSITORY"
       - name: Microsoft Store package (MSIX, signed by the Store)
+        id: store
         # Needs the app's identity from Partner Center as repository variables (see docs/microsoft-store.md).
         if: runner.os == 'Windows' && vars.MSSTORE_IDENTITY_NAME != ''
         # A problem with the Store package must not stop the release itself.
@@ -199,12 +213,25 @@ jobs:
           --config.appx.applicationId=DBMastermind
           --config.appx.displayName="DB Mastermind"
           --config.appx.artifactName='DB-Mastermind-${version}-store.${ext}'
-          && if [[ "$GITHUB_REF" == refs/tags/v* ]]; then gh release upload "$GITHUB_REF_NAME" release/*-store.appx --clobber -R "$GITHUB_REPOSITORY"; fi
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Upload the Store package
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v') && steps.store.outcome == 'success'
+        continue-on-error: true
+        working-directory: apps/desktop
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: gh release upload "$GITHUB_REF_NAME" release/*-store.appx --clobber -R "$GITHUB_REPOSITORY"
       - name: Homebrew cask
         # The repository doubles as a tap: brew tap elh0m3r0/db-mastermind https://github.com/eLh0m3r0/db-mastermind
+        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          DBM_NOTARIZED="$MAC_NOTARIZE" node scripts/homebrew-cask.mjs "$V" "apps/desktop/release/DB-Mastermind-$V-mac-arm64.dmg" "apps/desktop/release/DB-Mastermind-$V-mac-x64.dmg" > "$RUNNER_TEMP/db-mastermind.rb"
+          cat "$RUNNER_TEMP/db-mastermind.rb"
+      - name: Push the Homebrew cask to main
         if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
         shell: bash
         env:
@@ -213,8 +240,6 @@ jobs:
           V="${GITHUB_REF_NAME#v}"
           AUTH="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
           echo "::add-mask::$AUTH"
-          DBM_NOTARIZED="$MAC_NOTARIZE" node scripts/homebrew-cask.mjs "$V" "apps/desktop/release/DB-Mastermind-$V-mac-arm64.dmg" "apps/desktop/release/DB-Mastermind-$V-mac-x64.dmg" > "$RUNNER_TEMP/db-mastermind.rb"
-          cat "$RUNNER_TEMP/db-mastermind.rb"
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           for attempt in 1 2 3; do
@@ -235,12 +260,16 @@ jobs:
     if: ${{ !cancelled() && needs.desktop.result == 'success' && startsWith(github.ref, 'refs/tags/v') }}
     # Works only with its own WINGET_TOKEN.
     permissions: {}
-    env:
-      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
     steps:
-      - name: Submit to winget
-        if: env.WINGET_TOKEN != ''
+      - name: Is there a token?
+        id: token
         env:
+          HAS_TOKEN: ${{ secrets.WINGET_TOKEN != '' }}
+        run: echo "set=$HAS_TOKEN" >> "$GITHUB_OUTPUT"
+      - name: Submit to winget
+        if: steps.token.outputs.set == 'true'
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
           GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
         run: |
           V="${GITHUB_REF_NAME#v}"
@@ -399,6 +428,10 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+      # Its own step, before any token is in scope. Trusted publishing needs npm 11.5.1 or newer.
+      - name: npm for trusted publishing
+        if: steps.go.outputs.go == 'yes' && needs.mcp-pack.outputs.npm != 'done' && steps.auth.outputs.auth != 'none'
+        run: npm install -g --ignore-scripts npm@11.21.2 && npm --version
       - name: Publish the tested tarball to npm
         if: steps.go.outputs.go == 'yes' && needs.mcp-pack.outputs.npm != 'done' && steps.auth.outputs.auth != 'none'
         run: |
@@ -406,8 +439,6 @@ jobs:
           if [ "$(npm view "dbmastermind-mcp@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
             echo "::notice::dbmastermind-mcp@$VERSION is already on npm."; exit 0
           fi
-          # Trusted publishing needs npm 11.5.1 or newer.
-          npm install -g --ignore-scripts npm@11.21.2
           npm publish "$TARBALL" --access public --provenance
         env:
           # The token only in this step; with trusted publishing it stays empty and npm uses OIDC.
