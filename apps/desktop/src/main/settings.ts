@@ -33,21 +33,39 @@ function mapKeys(providers: AiProviderSettings[], fn: (owner: string, field: str
   return Promise.all(providers.map(async (p) => ({ ...p, apiKey: await fn(p.id, 'apiKey', p.apiKey) })))
 }
 
-/** Reads settings and decrypts API keys. Must run after app 'ready'. */
+/** Encrypted values start like this (storage.ts); anything else in the token field is a token saved in plain text. */
+const ENCRYPTED = /^(enc:v\d+|plain):/
+
+/**
+ * The MCP endpoint's token, decrypted. A token saved in plain text by older versions is used as it is (agents are
+ * configured with it) and saved encrypted. One that doesn't decrypt (keychain unavailable) is kept as ciphertext and
+ * written back on save; meanwhile the token is empty, which the endpoint never accepts. Only a missing or too short
+ * token is replaced by a new one.
+ */
+async function readToken(stored: string | undefined, fresh: string): Promise<{ token: string; save: boolean }> {
+  if (!stored) return { token: fresh, save: true }
+  const plain = await unreadable.decrypt('mcp', 'token', stored)
+  if (plain === undefined) return { token: '', save: false }
+  if (plain.length < 16) return { token: fresh, save: true }
+  return { token: plain, save: !ENCRYPTED.test(stored) }
+}
+
+/** Reads settings and decrypts API keys and the MCP token. Must run after app 'ready'. */
 export async function loadSettings(): Promise<void> {
   const defaults = defaultSettings()
   const stored = readJson<Partial<AppSettings>>(FILE, {})
   takeLegacySecretsFlag()
   unreadable.clear()
+  const token = await readToken(stored.mcp?.token, defaults.mcp.token)
   cached = enforceManagedSettings({
     ...defaults,
     ...stored,
     ai: { ...defaults.ai, ...stored.ai, providers: await mapKeys(stored.ai?.providers ?? [], (owner, field, v) => unreadable.decrypt(owner, field, v)) },
-    mcp: { ...defaults.mcp, ...stored.mcp, token: stored.mcp?.token && stored.mcp.token.length >= 16 ? stored.mcp.token : defaults.mcp.token },
+    mcp: { ...defaults.mcp, ...stored.mcp, token: token.token },
   }, managedConfig())
-  // The first run stores the generated token (also replacing an empty or short one) and the detected language.
-  // Also saves API keys read in an older encryption format again in the current one.
-  if (!stored.mcp?.token || stored.mcp.token.length < 16 || !stored.language || takeLegacySecretsFlag()) persist(cached)
+  // The first run stores the generated token (also replacing an empty or short one) and the detected language; a
+  // token in plain text is saved encrypted. Also saves secrets read in an older encryption format in the current one.
+  if (token.save || !stored.language || takeLegacySecretsFlag()) persist(cached)
 }
 
 export function getSettings(): AppSettings {
@@ -59,8 +77,25 @@ let writes = Promise.resolve()
 
 function persist(settings: AppSettings) {
   writes = writes
-    .then(async () => writeJson(FILE, { ...settings, ai: { ...settings.ai, providers: await mapKeys(settings.ai.providers, (owner, field, v) => unreadable.encrypt(owner, field, v)) } }))
+    .then(async () =>
+      writeJson(FILE, {
+        ...settings,
+        ai: { ...settings.ai, providers: await mapKeys(settings.ai.providers, (owner, field, v) => unreadable.encrypt(owner, field, v)) },
+        mcp: { ...settings.mcp, token: await unreadable.encrypt('mcp', 'token', settings.mcp.token) },
+      }),
+    )
     .catch((err: unknown) => console.error('Could not save settings', err))
+}
+
+/**
+ * Saving the app's AI defaults also sets the older app-wide data sharing to match: `aiAccess` still applies a "schema
+ * only" stored there, and the defaults are where the user now chooses it.
+ */
+function sharingOf(patch: Partial<AppSettings['ai']>, current: AppSettings['ai']): Partial<AppSettings['ai']> {
+  // (The settings page sends the whole AI section: a data sharing equal to the current one is no choice of its own.)
+  if (!patch.defaults || (patch.dataSharing !== undefined && patch.dataSharing !== current.dataSharing)) return {}
+  if (patch.defaults.access === 'schema') return { dataSharing: 'schema' }
+  return current.dataSharing === 'schema' ? { dataSharing: 'schema-and-samples' } : {}
 }
 
 export function updateSettings(patch: Partial<AppSettings>): AppSettings {
@@ -68,7 +103,7 @@ export function updateSettings(patch: Partial<AppSettings>): AppSettings {
   const next: AppSettings = {
     ...current,
     ...patch,
-    ai: patch.ai ? { ...current.ai, ...patch.ai } : current.ai,
+    ai: patch.ai ? { ...current.ai, ...patch.ai, ...sharingOf(patch.ai, current.ai) } : current.ai,
     mcp: patch.mcp ? { ...current.mcp, ...patch.mcp } : current.mcp,
   }
   cached = enforceManagedSettings(next, managedConfig())
