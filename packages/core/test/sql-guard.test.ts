@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canonicalPiece, createScript, dropScript, generateMigration, getDialect, parseDbml, splitStatements, sqlTextProblem, stripLiterals, compareSchemas, type DriverId, type TableInfo } from '../src/index.js'
+import { canonicalPiece, createScript, dropScript, generateMigration, getDialect, guardStatements, parseDbml, splitStatements, sqlTextProblem, stripLiterals, compareSchemas, type DriverId, type TableInfo } from '../src/index.js'
 
 /** The statements of a script as our splitter reads them, with literals, names and comments blanked (what runs). */
 const code = (script: string, d: DriverId) => splitStatements(script, d).map((s) => stripLiterals(s.text, d).trim())
@@ -157,6 +157,18 @@ describe('what the statement check must let through (wave 6: real models)', () =
       const dropTable = generateMigration(compareSchemas([], [before]), getDialect(d))
       for (const m of [dropColumn, dropTable]) expect(m.warnings.filter((w) => /Left out/.test(w.message)), d).toEqual([])
       expect(dropColumn.rollback.length + dropTable.rollback.length, d).toBeGreaterThan(0)
+    }
+  })
+})
+
+describe('the review inputs (H1) meet a second layer of their own', () => {
+  it('the statement check alone leaves out a statement the piece broke, as if the piece had not been read first', () => {
+    const pg = `CREATE TABLE s.t (a int DEFAULT $é$'$é$ || ''); DROP TABLE s.victim; COMMIT; CREATE TABLE s.z (id int, --')`
+    const ms = "CREATE TABLE t (a int DEFAULT 0 /* /* */ ' */ ) DROP TABLE victim COMMIT CREATE TABLE z (id int --')"
+    for (const [d, sql] of [['postgres', pg], ['mssql', ms]] as const) {
+      const out = guardStatements({ statements: [sql, 'CREATE TABLE ok (id int)'], rollback: [], warnings: [], transactional: true }, getDialect(d))
+      expect(out.statements, d).toEqual(['CREATE TABLE ok (id int)'])
+      expect(out.warnings.map((w) => w.message).join(' '), d).toMatch(/would not be one statement/)
     }
   })
 })

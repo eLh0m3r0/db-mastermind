@@ -722,7 +722,36 @@ function guardChanges(changes: SchemaChange[], d: Dialect, options: MigrationOpt
  * (two for the T-SQL DECLARE … IF pairs), and nothing left open behind it (a quote or comment that would swallow the
  * next one). A statement that isn't is not written; a warning says so. Warnings themselves become one line each.
  */
-function guardStatements(m: Migration, d: Dialect): Migration {
+/**
+ * T-SQL needs no separators: `CREATE TABLE t (…) DROP TABLE x` is two statements in one. The statements made here
+ * start with one keyword; a second statement's keyword outside parentheses (a DROP after CREATE, a COMMIT or DELETE
+ * anywhere) means a piece broke out. (ALTER TABLE … DROP CONSTRAINT and IF … EXEC(…) are our own forms.)
+ */
+const TSQL_STARTS = new Set('COMMIT ROLLBACK DELETE INSERT UPDATE MERGE TRUNCATE GRANT REVOKE DENY SHUTDOWN KILL WAITFOR BACKUP RESTORE USE SELECT CREATE'.split(' '))
+function tsqlSecondStatement(sql: string): boolean {
+  const lexed = lex(sql, 'mssql')
+  if (!lexed.ok) return true
+  let depth = 0
+  let first = ''
+  for (const t of lexed.tokens) {
+    const text = sql.slice(t.start, t.end)
+    if (t.kind === 'op' && text === '(') depth++
+    else if (t.kind === 'op' && text === ')') depth--
+    else if (t.kind === 'word' && depth === 0) {
+      const w = text.toUpperCase()
+      if (!first) {
+        first = w
+        continue
+      }
+      // (DECLARE @x = (SELECT …); IF @x … EXEC(…): our own default-constraint drop is two statements by design.)
+      if (first === 'DECLARE' || first === 'IF') return false
+      if (TSQL_STARTS.has(w) || (w === 'DROP' && first !== 'ALTER' && first !== 'DROP')) return true
+    }
+  }
+  return false
+}
+
+export function guardStatements(m: Migration, d: Dialect): Migration {
   const warnings = m.warnings.map((w) => ({ ...w, message: oneLine(w.message) }))
   const whole = (sql: string) => {
     const expected = d.id === 'mssql' && /^\s*DECLARE\s+@/i.test(sql) ? 2 : 1
@@ -730,6 +759,7 @@ function guardStatements(m: Migration, d: Dialect): Migration {
     // comment alone, which is no statement at all.)
     const parts = splitStatements(`${sql}\n;\nSELECT 1`, d.id)
     if (parts.at(-1)?.text !== 'SELECT 1') return false
+    if (d.id === 'mssql' && tsqlSecondStatement(sql)) return false
     return parts.length === expected + 1 || (parts.length === 1 && !splitStatements(sql, d.id).length)
   }
   const keep = (list: string[], what: string) =>
