@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { conditionVerdict, isReadOnlyCondition, isReadOnlyScript, lex, readVerdict, tokenStatements, type DriverId } from '../src/index.js'
+import { canonicalName, codeTokens, conditionVerdict, isReadOnlyCondition, isReadOnlyScript, lex, readVerdict, tokenStatements, type DriverId } from '../src/index.js'
 
 // Review round 2 (C1): SQL nobody confirmed that the old lexer read as one harmless SELECT.
 export const C1: [DriverId, string][] = [
@@ -136,5 +136,145 @@ describe('review round 3', () => {
   it('SQL Server batches are planned and run whole', () => {
     expect(readVerdict('DECLARE @x int; SET @x = 41; SELECT @x + 1', 'mssql').statements).toHaveLength(1)
     expect(readVerdict('SELECT 1\nGO\nSELECT 2', 'mssql').statements).toHaveLength(2)
+  })
+})
+
+/**
+ * Review round 4: a refused function however its name is spelled. Each row: a spelling the server resolves to the
+ * refused function (checked against the servers in readonly-differential.integration.test.ts), refused by both
+ * profiles; and spellings that resolve to something else, which stay allowed.
+ */
+const SPELLINGS: Record<string, { refused: string[]; allowed?: string[] }> = {
+  postgres: {
+    refused: [
+      'SELECT pg_read_file(\'/etc/passwd\')',
+      'SELECT PG_READ_FILE(\'/etc/passwd\')',
+      'SELECT "pg_read_file"(\'/etc/passwd\')',
+      'SELECT pg_catalog.pg_read_file(\'/etc/passwd\')',
+      'SELECT "pg_catalog"."pg_read_file"(\'/etc/passwd\')',
+      'SELECT pg_catalog . /* x */ pg_read_file /* y */ (\'/etc/passwd\')',
+      'SELECT mastermind.pg_catalog.pg_read_file(\'/etc/passwd\')',
+      'SELECT U&"pg\\005fread\\005ffile"(\'/etc/passwd\')',
+      'SELECT pg_catalog.U&"pg\\005fread\\005ffile"(\'/etc/passwd\')',
+      'SELECT U&"pg!005fread!005ffile" UESCAPE \'!\'(\'/etc/passwd\')',
+      'SELECT U&"pg\\+00005Fterminate\\005fbackend"(1)',
+      'SELECT U&"pg\\005fadvisory\\005flock"(1)',
+      "SELECT U&\"query\\005fto\\005fxml\"('select 1', true, false, '')",
+      "SELECT query_to_xml('select 1', true, false, '')",
+      "SELECT xpath('/x', query_to_xml('select 1', true, false, ''))",
+      "SELECT table_to_xml('t', true, false, '')",
+      "SELECT database_to_xml(true, false, '')",
+      "SELECT schema_to_xml('public', true, false, '')",
+      "SELECT cursor_to_xml('c', 1, true, false, '')",
+      "SELECT * FROM dblink('x', 'select 1') AS t(a int)",
+      'SELECT ｐｇ_sleep(1)',
+    ],
+    allowed: ['SELECT "PG_READ_FILE"(\'x\')', 'SELECT t.lo_price FROM t', "SELECT U&'d\\0061ta'", 'SELECT pg_read_file_like FROM t'],
+  },
+  duckdb: {
+    refused: ["SELECT * FROM query('SELECT 1')", 'SELECT * FROM "QUERY"(\'SELECT 1\')', "SELECT getenv('HOME')", "SELECT * FROM query_table('t')"],
+  },
+  mysql: {
+    refused: ['SELECT SLEEP(1)', 'SELECT sleep (1)', 'SELECT sleep/* x */(1)', 'SELECT `sleep`(1)', 'SELECT `SLEEP`(1)', 'SELECT mastermind.get_lock(\'x\', 0)', "SELECT `mastermind` . `get_lock`('x', 0)", 'SELECT ＳＬＥＥＰ(1)'],
+    allowed: ['SELECT sleep_minutes FROM t'],
+  },
+  mssql: {
+    refused: [
+      "SELECT * FROM sys.fn_get_audit_file('x', default, default)",
+      "SELECT * FROM [sys].[fn_get_audit_file]('x', default, default)",
+      'SELECT * FROM "sys"."FN_GET_AUDIT_FILE"(\'x\', default, default)',
+      "SELECT * FROM master.sys.fn_get_audit_file('x', default, default)",
+      "SELECT * FROM master..fn_trace_gettable('x', default)",
+      "SELECT * FROM [master] . [sys] . [fn_trace_gettable] ('x', default)",
+      'SELECT [xp_cmdshell]',
+      'SELECT [xp_cmd]]shell]',
+    ],
+    allowed: ['SELECT [fn_get_audit_file_x] FROM t'],
+  },
+  oracle: {
+    refused: ['SELECT DBMS_RANDOM.VALUE FROM dual', 'SELECT dbms_random.value FROM dual', 'SELECT "DBMS_RANDOM".VALUE FROM dual', 'SELECT sys."DBMS_RANDOM"."VALUE" FROM dual', 'SELECT dbms_random . value FROM dual', 'SELECT utl_http.request(\'x\') FROM dual', 'SELECT x FROM t@remote', 'SELECT f@remote(1) FROM dual'],
+    allowed: ['SELECT "dbms_random".value FROM dual'],
+  },
+  sqlite: {
+    refused: ["SELECT load_extension('x')", 'SELECT LOAD_EXTENSION(\'x\')', 'SELECT "load_extension"(\'x\')', "SELECT `load_extension`('x')", "SELECT [load_extension]('x')"],
+  },
+  clickhouse: {
+    refused: ["SELECT * FROM file('x')", "SELECT * FROM `file`('x')", "SELECT * FROM \"file\"('x')", "SELECT * FROM `fil\\x65`('x')", "SELECT * FROM \"\\x66ile\"('x')", "SELECT * FROM FILE('x')", 'SELECT sleep(1)', 'SELECT `sl\\x65ep`(1)', "SELECT * FROM url /* x */ ('http://x', CSV)", "SELECT * FROM s3('x')"],
+    allowed: ['SELECT file_name FROM t'],
+  },
+  bigquery: {
+    refused: ["SELECT * FROM EXTERNAL_QUERY('c', 'SELECT 1')", "SELECT * FROM `external_query`('c', 'SELECT 1')", "SELECT * FROM `external\\x5fquery`('c', 'SELECT 1')", "SELECT * FROM `external\\u005fquery`('c', 'SELECT 1')", "SELECT * FROM `external\\137query`('c', 'SELECT 1')"],
+  },
+  trino: {
+    refused: ["SELECT * FROM TABLE(system.query(query => 'SELECT 1'))", "SELECT * FROM TABLE(\"system\".\"QUERY\"(query => 'SELECT 1'))", "SELECT * FROM TABLE(pg.system.query(query => 'SELECT 1'))"],
+  },
+}
+
+describe('review round 4: names however they are spelled', () => {
+  for (const [driver, { refused, allowed = [] }] of Object.entries(SPELLINGS)) {
+    it(`${driver}: every spelling of a refused function is refused, other names are not`, () => {
+      for (const sql of refused) {
+        for (const profile of ['agent', 'user'] as const) {
+          const v = readVerdict(sql, driver, { profile })
+          expect(v.ok, `${profile}: ${sql}`).toBe(false)
+        }
+      }
+      for (const sql of allowed) expect(readVerdict(sql, driver).reason, sql).toBeUndefined()
+    })
+  }
+
+  it('canonicalName gives the name the server looks up', () => {
+    const name = (sql: string, driver: string) => {
+      const lexed = lex(sql, driver)
+      if (!lexed.ok) throw new Error(lexed.reason)
+      return canonicalName(sql, codeTokens(lexed.tokens), 0, driver)?.parts
+    }
+    expect(name('PG_Catalog."Pg_X"', 'postgres')).toEqual(['pg_catalog', 'Pg_X'])
+    expect(name('U&"a\\0062" . U&"!0063" UESCAPE \'!\'', 'postgres')).toEqual(['ab', 'c'])
+    expect(name('"Main"."QUERY"', 'duckdb')).toEqual(['main', 'query'])
+    expect(name('dbms_lock."Sleep"', 'oracle')).toEqual(['DBMS_LOCK', 'Sleep'])
+    expect(name('[a]]b]..[C]', 'mssql')).toEqual(['a]b', '', 'c'])
+    expect(name('`my``db`.`F`', 'mysql')).toEqual(['my`db', 'f'])
+    expect(name('`p.d.f\\x5fx`', 'bigquery')).toEqual(['p', 'd', 'f_x'])
+    expect(name('`f\\x69le`', 'clickhouse')).toEqual(['file'])
+    expect(name('ｆｉｌｅ', 'clickhouse')).toEqual(['file'])
+  })
+
+  it("U&\"…\" names are refused on the guarded path; U&'…' strings decode and stay allowed", () => {
+    expect(readVerdict('SELECT U&"d\\0061ta" FROM t', 'postgres').reason).toMatch(/Unicode escapes/)
+    expect(readVerdict('SELECT U&"d\\0061ta" FROM t', 'postgres', { profile: 'user' }).reason).toMatch(/Unicode escapes/)
+    const lexed = lex("SELECT U&'d!0061ta' UESCAPE '!'", 'postgres')
+    expect(lexed.ok && lexed.tokens.find((t) => t.kind === 'string')?.value).toBe('data')
+    expect(lex('SELECT U&"\\zzzz"', 'postgres').ok).toBe(false)
+  })
+
+  it('SQL that runs SQL text the tokenizer never sees is refused (MySQL PREPARE, SQL Server EXEC and OPENQUERY)', () => {
+    for (const [driver, sql] of [
+      ['mysql', "PREPARE s FROM 'DELETE FROM t'"],
+      ['mysql', 'SELECT 1; EXECUTE s'],
+      ['mssql', "EXEC sp_executesql N'DELETE FROM t'"],
+      ['mssql', "EXEC('DELETE FROM t')"],
+      ['mssql', "DECLARE @s nvarchar(99) = N'DELETE FROM t'; EXEC(@s)"],
+      ['mssql', "SELECT * FROM OPENQUERY(srv, 'DELETE FROM t')"],
+    ] as const) expect(readVerdict(sql, driver, { profile: 'user' }).ok, sql).toBe(false)
+  })
+
+  it('user profile: SET NAMES only of single-byte-safe character sets; #temp but not ##global tables', () => {
+    for (const cs of ['utf8mb4', 'utf8', 'utf8mb3', 'latin1', 'binary', "'utf8mb4'", 'utf8mb4 COLLATE utf8mb4_bin']) expect(readVerdict(`SET NAMES ${cs}`, 'mysql', { profile: 'user' }).ok, cs).toBe(true)
+    for (const cs of ['gbk', 'big5', 'sjis', "'gbk'", 'cp932', 'DEFAULT']) expect(readVerdict(`SET NAMES ${cs}`, 'mysql', { profile: 'user' }).ok, cs).toBe(false)
+    expect(readVerdict('SELECT id INTO #t FROM shop.customers', 'mssql', { profile: 'user' }).ok).toBe(true)
+    expect(readVerdict('SELECT id INTO ##t FROM shop.customers', 'mssql', { profile: 'user' }).ok).toBe(false)
+    expect(readVerdict('INSERT INTO ##t VALUES (1)', 'mssql', { profile: 'user' }).ok).toBe(false)
+  })
+
+  it('string values decode as the server reads them (E\'\', ClickHouse, BigQuery, MySQL \\% and \\_)', () => {
+    const value = (sql: string, driver: string) => {
+      const lexed = lex(sql, driver)
+      return lexed.ok ? lexed.tokens.find((t) => t.kind === 'string')?.value : `fails: ${lexed.reason}`
+    }
+    expect(value("SELECT E'\\x41\\101\\u0042\\U00000043'", 'postgres')).toBe('AABC')
+    expect(value("SELECT 'a\\x41\\a'", 'clickhouse')).toBe('aA\x07')
+    expect(value("SELECT '\\x41\\101\\u0042'", 'bigquery')).toBe('AAB')
+    expect(value("SELECT 'a\\%\\_'", 'mysql')).toBe('a\\%\\_')
   })
 })

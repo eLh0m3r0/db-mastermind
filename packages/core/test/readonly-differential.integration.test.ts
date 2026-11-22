@@ -54,9 +54,9 @@ async function canary(id: string, driver: DriverId) {
 
 const ALPHABET: Record<string, string[]> = {
   common: ["'", '"', '(', ')', ';', '--', '-- ', '/*', '*/', '\n', ' ', ',', '\\', "''", '1'],
-  postgres: ['$$', '$é$', '$a$', "E'", "U&'", '/* /*', '$1', 'END', 'COMMIT'],
+  postgres: ['$$', '$é$', '$a$', "E'", "U&'", 'U&"', '\\005f', " UESCAPE '!'", '/* /*', '$1', 'END', 'COMMIT'],
   mysql: ['`', '#', '/*!', '/*!50000 ', '/*M!', '/*M!100000 ', '/*+', '*/', "\\'", '\\"', "_utf8mb4'", "X'", 'INTO OUTFILE ', 'INTO @v '],
-  clickhouse: ['`', '#', '\\\'', '$$', '$h$', '/* /*', "file('x')"],
+  clickhouse: ['`', '#', '\\\'', '$$', '$h$', '/* /*', "file('x')", '\\x5f', '`fil\\x65`('],
   mssql: ['[', ']', ']]', "N'", '/* /*', '\nGO\n', 'COMMIT'],
   oracle: ["q'[", "]'", "q'{", "}'", "nq'<", ">'", '/'],
   sqlite: ['`', '[', ']', '$x'],
@@ -76,6 +76,71 @@ function input(seed: number, driver: DriverId): string {
 }
 
 const READS = new Set(['SELECT', 'SELECT WITHOUT QUERY', 'ASSIGN', 'COND', 'COND WITH QUERY', 'PRINT'])
+
+/**
+ * Review round 4: spellings of refused functions, as each server spells names. Every combination of a name's
+ * spelling, a qualification and what stands before `(` is first run as it is (unguarded): where the server calls the
+ * function (it runs, or fails for any reason other than not finding it), the guarded path must refuse it. The
+ * functions are harmless ones of the refused list (sleep 0, unlock all, a missing file).
+ */
+const uEscape = (name: string, how: 'u4' | 'u6' | 'bang') => (how === 'bang' ? `U&"${name.replaceAll('_', '!005f')}" UESCAPE '!'` : `U&"${name.replaceAll('_', how === 'u4' ? '\\005f' : '\\+00005f')}"`)
+const SPELL: Partial<Record<DriverId, { calls: [name: string, args: string][]; names: (n: string) => string[]; qualifiers: string[]; tail?: string }>> = {
+  postgres: {
+    calls: [['pg_sleep', '(0)'], ['pg_terminate_backend', '(0)'], ['pg_advisory_unlock_all', '()'], ['query_to_xml', "('select 1', true, false, '')"], ['pg_read_file', "('/etc/hostname')"]],
+    names: (n) => [n, n.toUpperCase(), `"${n}"`, `"${n.toUpperCase()}"`, uEscape(n, 'u4'), uEscape(n, 'u6'), uEscape(n, 'bang'), `U&"\\0070${n.slice(1)}"`],
+    qualifiers: ['', 'pg_catalog.', '"pg_catalog".', 'PG_CATALOG . ', 'pg_catalog/* c */.', 'mastermind.pg_catalog.', 'U&"pg\\005fcatalog".'],
+  },
+  duckdb: {
+    calls: [['query', "('SELECT 1')"]],
+    names: (n) => [n, n.toUpperCase(), `"${n}"`, `"${n.toUpperCase()}"`, uEscape(n, 'u4'), `U&"\\0071uery"`],
+    qualifiers: ['', 'main.', '"main".', 'system.main.'],
+    tail: '',
+  },
+  mysql: {
+    calls: [['sleep', '(0)'], ['release_lock', "('dbm_x')"], ['benchmark', '(1, 1)']],
+    names: (n) => [n, n.toUpperCase(), `\`${n}\``, `\`${n.toUpperCase()}\``, `"${n}"`],
+    qualifiers: ['', 'mastermind.', '`mastermind`.', 'mastermind . '],
+  },
+  mssql: {
+    calls: [['fn_get_audit_file', "('/var/opt/mssql/dbm_nothing*.sqlaudit', default, default)"], ['fn_trace_gettable', "('/nothing.trc', default)"]],
+    names: (n) => [n, n.toUpperCase(), `[${n}]`, `[${n.toUpperCase()}]`, `"${n}"`],
+    qualifiers: ['', 'sys.', '[sys].', '"sys".', 'master.sys.', '[master].[sys].', 'master..', 'SYS . '],
+  },
+  oracle: {
+    calls: [['dbms_random', '.value'], ['dbms_random', '.value()'], ['dbms_utility', '.get_time']],
+    names: (n) => [n, n.toUpperCase(), `"${n.toUpperCase()}"`, `"${n}"`],
+    qualifiers: ['', 'sys.', '"SYS".', 'SYS . '],
+    tail: ' FROM dual',
+  },
+  sqlite: {
+    calls: [['load_extension', "('dbm_nothing')"]],
+    names: (n) => [n, n.toUpperCase(), `"${n}"`, `\`${n}\``, `[${n}]`],
+    qualifiers: ['', 'main.'],
+  },
+  clickhouse: {
+    calls: [['sleep', '(0)'], ['file', "('dbm_nothing.csv', 'CSV', 'a String')"]],
+    names: (n) => [n, n.toUpperCase(), `\`${n}\``, `"${n}"`, `\`${n.slice(0, -1)}\\x${n.charCodeAt(n.length - 1).toString(16)}\``, `"\\x${n.charCodeAt(0).toString(16)}${n.slice(1)}"`],
+    qualifiers: ['', 'default.', 'system.'],
+  },
+}
+SPELL.mariadb = SPELL.mysql
+const GAPS = ['', ' ', '/* c */', '\n']
+const NOT_FOUND = /(function|schema|database) .*does not exist|Function with name .* does not exist|does not exist in the database|no such function|not a recognized|Invalid object name|Unknown (table )?function|UNKNOWN_FUNCTION|ORA-00904|ORA-00942|ORA-00923|ORA-00936|ORA-06553|ORA-00972|syntax error|Syntax error|Could not find|invalid identifier|Incorrect syntax|error in your SQL syntax|Catalog Error|Parser Error|cross-database references|Cannot find either column/i
+
+function spellings(driver: DriverId): string[] {
+  const spec = SPELL[driver]
+  if (!spec) return []
+  const out: string[] = []
+  let g = 0
+  for (const [name, args] of spec.calls)
+    for (const n of spec.names(name))
+      for (const q of spec.qualifiers) {
+        const call = `${q}${n}${GAPS[g++ % GAPS.length]}${args}`
+        const table = (driver === 'clickhouse' && name === 'file') || driver === 'mssql'
+        out.push(table ? `SELECT * FROM ${call}` : `SELECT ${call}${spec.tail ?? ''}`)
+      }
+  return out
+}
 
 for (const driver of ['postgres', 'mysql', 'mariadb', 'mssql', 'oracle', 'sqlite', 'duckdb', 'clickhouse'] as DriverId[]) {
   const engine = engines.find((e) => e.id === driver)
@@ -143,6 +208,23 @@ for (const driver of ['postgres', 'mysql', 'mariadb', 'mssql', 'oracle', 'sqlite
         const files = execFileSync('docker', ['exec', `db-mastermind-${driver}-1`, 'ls', driver === 'mysql' ? '/var/lib/mysql-files' : '/tmp'], { encoding: 'utf8' })
         expect(files).not.toMatch(/dbm_/)
       }
+    })
+
+    it('every spelling the server resolves to a refused function is refused', { timeout: 600_000 }, async () => {
+      await connect()
+      let reached = 0
+      const missed: string[] = []
+      const all = spellings(driver)
+      for (const sql of all) {
+        const [plain] = await svc.runScript(id, sql, { readOnly: false }).catch((err: Error) => [{ error: { message: err.message } }] as never)
+        if (plain?.error && NOT_FOUND.test(plain.error.message)) continue
+        reached++
+        const refused = await svc.runScript(id, sql, { readOnly: true }).then(() => false, () => true)
+        if (!refused) missed.push(sql)
+      }
+      console.log(`${driver}: ${all.length} spellings, ${reached} reach the function on the server, ${missed.length} not refused`)
+      expect(missed.slice(0, 10)).toEqual([])
+      if (all.length) expect(reached).toBeGreaterThan(0)
     })
 
     it(`differential fuzz: ${N} inputs leave the canary as it was`, { timeout: 1_800_000 }, async () => {

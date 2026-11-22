@@ -50,10 +50,12 @@ const NEVER = new Set(
 )
 
 /**
- * Functions with effects a read-only transaction doesn't stop, refused on the guarded path wherever they are
- * called (also schema-qualified or quoted). A name list closes the known doors only: what the guard promises is that
- * no data is changed or deleted and no transaction escapes; a login used with AI or agents should have only the
- * rights it needs (SECURITY.md). `*` ends a prefix.
+ * Functions with effects a read-only transaction doesn't stop, and functions that run SQL text the tokenizer never
+ * sees (a refused name could be called from inside such a string), refused on the guarded path wherever they are
+ * called, however the name is spelled (canonicalName). A name list closes the known doors only: what the guard
+ * promises is that no data is changed or deleted and no transaction escapes; a login used with AI or agents should
+ * have only the rights it needs (SECURITY.md). `*` ends a prefix. Families or drivers (duckdb shares PostgreSQL's
+ * family).
  */
 const REFUSED_CALLS: [families: string[], name: string, what: string][] = [
   [['postgres'], 'pg_terminate_backend', "ends another session's connection"],
@@ -68,8 +70,23 @@ const REFUSED_CALLS: [families: string[], name: string, what: string][] = [
   [['postgres'], 'lo_*', 'large objects: lo_import and lo_export read and write server files'],
   [['postgres'], 'dblink*', 'runs SQL over another connection, outside the read-only transaction'],
   [['postgres'], 'query_to_xml*', 'runs the SQL text it is given'],
+  [['postgres'], 'query_to_xmlschema', 'runs the SQL text it is given'],
   [['postgres'], 'cursor_to_xml*', 'reads a cursor the SQL text opened'],
+  [['postgres'], 'table_to_xml*', 'reads a table named in a string'],
+  [['postgres'], 'schema_to_xml*', 'reads every table of a schema named in a string'],
+  [['postgres'], 'database_to_xml*', 'reads every table of the database'],
   [['postgres'], 'ts_stat', 'runs the SQL text it is given'],
+  [['postgres'], 'ts_rewrite', 'runs the SQL text it is given'],
+  [['postgres'], 'crosstab*', 'runs the SQL text it is given (tablefunc)'],
+  [['postgres'], 'connectby', 'reads a table named in a string (tablefunc)'],
+  [['postgres'], 'pg_stat_reset*', 'resets statistics'],
+  [['postgres'], 'pg_create_physical_replication_slot', 'creates a replication slot'],
+  [['postgres'], 'pg_create_logical_replication_slot', 'creates a replication slot'],
+  [['postgres'], 'pg_drop_replication_slot', 'drops a replication slot'],
+  [['postgres'], 'pg_copy_physical_replication_slot', 'creates a replication slot'],
+  [['postgres'], 'pg_copy_logical_replication_slot', 'creates a replication slot'],
+  [['postgres'], 'pg_logical_slot_*', 'consumes a replication slot'],
+  [['postgres'], 'pg_replication_origin_*', 'changes replication origins'],
   [['postgres'], 'pg_notify', 'sends a notification to listeners'],
   [['postgres'], 'set_config', 'changes settings, also the ones the guard relies on'],
   [['postgres'], 'pg_sleep*', 'holds the session for as long as it is told'],
@@ -82,7 +99,9 @@ const REFUSED_CALLS: [families: string[], name: string, what: string][] = [
   [['postgres'], 'pg_backup_*', 'starts or stops a backup'],
   [['postgres'], 'nextval', 'advances a sequence'],
   [['postgres'], 'setval', 'sets a sequence'],
-  [['postgres'], 'getenv', "reads the machine's environment (DuckDB)"],
+  [['duckdb'], 'getenv', "reads the machine's environment"],
+  [['duckdb'], 'query', 'runs the SQL text it is given'],
+  [['duckdb'], 'query_table', 'reads a table named in a string'],
   [['mysql'], 'get_lock', 'takes a named lock that outlives the statement'],
   [['mysql'], 'release_lock', 'releases a named lock'],
   [['mysql'], 'release_all_locks', 'releases named locks'],
@@ -137,6 +156,8 @@ const REFUSED_CALLS: [families: string[], name: string, what: string][] = [
 
 /** PostgreSQL settings the user profile may SET or RESET: none of them can weaken the guard. */
 const PG_SETTINGS = new Set(['search_path', 'statement_timeout', 'lock_timeout', 'idle_in_transaction_session_timeout', 'datestyle', 'intervalstyle', 'timezone', 'application_name', 'work_mem', 'jit', 'extra_float_digits', 'client_min_messages'])
+/** MySQL character sets the user profile may SET NAMES to. */
+const SAFE_CHARSETS = new Set(['utf8mb4', 'utf8', 'utf8mb3', 'latin1', 'binary'])
 /** SQL Server SET options the user profile may use. */
 const MSSQL_OPTIONS = new Set(['NOCOUNT', 'ROWCOUNT', 'DATEFORMAT', 'LANGUAGE', 'ARITHABORT', 'DATEFIRST', 'TEXTSIZE', 'CONCAT_NULL_YIELDS_NULL', 'NUMERIC_ROUNDABORT', 'QUOTED_IDENTIFIER', 'STATISTICS'])
 
@@ -165,6 +186,11 @@ export function readVerdict(script: string, driver: DriverId | string, options: 
   // form not known yet is not guessed at.
   const odd = lexed.tokens.find((t) => t.kind === 'comment' && script.startsWith('/*', t.start) && !/[\s*]/.test(script[t.start + 2] ?? ' '))
   if (odd && (profile === 'agent' || family === 'mysql')) return { ok: false, reason: refuse(profile, `a comment that starts ${script.slice(odd.start, odd.start + 3)}`, 'Put a space after /* or leave the comment out.'), statements: [] }
+  // Names written with Unicode escapes (U&"…"): nobody needs them for a read, and a name is compared as the server
+  // resolves it only as long as the spelling is one we know.
+  if (lexed.tokens.some((t) => t.kind === 'ident' && t.unicode)) return { ok: false, reason: refuse(profile, 'a name written with Unicode escapes (U&"…")', 'Write the name plainly.'), statements: [] }
+  // Oracle: name@dblink runs on another database, outside this read-only transaction.
+  if (family === 'oracle' && lexed.tokens.some((t) => t.kind === 'op' && script[t.start] === '@')) return { ok: false, reason: refuse(profile, 'a database link (name@link)'), statements: [] }
   const pieces = tokenStatements(script, lexed.tokens, driver)
   const out: ReadVerdict['statements'] = []
   for (const tokens of pieces) {
@@ -175,7 +201,7 @@ export function readVerdict(script: string, driver: DriverId | string, options: 
     const session = profile === 'user' ? sessionStatement(script, code, String(driver)) : undefined
     const problem = session === undefined ? statementProblem(script, code, family, profile) : session ? undefined : undefined
     if (problem) return { ok: false, reason: problem, statements: out }
-    const called = refusedCall(script, code, family)
+    const called = refusedCall(script, code, String(driver))
     if (called) return { ok: false, reason: refuse(profile, called), statements: out }
     out.push({ start, end, text, ...(session ? { session: true } : {}) })
   }
@@ -214,7 +240,15 @@ function sessionStatement(script: string, code: Token[], driver: string): boolea
   }
   if (family === 'mysql') {
     if (words[0] === 'USE' && code.length === 2) return false
-    if (words[0] === 'SET' && words[1] === 'NAMES') return false
+    // SET NAMES only of character sets where every byte of a quote or backslash is that character: with a multibyte
+    // set like gbk, big5 or sjis, a byte inside a character could be read as a quote by the server and not by us.
+    if (words[0] === 'SET' && words[1] === 'NAMES') {
+      const t = code[2]
+      const charset = !t ? '' : t.kind === 'string' || t.kind === 'ident' ? (t.value ?? '').toLowerCase() : word(script, t).toLowerCase()
+      const rest = words.slice(3)
+      const collate = rest.length === 0 || (rest.length === 2 && rest[0] === 'COLLATE')
+      return SAFE_CHARSETS.has(charset) && collate ? false : undefined
+    }
     // SET @a = 1, @b = 2: user variables only (never @@ system variables, never sql_mode).
     if (words[0] === 'SET') {
       for (let k = 1; k < code.length; k++) if (text(script, code[k]) === '@' && text(script, code[k + 1]) === '@') return undefined
@@ -236,7 +270,8 @@ function statementProblem(script: string, code: Token[], family: string, profile
   // The user profile on SQL Server: USE and #temp tables are part of reading (the plan checks every write is a #temp one).
   const userStart = userMssql && (head === 'USE' || head === 'INSERT' || head === 'UPDATE' || head === 'DELETE')
   if (!starts.has(head) && !userStart) return refuse(profile, `a statement starting with ${head || text(script, code[0])}`)
-  const temp = (t: Token | undefined) => !!t && /^#/.test(text(script, t))
+  // (Local #temp tables only: a ##global one is shared with other sessions.)
+  const temp = (t: Token | undefined) => !!t && /^#(?!#)/.test(text(script, t))
   for (let k = 0; k < words.length; k++) {
     const w = words[k]!
     // The user profile: SELECT … INTO @var (MySQL), SELECT … INTO #temp and writes to #temp (SQL Server).
@@ -281,7 +316,7 @@ function statementProblem(script: string, code: Token[], family: string, profile
       if (w === 'GO' || w === 'SETUSER' || w === 'REVERT' || (w === 'USE' && !userMssql)) return refuse(profile, w)
     }
   }
-  if (head === 'SET' && family !== 'mssql') return refuse(profile, 'SET', profile === 'user' ? 'Only SET of search_path, statement_timeout, time zone and similar display settings (PostgreSQL), and USE, SET NAMES and @variables (MySQL) are allowed here.' : undefined)
+  if (head === 'SET' && family !== 'mssql') return refuse(profile, 'SET', profile === 'user' ? 'Only SET of search_path, statement_timeout, time zone and similar display settings (PostgreSQL), and USE, SET NAMES utf8mb4, utf8, latin1 or binary, and @variables (MySQL) are allowed here.' : undefined)
   if (head === 'PRAGMA') {
     const name = words[first + 1]?.toLowerCase() ?? ''
     const after = text(script, code[first + 2])
@@ -293,20 +328,81 @@ function statementProblem(script: string, code: Token[], family: string, profile
   return undefined
 }
 
-/** A call (or, for prefixes, any name) of REFUSED_CALLS in the code: what it is and does, or undefined. */
-function refusedCall(script: string, code: Token[], family: string): string | undefined {
-  const entries = REFUSED_CALLS.filter(([families]) => families.includes(family))
+/**
+ * How a name is compared, per database: the one place where a spelling becomes the name the server looks up.
+ *
+ * | database             | spellings read                                                    | case                        |
+ * |----------------------|-------------------------------------------------------------------|-----------------------------|
+ * | PostgreSQL           | name, "name" ("" inside), U&"…" with UESCAPE (refused anyway),    | unquoted folded to lower,   |
+ * |                      | schema.name, catalog.schema.name, spaces/comments around . and (  | quoted exact                |
+ * | DuckDB               | the same as PostgreSQL                                            | all folded (quoted too)     |
+ * | MySQL, MariaDB       | name, `name` (`` inside), "name" with ANSI_QUOTES, db.name,        | all folded                  |
+ * |                      | spaces/comments before ( (IGNORE_SPACE or not)                    |                             |
+ * | SQL Server           | name, [name] (]] inside), "name", server.db.schema.name, db..name | all folded (collation)      |
+ * | Oracle               | name, "name", schema.package.name (name@link is refused)          | unquoted upper, quoted exact|
+ * | SQLite               | name, "name", `name`, [name], schema.name                         | all folded                  |
+ * | ClickHouse           | name, `name`, "name" with backslash escapes (\xHH), db.name       | all folded                  |
+ * | BigQuery             | name, `name` with escapes and dots inside (`project.dataset.f`)   | all folded                  |
+ * | Trino                | name, "name", catalog.schema.name                                 | all folded (quoted too)     |
+ *
+ * Every part is also NFKC-normalised (full-width and compatibility letters read as the plain ones): that can only
+ * refuse more. The parts come back as the server reads them; `end` is the code index after the name.
+ */
+export function canonicalName(script: string, code: Token[], k: number, driver: string): { parts: string[]; end: number } | undefined {
+  const family = familyOf(driver)
+  const quotedExact = driver === 'postgres' || driver === 'cockroachdb' || family === 'oracle'
+  const fold = (s: string) => (family === 'oracle' ? s.toUpperCase() : s.toLowerCase())
+  const part = (t: Token): string[] | undefined => {
+    if (t.kind === 'word') return [fold(script.slice(t.start, t.end)).normalize('NFKC')]
+    if (t.kind !== 'ident') return undefined
+    const v = t.value ?? ''
+    const parts = family === 'bigquery' ? v.split('.') : [v]
+    return parts.map((p) => (quotedExact ? p : fold(p)).normalize('NFKC'))
+  }
+  const isDot = (t: Token | undefined) => !!t && t.kind === 'op' && script[t.start] === '.'
+  const first = code[k]
+  if (!first) return undefined
+  const parts = part(first)
+  if (!parts) return undefined
+  let j = k + 1
+  while (isDot(code[j])) {
+    // (SQL Server: db..name, the schema left out.)
+    if (family === 'mssql' && isDot(code[j + 1])) {
+      parts.push('')
+      j++
+      continue
+    }
+    const next = code[j + 1] && part(code[j + 1]!)
+    if (!next) break
+    parts.push(...next)
+    j += 2
+  }
+  return { parts, end: j }
+}
+
+/** A call (or, for prefixes, any part of a name) of REFUSED_CALLS in the code: what it is and does, or undefined. */
+function refusedCall(script: string, code: Token[], driver: string): string | undefined {
+  const family = familyOf(driver)
+  const entries = REFUSED_CALLS.filter(([families]) => families.includes(family) || families.includes(driver))
+  // The entries as the server would hold them (Oracle's in upper case).
+  const spelled = (entry: string) => (family === 'oracle' ? entry.toUpperCase() : entry)
   for (let k = 0; k < code.length; k++) {
     const t = code[k]!
     if (t.kind !== 'word' && t.kind !== 'ident') continue
-    const name = (t.kind === 'ident' ? (t.value ?? '') : text(script, t)).toLowerCase()
-    const call = text(script, code[k + 1]) === '('
-    const member = text(script, code[k + 1]) === '.'
+    // (Only where a name starts: the parts after a dot are read with it.)
+    if (k > 0 && code[k - 1]!.kind === 'op' && script[code[k - 1]!.start] === '.') continue
+    const name = canonicalName(script, code, k, driver)
+    if (!name) continue
+    const call = text(script, code[name.end]) === '('
+    const last = name.parts.length - 1
     for (const [, entry, what] of entries) {
-      const prefix = entry.endsWith('*') ? entry.slice(0, -1) : undefined
-      // A prefix (UTL_, DBMS_, xp_, pg_advisory_…) counts called or as a package; a plain name only when called.
-      const hit = prefix ? name.startsWith(prefix) && (call || member || family === 'oracle' || family === 'mssql') : name === entry && call
-      if (hit) return `${name}() (it ${what})`
+      const prefix = entry.endsWith('*') ? spelled(entry.slice(0, -1)) : undefined
+      // A prefix (UTL_, DBMS_, xp_, pg_advisory_…) counts as a package or schema (any part but the last), or called;
+      // on Oracle and SQL Server anywhere. A plain name as the called (last) part.
+      const hit = prefix
+        ? name.parts.some((p, i) => p.startsWith(prefix) && (i < last || call || family === 'oracle' || family === 'mssql'))
+        : call && name.parts[last] === spelled(entry)
+      if (hit) return `${name.parts.filter(Boolean).join('.')}() (it ${what})`
     }
   }
   return undefined
