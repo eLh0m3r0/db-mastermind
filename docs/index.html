@@ -519,7 +519,15 @@
         </div>
         <p class="mcp-note" id="mcp-note">Check it with <code>claude mcp list</code> or <code>/mcp</code> inside Claude Code.</p>
       </div>
-      <!-- npm package: start (out until dbmastermind-mcp is on npm: git revert of the commit that removed it puts it back) -->
+      <!-- npm package: start (remove this block if dbmastermind-mcp is not on npm) -->
+      <div class="npx">
+        <p class="body">On a server without the app, run the MCP server from npm with a connection URL:</p>
+        <div class="code">
+          <pre id="npx-code">npx dbmastermind-mcp --url 'postgres://user@host/db'</pre>
+          <button type="button" class="copy" data-copy="npx-code" aria-label="Copy" title="Copy" hidden><svg class="g-copy" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg><svg class="g-check" aria-hidden="true" focusable="false"><use href="#i-check"/></svg></button>
+        </div>
+        <p class="body">The same package has <code>dbm</code>, a command line for scripts and CI.</p>
+      </div>
       <!-- npm package: end -->
       <p class="body tools">Tools for agents: <code>list_connections</code>, <code>list_tables</code>, <code>describe_table</code>, <code>search_schema</code>, <code>get_relationships</code>, <code>find_join_path</code>, <code>sample_rows</code>, <code>run_query</code>, <code>explain_query</code>, <code>get_definition</code>, <code>search_knowledge</code>, <code>read_knowledge</code>, <code>write_knowledge</code> (when you allow it), and prompts such as <em>document_database</em>. An agent can also propose a new connection, which you review and save in the app.</p>
     </div>

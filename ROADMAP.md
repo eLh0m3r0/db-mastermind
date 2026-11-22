@@ -919,9 +919,7 @@ depth. The specification: [docs/specs/launch.md](docs/specs/launch.md).
 - ✅ A3 Services by name in the connection form and on the website (Supabase, Neon, Timescale, RDS / Aurora,
   Azure, Cloud SQL): recognised from the host, TLS on; CockroachDB has its own entry
 - ✅ A4 Connections from a project: a dropped `.env`, docker-compose file or project folder
-- ⬜ B1 `dbmastermind-mcp` and `dbm` on npm, listed in the MCP registry (the 1.5.0 publish was refused: the
-  token needs npm's "bypass 2FA"; with a new `NPM_TOKEN` re-run the failed `mcp-publish` job of the v1.5.0
-  release, then revert the commit that took `npx` out of the website, README and release notes); the packed package is installed and
+- ✅ B1 `dbmastermind-mcp` and `dbm` on npm, listed in the MCP registry; the packed package is installed and
   started in CI on Linux, macOS and Windows; published by a job that has no secrets until the publish step
 - ✅ B2 Linux builds use Chromium's sandbox where it can work (`.deb` always, with a fallback in its menu entry
   where the system forbids user namespaces; AppImage when the system allows), proven in CI on Ubuntu 24.04
