@@ -48,6 +48,11 @@ interface UiState {
     context?: string
     /** What the input asks for meanwhile. */
     placeholder?: string
+    /**
+     * What a chat about a model's text gets in place of `prompt` and `context`: that chat carries the model itself
+     * with every message, so the request doesn't repeat it (a large project would be sent twice).
+     */
+    forModelChat?: { prompt?: string; context?: string }
     nonce: number
   }
   set(patch: Partial<Omit<UiState, 'set' | 'toast' | 'dismissToast'>>): void
@@ -111,7 +116,7 @@ let aiNonce = 0
  * provider set up yet, every way in (Explain with AI, Design with AI, Fix with AI, ⌘I) opens the setup instead of
  * failing: the panel shows next to it, and the request waits there for the provider.
  */
-export function askAi(request: { prompt?: string; send?: boolean; newChat?: boolean; context?: string; placeholder?: string } = {}) {
+export function askAi(request: Omit<NonNullable<UiState['aiRequest']>, 'nonce'> = {}) {
   const ready = !!useSettings.getState().settings?.ai.activeProvider
   useUi.getState().set({ aiPanelVisible: true, aiRequest: { ...request, send: ready && request.send, nonce: ++aiNonce } })
   if (!ready) useUi.getState().set({ modal: { kind: 'settings', section: 'ai' } })

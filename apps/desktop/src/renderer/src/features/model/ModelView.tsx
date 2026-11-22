@@ -607,6 +607,8 @@ export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: bo
       context: text.trim()
         ? `Help me extend this database model in DBML (dbdiagram.io syntax). It is a model, not the connected database: never change the database. Reply with a short explanation and the complete updated model in one \`\`\`dbml block. Current model:\n\n${text.trim()}\n\nWhat to change:`
         : 'Help me design a new database model in DBML (dbdiagram.io syntax) from the description below. It is a new model, not the connected database: don\'t describe or change that database. If the description leaves something important open, make a reasonable choice and say so. Reply with a short explanation and the complete model in one ```dbml block. Description:',
+      // (A chat about the model has the model and these instructions already.)
+      forModelChat: { context: text.trim() ? undefined : 'Design the model from the description below. If the description leaves something important open, make a reasonable choice and say so. Description:' },
     })
 
   // TableGroups color their tables (one palette color per group, in file order).
@@ -785,7 +787,7 @@ export function ModelView({ tab, focused = true }: { tab: ModelTab; focused?: bo
               ...MODEL_TASKS.map(([label, task]) => ({
                 label: t(label),
                 disabled: !text.trim(),
-                onClick: () => askAi({ prompt: t('{task}\n\nReply with a short explanation and the complete updated model in one ```dbml block, so it can be applied. Current model:\n\n{model}', { task: t(task), model: text.trim() }), send: true, newChat: true }),
+                onClick: () => askAi({ prompt: t('{task}\n\nReply with a short explanation and the complete updated model in one ```dbml block, so it can be applied. Current model:\n\n{model}', { task: t(task), model: text.trim() }), forModelChat: { prompt: t(task) }, send: true, newChat: true }),
               })),
             ])
           }

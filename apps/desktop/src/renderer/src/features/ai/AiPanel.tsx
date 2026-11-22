@@ -278,10 +278,12 @@ export function AiPanel() {
         reset(connectionId)
         setShowHistory(false)
       }
-      pendingContext.current = aiRequest.context
+      // (A chat about a model carries the model itself: the request's short form goes there.)
+      const { prompt, context } = modelChat && aiRequest.forModelChat ? aiRequest.forModelChat : aiRequest
+      pendingContext.current = context
       setPlaceholder(aiRequest.placeholder)
-      if (aiRequest.prompt && aiRequest.send && (modelChat || status === 'connected') && !useChats.getState().chats[connectionId ?? '']?.running) send(aiRequest.prompt)
-      else if (aiRequest.prompt) setInput(aiRequest.prompt)
+      if (prompt && aiRequest.send && (modelChat || status === 'connected') && !useChats.getState().chats[connectionId ?? '']?.running) send(prompt)
+      else if (prompt) setInput(prompt)
       requestAnimationFrame(() => inputRef.current?.focus())
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps

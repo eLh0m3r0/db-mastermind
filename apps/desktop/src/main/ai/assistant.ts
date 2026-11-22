@@ -197,10 +197,14 @@ const MAX_MODEL_TEXT = 200_000
 
 export function modelSystemPrompt(name: string, dbml: string | undefined): string {
   const text = dbml?.trim() ?? ''
+  const cut = text.length > MAX_MODEL_TEXT
   return [
     `You help with a database model the user is designing in DB Mastermind: "${name}". It is a model written in DBML (dbdiagram.io syntax), not a database: no database is connected and you have no tools. Answer from the model's text.`,
-    'When you change the model, reply with a short explanation and the complete updated model in one ```dbml block, so the user can apply it.',
-    text ? `The model as it is now:\n\n\`\`\`dbml\n${text.length > MAX_MODEL_TEXT ? `${text.slice(0, MAX_MODEL_TEXT)}\n// … (the rest of the model is left out: it is too long)` : text}\n\`\`\`` : 'The model is empty so far.',
+    // An applied ```dbml block replaces the whole model: of a model seen only in part, it would delete the rest.
+    cut
+      ? 'The model is too long to be sent whole: you see only its beginning. Say so when it matters. Never reply with a ```dbml block (applying it would replace the whole model with a part of it): describe the changes and show changed tables in ```text blocks.'
+      : 'When you change the model, reply with a short explanation and the complete updated model in one ```dbml block, so the user can apply it.',
+    text ? `The model as it is now${cut ? ' (its beginning)' : ''}:\n\n\`\`\`dbml\n${cut ? `${text.slice(0, MAX_MODEL_TEXT)}\n// … (the rest of the model is left out: it is too long)` : text}\n\`\`\`` : 'The model is empty so far.',
   ].join('\n\n')
 }
 

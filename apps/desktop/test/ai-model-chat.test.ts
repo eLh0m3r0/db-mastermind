@@ -52,7 +52,7 @@ vi.mock('../src/main/ai/cli', () => ({
 }))
 vi.mock('../src/main/ai/models', () => ({ createModel: () => state.model }))
 
-const { startChat } = await import('../src/main/ai/assistant')
+const { startChat, modelSystemPrompt } = await import('../src/main/ai/assistant')
 
 const MODEL = 'Table customers {\n  id int [pk]\n  email varchar\n}'
 const request = (extra: Partial<AiChatRequest> = {}): AiChatRequest => ({
@@ -149,5 +149,19 @@ describe('a chat about a model', () => {
     const events = await chat(request({ model: undefined, connectionId: 'shop' }))
     expect(events.at(-1)).toMatchObject({ type: 'error' })
     expect(state.touched).toContain('connection shop')
+  })
+
+  it('a model too long to send whole is never offered back as a whole model', () => {
+    // (An applied ```dbml block replaces the model: of a model seen in part it would delete the rest.)
+    const table = (n: number) => `Table t${n} {\n  id integer [pk]\n  name text\n}\n`
+    const small = modelSystemPrompt('shop.dbml', table(1))
+    expect(small).toContain('complete updated model in one ```dbml block')
+    expect(small).toContain('Table t1')
+    const big = modelSystemPrompt('shop.dbml', Array.from({ length: 8000 }, (_, n) => table(n)).join(''))
+    expect(big.length).toBeLessThan(210_000)
+    expect(big).toContain('Never reply with a ```dbml block')
+    expect(big).not.toContain('complete updated model')
+    expect(big).toContain('the rest of the model is left out')
+    expect(modelSystemPrompt('new', '  ')).toContain('The model is empty so far.')
   })
 })
