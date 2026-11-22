@@ -15,7 +15,7 @@ import { applyMcpHttp } from './mcp-http'
 import { isMcpMode, runMcpMode } from './mcp-mode'
 import { configureDataDir, dataPath, readJson, writeJson } from './storage'
 import { swapMacUpdateBeforeKill } from './mac-update'
-import { setBeforeInstall, startUpdateChecks } from './updates'
+import { setBeforeInstall, setInstallFailed, startUpdateChecks } from './updates'
 import { askPageAboutEdits, ExitGuard } from './exit-guard'
 import { keepChosenSqlFilesIn } from './sql-files'
 import { keepChosenPathsIn, rememberChosenPath } from './chosen-paths'
@@ -98,10 +98,13 @@ function createWindow() {
       const last = process.platform !== 'darwin'
       void exitGuard.attempt(last ? 'close-last-window' : 'close-window').then((ok) => {
         if (!ok || !mainWindow) return
-        // The quit that closing the last window causes doesn't ask again.
-        if (last) exitGuard.passNextQuit()
+        // The quit that closing the last window causes doesn't ask again; if the window is still there shortly after
+        // (something kept it open), that quit isn't coming and the pass is off.
+        const window = mainWindow
+        const cancelPass = last ? exitGuard.passNextQuit() : undefined
         closeAgreed = true
-        mainWindow.close()
+        window.close()
+        if (cancelPass) setTimeout(() => !window.isDestroyed() && cancelPass(), 500)
       })
       return
     }
@@ -206,11 +209,14 @@ function startApp() {
   })
 
   // "Restart now": the same questions; the quit into the update then passes once.
+  let cancelInstallPass: (() => void) | undefined
   setBeforeInstall(async () => {
     const ok = await exitGuard.attempt('quit')
-    if (ok) exitGuard.passNextQuit()
+    if (ok) cancelInstallPass = exitGuard.passNextQuit()
     return ok
   })
+  // The installer threw: no quit is coming, so a quit by the user asks again.
+  setInstallFailed(() => cancelInstallPass?.())
   app.on('before-quit', (event) => {
     flushHistory()
     if (quitting) return

@@ -240,13 +240,24 @@ export function setBeforeInstall(settle: () => Promise<boolean>): void {
   beforeInstall = settle
 }
 
+let installFailed: () => void = () => {}
+/** Told when the restart into the update did not happen after all (the installer threw): the agreed quit is off. */
+export function setInstallFailed(handler: () => void): void {
+  installFailed = handler
+}
+
 /** Restarts into the downloaded update; nothing happens when the user keeps an open transaction. */
 export async function installUpdate(): Promise<void> {
   if (!(await beforeInstall())) return
-  if (process.platform === 'darwin') return installMacUpdateNow()
-  const autoUpdater = await loadAutoUpdater()
-  // The AppImage updater starts the new AppImage at once, while this process still quits: holding the single-
-  // instance lock, it would make the new one hand its arguments over and exit (Restart now ended as a plain quit).
-  if (process.platform === 'linux') app.releaseSingleInstanceLock()
-  autoUpdater.quitAndInstall(false, true)
+  try {
+    if (process.platform === 'darwin') return installMacUpdateNow()
+    const autoUpdater = await loadAutoUpdater()
+    // The AppImage updater starts the new AppImage at once, while this process still quits: holding the single-
+    // instance lock, it would make the new one hand its arguments over and exit (Restart now ended as a plain quit).
+    if (process.platform === 'linux') app.releaseSingleInstanceLock()
+    autoUpdater.quitAndInstall(false, true)
+  } catch (err) {
+    installFailed()
+    throw err
+  }
 }

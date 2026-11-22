@@ -13,7 +13,7 @@ vi.mock('../src/main/mac-update', () => ({ canSelfUpdateMac: () => false, downlo
 vi.mock('../src/main/settings', () => ({ getSettings: () => ({}) }))
 vi.mock('../src/main/managed', () => ({ managedConfig: () => undefined }))
 
-const { installUpdate, setBeforeInstall } = await import('../src/main/updates')
+const { installUpdate, setBeforeInstall, setInstallFailed } = await import('../src/main/updates')
 const platform = process.platform
 
 afterEach(() => {
@@ -47,4 +47,26 @@ describe('Restart now', () => {
     await installUpdate()
     expect(order).toEqual(['release', 'install'])
   })
+
+  for (const os of ['win32', 'darwin', 'linux'] as const) {
+    it(`an installer that throws says so, so the agreed quit is off (${os})`, async () => {
+      Object.defineProperty(process, 'platform', { value: os, configurable: true })
+      const failed = vi.fn()
+      setInstallFailed(failed)
+      setBeforeInstall(async () => true)
+      quitAndInstall.mockImplementation(() => {
+        throw new Error('installer broke')
+      })
+      installMacUpdateNow.mockImplementation(() => {
+        throw new Error('installer broke')
+      })
+      await expect(installUpdate()).rejects.toThrow('installer broke')
+      expect(failed).toHaveBeenCalledTimes(1)
+      quitAndInstall.mockReset()
+      installMacUpdateNow.mockReset()
+      failed.mockClear()
+      await installUpdate()
+      expect(failed).not.toHaveBeenCalled()
+    })
+  }
 })

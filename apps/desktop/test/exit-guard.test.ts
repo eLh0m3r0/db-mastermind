@@ -73,13 +73,55 @@ describe('"Restart now" and the quit an agreed exit causes', () => {
     expect(asked).toEqual({ edits: 2, tx: 2 })
   })
 
-  it('a pass whose quit never came expires', async () => {
+  it('a pass whose quit never came expires within seconds (2 s by default)', async () => {
     let t = 1000
     const { guard, asked } = guardWith(['none'], ['none'], () => t)
-    guard.passNextQuit(10_000)
-    t += 10_001
+    guard.passNextQuit()
+    t += 2_001
     await guard.attempt('quit')
     expect(asked).toEqual({ edits: 1, tx: 1 })
+  })
+
+  for (const [what, edits, tx] of [
+    ['unsaved edits', 'cancel', 'none'],
+    ['an open transaction', 'none', 'cancel'],
+  ] as [string, EditsAnswer, TxAnswer][]) {
+    it(`a failed restart (the installer threw) cancels the pass: a quit right after with ${what} asks both questions`, async () => {
+      const { guard, asked } = guardWith(['discard', edits], ['rollback', tx])
+      expect(await guard.attempt('quit')).toBe(true) // "Restart now" agreed
+      const cancel = guard.passNextQuit()
+      cancel() // the installer threw, no quit is coming
+      expect(await guard.attempt('quit')).toBe(edits !== 'cancel' && tx !== 'cancel')
+      expect(asked).toEqual({ edits: 2, tx: edits === 'cancel' ? 1 : 2 })
+    })
+  }
+
+  it('the pass is used up by the quit it was made for, and only by that one', async () => {
+    const { guard, asked } = guardWith(['save'], ['commit'])
+    guard.passNextQuit()
+    expect(await guard.attempt('quit')).toBe(true)
+    expect(asked).toEqual({ edits: 0, tx: 0 })
+    await guard.attempt('quit')
+    expect(asked).toEqual({ edits: 1, tx: 1 })
+  })
+
+  it('cancelling an old pass leaves a newer one alone', async () => {
+    const { guard, asked } = guardWith(['save'], ['commit'])
+    const old = guard.passNextQuit()
+    guard.passNextQuit()
+    old()
+    expect(await guard.attempt('quit')).toBe(true)
+    expect(asked).toEqual({ edits: 0, tx: 0 })
+  })
+
+  it('a pass that expired is not used later either', async () => {
+    let t = 0
+    const { guard, asked } = guardWith(['save'], ['commit'], () => t)
+    guard.passNextQuit()
+    t = 5_000
+    await guard.attempt('quit')
+    await guard.attempt('quit')
+    expect(asked).toEqual({ edits: 2, tx: 2 })
   })
 
   it('"Restart now" cancelled at either question: the update waits and the next quit asks', async () => {
