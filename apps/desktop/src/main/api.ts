@@ -788,6 +788,8 @@ export const api: MastermindApi = {
     const existing = connections.listConnections().find((c) => c.driver === 'duckdb' && !c.filePath && c.group === FILES_GROUP)
     const connection = existing ?? connections.saveConnection({ id: '', name: 'Files (DuckDB)', driver: 'duckdb', group: FILES_GROUP })
     const literal = `'${path.replaceAll("'", "''")}'`
+    // SQL nobody confirmed (the AI asked about this file) may read the file the user handed, and no other.
+    db.allowFiles(connection.id, [path])
     const ext = extname(path).slice(1).toLowerCase()
     const reader =
       ext === 'parquet' ? `read_parquet(${literal})`

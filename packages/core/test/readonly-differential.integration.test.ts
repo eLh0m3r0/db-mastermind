@@ -22,13 +22,15 @@ afterAll(async () => {
   rmSync(tmp, { recursive: true, force: true })
 })
 
+const CLICKHOUSE: ConnectionConfig = { id: 'ch-diff', name: 'ch', driver: 'clickhouse', host: '127.0.0.1', port: 18123, user: 'default', password: 'mastermind', database: 'default' }
 const ORACLE: ConnectionConfig = { id: 'ora-diff', name: 'ora', driver: 'oracle', host: '127.0.0.1', port: 15219, user: 'shop', password: 'mastermind', database: 'FREEPDB1' }
 
 const C1: Partial<Record<DriverId, string[]>> = {
   postgres: ["SELECT $é$ ' $é$; COMMIT; DELETE FROM dbm_canary; --'", "SELECT $é$ ' $é$; COMMIT; SET default_transaction_read_only = off; COMMIT; DELETE FROM dbm_canary; --'", "SELECT 1 /* /* */ ' */; DELETE FROM dbm_canary --'"],
   mssql: ["SELECT 1 /* /* */ ' */ COMMIT DELETE FROM dbm_canary --'"],
   mysql: ["SELECT 'x' /*! INTO OUTFILE '/var/lib/mysql-files/dbm_c1' */", "SELECT 'x' /*! ; DELETE FROM dbm_canary */"],
-  mariadb: ["SELECT 'x' /*! INTO OUTFILE '/tmp/dbm_c1' */"],
+  mariadb: ["SELECT 'x' /*! INTO OUTFILE '/tmp/dbm_c1' */", "SELECT 'x' /*M! INTO OUTFILE '/tmp/dbm_c1m' */", "SELECT 'x' /*M!100000 INTO OUTFILE '/tmp/dbm_c1n' */"],
+  clickhouse: ["SELECT * FROM file('dbm_c1.csv')", 'SELECT 1; DROP TABLE dbm_canary', "SELECT 1 /* /* */ ' */; DROP TABLE dbm_canary --'"],
   oracle: ["SELECT q'[ ' ]' FROM dual; DELETE FROM dbm_canary; SELECT ' ' FROM dual"],
   sqlite: ["SELECT 1; DELETE FROM dbm_canary"],
   duckdb: ["SELECT 1; DELETE FROM dbm_canary"],
@@ -42,9 +44,9 @@ async function fingerprint(id: string): Promise<string> {
 }
 
 async function canary(id: string, driver: DriverId) {
-  const text = driver === 'oracle' ? 'VARCHAR2(20)' : 'varchar(20)'
+  const text = driver === 'oracle' ? 'VARCHAR2(20)' : driver === 'clickhouse' ? 'Nullable(String)' : 'varchar(20)'
   const drop = driver === 'oracle' ? "BEGIN EXECUTE IMMEDIATE 'DROP TABLE dbm_canary'; EXCEPTION WHEN OTHERS THEN NULL; END;" : 'DROP TABLE IF EXISTS dbm_canary'
-  for (const sql of [drop, `CREATE TABLE dbm_canary (id int, v ${text})`, "INSERT INTO dbm_canary VALUES (1, 'a')", "INSERT INTO dbm_canary VALUES (2, 'b''c')", "INSERT INTO dbm_canary VALUES (3, NULL)"]) {
+  for (const sql of [drop, `CREATE TABLE dbm_canary (id int, v ${text})${driver === 'clickhouse' ? ' ENGINE = MergeTree ORDER BY id' : ''}`, "INSERT INTO dbm_canary VALUES (1, 'a')", "INSERT INTO dbm_canary VALUES (2, 'b''c')", "INSERT INTO dbm_canary VALUES (3, NULL)"]) {
     const [o] = await svc.runScript(id, sql, { readOnly: false })
     if (o?.error && !/does not exist/.test(o.error.message)) throw new Error(`${sql}: ${o.error.message}`)
   }
@@ -53,7 +55,8 @@ async function canary(id: string, driver: DriverId) {
 const ALPHABET: Record<string, string[]> = {
   common: ["'", '"', '(', ')', ';', '--', '-- ', '/*', '*/', '\n', ' ', ',', '\\', "''", '1'],
   postgres: ['$$', '$é$', '$a$', "E'", "U&'", '/* /*', '$1', 'END', 'COMMIT'],
-  mysql: ['`', '#', '/*!', '/*!50000 ', '*/', "\\'", '\\"', "_utf8mb4'", "X'", 'INTO OUTFILE '],
+  mysql: ['`', '#', '/*!', '/*!50000 ', '/*M!', '/*M!100000 ', '/*+', '*/', "\\'", '\\"', "_utf8mb4'", "X'", 'INTO OUTFILE ', 'INTO @v '],
+  clickhouse: ['`', '#', '\\\'', '$$', '$h$', '/* /*', "file('x')"],
   mssql: ['[', ']', ']]', "N'", '/* /*', '\nGO\n', 'COMMIT'],
   oracle: ["q'[", "]'", "q'{", "}'", "nq'<", ">'", '/'],
   sqlite: ['`', '[', ']', '$x'],
@@ -74,15 +77,16 @@ function input(seed: number, driver: DriverId): string {
 
 const READS = new Set(['SELECT', 'SELECT WITHOUT QUERY', 'ASSIGN', 'COND', 'COND WITH QUERY', 'PRINT'])
 
-for (const driver of ['postgres', 'mysql', 'mariadb', 'mssql', 'oracle', 'sqlite', 'duckdb'] as DriverId[]) {
+for (const driver of ['postgres', 'mysql', 'mariadb', 'mssql', 'oracle', 'sqlite', 'duckdb', 'clickhouse'] as DriverId[]) {
   const engine = engines.find((e) => e.id === driver)
   describe.skipIf(skip.has(driver))(`SQL nobody confirmed on ${driver}`, () => {
     let id = ''
     const connect = async () => {
       if (id) return id
-      if (driver === 'oracle') {
-        await svc.connect(ORACLE)
-        id = ORACLE.id
+      if (driver === 'oracle' || driver === 'clickhouse') {
+        const c = driver === 'oracle' ? ORACLE : CLICKHOUSE
+        await svc.connect(c)
+        id = c.id
       } else id = (await setupEngine(svc, engine!)).id
       await canary(id, driver)
       return id
@@ -134,9 +138,9 @@ for (const driver of ['postgres', 'mysql', 'mariadb', 'mssql', 'oracle', 'sqlite
           await svc.releaseSession(id, session).catch(() => {})
         }
       }
-      if (driver === 'mysql') {
+      if (driver === 'mysql' || driver === 'mariadb') {
         // No file was written by any of it.
-        const files = execFileSync('docker', ['exec', 'db-mastermind-mysql-1', 'ls', '/var/lib/mysql-files'], { encoding: 'utf8' })
+        const files = execFileSync('docker', ['exec', `db-mastermind-${driver}-1`, 'ls', driver === 'mysql' ? '/var/lib/mysql-files' : '/tmp'], { encoding: 'utf8' })
         expect(files).not.toMatch(/dbm_/)
       }
     })
@@ -145,6 +149,9 @@ for (const driver of ['postgres', 'mysql', 'mariadb', 'mssql', 'oracle', 'sqlite
       await connect()
       const before = await fingerprint(id)
       const entry = (svc as unknown as { get(id: string): { driver: { execute: Function; dialect: { beginReadOnly?: string; rollback: string } } } }).get(id)
+      // MySQL and MariaDB: the server's file directories, to see that no file appeared.
+      const filesNow = () => (driver === 'mysql' || driver === 'mariadb' ? execFileSync('docker', ['exec', `db-mastermind-${driver}-1`, 'ls', '-a', driver === 'mysql' ? '/var/lib/mysql-files' : '/tmp'], { encoding: 'utf8' }) : '')
+      const filesBefore = filesNow()
       let accepted = 0
       let oneStatement = 0
       const disagreements: string[] = []
@@ -195,6 +202,7 @@ for (const driver of ['postgres', 'mysql', 'mariadb', 'mssql', 'oracle', 'sqlite
       console.log(`${driver}: ${N} inputs in ${Math.round((performance.now() - start) / 1000)} s, ${accepted} run (guarded), ${oneStatement} checked against the server`)
       expect(disagreements.slice(0, 10)).toEqual([])
       expect(await fingerprint(id)).toBe(before)
+      expect(filesNow()).toBe(filesBefore)
     })
   })
 }

@@ -166,6 +166,7 @@ export class DatabaseService {
     }
     const entry: OpenConnection = { config, driver }
     this.open.set(config.id, entry)
+    for (const p of this.allowedFiles.get(config.id) ?? []) (driver as { allowFile?: (path: string) => void }).allowFile?.(p)
     try {
       entry.serverInfo = await driver.serverInfo()
     } catch {
@@ -500,7 +501,8 @@ export class DatabaseService {
     }
     // The read-only transaction, with a time limit where the session has none (pg_sleep and friends).
     const begin = async () => {
-      if (!dialect.beginReadOnly) return
+      // (DuckDB's guarded runs are on an instance of their own, opened read-only: see DuckDBDriver.guardedInstance.)
+      if (!dialect.beginReadOnly || driver === 'duckdb') return
       const sql =
         driver === 'postgres'
           ? `${dialect.beginReadOnly}; SELECT set_config('statement_timeout', CASE WHEN current_setting('statement_timeout') = '0' THEN '${UNCONFIRMED_TIMEOUT_MS}ms' ELSE current_setting('statement_timeout') END, true)`
@@ -514,6 +516,12 @@ export class DatabaseService {
     const end = async () => {
       if (!inTransaction) return
       inTransaction = false
+      // SQL Server: the transaction must still be there to be rolled back (asked and rolled back in one round trip).
+      if (driver === 'mssql') {
+        const [r] = await entry.driver.execute('SELECT @@TRANCOUNT AS n; IF @@TRANCOUNT > 0 ROLLBACK', { session }).catch(() => [])
+        if (r && Number(r.rows[0]?.[0] ?? 0) === 0 && !outcomes.some((o) => o.error?.message.includes('guard was broken'))) broken(script, script.length)
+        return
+      }
       await entry.driver.execute(dialect.rollback, { session }).catch(() => {})
     }
     try {
@@ -561,7 +569,9 @@ export class DatabaseService {
           failed = true
           outcomes.push({ sql: s.text, start: s.start, end: s.end, error: describeError(err), durationMs: Date.now() - started })
         }
-        if (tracked && (await entry.driver.transactionState!(session)) === 'none') {
+        // (SQL Server's last batch is checked as it is rolled back, in end().)
+        const last = s === verdict.statements.at(-1)
+        if (tracked && !(driver === 'mssql' && last) && (await entry.driver.transactionState!(session)) === 'none') {
           inTransaction = false
           broken(s.text, s.end)
           break
@@ -640,6 +650,18 @@ export class DatabaseService {
     const [r] = await entry.driver.execute(sql, { params: options.params, signal: options.signal })
     if (r?.fields.length) yield { fields: r.fields, rows: r.rows }
   }
+
+  /** Files the user handed to a DuckDB connection ("Query a file"): SQL nobody confirmed may read them too. */
+  allowFiles(id: string, paths: string[]): void {
+    const kept = this.allowedFiles.get(id) ?? new Set<string>()
+    for (const p of paths) kept.add(p)
+    this.allowedFiles.set(id, kept)
+    const driver = this.open.get(id)?.driver as { allowFile?: (path: string) => void } | undefined
+    for (const p of kept) driver?.allowFile?.(p)
+  }
+
+  /** (Kept across reconnects: the connection may open after the file was handed to it.) */
+  private allowedFiles = new Map<string, Set<string>>()
 
   /** The session's transaction as the database sees it; undefined where the database has no transactions to manage. */
   async transactionState(id: string, session: string): Promise<TransactionState | undefined> {
