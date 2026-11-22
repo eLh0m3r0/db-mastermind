@@ -52,20 +52,22 @@ only what reads, refuses functions that act outside the data (below), and then l
 |---|---|
 | PostgreSQL | one statement per message (extended protocol), a read-only transaction that is always rolled back, its state checked after every statement, a time limit where the session has none; the session is reset afterwards |
 | MySQL, MariaDB | one statement per query, a read-only transaction that is always rolled back, a time limit; the connection is closed afterwards |
-| SQL Server | the server plans each batch first and it may contain only reads; a transaction that is always rolled back and checked |
+| SQL Server | the server plans each batch first and it may contain only reads; a transaction that is always rolled back and checked, a lock timeout and a time limit. A login without SHOWPLAN permission is checked by the app's own reading only, and a batch that first creates a `#temp` table and then uses it (your own SQL on a read-only connection) can't be planned up front: in both cases what remains is the rollback and the login's own rights |
 | Oracle | one statement per call, a read-only transaction |
 | SQLite | one statement per call, `query_only` |
 | DuckDB | one read statement by its own parser, a read-only copy with no access to other files, URLs or extensions |
-| ClickHouse | one query per request, `readonly` |
-| BigQuery | a dry run must report a query |
-| Trino | one statement per request; nothing more: only the app's own checks |
+| ClickHouse | one query per request, `readonly = 2` on every query: writes and changing `readonly` are refused (tested against ClickHouse 24.8) |
+| BigQuery | a dry run must report a query; not tested against the service |
+| Trino | one statement per request; nothing more: only the app's own checks; not tested against a server |
 
 What it doesn't stop: things a function can do that a read-only transaction allows. The app refuses the ones it
-knows by name (reading or writing server files, locks that outlive the statement, ending other sessions, the
-network, `pg_sleep`, MySQL `OUTFILE` / `DUMPFILE` / `LOAD_FILE` anywhere in the text), but a name list only closes
-the doors it knows: a user-defined function that does such a thing under another name, an Oracle function with an
-autonomous transaction, or an extension's function can still do it. Reading is still reading: SQL nobody confirmed
-sees what the login sees.
+knows by name, however the name is spelled (quoted, escaped, qualified, in any case the database accepts; names
+written with Unicode escapes are refused outright): reading or writing server files, locks that outlive the
+statement, ending other sessions, the network, `pg_sleep`, functions that run SQL given to them as text
+(`query_to_xml`, `dblink`, DuckDB's `query`), and MySQL `OUTFILE` / `DUMPFILE` / `LOAD_FILE` anywhere in the text.
+But a name list only closes the doors it knows: a user-defined function that does such a thing under another
+name, an Oracle function with an autonomous transaction, or an extension's function can still do it. Reading is
+still reading: SQL nobody confirmed sees what the login sees.
 
 **So give a login used with AI or agents only the rights it needs:** no superuser or DBA role, no `FILE` privilege
 (MySQL, MariaDB), no `pg_read_server_files` / `pg_write_server_files` / `pg_execute_server_program` (PostgreSQL),
