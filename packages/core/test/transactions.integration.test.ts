@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { join } from 'node:path'
-import { DatabaseService, DB_TOOLS, listActivity, whoBlocks, type ConnectionConfig, type DriverId } from '../src/index.js'
+import { agentDatabase, DatabaseService, DB_TOOLS, listActivity, whoBlocks, type ConnectionConfig, type DriverId } from '../src/index.js'
 import { engines, skip, tmp } from './fixtures.js'
 
 /**
@@ -347,7 +347,7 @@ for (const c of cases) {
       it("the assistant's confirmed writes wait in the chat's transaction", async () => {
         const runQuery = DB_TOOLS.find((tool) => tool.name === 'run_query')!
         const session = 'ai-chat1'
-        const ctx = { db: svc, connectionId: id, allowData: true, confirmWrite: async () => true, writeSession: session }
+        const ctx = { db: agentDatabase(svc, { allowData: true }), connectionId: id, allowData: true, confirmWrite: async () => true, writeSession: session }
         const answer = await runQuery.run(ctx, { sql: insert(c, 30) })
         expect(answer).toMatch(/open transaction/)
         expect(await svc.transactionState(id, session)).toBe('open')

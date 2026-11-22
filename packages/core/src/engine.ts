@@ -607,13 +607,14 @@ export class DatabaseService {
    * batches that make and use a #temp table can't be planned (the table isn't there while planning): the tokenizer
    * has checked that every write in them goes to a #temp table, and the run is rolled back as always.
    */
-  private async mssqlReadsOnly(entry: OpenConnection, session: string, batch: string, params: unknown[] | undefined, profile: ReadProfile): Promise<void> {
+  private async mssqlReadsOnly(entry: OpenConnection, session: string, batch: string, params: unknown[] | undefined, profile: ReadProfile): Promise<string> {
     const READS = new Set(['SELECT', 'SELECT WITHOUT QUERY', 'ASSIGN', 'COND', 'COND WITH QUERY', 'PRINT', ...(profile === 'user' ? ['SET ON/OFF', 'USE DATABASE'] : [])])
     const TEMP_WRITES = new Set(['SELECT INTO', 'INSERT', 'UPDATE', 'DELETE'])
     const tokensOnly = () => {
       const lexed = lex(batch, 'mssql')
       const unusual = !lexed.ok || lexed.tokens.some((t) => t.kind === 'comment' || ((t.kind === 'ident' || t.kind === 'string') && /['"[\]]|--|\/\*/.test(t.value ?? '')))
       if (unusual) throw new ReadOnlyViolationError('This login may not ask SQL Server for a plan (SHOWPLAN permission), so only plain batches without comments, and without quotes or comment marks inside names and strings, are allowed here. Grant SHOWPLAN to the login to lift this.')
+      return ''
     }
     const noPermission = (err: unknown) => /SHOWPLAN permission/i.test((err as Error)?.message ?? '')
     try {
@@ -628,7 +629,7 @@ export class DatabaseService {
     } catch (err) {
       // (The permission is checked when a statement is planned, not when SHOWPLAN is turned on.)
       if (noPermission(err)) return tokensOnly()
-      if (profile === 'user' && /Invalid object name '#/i.test((err as Error)?.message ?? '')) return
+      if (profile === 'user' && /Invalid object name '#/i.test((err as Error)?.message ?? '')) return ''
       throw new ReadOnlyViolationError(`SQL Server could not plan this batch, so it is not run: ${(err as Error).message}`)
     } finally {
       await entry.driver.execute('SET SHOWPLAN_XML OFF', { session }).catch(() => {})
@@ -643,6 +644,27 @@ export class DatabaseService {
       // (Local #temp only: a ##global one is shared with other sessions.)
       if (profile === 'user' && TEMP_WRITES.has(type!) && objects.length && objects.every((o) => /^\[#[^#]/.test(o))) continue
       throw new ReadOnlyViolationError(profile === 'user' ? `This connection is read-only: SQL Server plans this batch with ${type}, which can't be run here. Open the connection's settings to allow writes.` : `Only reads are allowed here (read-only): SQL Server plans this batch with ${type}.`)
+    }
+    return xml
+  }
+
+  /**
+   * SQL Server's plan of a batch nobody confirmed, without running it (an agent's explain): the guard's verdict, then
+   * the same SHOWPLAN_XML call the guard makes, on a session of its own. Refused where the login may not plan.
+   */
+  async planUnconfirmed(id: string, sql: string): Promise<string> {
+    const entry = this.get(id)
+    if (entry.config.driver !== 'mssql') throw new Error('Only SQL Server plans this way')
+    const verdict = readVerdict(sql, 'mssql', { profile: 'agent' })
+    if (!verdict.ok) throw new ReadOnlyViolationError(verdict.reason)
+    if (verdict.statements.length !== 1) throw new ReadOnlyViolationError('Explain one batch at a time.')
+    const session = `readonly-plan-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    try {
+      const xml = await this.mssqlReadsOnly(entry, session, verdict.statements[0]!.text, undefined, 'agent')
+      if (!xml) throw new ReadOnlyViolationError('This login may not ask SQL Server for a plan (SHOWPLAN permission). Grant SHOWPLAN to the login to explain queries here.')
+      return xml
+    } finally {
+      await entry.driver.releaseSession(session).catch(() => {})
     }
   }
 

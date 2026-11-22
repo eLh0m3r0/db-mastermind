@@ -21,6 +21,7 @@ import {
   type DatabaseService,
   type StatementOutcome,
   type ToolContext,
+  agentDatabase,
 } from '@dbmastermind/core'
 
 export interface McpServerOptions {
@@ -83,12 +84,14 @@ export function createMcpServer(options: McpServerOptions): Server {
 
   const contextFor = async (config: ConnectionConfig): Promise<ToolContext> => {
     if (!db.isOpen(config.id)) await db.connect(options.prepareConnection ? await options.prepareConnection(config) : config)
+    // A connection's own permissions (set in the app) win over the server-wide flags.
+    const allowData = !options.schemaOnly && (!config.ai || config.ai.access === 'read' || config.ai.access === 'write')
     return {
-      db,
+      // The tools' only way to the database: the guarded view (agent-db.ts).
+      db: agentDatabase(db, { allowData }),
       connectionId: config.id,
       knowledge: config.knowledgeBasePath ? new KnowledgeBase(config.knowledgeBasePath) : undefined,
-      // A connection's own permissions (set in the app) win over the server-wide flags.
-      allowData: !options.schemaOnly && (!config.ai || config.ai.access === 'read' || config.ai.access === 'write'),
+      allowData,
       allowKnowledgeWrites: config.ai ? config.ai.knowledgeWrites === true : options.allowKnowledgeWrites,
       confirmWrite:
         options.confirmWrite && config.ai?.access === 'write'

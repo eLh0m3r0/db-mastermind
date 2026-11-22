@@ -1,12 +1,13 @@
-import { describeError, type DatabaseService } from './engine.js'
-import { explainQuery, type PlanNode } from './explain.js'
+import type { AgentDatabase } from './agent-db.js'
+import { describeError } from './engine.js'
+import type { PlanNode } from './explain.js'
 import { KnowledgeBase } from './knowledge.js'
 import { getDialect } from './dialect.js'
 import { findJoinPath, findTable, incomingReferences, joinPathSql } from './schema-utils.js'
 import { isReadOnlyScript, splitStatements } from './sql-split.js'
 import type { DriverId, QueryResult, SchemaSnapshot, StatementOutcome, TableInfo } from './types.js'
 import { cellToText } from './values.js'
-import { objectDefinition, routineObject } from './definitions.js'
+import { routineObject } from './definitions.js'
 
 /**
  * Database tools for language models, independent of any AI SDK. The desktop assistant wraps them
@@ -15,10 +16,17 @@ import { objectDefinition, routineObject } from './definitions.js'
  */
 
 export interface ToolContext {
-  db: DatabaseService
+  /** The guarded view of the database (agent-db.ts): the tools' only way to it. */
+  db: AgentDatabase
   connectionId: string
   knowledge?: KnowledgeBase
-  /** May the model see table contents (query results, samples)? */
+  /**
+   * May the model see table contents? "Schema only" (false) means no value that comes from rows reaches the AI:
+   * names, types, comments, row-count estimates from the catalog and query plans without ANALYZE are schema; query
+   * results, samples, statistics of values and error messages that can quote a value are not (they are reduced to
+   * their class and position, schemaOnlyError). The knowledge base is the user's own notes and is shared as it is.
+   * The same flag is on the view (`db.allowData`), which refuses reads and samples by itself.
+   */
   allowData: boolean
   /** Called before a non-read statement runs. Return false to refuse. Missing = writes refused. */
   confirmWrite?: (sql: string) => Promise<boolean>
@@ -163,19 +171,20 @@ async function runSql(ctx: ToolContext, sql: string, maxRows: number): Promise<s
   const statements = splitStatements(sql, config.driver)
   if (statements.length === 0) return 'Nothing to run.'
   const writes = !isReadOnlyScript(sql, config.driver)
-  if (writes) {
-    if (config.readOnly) return 'Refused: this connection is read-only.'
-    if (!ctx.confirmWrite) return 'Refused: write statements are not allowed here. Show the SQL to the user instead.'
-    const ok = await ctx.confirmWrite(sql)
-    if (!ok) return 'The user declined to run this statement.'
-  } else if (!ctx.allowData) {
+  if (!writes && !ctx.allowData) {
     return 'Refused: the user only shares the schema with the assistant, not table contents. Write the SQL for the user to run instead.'
   }
   // Statements nobody confirmed run in a read-only transaction: a SELECT can still call a function that writes.
   const session = writes ? ctx.writeSession : undefined
-  const outcomes = await ctx.db.runScript(ctx.connectionId, sql, { maxRows: Math.max(maxRows, 1), readOnly: !writes, ...(session ? { session, editor: true } : {}) })
+  let outcomes: StatementOutcome[]
+  if (writes) {
+    // (The view asks the person itself: no write without their yes, none on a read-only connection.)
+    const done = await ctx.db.write(ctx.connectionId, sql, ctx.confirmWrite, { maxRows: Math.max(maxRows, 1), session })
+    if ('refused' in done) return done.refused
+    outcomes = done.outcomes
+  } else outcomes = await ctx.db.read(ctx.connectionId, sql, { maxRows: Math.max(maxRows, 1) })
   for (const o of outcomes) ctx.onExecuted?.(o)
-  const state = session ? await ctx.db.transactionState(ctx.connectionId, session).catch(() => undefined) : undefined
+  const state = session ? await ctx.db.transactionState(ctx.connectionId, session) : undefined
   const pending = state === 'open' || state === 'failed'
   const note = pending
     ? "\n\nThe change waits in an open transaction: the user commits or rolls it back in the app. Until then your read queries (which run separately) don't see it; don't run it again."
@@ -278,11 +287,11 @@ export const DB_TOOLS: DbTool[] = [
       const lower = (x: string | undefined) => (x ?? '').toLowerCase()
       const kind = str(input, 'kind')
       const table = kind === 'function' || kind === 'procedure' ? undefined : findTable(snapshot, { schema: schemaName, name })
-      if (table) return (await objectDefinition(ctx.db, ctx.connectionId, { schema: table.schema, name: table.name, kind: table.type === 'foreign_table' ? 'table' : table.type })).sql
+      if (table) return (await ctx.db.definition(ctx.connectionId, { schema: table.schema, name: table.name, kind: table.type === 'foreign_table' ? 'table' : table.type })).sql
       const routines = snapshot.routines.filter((r) => lower(r.name) === lower(name) && (!schemaName || lower(r.schema) === lower(schemaName)) && (!kind || r.kind === kind))
       if (!routines.length) return `No table, view or routine named ${raw}. Use search_schema or list_tables to find it.`
       const texts = []
-      for (const r of routines.slice(0, 5)) texts.push((await objectDefinition(ctx.db, ctx.connectionId, routineObject(r))).sql)
+      for (const r of routines.slice(0, 5)) texts.push((await ctx.db.definition(ctx.connectionId, routineObject(r))).sql)
       return texts.join('\n')
     },
   },
@@ -398,8 +407,7 @@ export const DB_TOOLS: DbTool[] = [
       if (!ctx.allowData) return 'Refused: the user only shares the schema with the assistant, not table contents.'
       const { table } = await resolveTable(ctx, str(input, 'table') ?? '')
       const limit = num(input, 'limit', 10, 100)
-      const page = await ctx.db.fetchTable(ctx.connectionId, { table: { schema: table.schema, name: table.name }, limit })
-      return formatResultForModel(page.result, limit)
+      return formatResultForModel(await ctx.db.sample(ctx.connectionId, { schema: table.schema, name: table.name }, limit), limit)
     },
   },
   {
@@ -435,7 +443,7 @@ export const DB_TOOLS: DbTool[] = [
       const sql = str(input, 'sql')
       if (!sql) return 'Missing sql.'
       try {
-        const plan = await explainQuery(ctx.db, ctx.connectionId, sql)
+        const plan = await ctx.db.explain(ctx.connectionId, sql)
         const lines: string[] = []
         const walk = (n: PlanNode, depth: number) => {
           const facts = [n.cost !== undefined ? `cost ${n.cost}` : '', n.rows !== undefined ? `rows ${n.rows}` : ''].filter(Boolean).join(', ')

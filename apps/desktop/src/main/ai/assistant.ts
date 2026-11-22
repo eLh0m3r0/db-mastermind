@@ -2,7 +2,7 @@ import { addHistory } from '../library'
 import { randomUUID } from 'node:crypto'
 import { app, BrowserWindow } from 'electron'
 import { jsonSchema, stepCountIs, streamText, tool, type ModelMessage, type ToolSet } from 'ai'
-import { buildSystemPrompt, DB_TOOLS, isReadOnlyScript, describeError, KnowledgeBase, loadSqlTools, type ToolContext } from '@dbmastermind/core'
+import { agentDatabase, buildSystemPrompt, DB_TOOLS, isReadOnlyScript, describeError, KnowledgeBase, loadSqlTools, type ToolContext } from '@dbmastermind/core'
 import { AiProblem, explainAiError } from './errors'
 import type { AiChatRequest, AiEvent } from '@shared/api'
 import { db, ensureConnected } from '../api'
@@ -99,11 +99,13 @@ async function runChat(request: AiChatRequest): Promise<void> {
   running.set(chatId, controller)
   const signal = controller.signal
 
+  const allowData = access.access === 'read' || access.access === 'write'
   const ctx: ToolContext = {
-    db,
+    // The tools' only way to the database: the guarded view (agent-db.ts).
+    db: agentDatabase(db, { allowData }),
     connectionId,
     knowledge: config.knowledgeBasePath ? new KnowledgeBase(config.knowledgeBasePath) : undefined,
-    allowData: access.access === 'read' || access.access === 'write',
+    allowData,
     allowKnowledgeWrites: access.knowledgeWrites,
     confirmWrite: access.access === 'write' ? (sql) => askApproval(chatId, 'sql', sql, signal) : undefined,
     maxRows: 50,

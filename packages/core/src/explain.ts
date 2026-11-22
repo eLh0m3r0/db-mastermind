@@ -1,4 +1,6 @@
+import { ReadOnlyViolationError } from './driver.js'
 import type { DatabaseService } from './engine.js'
+import { readVerdict } from './sql-readonly.js'
 import { classifyStatement, splitStatements } from './sql-split.js'
 import { cellToText } from './values.js'
 
@@ -329,6 +331,74 @@ export async function explainQuery(db: DatabaseService, connectionId: string, sq
   } finally {
     if (!options.session) await db.releaseSession(connectionId, session)
   }
+}
+
+/**
+ * The plan of a query nobody confirmed (an agent's or the assistant's explain_query): a plan only, never ANALYZE,
+ * for one read the agent's allowlist and refused names accept (checked on the query, and again by the guard on the
+ * EXPLAIN that wraps it), run on the guarded path (runScript readOnly: the read-only transaction, its own session).
+ * SQL Server plans it with the guard's own SHOWPLAN call and never runs it; Oracle is refused (EXPLAIN PLAN writes to
+ * PLAN_TABLE). The user's own Explain in the editor is explainQuery.
+ */
+export async function explainUnconfirmed(db: DatabaseService, connectionId: string, sql: string): Promise<ExplainResult> {
+  const driver = db.config(connectionId).driver
+  const verdict = readVerdict(sql, driver, { profile: 'agent' })
+  if (!verdict.ok) throw new ReadOnlyViolationError(verdict.reason)
+  if (verdict.statements.length !== 1) throw new ReadOnlyViolationError('Explain one statement at a time.')
+  const body = verdict.statements[0]!.text.trim().replace(/;\s*$/, '')
+  if (/^\(*\s*explain\b/i.test(body)) throw new ReadOnlyViolationError('Give the query itself: its plan is asked for here (a plan only, never ANALYZE).')
+  const read = async (script: string) => {
+    const outcomes = await db.runScript(connectionId, script, { readOnly: true, maxRows: 10_000 })
+    const failed = outcomes.find((o) => o.error)
+    if (failed) throw new Error(failed.error!.message)
+    return outcomes.flatMap((o) => o.results ?? []).filter((r) => r.fields.length)
+  }
+  switch (driver) {
+    case 'postgres': {
+      if (db.serverInfo(connectionId)?.product === 'CockroachDB') {
+        const [r] = await read(`EXPLAIN ${body}`)
+        const lines = (r?.rows ?? []).map((row) => cellToText(row[0] ?? ''))
+        return { root: cockroachPlan(lines), raw: lines.join('\n'), format: 'text' }
+      }
+      const [r] = await read(`EXPLAIN (FORMAT JSON) ${body}`)
+      const raw = cellToText(r?.rows[0]?.[0] ?? '[]')
+      return { root: pgNode((JSON.parse(raw) as { Plan: Record<string, unknown> }[])[0]!.Plan), raw, format: 'json' }
+    }
+    case 'mysql':
+    case 'mariadb': {
+      const [r] = await read(`EXPLAIN FORMAT=JSON ${body}`)
+      const raw = cellToText(r?.rows[0]?.[0] ?? '{}')
+      const nodes = mysqlNode('root', JSON.parse(raw) as Record<string, unknown>)
+      return { root: nodes.length === 1 ? nodes[0]! : { operation: 'Query', children: nodes }, raw, format: 'json' }
+    }
+    case 'clickhouse':
+    case 'trino': {
+      const [r] = await read(`EXPLAIN${driver === 'clickhouse' ? ' indexes = 1' : ''} ${body}`)
+      const lines = (r?.rows ?? []).flatMap((row) => cellToText(row[0] ?? '').split('\n')).filter((l) => l.trim())
+      return { root: indentedPlan(lines), raw: lines.join('\n'), format: 'text' }
+    }
+    case 'mssql': {
+      const raw = await db.planUnconfirmed(connectionId, body)
+      return { root: mssqlPlan(raw), raw, format: 'xml' }
+    }
+    case 'duckdb': {
+      const [r] = await read(`EXPLAIN (FORMAT JSON) ${body}`)
+      const raw = cellToText(r?.rows[0]?.[r.rows[0]!.length - 1] ?? '[]')
+      const json = JSON.parse(raw) as DuckNode | DuckNode[]
+      const nodes = (Array.isArray(json) ? json : (json.children ?? [])).map(duckNode)
+      return { root: nodes.length === 1 ? nodes[0]! : { operation: 'Query', children: nodes }, raw, format: 'json' }
+    }
+    case 'sqlite': {
+      const [r] = await read(`EXPLAIN QUERY PLAN ${body}`)
+      const rows = r?.rows ?? []
+      return { root: sqliteTree(rows), raw: rows.map((x) => cellToText(x[3] ?? '')).join('\n'), format: 'text' }
+    }
+    case 'oracle':
+      throw new ReadOnlyViolationError('Oracle writes a plan into its PLAN_TABLE (EXPLAIN PLAN), which SQL nobody confirmed may not do: ask the user to open Explain in the app.')
+    case 'bigquery':
+      throw new Error('BigQuery has no EXPLAIN: run the query and open its execution details in the Google Cloud console')
+  }
+  throw new Error('Explain is not available for this database')
 }
 
 /** EXPLAIN ANALYZE of a write runs it: inside a transaction (a savepoint in an open one) that is always undone. */
