@@ -962,6 +962,10 @@ encrypted a freshly made MCP token at once, and that Mac's user had no login key
 now before the user saves a secret, and a Mac without a login keychain is never asked at all
 (keychain-start.test.ts).
 
+1.5.3 (2026-11-22), asked for by the owner: dashboards were kept but could not be found again. They are listed in
+the Saved tab, and with a knowledge base a dashboard is a Markdown file in it (`dashboards/<name>.md`), shared with
+the folder; every tile runs behind the read-only guard; the assistant knows the format (e2e/flow119).
+
 Not done, known: a terminal start of the `.deb` on a system without user namespaces still stops with Chromium's
 error (only the menu entry falls back); a real drag of a folder from Finder was never automated (the import
 behind it is tested); BigQuery and Trino guards are not tested against the services.

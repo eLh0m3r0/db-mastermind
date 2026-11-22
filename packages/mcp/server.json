@@ -9,12 +9,12 @@
     "source": "github",
     "subfolder": "packages/mcp"
   },
-  "version": "1.5.2",
+  "version": "1.5.3",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "dbmastermind-mcp",
-      "version": "1.5.2",
+      "version": "1.5.3",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
