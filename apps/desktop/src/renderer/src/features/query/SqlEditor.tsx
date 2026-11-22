@@ -1,12 +1,12 @@
 import { analysable } from './analyse-limit'
 import { useEffect, useImperativeHandle, useRef, type Ref } from 'react'
-import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, type Completion } from '@codemirror/autocomplete'
+import { acceptCompletion, autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, type Completion } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab, toggleComment } from '@codemirror/commands'
 import { keywordCompletionSource, MSSQL, MySQL, MariaSQL, PLSQL, PostgreSQL, schemaCompletionSource, SQLite, type SQLDialect, type SQLNamespace } from '@codemirror/lang-sql'
 import { bracketMatching, HighlightStyle, indentOnInput, LanguageSupport, syntaxHighlighting } from '@codemirror/language'
 import { highlightSelectionMatches, openSearchPanel, searchKeymap } from '@codemirror/search'
 import { linter, type Diagnostic } from '@codemirror/lint'
-import { Compartment, EditorSelection, EditorState, RangeSetBuilder, StateEffect, StateField, type Extension } from '@codemirror/state'
+import { Compartment, EditorSelection, EditorState, Prec, RangeSetBuilder, StateEffect, StateField, type Extension } from '@codemirror/state'
 import {
   Decoration,
   drawSelection,
@@ -270,7 +270,10 @@ export function SqlEditor({ value, driver, schema, sessionTables, dark, onChange
           indentOnInput(),
           bracketMatching(),
           closeBrackets(),
-          autocompletion({ activateOnTyping: true, maxRenderedOptions: 80 }),
+          // A highlighted suggestion is what Enter (and Tab) take, from the moment the list shows: CodeMirror's default
+          // ignored accept keys for 75 ms after it opened, and the Enter fell through to a line break.
+          autocompletion({ activateOnTyping: true, maxRenderedOptions: 80, interactionDelay: 0 }),
+          Prec.highest(keymap.of([{ key: 'Tab', run: acceptCompletion }])),
           rectangularSelection(),
           highlightActiveLine(),
           highlightSelectionMatches(),
