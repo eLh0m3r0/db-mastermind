@@ -466,8 +466,9 @@ jobs:
         env:
           AUTH: ${{ steps.auth.outputs.auth }}
         run: |
-          # The registry checks mcpName in the npm package: the version must be on npm first.
-          for i in 1 2 3 4 5 6; do
+          # The registry checks mcpName in the npm package: the version must be on npm first. npm takes a few
+          # minutes to show a version (the first one of a new package took more than two): wait up to ten.
+          for i in $(seq 1 30); do
             [ "$(npm view "dbmastermind-mcp@$VERSION" version 2>/dev/null)" = "$VERSION" ] && break
             if [ "$AUTH" = none ]; then echo "::notice::dbmastermind-mcp@$VERSION isn't on npm, so the registry entry waits."; exit 0; fi
             sleep 20
