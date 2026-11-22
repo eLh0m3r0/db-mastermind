@@ -1,6 +1,6 @@
 import { useSettings } from '@/store/settings'
 import { formatCount } from './utils'
-import { cs, csPatterns } from './i18n-cs'
+import { cs, csParts, csPatterns } from './i18n-cs'
 
 type Vars = Record<string, string | number>
 
@@ -13,13 +13,22 @@ function isCzech(): boolean {
   return useSettings.getState().settings?.language === 'cs'
 }
 
-/** Czech for a text with parts made at run time (an error naming a statement's first word), if it has one. */
-export function csFromPattern(text: string): string | undefined {
-  for (const [pattern, czech] of csPatterns) {
+function fromPatterns(text: string, patterns: [RegExp, string][]): string | undefined {
+  for (const [pattern, czech] of patterns) {
     const m = pattern.exec(text)
-    if (m) return czech.replace(/\$(\d)/g, (_, i: string) => m[Number(i)] ?? '')
+    if (m) return czech.replace(/([$%])(\d)/g, (_, kind: string, i: string) => (kind === '$' ? m[Number(i)] ?? '' : csPart(m[Number(i)] ?? '')))
   }
   return undefined
+}
+
+/** A run-time part of a message in Czech (as it is when it has none). */
+export function csPart(text: string): string {
+  return cs[text] ?? fromPatterns(text, csParts) ?? text
+}
+
+/** Czech for a text with parts made at run time (an error naming a statement's first word), if it has one. */
+export function csFromPattern(text: string): string | undefined {
+  return fromPatterns(text, csPatterns)
 }
 
 /** Translates an English source string; `{name}` placeholders are filled from vars. */
