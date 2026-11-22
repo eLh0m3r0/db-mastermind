@@ -1,8 +1,7 @@
-import { execFileSync } from 'node:child_process'
 import { rmSync } from 'node:fs'
 import { afterAll, describe, expect, it } from 'vitest'
 import { DatabaseService, lex, readVerdict, tokenStatements, type ConnectionConfig, type DriverId } from '../src/index.js'
-import { engines, setupEngine, skip, tmp } from './fixtures.js'
+import { engines, serverFiles, setupEngine, skip, tmp } from './fixtures.js'
 import { rng } from './orm-fuzz.js'
 
 /**
@@ -145,6 +144,8 @@ function spellings(driver: DriverId): string[] {
 for (const driver of ['postgres', 'mysql', 'mariadb', 'mssql', 'oracle', 'sqlite', 'duckdb', 'clickhouse'] as DriverId[]) {
   const engine = engines.find((e) => e.id === driver)
   describe.skipIf(skip.has(driver))(`SQL nobody confirmed on ${driver}`, () => {
+    const files = driver === 'mysql' || driver === 'mariadb' ? serverFiles(driver) : undefined
+    const filesBefore = files?.list()
     let id = ''
     const connect = async () => {
       if (id) return id
@@ -203,11 +204,6 @@ for (const driver of ['postgres', 'mysql', 'mariadb', 'mssql', 'oracle', 'sqlite
           await svc.releaseSession(id, session).catch(() => {})
         }
       }
-      if (driver === 'mysql' || driver === 'mariadb') {
-        // No file was written by any of it.
-        const files = execFileSync('docker', ['exec', `db-mastermind-${driver}-1`, 'ls', driver === 'mysql' ? '/var/lib/mysql-files' : '/tmp'], { encoding: 'utf8' })
-        expect(files).not.toMatch(/dbm_/)
-      }
     })
 
     it('every spelling the server resolves to a refused function is refused', { timeout: 600_000 }, async () => {
@@ -231,9 +227,6 @@ for (const driver of ['postgres', 'mysql', 'mariadb', 'mssql', 'oracle', 'sqlite
       await connect()
       const before = await fingerprint(id)
       const entry = (svc as unknown as { get(id: string): { driver: { execute: Function; dialect: { beginReadOnly?: string; rollback: string } } } }).get(id)
-      // MySQL and MariaDB: the server's file directories, to see that no file appeared.
-      const filesNow = () => (driver === 'mysql' || driver === 'mariadb' ? execFileSync('docker', ['exec', `db-mastermind-${driver}-1`, 'ls', '-a', driver === 'mysql' ? '/var/lib/mysql-files' : '/tmp'], { encoding: 'utf8' }) : '')
-      const filesBefore = filesNow()
       let accepted = 0
       let oneStatement = 0
       const disagreements: string[] = []
@@ -284,7 +277,13 @@ for (const driver of ['postgres', 'mysql', 'mariadb', 'mssql', 'oracle', 'sqlite
       console.log(`${driver}: ${N} inputs in ${Math.round((performance.now() - start) / 1000)} s, ${accepted} run (guarded), ${oneStatement} checked against the server`)
       expect(disagreements.slice(0, 10)).toEqual([])
       expect(await fingerprint(id)).toBe(before)
-      expect(filesNow()).toBe(filesBefore)
+    })
+
+    // MySQL and MariaDB: no file appeared in the server's file folder during any of the above (INTO OUTFILE has no
+    // server-side stop in a read-only transaction). Needs the server's container to list the folder.
+    it.skipIf(!files)("no file appeared in the server's file folder", () => {
+      expect(files!.list()).toBe(filesBefore)
+      expect(files!.list()).not.toMatch(/dbm_/)
     })
   })
 }

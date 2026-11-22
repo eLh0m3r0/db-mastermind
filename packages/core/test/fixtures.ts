@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,6 +7,27 @@ import type { ConnectionConfig, DatabaseService, DriverId } from '../src/index.j
 /** Shared database fixtures for integration tests. Requires `npm run db:up`. */
 export const skip = new Set((process.env.DBM_SKIP ?? '').split(',').filter(Boolean))
 export const tmp = mkdtempSync(join(tmpdir(), 'dbm-test-'))
+
+/** The container that publishes a port: compose names locally, GitHub's service containers in CI. */
+export function containerFor(port: number): string | undefined {
+  try {
+    return execFileSync('docker', ['ps', '--filter', `publish=${port}`, '--format', '{{.Names}}'], { encoding: 'utf8' }).trim().split('\n')[0] || undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * MySQL / MariaDB: where INTO OUTFILE could write (MySQL's secure_file_priv folder, MariaDB's /tmp), and a lister
+ * of it through the server's container, or undefined when no container publishes the port (the file checks are
+ * then skipped by name; the refusals themselves are still asserted).
+ */
+export function serverFiles(driver: 'mysql' | 'mariadb'): { dir: string; list: () => string } | undefined {
+  const container = containerFor(driver === 'mysql' ? 33069 : 33070)
+  if (!container) return undefined
+  const dir = driver === 'mysql' ? '/var/lib/mysql-files' : '/tmp'
+  return { dir, list: () => execFileSync('docker', ['exec', container, 'ls', '-a', dir], { encoding: 'utf8' }) }
+}
 
 export interface Engine {
   id: DriverId

@@ -1,7 +1,6 @@
-import { execFileSync } from 'node:child_process'
 import { afterAll, describe, expect, it } from 'vitest'
 import { DatabaseService, type ConnectionConfig } from '../src/index.js'
-import { engines, setupEngine, skip } from './fixtures.js'
+import { engines, serverFiles, setupEngine, skip } from './fixtures.js'
 
 /**
  * Review round 3 on the real servers: MariaDB's /*M! … *\/ can't write a file, SQL Server batches are planned whole
@@ -16,11 +15,11 @@ const exec = async (id: string, sql: string, options = {}) => {
   if (o?.error) throw new Error(`${sql}: ${o.error.message}`)
   return (o?.results?.[0]?.rows ?? []) as unknown[][]
 }
-const container = (name: string) => execFileSync('docker', ['ps', '--filter', `name=${name}`, '--format', '{{.Names}}'], { encoding: 'utf8' }).trim().split('\n')[0]
 
 for (const driver of ['mysql', 'mariadb'] as const) {
   describe.skipIf(skip.has(driver))(`${driver}: executable comments and files`, () => {
-    it('/*M! … */ and /*! … */ write no file, for SQL nobody confirmed and on a read-only connection', async () => {
+    const files = serverFiles(driver)
+    it('/*M! … */ and /*! … */ are refused, for SQL nobody confirmed and on a read-only connection', async () => {
       const base = await setupEngine(svc, config(driver))
       const readOnly: ConnectionConfig = { ...base, id: `${base.id}-ro3`, readOnly: true }
       await svc.connect(readOnly)
@@ -30,8 +29,10 @@ for (const driver of ['mysql', 'mariadb'] as const) {
         const [outcome] = await svc.runScript(readOnly.id, sql)
         expect(outcome?.error?.message, sql).toMatch(/This connection is read-only/)
       }
-      const files = execFileSync('docker', ['exec', container(`db-mastermind-${driver}-1`)!, 'ls', dir], { encoding: 'utf8' })
-      expect(files).not.toMatch(/dbm_r3_/)
+    })
+
+    it.skipIf(!files)("…and no file appeared in the server's file folder (needs the server's container to list it)", () => {
+      expect(files!.list()).not.toMatch(/dbm_r3_/)
     })
 
     it('a named lock taken through a function is gone after the run, and a time limit is set', async () => {
