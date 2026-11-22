@@ -154,35 +154,31 @@ const route = (child, ci, parent, pi) => {
     }
   }
 
-  // --- Make it yours: accent colors, and one more swatch ------------------------------------------------------
+  // --- Make it yours: the six accents and the six looks, one choice as in the app ------------------------------
   const root = document.documentElement
   const swatches = document.querySelector('.swatches')
   if (swatches) {
     swatches.hidden = false
     const accents = [...swatches.querySelectorAll('[data-accent]')]
-    const look = swatches.querySelector('[data-look]')
+    const looks = [...swatches.querySelectorAll('[data-look]')]
     const hint = document.querySelector('.look-hint')
     const theme = [...document.querySelectorAll('.theme-toggle button')]
-    accents.forEach((b) =>
-      b.addEventListener('click', () => {
-        accents.forEach((o) => {
-          root.classList.remove(`accent-${o.dataset.accent}`)
-          o.setAttribute('aria-pressed', String(o === b))
-        })
-        if (b.dataset.accent !== 'violet') root.classList.add(`accent-${b.dataset.accent}`)
-      }),
-    )
-    const looks = ['', 'look-terminal', 'look-retro']
-    let current = 0
-    look.addEventListener('click', () => {
-      if (looks[current]) root.classList.remove(looks[current])
-      current = (current + 1) % looks.length
-      if (looks[current]) root.classList.add(looks[current])
-      const on = current !== 0
-      look.setAttribute('aria-pressed', String(on))
-      hint.hidden = !on
-      theme.forEach((t) => (t.disabled = on))
-    })
+    const choose = (accent, look) => {
+      for (const b of accents) {
+        root.classList.toggle(`accent-${b.dataset.accent}`, b.dataset.accent === accent && accent !== 'violet')
+        b.setAttribute('aria-pressed', String(b.dataset.accent === accent))
+      }
+      for (const b of looks) {
+        root.classList.toggle(`look-${b.dataset.look}`, b.dataset.look === look)
+        b.setAttribute('aria-pressed', String(b.dataset.look === look))
+      }
+      // A look has its own colors: light / dark doesn't apply to it (the app says the same).
+      hint.hidden = !look
+      theme.forEach((t) => (t.disabled = Boolean(look)))
+    }
+    accents.forEach((b) => b.addEventListener('click', () => choose(b.dataset.accent, null)))
+    // Pressing the look that is on turns it off again.
+    looks.forEach((b) => b.addEventListener('click', () => (b.getAttribute('aria-pressed') === 'true' ? choose('violet', null) : choose(null, b.dataset.look))))
   }
 
   // --- Phones: send yourself the link -------------------------------------------------------------------------
@@ -195,18 +191,30 @@ const route = (child, ci, parent, pi) => {
   }
 
   // --- Copy buttons on code blocks ----------------------------------------------------------------------------
-  if (navigator.clipboard) {
-    for (const button of document.querySelectorAll('button.copy')) {
+  // The icon turns into a check for a moment; a screen reader hears it through one polite live region.
+  const buttons = document.querySelectorAll('button.copy')
+  if (navigator.clipboard && buttons.length) {
+    const status = document.createElement('p')
+    status.className = 'sr-only'
+    status.setAttribute('aria-live', 'polite')
+    document.body.append(status)
+    for (const button of buttons) {
       button.hidden = false
+      let timer
       button.addEventListener('click', async () => {
         const code = document.getElementById(button.dataset.copy)
+        clearTimeout(timer)
         try {
           await navigator.clipboard.writeText(code.textContent)
-          button.textContent = 'Copied'
+          button.classList.add('done')
+          status.textContent = 'Copied'
         } catch {
-          button.textContent = 'Select and copy'
+          status.textContent = 'Copying is blocked here: select the text and copy it'
         }
-        setTimeout(() => (button.textContent = 'Copy'), 1600)
+        timer = setTimeout(() => {
+          button.classList.remove('done')
+          status.textContent = ''
+        }, 1500)
       })
     }
   }

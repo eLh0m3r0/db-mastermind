@@ -52,7 +52,7 @@
      privacy, 404): a change goes into all six. -->
 <a class="skip" href="#main">Skip to content</a>
 <!-- Drawings the page refers to with url(#…) and <use>: the ends of relationship lines, copied from the app's
-     ER diagram (DiagramView.tsx), and three Lucide icons (ISC license) the app uses: table, key, link. -->
+     ER diagram (DiagramView.tsx), and the Lucide icons (ISC license) the app uses for a table, a key, a link, copy and done. -->
 <svg class="sprite" aria-hidden="true" focusable="false">
   <defs>
     <marker id="crow-many" viewBox="0 0 16 16" refX="15" refY="8" markerWidth="16" markerHeight="16" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M3 8 L15 1 M3 8 L15 8 M3 8 L15 15" fill="none" stroke="currentColor" stroke-width="1.2"/></marker>
@@ -64,6 +64,8 @@
   <symbol id="i-table" viewBox="0 0 24 24"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></symbol>
   <symbol id="i-key" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r="1" fill="currentColor"/></symbol>
   <symbol id="i-link" viewBox="0 0 24 24"><path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 1 1 0 10h-2M8 12h8"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
 </svg>
 <header class="top">
   <div class="wrap top-in">
@@ -488,8 +490,8 @@
         </div>
         <p class="mcp-where" id="mcp-where">Run in a terminal:</p>
         <div class="code">
-          <button type="button" class="copy" data-copy="mcp-code" hidden>Copy</button>
           <pre id="mcp-code">claude mcp add --scope user dbmastermind -- "/Applications/DB Mastermind.app/Contents/MacOS/DB Mastermind" --mcp</pre>
+          <button type="button" class="copy" data-copy="mcp-code" aria-label="Copy" title="Copy" hidden><svg class="g-copy" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg><svg class="g-check" aria-hidden="true" focusable="false"><use href="#i-check"/></svg></button>
         </div>
         <p class="mcp-note" id="mcp-note">Check it with <code>claude mcp list</code> or <code>/mcp</code> inside Claude Code.</p>
       </div>
@@ -497,8 +499,8 @@
       <div class="npx">
         <p class="body">On a server without the app, run the MCP server from npm with a connection URL:</p>
         <div class="code">
-          <button type="button" class="copy" data-copy="npx-code" hidden>Copy</button>
           <pre id="npx-code">npx dbmastermind-mcp --url 'postgres://user@host/db'</pre>
+          <button type="button" class="copy" data-copy="npx-code" aria-label="Copy" title="Copy" hidden><svg class="g-copy" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg><svg class="g-check" aria-hidden="true" focusable="false"><use href="#i-check"/></svg></button>
         </div>
         <p class="body">The same package has <code>dbm</code>, a command line for scripts and CI.</p>
       </div>
@@ -534,22 +536,22 @@
           <p>Files from GitHub aren’t code-signed yet: if SmartScreen warns, choose <em>More info</em>, then <em>Run anyway</em>.</p>
           <p><strong>Scoop</strong>:</p>
           <div class="code">
-            <button type="button" class="copy" data-copy="scoop-code" hidden>Copy</button>
             <pre id="scoop-code">scoop install https://github.com/eLh0m3r0/db-mastermind/releases/latest/download/db-mastermind.json</pre>
+            <button type="button" class="copy" data-copy="scoop-code" aria-label="Copy" title="Copy" hidden><svg class="g-copy" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg><svg class="g-check" aria-hidden="true" focusable="false"><use href="#i-check"/></svg></button>
           </div>
         </div>
         <div>
           <h3>macOS</h3>
           <p>Download the <em>.dmg</em> for Apple Silicon or Intel and drag the app to Applications. The app isn’t notarized yet, so macOS blocks it the first time: open <em>System Settings → Privacy &amp; Security</em> and click <em>Open Anyway</em>, or run</p>
           <div class="code">
-            <button type="button" class="copy" data-copy="xattr-code" hidden>Copy</button>
             <pre id="xattr-code">xattr -dr com.apple.quarantine "/Applications/DB Mastermind.app"</pre>
+            <button type="button" class="copy" data-copy="xattr-code" aria-label="Copy" title="Copy" hidden><svg class="g-copy" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg><svg class="g-check" aria-hidden="true" focusable="false"><use href="#i-check"/></svg></button>
           </div>
           <p><strong>Homebrew</strong>:</p>
           <div class="code">
-            <button type="button" class="copy" data-copy="brew-code" hidden>Copy</button>
             <pre id="brew-code">brew tap elh0m3r0/db-mastermind https://github.com/eLh0m3r0/db-mastermind
 brew install --cask db-mastermind</pre>
+            <button type="button" class="copy" data-copy="brew-code" aria-label="Copy" title="Copy" hidden><svg class="g-copy" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg><svg class="g-check" aria-hidden="true" focusable="false"><use href="#i-check"/></svg></button>
           </div>
         </div>
         <div>
@@ -566,9 +568,26 @@ brew install --cask db-mastermind</pre>
     <div class="wrap">
       <h2 id="appearance-h">Make it yours</h2>
       <p class="body">Light, dark or high contrast, six accent colors and compact density, in Settings → Appearance. The colors work here too.</p>
-      <div class="swatches" role="group" aria-label="Accent color" hidden>
-        <button type="button" class="sw sw-violet" data-accent="violet" aria-pressed="true" aria-label="Violet" title="Violet"></button><button type="button" class="sw sw-blue" data-accent="blue" aria-pressed="false" aria-label="Blue" title="Blue"></button><button type="button" class="sw sw-teal" data-accent="teal" aria-pressed="false" aria-label="Teal" title="Teal"></button><button type="button" class="sw sw-green" data-accent="green" aria-pressed="false" aria-label="Green" title="Green"></button><button type="button" class="sw sw-orange" data-accent="orange" aria-pressed="false" aria-label="Orange" title="Orange"></button><button type="button" class="sw sw-rose" data-accent="rose" aria-pressed="false" aria-label="Rose" title="Rose"></button>
-        <button type="button" class="sw sw-look" data-look aria-pressed="false" aria-label="Another look" title="Another look"></button>
+      <!-- The app's Settings → Appearance in miniature: one choice among the six accents and the six looks (a look
+           brings its own colors, so the theme toggle doesn't apply while one is on). Nothing is saved: a reload
+           resets it. The look buttons are drawn in their look's own page, title bar and accent colors (lib/looks.ts). -->
+      <div class="swatches" hidden>
+        <div class="sw-group" role="group" aria-label="Accent color">
+          <button type="button" class="sw sw-violet" data-accent="violet" aria-pressed="true" aria-label="Violet" title="Violet"></button>
+          <button type="button" class="sw sw-blue" data-accent="blue" aria-pressed="false" aria-label="Blue" title="Blue"></button>
+          <button type="button" class="sw sw-teal" data-accent="teal" aria-pressed="false" aria-label="Teal" title="Teal"></button>
+          <button type="button" class="sw sw-green" data-accent="green" aria-pressed="false" aria-label="Green" title="Green"></button>
+          <button type="button" class="sw sw-orange" data-accent="orange" aria-pressed="false" aria-label="Orange" title="Orange"></button>
+          <button type="button" class="sw sw-rose" data-accent="rose" aria-pressed="false" aria-label="Rose" title="Rose"></button>
+        </div>
+        <div class="sw-group" role="group" aria-label="Looks">
+          <button type="button" class="sw-look" data-look="retro2001" aria-pressed="false" aria-label="Retro 2001" title="Retro 2001" style="--page:#ece9d8;--bar:#245edb;--acc:#3c9b2f"></button>
+          <button type="button" class="sw-look" data-look="terminal" aria-pressed="false" aria-label="Terminal" title="Terminal" style="--page:#000000;--bar:#0a140c;--acc:#33ff66"></button>
+          <button type="button" class="sw-look" data-look="halloween" aria-pressed="false" aria-label="Halloween" title="Halloween" style="--page:#14100c;--bar:#1d1610;--acc:#ff7518"></button>
+          <button type="button" class="sw-look" data-look="christmas" aria-pressed="false" aria-label="Christmas" title="Christmas" style="--page:#fbfaf7;--bar:#a91f17;--acc:#17602f"></button>
+          <button type="button" class="sw-look" data-look="medieval" aria-pressed="false" aria-label="Medieval" title="Medieval" style="--page:#f3e9d2;--bar:#8b5a2b;--acc:#b8860b"></button>
+          <button type="button" class="sw-look" data-look="fantasy" aria-pressed="false" aria-label="Fantasy" title="Fantasy" style="--page:#0f0d14;--bar:#2a2238;--acc:#c9a227"></button>
+        </div>
       </div>
       <p class="body look-hint" aria-live="polite" hidden>The app has a few of these. Settings → Appearance.</p>
     </div>
