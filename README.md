@@ -4,11 +4,12 @@
 
 # DB Mastermind
 
-**The free, open-source database client that understands your data.**
+**Understand your data.**
 
-Browse and filter data without limits, write SQL with an editor that knows your schema, model a new database or
-redesign the one you have with generated migrations, and ask an AI that knows your database. It is also an MCP
-server for Claude Code, Codex, Cursor and other agents.
+DB Mastermind is a free, open-source database client and data modeler for Windows, macOS and Linux.
+Design the database, query it, see it in charts: browse and filter data without limits, write SQL with an editor
+that knows your schema, model a new database or redesign the one you have with migrations that check your data
+first, and let an AI assistant or your coding agent read it safely over MCP.
 
 [Website](https://dbmastermind.app) · [Microsoft Store](https://apps.microsoft.com/detail/9p0grd7bz4nf) · [Download](https://github.com/eLh0m3r0/db-mastermind/releases/latest) · [Roadmap](ROADMAP.md) · [Report an issue](https://github.com/eLh0m3r0/db-mastermind/issues/new)
 
@@ -17,6 +18,8 @@ PostgreSQL · SQL Server · Oracle · MySQL · MariaDB · SQLite · DuckDB · Cl
 Works with hosted databases too: Supabase · Neon · Timescale · Amazon RDS and Aurora · Azure Database and Azure SQL · Google Cloud SQL
 
 </div>
+
+![DB Mastermind in split view: the ER diagram of a coffee shop database beside an SQL query and a line chart of its result](docs/screenshots/hero-1440.png)
 
 ![Table browser with nested filters and row details](docs/screenshots/table-filters.png)
 
@@ -179,11 +182,12 @@ The agent gets `list_connections`, `list_tables`, `describe_table`, `search_sche
 `find_join_path`, `sample_rows`, `run_query`, `explain_query`, `search_knowledge`, `read_knowledge` and prompts like
 *document_database*.
 
-On a server without the desktop app, use the standalone server with a connection URL (npm package coming soon;
-until then build it with `npm run build -w packages/mcp` and run `node packages/mcp/dist/cli.js`):
+On a server without the desktop app, the same MCP server runs from npm with a connection URL
+([`dbmastermind-mcp`](https://www.npmjs.com/package/dbmastermind-mcp); it also installs `dbm`, the command line
+for scripts and CI):
 
 ```bash
-dbmastermind-mcp --url "postgres://user:${PGPASSWORD}@host/db" --knowledge ./db-notes
+npx -y dbmastermind-mcp --url 'postgres://user:${PGPASSWORD}@host/db' --knowledge ./db-notes
 ```
 
 ## Knowledge base conventions
