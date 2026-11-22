@@ -182,12 +182,13 @@ The agent gets `list_connections`, `list_tables`, `describe_table`, `search_sche
 `find_join_path`, `sample_rows`, `run_query`, `explain_query`, `search_knowledge`, `read_knowledge` and prompts like
 *document_database*.
 
-On a server without the desktop app, the same MCP server runs from npm with a connection URL
-([`dbmastermind-mcp`](https://www.npmjs.com/package/dbmastermind-mcp); it also installs `dbm`, the command line
-for scripts and CI):
+On a server without the desktop app, the same MCP server runs on its own with a connection URL (`dbmastermind-mcp`,
+which also brings `dbm`, the command line for scripts and CI). The package is not on npm yet; until it is, build
+it from this repository:
 
 ```bash
-npx -y dbmastermind-mcp --url 'postgres://user:${PGPASSWORD}@host/db' --knowledge ./db-notes
+npm ci && npm run build -w packages/mcp
+node packages/mcp/dist/cli.js --url 'postgres://user:${PGPASSWORD}@host/db' --knowledge ./db-notes
 ```
 
 ## Knowledge base conventions
