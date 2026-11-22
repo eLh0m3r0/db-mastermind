@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest'
-import { compareSchemas, DatabaseService, generateMigration, getDialect, migrationScript, parseDbml, readModelFile, toDbml, type ConnectionConfig, type DriverId, type TableInfo } from '../src/index.js'
+import { compareSchemas, DatabaseService, generateMigration, getDialect, migrationScript, parseDbml, readModelFile, splitStatements, toDbml, type ConnectionConfig, type DriverId, type TableInfo } from '../src/index.js'
 import { engines, skip } from './fixtures.js'
 import { asDrawDb, asMermaid, asWorkbench, CANARY, sqlFuzzModel } from './sql-fuzz.js'
 
@@ -66,6 +66,7 @@ for (const engine of engines.filter((e) => ['postgres', 'mysql', 'mssql'].includ
       const config = await scratch(driver, engine.config)
       const problems: string[] = []
       let scripts = 0
+      let serverChecked = 0
       let made = 0
       let meantTotal = 0
       for (let seed = 0; seed < SEEDS; seed++) {
@@ -82,6 +83,32 @@ for (const engine of engines.filter((e) => ['postgres', 'mysql', 'mssql'].includ
           const script = migrationScript(generateMigration(compareSchemas(model, [], { keepExtra: true, model: true }), getDialect(driver)), getDialect(driver))
           await svc.runScript(config.id, script)
           scripts++
+          // Property 3 (review round 2): each statement our splitter made of the script is one statement to the
+          // server too. PostgreSQL's extended protocol refuses more than one command; SQL Server plans each.
+          const entry = (svc as unknown as { get(id: string): { driver: { execute(sql: string, o: object): Promise<{ rows?: unknown[][] }[]> } } }).get(config.id)
+          for (const st of splitStatements(script, driver).filter((x) => !/^(BEGIN|COMMIT|SET XACT_ABORT)/i.test(x.text.replace(/^(\s*--[^\n]*\n)+/, '').trim()))) {
+            if (driver === 'postgres') {
+              await entry.driver.execute(st.text, { unconfirmed: true }).catch((err: Error) => {
+                if (/cannot insert multiple commands/i.test(err.message)) problems.push(`seed ${seed} ${path}: the server reads more than one statement in ${JSON.stringify(st.text.slice(0, 120))}`)
+              })
+              serverChecked++
+            }
+            if (driver === 'mssql' && !/^\s*(EXEC|DECLARE|IF)\b/i.test(st.text.replace(/^(\s*--[^\n]*\n)+/, ''))) {
+              const session = `plan-${seed}`
+              try {
+                await entry.driver.execute('SET SHOWPLAN_XML ON', { session })
+                const plans = await entry.driver.execute(st.text, { session }).catch(() => undefined)
+                if (plans) {
+                  const n = [...plans.map((r) => String(r.rows?.[0]?.[0] ?? '')).join('\n').matchAll(/<Stmt(Simple|Cond)\b/g)].length
+                  if (n > 1) problems.push(`seed ${seed} ${path}: SQL Server plans ${n} statements in ${JSON.stringify(st.text.slice(0, 120))}`)
+                  serverChecked++
+                }
+              } finally {
+                await entry.driver.execute('SET SHOWPLAN_XML OFF', { session }).catch(() => {})
+                await svc.releaseSession(config.id, session).catch(() => {})
+              }
+            }
+          }
           const now = await tablesIn(config.id, driver)
           const meant = new Set([CANARY, ...model.map((t) => t.name)].map((n) => n.toLowerCase()))
           if (!now.some((n) => n.toLowerCase() === CANARY)) problems.push(`seed ${seed} ${path}: canary dropped`)
@@ -92,7 +119,7 @@ for (const engine of engines.filter((e) => ['postgres', 'mysql', 'mssql'].includ
         }
       }
       // (Not every table can be made: a hostile type is no type. Most are, or the test would prove nothing.)
-      console.log(`SQL fuzz on ${driver}: ${scripts} scripts run, ${made} of ${meantTotal} tables made`)
+      console.log(`SQL fuzz on ${driver}: ${scripts} scripts run, ${made} of ${meantTotal} tables made, ${serverChecked} statements checked by the server`)
       expect(made).toBeGreaterThan(meantTotal / 3)
       expect(problems).toEqual([])
     })
