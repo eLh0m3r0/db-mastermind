@@ -23,7 +23,7 @@ try {
   console.log('after edit:', saved.name, saved.filePath === list[0].filePath)
   console.log('delete:', await api('deleteConnection', 'team-dwh').then(() => 'deleted', (e) => e.message.split('\n')[0]))
   await win.getByText('Team DWH').first().click({ button: 'right' })
-  console.log('delete item disabled:', await win.getByRole('button', { name: /Delete \(managed/ }).isDisabled().catch(() => 'not found'))
+  console.log('delete item disabled:', await win.getByRole('menuitem', { name: /Delete \(managed/ }).isDisabled().catch(() => 'not found'))
   await win.keyboard.press('Escape')
   await win.screenshot({ path: `${out}/r9-managed-sidebar.png` })
   await win.keyboard.press('Meta+,')

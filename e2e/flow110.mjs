@@ -130,7 +130,8 @@ try {
   await win.reload()
   await win.waitForTimeout(1000)
 
-  await openConsole('Shop PG')
+  // The demo database from the part above is still the open one: Shop PG is picked from the switcher.
+  await openConsole('Shop PG', 'Demo coffee shop')
   // With search_path shop, its tables need no schema.
   let labels = await complete('select * from custo')
   check(`default schema's tables unqualified: ${labels.slice(0, 3).join(', ')}`, labels[0] === 'customers')

@@ -10,7 +10,10 @@ const win = await app.firstWindow()
 try {
   await win.waitForTimeout(800)
   await win.getByRole('button', { name: /demo database/ }).first().click()
-  await win.waitForTimeout(2000)
+  // The demo opens on its orders table now; the statement goes into a new query tab.
+  await win.getByPlaceholder(/Filter .+ tables/).waitFor({ timeout: 20000 })
+  await win.keyboard.press('ControlOrMeta+t')
+  await win.waitForTimeout(800)
   const editor = win.locator('.cm-content:visible').first()
   await editor.click()
   await win.keyboard.type('SELECT 1;')
