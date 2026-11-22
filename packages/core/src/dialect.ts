@@ -158,7 +158,8 @@ export const clickhouseDialect: Dialect = {
   id: 'clickhouse',
   sqlFlavor: 'mysql',
   defaultSchema: 'default',
-  quoteIdent: backtick,
+  // ClickHouse reads backslash escapes inside backticks too.
+  quoteIdent: (name) => `\`${name.replaceAll('\\', '\\\\').replaceAll('`', '\\`')}\``,
   placeholder: (i) => `{__p${i}}`,
   paginate: (sql, limit, offset) => limitOffset(sql, limit, offset),
   castToText: (expr) => `toString(${expr})`,
