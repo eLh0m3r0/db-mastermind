@@ -194,7 +194,10 @@ try {
   const at = await caption.boundingBox()
   await win.mouse.move(at.x + 20, at.y + at.height / 2)
   await win.mouse.down()
-  await win.mouse.move(at.x + 80, at.y + at.height / 2 + 40, { steps: 10 })
+  // Up and to the right, into empty canvas: moved down by 40 px it landed on the invoice table, whose node (above
+  // frames, as in DeZign) covered the middle of the caption that the right-click below aims at (the canvas is taller
+  // since the model's toolbar keeps to one line, so the same pixels are fewer model units than before).
+  await win.mouse.move(at.x + 80, at.y + at.height / 2 - 40, { steps: 10 })
   await win.mouse.up()
   await win.waitForTimeout(600)
   await caption.click({ button: 'right' })
