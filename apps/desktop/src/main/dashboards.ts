@@ -72,6 +72,9 @@ async function writeShared(kb: KnowledgeBase, d: NewDashboard, path: string | un
   return target
 }
 
+/** What saving a dashboard that was deleted meanwhile says (the view shows nothing for it: the dashboard is gone). */
+export const GONE = 'This dashboard no longer exists'
+
 export async function saveDashboard(d: NewDashboard): Promise<Dashboard> {
   const file = d.id ? fileOf(d.id) : undefined
   if (file && file.connectionId !== d.connectionId) throw new Error('This dashboard belongs to another connection')
@@ -79,6 +82,8 @@ export async function saveDashboard(d: NewDashboard): Promise<Dashboard> {
   const kb = knowledgeOf(d.connectionId)
   if (path) {
     if (!kb) throw new Error('This connection has no knowledge base folder')
+    // A file somebody deleted meanwhile (here, a teammate, a pull) is never brought back by a late save.
+    if (!(await kb.read(path).then(() => true, () => false))) throw new Error(GONE)
     const written = await writeShared(kb, d, path)
     return (await readShared(kb, d.connectionId, written, new Date().toISOString()))
   }
@@ -87,6 +92,7 @@ export async function saveDashboard(d: NewDashboard): Promise<Dashboard> {
     const written = await writeShared(kb, d, undefined)
     return readShared(kb, d.connectionId, written, new Date().toISOString())
   }
+  if (d.id && !library.listDashboards().some((x) => x.id === d.id)) throw new Error(GONE)
   const { shared: _s, problem: _p, intro: _i, ...local } = d
   return library.saveDashboard(local)
 }

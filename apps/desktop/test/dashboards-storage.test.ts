@@ -70,6 +70,23 @@ describe('dashboards in a knowledge base', () => {
     expect(files()).toEqual(['Operations 2.md'])
   })
 
+  it('a late save never brings a deleted dashboard back (the file, or one kept on this computer)', async () => {
+    const shared = await storage.saveDashboard({ connectionId: 'shop', name: 'Gone', refreshSeconds: 0, tiles: [tile('A', 'select 1')] })
+    await storage.deleteDashboard(shared.id)
+    await expect(storage.saveDashboard({ ...shared, tiles: [tile('B', 'select 2')] })).rejects.toThrow(/no longer exists/)
+    expect(files()).not.toContain('Gone.md')
+    // A teammate's delete (the file is simply not there any more) counts the same.
+    const other = await storage.saveDashboard({ connectionId: 'shop', name: 'Theirs', refreshSeconds: 0, tiles: [] })
+    rmSync(join(kb, 'dashboards', 'Theirs.md'))
+    await expect(storage.saveDashboard({ ...other, refreshSeconds: 60 })).rejects.toThrow(/no longer exists/)
+    expect(files()).not.toContain('Theirs.md')
+    // One kept on this computer ('other' has no knowledge base folder).
+    const local = await storage.saveDashboard({ connectionId: 'other', name: 'Local', refreshSeconds: 0, tiles: [] })
+    await storage.deleteDashboard(local.id)
+    await expect(storage.saveDashboard({ ...local, refreshSeconds: 30 })).rejects.toThrow(/no longer exists/)
+    expect((await storage.listDashboards('other')).map((d) => d.name)).not.toContain('Local')
+  })
+
   it('a file changed by hand is read as it is now; one that is not a dashboard is listed with what is wrong', async () => {
     mkdirSync(join(kb, 'dashboards'), { recursive: true })
     writeFileSync(join(kb, 'dashboards', 'Teammate.md'), '# From a teammate\n\n## Paid\n\n```sql\nselect count(*) from orders\n```\n')

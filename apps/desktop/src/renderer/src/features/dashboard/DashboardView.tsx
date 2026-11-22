@@ -12,6 +12,7 @@ import { deleteDashboard, onDashboardsChanged, openDashboard, resolveChart, save
 import { useConnections } from '@/store/connections'
 import { formatDate, useT } from '@/lib/i18n'
 import { cn, debounce, errorMessage, formatDuration, uid } from '@/lib/utils'
+import { toast } from '@/store/ui'
 import { useWorkspace, type DashboardTab } from '@/store/workspace'
 
 interface TileState {
@@ -187,7 +188,18 @@ export function DashboardView({ tab }: { tab: DashboardTab }) {
     return () => window.removeEventListener('focus', look)
   }, [active, load])
 
-  const persist = useMemo(() => debounce((d: Dashboard) => void saveDashboard(d, tab.id).catch(() => {}), 500), [tab.id])
+  const persist = useMemo(
+    () =>
+      debounce(
+        (d: Dashboard) =>
+          void saveDashboard(d, tab.id).catch((err: unknown) => {
+            // Deleted meanwhile: nothing to keep. Anything else (a folder that can't be written) must be seen.
+            if (!/no longer exists/.test(errorMessage(err))) toast({ kind: 'error', message: t('Could not save the dashboard'), detail: errorMessage(err) })
+          }),
+        500,
+      ),
+    [tab.id, t],
+  )
   const change = (d: Dashboard) => {
     setDashboard(d)
     persist(d)

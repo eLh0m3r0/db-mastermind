@@ -1257,6 +1257,7 @@ export const cs: Record<string, string> = {
   'Dashboard {n}': 'Dashboard {n}',
   'Pinned to {name}': 'Připnuto na {name}',
   'Could not pin the result': 'Výsledek se nepodařilo připnout',
+  'Could not save the dashboard': 'Dashboard se nepodařilo uložit',
   'New dashboard': 'Nový dashboard',
   'Dashboards': 'Dashboardy',
   'Add to dashboard': 'Přidat na dashboard',
