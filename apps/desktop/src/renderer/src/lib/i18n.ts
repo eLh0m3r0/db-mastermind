@@ -1,6 +1,6 @@
 import { useSettings } from '@/store/settings'
 import { formatCount } from './utils'
-import { cs } from './i18n-cs'
+import { cs, csPatterns } from './i18n-cs'
 
 type Vars = Record<string, string | number>
 
@@ -13,9 +13,18 @@ function isCzech(): boolean {
   return useSettings.getState().settings?.language === 'cs'
 }
 
+/** Czech for a text with parts made at run time (an error naming a statement's first word), if it has one. */
+export function csFromPattern(text: string): string | undefined {
+  for (const [pattern, czech] of csPatterns) {
+    const m = pattern.exec(text)
+    if (m) return czech.replace(/\$(\d)/g, (_, i: string) => m[Number(i)] ?? '')
+  }
+  return undefined
+}
+
 /** Translates an English source string; `{name}` placeholders are filled from vars. */
 export function t(text: string, vars?: Vars): string {
-  return fill((isCzech() && cs[text]) || text, vars)
+  return fill((isCzech() && (cs[text] ?? csFromPattern(text))) || text, vars)
 }
 
 export interface PluralForms {

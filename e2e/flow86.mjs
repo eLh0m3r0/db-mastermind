@@ -204,7 +204,8 @@ try {
   await w.waitForTimeout(800)
   check('no confirmation for a write the connection refuses anyway', (await w.locator('[role=dialog]').count()) === 0)
   const text = await w.locator('body').innerText()
-  check('the read-only refusal is in Czech', text.includes('Připojení je jen pro čtení. Povolené jsou jen příkazy typu SELECT.'))
+  // The read-only guard names the statement it refused (its English used to be one fixed sentence).
+  check('the read-only refusal is in Czech', text.includes('Tady jsou povolená jen čtení (připojení jen pro čtení): příkaz začínající UPDATE se nespustí.') && !text.includes('Only reads are allowed'))
   await w.screenshot({ path: join(out, '86-read-only-cs.png') })
   await w.keyboard.press('ControlOrMeta+a')
   await w.keyboard.type('WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM r) SELECT count(*) FROM r;')

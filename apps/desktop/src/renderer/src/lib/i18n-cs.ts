@@ -2028,4 +2028,24 @@ export const cs: Record<string, string> = {
   'Scroll': 'Posouvat',
   'Shrink': 'Zužovat',
   'Shrink keeps the selected tab whole and narrows the others while their names still read; past that the strip scrolls.': 'Zužování nechá vybranou záložku celou a ostatní zúží, dokud jde přečíst jejich název; pak se lišta posouvá.',
+  'SQL Server gave no plan for this batch, so it is not run.': 'SQL Server pro tuto dávku nevrátil plán, proto se nespustí.',
+  'Only one statement at a time is allowed here.': 'Tady jde spustit jen jeden příkaz najednou.',
+  'This login may not ask SQL Server for a plan (SHOWPLAN permission), so only plain batches without comments, and without quotes or comment marks inside names and strings, are allowed here.': 'Tento účet nesmí SQL Serveru zadat dotaz na plán (oprávnění SHOWPLAN), proto jsou tady povolené jen prosté dávky bez komentářů a bez uvozovek či značek komentářů v názvech a řetězcích.',
 }
+
+/**
+ * Messages with a part made at run time (a statement's first word, the engine's own wording): tried in order when a
+ * text has no entry above; `$1`… are the captured parts, kept as they are.
+ */
+export const csPatterns: [RegExp, string][] = [
+  [/^Only reads are allowed here \(read-only\): a statement starting with (.+) is not run\.$/s, 'Tady jsou povolená jen čtení (připojení jen pro čtení): příkaz začínající $1 se nespustí.'],
+  [/^Only reads are allowed here \(read-only\): row locks are not\.$/, 'Tady jsou povolená jen čtení (připojení jen pro čtení): zámky řádků nejsou povolené.'],
+  [/^Only reads are allowed here \(read-only\): procedures are not\.$/, 'Tady jsou povolená jen čtení (připojení jen pro čtení): procedury nejsou povolené.'],
+  [/^Only reads are allowed here \(read-only\): a PRAGMA that sets something is not\.$/, 'Tady jsou povolená jen čtení (připojení jen pro čtení): PRAGMA, která něco nastavuje, není povolená.'],
+  [/^Only reads are allowed here \(read-only\): EXPLAIN ANALYZE of something that is not a query is not\.$/, 'Tady jsou povolená jen čtení (připojení jen pro čtení): EXPLAIN ANALYZE něčeho, co není dotaz, není povolené.'],
+  [/^Only reads are allowed here \(read-only\): SET is only for variables \(SET @x = …\)\.$/, 'Tady jsou povolená jen čtení (připojení jen pro čtení): SET jen pro proměnné (SET @x = …).'],
+  [/^Only reads are allowed here \(read-only\): SQL Server plans this batch with (.+)\.$/s, 'Tady jsou povolená jen čtení (připojení jen pro čtení): SQL Server tuto dávku plánuje jako $1.'],
+  [/^Only reads are allowed here \(read-only\): (DuckDB|BigQuery) reads this as (.+)\.$/s, 'Tady jsou povolená jen čtení (připojení jen pro čtení): $1 to čte jako $2.'],
+  [/^Only reads are allowed here \(read-only\): (.+) is not\.$/s, 'Tady jsou povolená jen čtení (připojení jen pro čtení): $1 není povolené.'],
+  [/^SQL Server could not plan this batch, so it is not run: (.*)$/s, 'SQL Server tuto dávku nedokázal naplánovat, proto se nespustí: $1'],
+]
