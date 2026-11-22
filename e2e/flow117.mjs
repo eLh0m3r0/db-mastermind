@@ -202,6 +202,39 @@ try {
   await win.getByRole('button', { name: 'Discard changes' }).click()
   await win.waitForTimeout(300)
 
+  // The reviewer's sequence: quit → Discard the edits → Cancel the open-transaction question → edit more → quit again
+  // asks about the edits again (a remembered "settled" used to let them go without a question).
+  await menu('new-query')
+  await win.waitForTimeout(600)
+  await win.locator('.cm-content:visible').first().click()
+  await win.keyboard.insertText("begin;\nupdate customers set city = city where id = 1;")
+  await win.keyboard.press('Meta+Shift+Enter')
+  await win.waitForTimeout(1200)
+  await win.locator('[data-node="table"]:visible', { hasText: /^orders$/ }).first().click()
+  await win.locator('[role="gridcell"]').first().waitFor()
+  await app.evaluate(({ dialog }) => {
+    globalThis.__txAsked = 0
+    globalThis.__txAnswer = 2 // Cancel
+    dialog.showMessageBox = async () => (globalThis.__txAsked++, { response: globalThis.__txAnswer, checkboxChecked: false })
+  })
+  await editCell('quit-1')
+  void app.evaluate(({ app }) => app.quit())
+  check('quit with edits and an open transaction: the edits question first', await asked())
+  await dialog().getByRole('button', { name: 'Discard', exact: true }).click()
+  await win.waitForTimeout(1200)
+  check('…then the open-transaction question; Cancel keeps the app', (await app.evaluate(() => globalThis.__txAsked)) === 1 && (await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)) === 1)
+  await editCell('quit-2')
+  void app.evaluate(({ app }) => app.quit())
+  check('quitting again after more edits asks about the edits again', await asked())
+  await dialog().getByRole('button', { name: 'Cancel' }).click()
+  await win.waitForTimeout(500)
+  check('…and Cancel keeps the app and the edits', (await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)) === 1 && (await win.locator('[data-testid="tab-unsaved"]').count()) === 1)
+  await win.getByRole('button', { name: 'Discard changes' }).click()
+  // The test's transaction is rolled back when the flow quits at the end.
+  await app.evaluate(() => (globalThis.__txAnswer = 1))
+  await menu('toggle-ai')
+  await menu('toggle-ai')
+
   // AI: a local provider set up and closed, without "Use this provider", is in use and answers.
   await menu('toggle-ai')
   await win.getByRole('button', { name: 'Set up AI' }).click()

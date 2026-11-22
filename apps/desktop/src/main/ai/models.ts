@@ -75,7 +75,8 @@ async function listModelsRaw(settings: AiProviderSettings): Promise<string[]> {
     case 'openrouter':
       return ids(await getJson('https://openrouter.ai/api/v1/models', {})).sort()
     case 'gemini': {
-      const data = (await getJson(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key=${encodeURIComponent(settings.apiKey ?? '')}`, {})) as {
+      // The key goes in the x-goog-api-key header (Google's REST examples), never in the URL: a URL is kept on errors and in logs.
+      const data = (await getJson('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000', { 'x-goog-api-key': settings.apiKey ?? '' })) as {
         models?: { name: string; supportedGenerationMethods?: string[] }[]
       }
       return (data.models ?? [])
