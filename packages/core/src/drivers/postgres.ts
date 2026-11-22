@@ -657,6 +657,8 @@ export class PostgresDriver implements DatabaseDriver {
         isIdentity: c.identity !== '' || /^nextval\(/.test(c.default ?? ''),
         ...(c.identity === 'a' ? { identityAlways: true } : {}),
         isGenerated: c.generated !== '',
+        // (attgenerated: 's' stored, 'v' virtual in PostgreSQL 18.)
+        ...(c.generated !== '' ? { generatedStored: c.generated === 's' } : {}),
         comment: c.comment,
       }
       t.columns.push(column)

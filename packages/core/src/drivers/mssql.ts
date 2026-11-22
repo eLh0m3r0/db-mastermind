@@ -482,12 +482,13 @@ export class MssqlDriver implements DatabaseDriver {
       ),
       this.rows(
         `SELECT s.name AS s, o.name AS t, c.name AS name, c.column_id AS ord, TYPE_NAME(c.user_type_id) AS type,
-                c.max_length, c.precision, c.scale, c.is_nullable, dc.definition AS def, c.is_identity, c.is_computed,
+                c.max_length, c.precision, c.scale, c.is_nullable, COALESCE(cc.definition, dc.definition) AS def, c.is_identity, c.is_computed, cc.is_persisted AS persisted,
                 CAST(ep.value AS NVARCHAR(MAX)) AS comment
            FROM sys.columns c
            JOIN sys.objects o ON o.object_id = c.object_id
            JOIN sys.schemas s ON s.schema_id = o.schema_id
            LEFT JOIN sys.default_constraints dc ON dc.object_id = c.default_object_id
+           LEFT JOIN sys.computed_columns cc ON cc.object_id = c.object_id AND cc.column_id = c.column_id
            LEFT JOIN sys.extended_properties ep
              ON ep.major_id = c.object_id AND ep.minor_id = c.column_id AND ep.class = 1 AND ep.name = 'MS_Description'
           WHERE o.type IN ('U', 'V') AND o.is_ms_shipped = 0 AND ${userSchema}
@@ -596,6 +597,7 @@ export class MssqlDriver implements DatabaseDriver {
         isPrimaryKey: t.primaryKey.includes(name),
         isIdentity: Boolean(c.is_identity),
         isGenerated: Boolean(c.is_computed),
+        ...(c.is_computed ? { generatedStored: Boolean(c.persisted) } : {}),
         maxLength: Number(c.max_length),
         comment: c.comment ? String(c.comment) : null,
       })

@@ -30,8 +30,33 @@ export function canonicalPiece(text: string, target: DriverId, source: DriverId 
     kinds.push(kind)
     gap = false
   }
+  const code = read.tokens.filter((t) => t.kind !== 'space' && t.kind !== 'comment')
+  const crossing = familyOf(source) !== familyOf(target)
+  let skipTo = -1
   for (const t of read.tokens) {
+    if (t.start < skipTo) continue
     const raw = text.slice(t.start, t.end)
+    if (crossing && t.kind === 'word') {
+      const at = code.indexOf(t)
+      const next = code[at + 1]
+      // A MySQL charset introducer (_utf8mb4'…') says nothing another database reads: the string is its value.
+      if (familyOf(source) === 'mysql' && /^_[a-z0-9]+$/i.test(raw) && next?.kind === 'string') continue
+      // The current time and a new UUID in the target's words, where the meaning is that clear.
+      // SQLite's datetime('now') is the current time too.
+      const tok = (k: number) => (code[at + k] ? text.slice(code[at + k]!.start, code[at + k]!.end) : '')
+      if (familyOf(source) === 'sqlite' && /^datetime$/i.test(raw) && tok(1) === '(' && code[at + 2]?.kind === 'string' && code[at + 2]!.value === 'now' && tok(3) === ')') {
+        emit(NOW[familyOf(target)]!, 'mapped')
+        skipTo = code[at + 3]!.end
+        continue
+      }
+      const call = next && text.slice(next.start, next.end) === '(' && code[at + 2] && text.slice(code[at + 2]!.start, code[at + 2]!.end) === ')'
+      const mapped = call ? CALLS[raw.toLowerCase()]?.[familyOf(target)] : /^(sysdate|systimestamp|localtimestamp)$/i.test(raw) && !next ? CALLS.now?.[familyOf(target)] : undefined
+      if (mapped) {
+        emit(mapped, 'mapped')
+        if (call) skipTo = code[at + 2]!.end
+        continue
+      }
+    }
     switch (t.kind) {
       case 'space':
       case 'comment':
@@ -66,6 +91,13 @@ export function canonicalPiece(text: string, target: DriverId, source: DriverId 
         emit(raw, t.kind)
     }
   }
+  if (kinds.includes('mapped')) {
+    // (A mapped call is several tokens of its own: read back as the target's words.)
+    const sql = parts.join('')
+    const back = lex(sql, target)
+    if (!back.ok || back.tokens.some((t) => t.kind === 'semicolon' || t.kind === 'comment' || t.kind === 'code-open')) return { problem: `it reads differently in ${target}` }
+    return depth ? { problem: 'a "(" without its ")"' } : { sql }
+  }
   if (depth) return { problem: 'a "(" without its ")"' }
   const sql = parts.join('')
   // Read back by the target: the same tokens, nothing that would end or swallow its statement.
@@ -74,6 +106,21 @@ export function canonicalPiece(text: string, target: DriverId, source: DriverId 
   const backKinds = back.tokens.filter((t) => t.kind !== 'space').map((t) => t.kind)
   if (backKinds.join(',') !== kinds.join(',')) return { problem: `it reads differently in ${target}` }
   return { sql }
+}
+
+/** Calls whose meaning is the same everywhere, in each family's words (a source's own name is the key). */
+const NOW: Record<string, string> = { postgres: 'CURRENT_TIMESTAMP', mysql: 'CURRENT_TIMESTAMP', mssql: 'getdate()', oracle: 'SYSTIMESTAMP', sqlite: 'CURRENT_TIMESTAMP', clickhouse: 'now()', bigquery: 'CURRENT_TIMESTAMP()', trino: 'CURRENT_TIMESTAMP' }
+const UUID: Record<string, string> = { postgres: 'gen_random_uuid()', mysql: 'uuid()', mssql: 'newid()', oracle: 'sys_guid()', clickhouse: 'generateUUIDv4()', bigquery: 'GENERATE_UUID()', trino: 'uuid()' }
+const CALLS: Record<string, Record<string, string>> = {
+  now: NOW,
+  getdate: NOW,
+  getutcdate: NOW,
+  sysdatetime: NOW,
+  current_timestamp: NOW,
+  newid: UUID,
+  gen_random_uuid: UUID,
+  uuid: UUID,
+  sys_guid: UUID,
 }
 
 /** Whether two tokens written next to each other would read as one, or as a comment (`-` `-`, `/` `*`). */

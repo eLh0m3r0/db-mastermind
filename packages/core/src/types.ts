@@ -150,7 +150,10 @@ export interface ColumnInfo {
   defaultValue?: string | null
   isPrimaryKey: boolean
   isIdentity: boolean
+  /** A generated (computed) column; its expression is `defaultValue`. */
   isGenerated?: boolean
+  /** A generated column whose value is stored (STORED, PERSISTED); otherwise computed when read (VIRTUAL). */
+  generatedStored?: boolean
   maxLength?: number | null
   comment?: string | null
   /** The named reusable type the column follows, where a model has such (DeZign domains); `dataType` is its type. */

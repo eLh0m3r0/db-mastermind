@@ -172,3 +172,28 @@ describe('the review inputs (H1) meet a second layer of their own', () => {
     }
   })
 })
+
+describe('across dialects, where the meaning is clear (wave 6)', () => {
+  it('the current time, a new UUID and MySQL charset introducers are written in the target words', () => {
+    expect(canonicalPiece('(getdate())', 'postgres', 'mssql')).toEqual({ sql: '(CURRENT_TIMESTAMP)' })
+    expect(canonicalPiece("datetime('now')", 'postgres', 'sqlite')).toEqual({ sql: 'CURRENT_TIMESTAMP' })
+    expect(canonicalPiece('newid()', 'postgres', 'mssql')).toEqual({ sql: 'gen_random_uuid()' })
+    expect(canonicalPiece("_utf8mb4'C:\\\\tmp'", 'postgres', 'mysql')).toEqual({ sql: "'C:\\tmp'" })
+    expect(canonicalPiece('now()', 'mssql', 'postgres')).toEqual({ sql: 'getdate()' })
+    expect(canonicalPiece('now()', 'postgres')).toEqual({ sql: 'now()' })
+  })
+})
+
+describe('the T-SQL statement check lets our own forms through (wave 6)', () => {
+  it('foreign keys with ON DELETE / ON UPDATE, ALTER … DROP, IF … EXEC', () => {
+    const tables: TableInfo[] = [
+      { name: 'p', schema: 'app', type: 'table', comment: 'parents', columns: [col('id', { isPrimaryKey: true, nullable: false })], primaryKey: ['id'], foreignKeys: [], indexes: [{ name: 'p_pkey', columns: ['id'], unique: true, primary: true }] },
+      { name: 'c', schema: 'app', type: 'table', comment: null, columns: [col('id', { isPrimaryKey: true, nullable: false }), col('pid', { defaultValue: '0' })], primaryKey: ['id'], foreignKeys: [{ name: 'fk_c', columns: ['pid'], refSchema: 'app', refTable: 'p', refColumns: ['id'], onDelete: 'CASCADE', onUpdate: 'SET NULL' }], indexes: [{ name: 'c_pkey', columns: ['id'], unique: true, primary: true }] },
+    ]
+    const script = createScript(tables, getDialect('mssql'))
+    expect(script).not.toMatch(/Left out/)
+    expect(script).toMatch(/ON DELETE CASCADE ON UPDATE SET NULL/)
+    const dropped = generateMigration(compareSchemas([{ ...tables[1]!, columns: tables[1]!.columns.slice(0, 1), foreignKeys: [] }], [tables[1]!], { model: true }), getDialect('mssql'))
+    expect(dropped.warnings.filter((w) => /Left out/.test(w.message))).toEqual([])
+  })
+})

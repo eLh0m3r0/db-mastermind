@@ -28,6 +28,8 @@ export interface DesignColumn {
   domain?: string
   /** See ColumnInfo.collation. */
   collation?: string
+  /** A generated column (its expression is `defaultValue`): its value stored, or computed when read. */
+  generated?: 'stored' | 'virtual'
   /** See ColumnInfo.remarks. */
   remarks?: string
   /** See ColumnInfo.package. */
@@ -155,6 +157,7 @@ export function toDesignTable(t: TableInfo): DesignTable {
       defaultValue: c.defaultValue ?? null,
       identity: c.isIdentity,
       ...(c.identityAlways ? { identityAlways: true } : {}),
+      ...(c.isGenerated ? { generated: c.generatedStored === false ? ('virtual' as const) : ('stored' as const) } : {}),
       comment: c.comment ?? null,
       ...(c.domain ? { domain: c.domain } : {}),
       ...(c.collation ? { collation: c.collation } : {}),
@@ -231,6 +234,13 @@ const normDefault = (value: string | null | undefined) => {
   if (/^(now\(\)|current_timestamp(\(\))?|localtimestamp|getdate\(\)|sysdatetime\(\))$/i.test(v)) return 'now()'
   if (/^(current_date|curdate\(\)|cast\(getdate\(\) as date\)|convert\(\s*["[]?date["\]]?\s*,\s*getdate\(\)\s*\)|trunc\(sysdate\))$/i.test(v)) return 'current_date'
   if (/^n'.*'$/is.test(v)) v = v.slice(1)
+  // The other ways to write a string (Oracle q'[…]', PostgreSQL E'…' and $$…$$) are the same value as '…'.
+  const other = /^n?q'/i.test(v) ? 'oracle' : /^(e'|\$[A-Za-z_]*\$)/i.test(v) ? 'postgres' : undefined
+  if (other) {
+    const read = lex(v, other)
+    const only = read.ok && read.tokens.length === 1 && read.tokens[0]!.kind === 'string' ? read.tokens[0]!.value : undefined
+    if (only !== undefined) v = `'${only.replaceAll("'", "''")}'`
+  }
   // MySQL takes "…" for a string as well.
   if (/^"[^"']*"$/.test(v)) v = `'${v.slice(1, -1)}'`
   return v.includes("'") ? v : v.toLowerCase()
@@ -495,6 +505,7 @@ export function checkCondition(check: CheckInfo, columns: { name: string }[], d:
 }
 
 function columnDefinition(c: DesignColumn, d: Dialect, opts: { inlinePk?: boolean; sequence?: string } = {}): string {
+  if (c.generated && c.defaultValue) return generatedColumn(c, d, opts)
   // (The collation is written as the model has it: DeZign writes what was typed, quotes included.)
   const parts = [d.quoteIdent(c.name), c.collation ? `${c.dataType} COLLATE ${c.collation}` : c.dataType]
   // `serial` already brings its sequence.
@@ -510,9 +521,28 @@ function columnDefinition(c: DesignColumn, d: Dialect, opts: { inlinePk?: boolea
   if (hasDefault && d.id === 'oracle') parts.push(`DEFAULT ${c.defaultValue}`)
   if (opts.inlinePk) parts.push('PRIMARY KEY')
   if (!c.nullable) parts.push('NOT NULL')
-  if (hasDefault && d.id !== 'oracle') parts.push(`DEFAULT ${c.defaultValue}`)
+  // SQLite takes an expression as a default only in parentheses (it reports datetime('now') without them).
+  const defaultSql = d.id === 'sqlite' && hasDefault && /\(/.test(c.defaultValue!) && !/^\(.*\)$/s.test(c.defaultValue!.trim()) ? `(${c.defaultValue})` : c.defaultValue
+  if (hasDefault && d.id !== 'oracle') parts.push(`DEFAULT ${defaultSql}`)
   if (c.comment && (d.id === 'mysql' || d.id === 'mariadb')) parts.push(`COMMENT ${literalComment(c.comment, d.id)}`)
   return parts.join(' ')
+}
+
+/**
+ * A generated column as each database writes one: SQL Server `name AS (expr) [PERSISTED]` without a type,
+ * PostgreSQL STORED (VIRTUAL only from 18), DuckDB VIRTUAL only, the others as the model says.
+ */
+function generatedColumn(c: DesignColumn, d: Dialect, opts: { inlinePk?: boolean }): string {
+  const expr = /^\(.*\)$/s.test(c.defaultValue!.trim()) ? c.defaultValue!.trim() : `(${c.defaultValue!.trim()})`
+  const stored = c.generated === 'stored'
+  const tail = [opts.inlinePk ? 'PRIMARY KEY' : '', !c.nullable && d.id !== 'mssql' ? 'NOT NULL' : ''].filter(Boolean).join(' ')
+  const head =
+    d.id === 'mssql' ? `${d.quoteIdent(c.name)} AS ${expr}${stored ? ' PERSISTED' : ''}` :
+    d.id === 'postgres' ? `${d.quoteIdent(c.name)} ${c.dataType} GENERATED ALWAYS AS ${expr} STORED` :
+    d.id === 'duckdb' ? `${d.quoteIdent(c.name)} ${c.dataType} GENERATED ALWAYS AS ${expr} VIRTUAL` :
+    d.id === 'oracle' ? `${d.quoteIdent(c.name)} ${c.dataType} GENERATED ALWAYS AS ${expr} VIRTUAL` :
+    `${d.quoteIdent(c.name)} ${c.dataType} GENERATED ALWAYS AS ${expr} ${stored ? 'STORED' : 'VIRTUAL'}`
+  return tail ? `${head} ${tail}` : head
 }
 
 function fkClause(fk: DesignForeignKey, table: string, d: Dialect): string {
@@ -733,8 +763,12 @@ function tsqlSecondStatement(sql: string): boolean {
   if (!lexed.ok) return true
   let depth = 0
   let first = ''
+  let previous = ''
   for (const t of lexed.tokens) {
     const text = sql.slice(t.start, t.end)
+    if (t.kind === 'space' || t.kind === 'comment') continue
+    const before = previous
+    previous = t.kind === 'word' ? text.toUpperCase() : text
     if (t.kind === 'op' && text === '(') depth++
     else if (t.kind === 'op' && text === ')') depth--
     else if (t.kind === 'word' && depth === 0) {
@@ -745,6 +779,8 @@ function tsqlSecondStatement(sql: string): boolean {
       }
       // (DECLARE @x = (SELECT …); IF @x … EXEC(…): our own default-constraint drop is two statements by design.)
       if (first === 'DECLARE' || first === 'IF') return false
+      // (ON DELETE / ON UPDATE are a foreign key's actions.)
+      if (before === 'ON' && (w === 'DELETE' || w === 'UPDATE')) continue
       if (TSQL_STARTS.has(w) || (w === 'DROP' && first !== 'ALTER' && first !== 'DROP')) return true
     }
   }
@@ -1371,6 +1407,7 @@ export function designToTableInfo(t: DesignTable): TableInfo {
       defaultValue: c.defaultValue ?? null,
       isPrimaryKey: t.primaryKey.includes(c.name),
       isIdentity: !!c.identity,
+      ...(c.generated ? { isGenerated: true, generatedStored: c.generated === 'stored' } : {}),
       comment: c.comment ?? null,
       ...(c.domain ? { domain: c.domain } : {}),
       ...(c.collation ? { collation: c.collation } : {}),
