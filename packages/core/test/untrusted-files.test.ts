@@ -198,3 +198,11 @@ describe('names cleaning makes alike', () => {
     expect(m.leftOut.renamed).toBe(3)
   })
 })
+
+describe('names that differ only in case (review round 2)', () => {
+  it('stay two names, as in DBML', () => {
+    const m = readModelFile('m.json', strToU8(JSON.stringify({ tables: [{ id: 1, name: 't', fields: [{ id: 1, name: 'email', type: 'INT' }, { id: 2, name: 'Email', type: 'INT' }] }], relationships: [] })))
+    expect(m.tables[0]!.columns.map((c) => c.name)).toEqual(['email', 'Email'])
+    expect(m.leftOut.renamed).toBeUndefined()
+  })
+})

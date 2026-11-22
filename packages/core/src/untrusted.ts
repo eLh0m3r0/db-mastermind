@@ -60,11 +60,14 @@ function cleanTable(t: TableInfo): TableInfo {
   }
 }
 
-/** A name not yet taken (case aside): itself, or itself with `_2`, `_3` … (cut to stay within `max`). */
+/**
+ * A name not yet taken, as written (email and Email are two names, as in DBML and case-sensitive databases):
+ * itself, or itself with `_2`, `_3` … (cut to stay within `max`).
+ */
 function untaken(name: string, taken: Set<string>, max = 128): string {
   let out = name
-  for (let n = 2; taken.has(out.toLowerCase()); n++) out = `${name.slice(0, max - String(n).length - 1)}_${n}`
-  taken.add(out.toLowerCase())
+  for (let n = 2; taken.has(out); n++) out = `${name.slice(0, max - String(n).length - 1)}_${n}`
+  taken.add(out)
   return out
 }
 

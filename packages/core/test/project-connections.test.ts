@@ -189,3 +189,10 @@ describe('YAML aliases anywhere a compose value is read (review N3)', () => {
     }
   })
 })
+
+describe('cockroachdb:// in a .env (review round 2)', () => {
+  it("keeps CockroachDB's port and TLS", () => {
+    const [c] = projectConnections({ '.env': 'DATABASE_URL=cockroachdb://root@crdb/defaultdb\n' }, 'p', { folder: true })
+    expect(c).toMatchObject({ driver: 'postgres', host: 'crdb', port: 26257, ssl: { mode: 'require' } })
+  })
+})

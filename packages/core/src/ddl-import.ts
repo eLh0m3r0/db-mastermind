@@ -1,5 +1,5 @@
 import { DuckDBDriver } from './drivers/duckdb.js'
-import { splitStatements } from './sql-split.js'
+import { splitStatements, stripLiterals } from './sql-split.js'
 import type { IndexInfo, TableInfo } from './types.js'
 
 export interface DdlImportResult {
@@ -123,7 +123,9 @@ function extractInlineIndexes(statement: string, special?: Map<string, IndexInfo
     if (items.some((p) => p.startsWith('('))) {
       const table = unquote(m[1]!.match(/"[^"]+"|[\w$]+/g)!.at(-1)!)
       const parts = items.map((p) => p.replace(/"([^"]+)"/g, '`$1`'))
-      special?.set(table.toLowerCase(), [...(special.get(table.toLowerCase()) ?? []), { name, columns: parts, unique: kind === 'UNIQUE', primary: false, definition: `CREATE ${kind === 'UNIQUE' ? 'UNIQUE ' : ''}INDEX \`${name}\` ON \`${table.split(JOIN).pop()}\` (${parts.join(', ')})`, definitionDriver: 'mysql' }])
+      // A plain part is a column by its name; an expression stays as MySQL wrote it.
+      const columns = items.map((p, k) => (p.startsWith('(') ? parts[k]! : unquote(p.replace(/\s+(ASC|DESC)$/i, '').replace(/\(\d+\)$/, ''))))
+      special?.set(table.toLowerCase(), [...(special.get(table.toLowerCase()) ?? []), { name, columns, unique: kind === 'UNIQUE', primary: false, definition: `CREATE ${kind === 'UNIQUE' ? 'UNIQUE ' : ''}INDEX \`${name}\` ON \`${table.split(JOIN).pop()}\` (${parts.join(', ')})`, definitionDriver: 'mysql' }])
       continue
     }
     if (kind === 'FULLTEXT' || kind === 'SPATIAL') {
@@ -204,6 +206,35 @@ function withoutOddPart(sql: string): { sql: string; part: string } | undefined 
   if (at === -1 || parts.filter(column).length === 0) return undefined
   const kept = parts.filter((_, i) => i !== at)
   return { sql: `${sql.slice(0, start)}\n  ${kept.join(',\n  ')}\n${sql.slice(end)}`, part: parts[at]! }
+}
+
+/**
+ * The same statement in a form DuckDB may take, for the error it gave, or undefined: defaults, checks and generated
+ * expressions out (they come back from the script's text, asDeclared), a type without the modifiers DuckDB's type
+ * doesn't take, an unknown type as VARCHAR (the type comes back from the text too). `any` tries the first three
+ * whatever the error said (the last pass before parts are left out).
+ */
+function simplerFor(sql: string, message: string, any = false): string | undefined {
+  if ((any || /Function with name|Sequence with name|Binder Error|Conversion Error|\bCHECK\b|generated column|Parser Error/i.test(message)) && CREATE_TABLE.test(sql)) {
+    const simpler = [withoutColumnOptions, withoutDefaults, withoutChecks, withoutGenerated].map((f) => f(sql)).find((x) => x !== sql)
+    if (simpler) return simpler
+  }
+  // A type DuckDB has without modifiers (MySQL's BLOB(65535), TEXT(100)): the type without them.
+  const bare = /Type ([\w$]+) does not support any modifiers/i.exec(message)?.[1]
+  if (bare) {
+    // (DuckDB names its own type: BLOB is also what VARBINARY(255) and BINARY(16) are to it.)
+    const names = bare.toUpperCase() === 'BLOB' ? 'blob|varbinary|binary|bytea|tinyblob|mediumblob|longblob' : bare
+    const unsized = sql.replace(new RegExp(`(?<![\\w$"])(${names})\\s*\\(\\s*\\d+\\s*\\)`, 'gi'), '$1')
+    if (unsized !== sql) return unsized
+  }
+  // A type DuckDB doesn't know (domains, extensions) becomes VARCHAR; the model only needs the column.
+  // (DuckDB names the extension a type such as GEOMETRY would come from: it is still unknown here.)
+  const type = /Type with name "?([\w$.]+)"? (?:does not exist|is not in the catalog)/i.exec(message)?.[1]
+  if (!type) return undefined
+  // (Quoted too: a type of another schema is written "app__dbm__order_status" here.)
+  const name = type.replace(/[.$]/g, '\\$&')
+  const varchar = sql.replace(new RegExp(`(?:"${name}"|(?<![\\w$"])${name}(?![\\w$"]))(\\s*\\([^)]*\\))?`, 'gi'), 'VARCHAR')
+  return varchar !== sql ? varchar : undefined
 }
 
 /** Whether a /* comment (nested, as PostgreSQL reads them) is still open at the end, quotes skipped. */
@@ -479,8 +510,22 @@ function columnsOnly(sql: string): string {
       if (/^(CONSTRAINT\s+\S+\s+)?PRIMARY\s+KEY\s*\(/i.test(part)) return [part]
       const column = /^("[^"]+"|[\w$]+)\s+/.exec(part)
       // (NOT NULL kept: asDeclared brings back types and defaults from the text, not whether a column may be empty.)
-      return column && !TABLE_PART.test(part) ? [`${column[1]} VARCHAR${/\bNOT\s+NULL\b/i.test(part) ? ' NOT NULL' : ''}`] : []
+      const keep = [/\bNOT\s+NULL\b/i.test(stripLiterals(part)) ? ' NOT NULL' : '', /\bPRIMARY\s+KEY\b/i.test(stripLiterals(part)) ? ' PRIMARY KEY' : ''].join('')
+      return column && !TABLE_PART.test(part) ? [`${column[1]} VARCHAR${keep}`] : []
     })
+  return `${sql.slice(0, start)}\n  ${parts.join(',\n  ')}\n${sql.slice(end)}`
+}
+
+/** MySQL column options that change nothing a model holds (storage, format, visibility, SRID): left out for DuckDB. */
+function withoutColumnOptions(sql: string): string {
+  const m = CREATE_TABLE.exec(sql)
+  if (!m) return sql
+  const { start, end } = tableBody(sql, m)
+  const parts = topLevel(sql.slice(start, end)).map((part) => {
+    const column = /^("[^"]+"|[\w$]+)\s+/.exec(part)
+    if (!column || TABLE_PART.test(part)) return part
+    return part.replace(/\s+(COLUMN_FORMAT\s+(FIXED|DYNAMIC|DEFAULT)|STORAGE\s+(DISK|MEMORY)|INVISIBLE|VISIBLE|SRID\s+\d+|(SECONDARY_)?ENGINE_ATTRIBUTE\s*=?\s*'(?:[^']|'')*')\b/gi, '')
+  })
   return `${sql.slice(0, start)}\n  ${parts.join(',\n  ')}\n${sql.slice(end)}`
 }
 
@@ -730,33 +775,9 @@ export async function tablesFromDdl(given: string): Promise<DdlImportResult> {
             sql = ''
             break
           } catch (err) {
-            const message = err instanceof Error ? err.message : ''
-            // A default DuckDB can't evaluate (another database's function or literal): the table without
-            // defaults, which come back from the script's text (asDeclared).
-            if (/Function with name|Sequence with name|Binder Error|Conversion Error|\bCHECK\b|generated column|Parser Error/i.test(message) && CREATE_TABLE.test(sql)) {
-              const simpler = [withoutDefaults, withoutChecks, withoutGenerated].map((f) => f(sql)).find((x) => x !== sql)
-              if (simpler) {
-                sql = simpler
-                continue
-              }
-            }
-            // A type DuckDB has without modifiers (MySQL's BLOB(65535), TEXT(100)): the type without them.
-            const bare = /Type ([\w$]+) does not support any modifiers/i.exec(message)?.[1]
-            if (bare) {
-              // (DuckDB names its own type: BLOB is also what VARBINARY(255) and BINARY(16) are to it.)
-              const names = bare.toUpperCase() === 'BLOB' ? 'blob|varbinary|binary|bytea|tinyblob|mediumblob|longblob' : bare
-              const unsized = sql.replace(new RegExp(`(?<![\\w$"])(${names})\\s*\\(\\s*\\d+\\s*\\)`, 'gi'), '$1')
-              if (unsized !== sql) {
-                sql = unsized
-                continue
-              }
-            }
-            // (DuckDB names the extension a type such as GEOMETRY would come from: it is still unknown here.)
-            const type = /Type with name "?([\w$.]+)"? (?:does not exist|is not in the catalog)/i.exec(message)?.[1]
-            if (!type) break
-            // (Quoted too: a type of another schema is written "app__dbm__order_status" here.)
-            const name = type.replace(/[.$]/g, '\\$&')
-            sql = sql.replace(new RegExp(`(?:"${name}"|(?<![\\w$"])${name}(?![\\w$"]))(\\s*\\([^)]*\\))?`, 'gi'), 'VARCHAR')
+            const next = simplerFor(sql, err instanceof Error ? err.message : '')
+            if (next === undefined) break
+            sql = next
           }
         }
         if (sql) failed.push(sql)
@@ -778,7 +799,7 @@ export async function tablesFromDdl(given: string): Promise<DdlImportResult> {
           const error = readable(err instanceof Error ? err.message.split('\n')[0]! : String(err))
           // First what the rounds above do quietly (defaults, checks and generated expressions come back from the
           // script's text), then a part at a time.
-          const simpler = CREATE_TABLE.test(sql) ? [withoutDefaults, withoutChecks, withoutGenerated].map((f) => f(sql)).find((x) => x !== sql) : undefined
+          const simpler = simplerFor(sql, error, true)
           if (simpler) {
             sql = simpler
             continue
@@ -786,7 +807,7 @@ export async function tablesFromDdl(given: string): Promise<DdlImportResult> {
           let less = dropped.length < 50 ? withoutOddPart(sql) : undefined
           // Only columns left and still refused: the columns by name (their types come back from the script's
           // text, asDeclared), so the table is never lost.
-          if (!less && CREATE_TABLE.test(sql) && columnsOnly(sql) !== sql) less = { sql: columnsOnly(sql), part: '(its column definitions, read from the script text instead)' }
+          if (!less && CREATE_TABLE.test(sql) && columnsOnly(sql) !== sql) less = { sql: columnsOnly(sql), part: '(read incompletely: only names, types, NOT NULL, keys, identity and defaults of its columns, from the script text)' }
           if (!less) {
             skipped.push({ sql: readable(sql).slice(0, 300), error })
             break

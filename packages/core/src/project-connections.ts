@@ -111,7 +111,8 @@ const looksLikeUrl = (v: string) => URL_SCHEME.test(v.trim()) && /:\/\/|^jdbc:/i
 
 /** A URL as people write them in .env files (`postgresql+asyncpg://`, `cockroachdb://`), as a connection. */
 function fromUrl(value: string): ImportedConnection | undefined {
-  const text = value.trim().replace(/^([a-z]+)\+[\w-]+:/i, '$1:').replace(/^cockroachdb:/i, 'postgresql:')
+  // (cockroachdb:// stays: connection-url gives it CockroachDB's port, 26257, and TLS required.)
+  const text = value.trim().replace(/^([a-z]+)\+[\w-]+:/i, '$1:')
   try {
     const parsed = parseConnectionString(text)
     // A template (postgres://USER:PASSWORD@HOST:PORT/DB) parses as nothing useful: a port must be a number.
