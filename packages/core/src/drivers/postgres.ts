@@ -349,7 +349,8 @@ export class PostgresDriver implements DatabaseDriver {
 
   async *stream(sql: string, options: StreamOptions = {}): AsyncGenerator<StreamBatch> {
     if (options.signal?.aborted) throw new QueryCancelledError()
-    const client = await this.checkout()
+    // (A cursor is the extended protocol: one statement, also on a session inside its read-only transaction.)
+    const { client, release } = options.session ? await this.acquire(options.session) : { client: await this.checkout(), release: undefined }
     const pid = (client as unknown as { processID: number }).processID
     let cancelled = false
     let cancelling: Promise<void> = Promise.resolve()
@@ -386,7 +387,8 @@ export class PostgresDriver implements DatabaseDriver {
       options.signal?.removeEventListener('abort', onAbort)
       await cursor.close().catch(() => {})
       await cancelling
-      client.release()
+      if (release) release()
+      else client.release()
     }
   }
 

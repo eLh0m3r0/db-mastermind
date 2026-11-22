@@ -142,7 +142,7 @@ export class ClickHouseDriver implements DatabaseDriver {
     const onAbort = () => controller.abort()
     options.signal?.addEventListener('abort', onAbort, { once: true })
     try {
-      const rs = await this.db.query({ query, format: 'JSONCompactEachRowWithNamesAndTypes', abort_signal: controller.signal })
+      const rs = await this.db.query({ query, format: 'JSONCompactEachRowWithNamesAndTypes', abort_signal: controller.signal, ...(options.unconfirmed ? { clickhouse_settings: { ...this.settings, readonly: '2' } } : {}) })
       let names: string[] | undefined
       let fields: ResultField[] = []
       let batch: CellValue[][] = []

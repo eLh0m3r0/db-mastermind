@@ -29,6 +29,38 @@ export class DuckDBDriver implements DatabaseDriver {
   readonly dialect = duckdbDialect
   private instance?: DuckDBInstance
   private sessions = new Map<string, DuckDBConnection>()
+  /**
+   * SQL nobody confirmed runs on an instance of its own: the database file opened read-only (an in-memory
+   * connection: an empty one), external access off, extensions neither loaded nor installed, and the configuration
+   * locked, with exactly the files this connection was opened for or handed (allowFile) still readable. DuckDB can't
+   * turn external access back on in a running instance, so the user's own instance is never touched.
+   */
+  private guarded?: { instance: DuckDBInstance; files: string }
+  private allowed = new Set<string>()
+
+  /** A file the user handed to this connection ("Query a file"): SQL nobody confirmed may read it too. */
+  allowFile(path: string): void {
+    this.allowed.add(path)
+  }
+
+  private async guardedInstance(): Promise<DuckDBInstance> {
+    const files = JSON.stringify([...this.allowed].sort())
+    if (this.guarded?.files === files) return this.guarded.instance
+    this.guarded?.instance.closeSync()
+    this.guarded = undefined
+    const duckdb = await loadDuckDB()
+    const path = this.config.filePath?.trim() || ':memory:'
+    const instance = await duckdb.DuckDBInstance.create(path, path === ':memory:' ? {} : { access_mode: 'READ_ONLY' })
+    const conn = await instance.connect()
+    try {
+      const list = [...this.allowed].map((f) => `'${f.replaceAll("'", "''")}'`).join(', ')
+      for (const sql of [`SET allowed_paths = [${list}]`, 'SET autoload_known_extensions = false', 'SET autoinstall_known_extensions = false', 'SET enable_external_access = false', 'SET lock_configuration = true']) await conn.run(sql)
+    } finally {
+      conn.closeSync()
+    }
+    this.guarded = { instance, files }
+    return instance
+  }
 
   constructor(readonly config: ConnectionConfig) {}
 
@@ -45,6 +77,8 @@ export class DuckDBDriver implements DatabaseDriver {
   }
 
   async close(): Promise<void> {
+    this.guarded?.instance.closeSync()
+    this.guarded = undefined
     for (const c of this.sessions.values()) c.closeSync()
     this.sessions.clear()
     if (this.instance && this.config.filePath?.trim() && !this.config.readOnly) {
@@ -101,7 +135,11 @@ export class DuckDBDriver implements DatabaseDriver {
 
   async execute(sql: string, options: QueryOptions = {}): Promise<QueryResult[]> {
     if (options.signal?.aborted) throw new QueryCancelledError()
-    const { conn, release } = await this.acquire(options.session)
+    // (SQL nobody confirmed: a connection of the guarded instance, closed afterwards.)
+    const { conn, release } = options.unconfirmed ? await (async () => {
+      const c = await (await this.guardedInstance()).connect()
+      return { conn: c, release: () => c.closeSync() }
+    })() : await this.acquire(options.session)
     let cancelled = false
     const onAbort = () => {
       cancelled = true
@@ -135,7 +173,19 @@ export class DuckDBDriver implements DatabaseDriver {
   async *stream(sql: string, options: StreamOptions = {}): AsyncGenerator<StreamBatch> {
     if (options.signal?.aborted) throw new QueryCancelledError()
     const duckdb = await loadDuckDB()
-    const conn = await this.db.connect()
+    // SQL nobody confirmed streams from the guarded instance, after DuckDB's parser said it is one read.
+    const conn = options.unconfirmed ? await (await this.guardedInstance()).connect() : await this.db.connect()
+    if (options.unconfirmed) {
+      try {
+        const statements = await conn.extractStatements(sql)
+        if (statements.count !== 1) throw new ReadOnlyViolationError('Only one statement at a time is allowed here.')
+        const prepared = await statements.prepare(0)
+        if (prepared.statementType !== duckdb.StatementType.SELECT && prepared.statementType !== duckdb.StatementType.EXPLAIN) throw new ReadOnlyViolationError(`Only reads are allowed here (read-only): DuckDB reads this as ${duckdb.StatementType[prepared.statementType] ?? 'a statement that is not a query'}.`)
+      } catch (err) {
+        conn.closeSync()
+        throw err
+      }
+    }
     let cancelled = false
     const onAbort = () => {
       cancelled = true

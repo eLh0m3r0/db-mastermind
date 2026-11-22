@@ -363,7 +363,7 @@ export class MssqlDriver implements DatabaseDriver {
 
   async *stream(text: string, options: StreamOptions = {}): AsyncGenerator<StreamBatch> {
     if (options.signal?.aborted) throw new QueryCancelledError()
-    const request = this.activePool.request()
+    const request = (options.session ? await this.sessionPool(options.session) : this.activePool).request()
     request.stream = true
     request.arrayRowMode = true
     options.params?.forEach((value, i) => request.input(`p${i + 1}`, value))

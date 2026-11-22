@@ -8,7 +8,7 @@ import type { DriverId } from './types.js'
  *
  * | dialect            | block comments                  | strings                                                   | quoted names           |
  * |--------------------|---------------------------------|-----------------------------------------------------------|------------------------|
- * | PostgreSQL, DuckDB | nest                            | '' doubling; E'' backslash escapes; U&'', B'', X'';        | "" (U&"")              |
+ * | PostgreSQL, DuckDB | nest                            | '' doubling; E'' backslash escapes; U&'', B'', X'';        | "", U&"" (UESCAPE)     |
  * |                    |                                 | $tag$…$tag$ (tag: letters incl. non-ASCII, digits, _)      |                        |
  * | MySQL, MariaDB     | don't nest; /*! and /*+ are CODE| '' and "" with backslash escapes (modes can turn them off) | `` (" with ANSI_QUOTES)|
  * | SQL Server         | nest                            | '' doubling, N''                                          | "" and [ ]] ]          |
@@ -16,7 +16,11 @@ import type { DriverId } from './types.js'
  * | SQLite             | don't nest                      | '' doubling                                               | "" `` [ ]              |
  * | ClickHouse         | nest                            | '' with backslash escapes, heredoc $tag$…$tag$            | "" `` (backslashes)    |
  * | BigQuery           | refused inside a comment        | '' "" ''' """ with backslash escapes, r'' raw, b''        | `` (backslashes)       |
- * | Trino              | refused inside a comment        | '' doubling, U&'', X''                                    | ""                     |
+ * | Trino              | refused inside a comment        | '' doubling, U&'' (UESCAPE), X''                          | ""                     |
+ *
+ * Values are decoded as the server decodes them: E'' escapes (octal, \x, \u, \U), MySQL's (\% and \_ keep their
+ * backslash), ClickHouse's \xHH, BigQuery's octal, \x, \u and \U, and U&'' / U&"" escapes with their UESCAPE
+ * character (the UESCAPE clause belongs to the token). A name's value is what the server looks it up by.
  *
  * `#` starts a line comment in MySQL, ClickHouse and BigQuery; `--` everywhere (in MySQL only before a space or a
  * control character: `1--1` is one minus minus one there).
@@ -29,6 +33,8 @@ export interface Token {
   end: number
   /** A string's or quoted name's value, decoded (escapes and doubled quotes resolved). */
   value?: string
+  /** Written with Unicode escapes (U&'…', U&"…"). */
+  unicode?: boolean
 }
 
 /** On failure, `tokens` are those read before `at`: what comes after can't be told apart. */
@@ -85,7 +91,7 @@ export function lex(sql: string, driver: DriverId | string, modes: LexModes = {}
   if (nul !== -1) return { ok: false, at: nul, reason: 'a NUL character', tokens: [] }
 
   /** A quoted run from `open` (index of the opening quote) to its closing `quote`; returns end and value or a failure. */
-  const quoted = (open: number, quote: string, opts: { backslash: boolean; doubling: boolean; close?: string; raw?: boolean }): { end: number; value: string } | undefined => {
+  const quoted = (open: number, quote: string, opts: { backslash: boolean; doubling: boolean; close?: string; raw?: boolean; escapes?: Escapes }): { end: number; value: string } | undefined => {
     const close = opts.close ?? quote
     let value = ''
     let j = open + 1
@@ -93,10 +99,16 @@ export function lex(sql: string, driver: DriverId | string, modes: LexModes = {}
       const c = sql[j]!
       if (opts.backslash && c === '\\') {
         if (j + 1 >= n) return undefined
-        const e = sql[j + 1]!
         // (A raw string keeps both characters; the backslash still keeps the quote after it in.)
-        value += opts.raw ? `\\${e}` : ({ n: '\n', t: '\t', r: '\r', b: '\b', '0': '\0', Z: '\x1a', f: '\f' }[e] ?? e)
-        j += 2
+        if (opts.raw) {
+          value += `\\${sql[j + 1]}`
+          j += 2
+          continue
+        }
+        const e = backslashEscape(sql, j, opts.escapes ?? (family === 'postgres' ? 'postgres' : family === 'clickhouse' ? 'clickhouse' : family === 'bigquery' ? 'bigquery' : 'mysql'))
+        if (!e) return undefined
+        value += e.value
+        j = e.end
         continue
       }
       if (c === close) {
@@ -137,10 +149,11 @@ export function lex(sql: string, driver: DriverId | string, modes: LexModes = {}
     // Block comments.
     if (c === '/' && next === '*') {
       if (inCode) return fail('a comment inside a MySQL executable comment')
-      if (family === 'mysql' && (sql[i + 2] === '!' || sql[i + 2] === '+')) {
-        // MySQL runs what's inside: code, closed by the next */.
-        let j = i + 3
-        if (sql[i + 2] === '!') while (j < n && /[0-9]/.test(sql[j]!)) j++
+      // MySQL runs what's inside /*! … */ and /*+ … */, MariaDB also /*M! … */: code, closed by the next */.
+      const mariadbCode = sql[i + 2] === 'M' && sql[i + 3] === '!'
+      if (family === 'mysql' && (sql[i + 2] === '!' || sql[i + 2] === '+' || mariadbCode)) {
+        let j = i + (mariadbCode ? 4 : 3)
+        if (sql[i + 2] === '!' || mariadbCode) while (j < n && /[0-9]/.test(sql[j]!)) j++
         push('code-open', i, j)
         inCode = true
         i = j
@@ -196,12 +209,29 @@ export function lex(sql: string, driver: DriverId | string, modes: LexModes = {}
       const prefix = prefixed[0].slice(0, -1).toLowerCase()
       const q = prefixed[0].at(-1)!
       const open = i + prefix.length
+      // U&"…" (PostgreSQL, DuckDB) and U&'…' (also Trino): Unicode escapes, maybe with another escape character.
+      if (prefix === 'u&' && (family === 'postgres' || (family === 'trino' && q === "'"))) {
+        const r = quoted(open, q, { backslash: false, doubling: true })
+        if (!r) return fail(q === '"' ? 'a quoted name that never closes' : 'a string that never closes')
+        let end = r.end
+        let escape = '\\'
+        const after = uescape(sql, end, nests)
+        if (after) {
+          escape = after.escape
+          end = after.end
+        }
+        const value = decodeUnicodeEscapes(r.value, escape)
+        if (value === undefined) return fail('a Unicode escape this database would refuse')
+        tokens.push({ kind: q === '"' ? 'ident' : 'string', start: i, end, value, unicode: true })
+        i = end
+        continue
+      }
       const allowed =
         family === 'postgres' ? /^(e|u&|b|x|n)$/.test(prefix) && q === "'" :
         family === 'mssql' ? prefix === 'n' && q === "'" :
         family === 'oracle' ? /^(n|q|nq)$/.test(prefix) && q === "'" :
         family === 'bigquery' ? /^(r|b|rb|br)$/.test(prefix) :
-        family === 'trino' ? /^(u&|x)$/.test(prefix) && q === "'" :
+        family === 'trino' ? prefix === 'x' && q === "'" :
         family === 'mysql' ? /^(n|b|x)$/.test(prefix) && q === "'" :
         family === 'sqlite' ? prefix === 'x' && q === "'" :
         family === 'clickhouse' ? false : false
@@ -226,8 +256,7 @@ export function lex(sql: string, driver: DriverId | string, modes: LexModes = {}
           i = r.end
           continue
         }
-        // E'' takes backslash escapes; the others double their quotes (U&'' escapes are decoded by the server, its
-        // quote can't be escaped by a backslash).
+        // E'' takes backslash escapes; the others double their quotes.
         const r = quoted(open, "'", { backslash: prefix === 'e' || (family === 'mysql' && !modes.noBackslashEscapes), doubling: true })
         if (!r) return fail('a string that never closes')
         push('string', i, r.end, r.value)
@@ -342,8 +371,15 @@ function bigQueryTriple(sql: string, open: number, q: string, raw: boolean): { e
   for (let j = open + 3; j < sql.length; ) {
     if (sql[j] === '\\') {
       if (j + 1 >= sql.length) return undefined
-      value += raw ? sql.slice(j, j + 2) : sql[j + 1]
-      j += 2
+      if (raw) {
+        value += sql.slice(j, j + 2)
+        j += 2
+        continue
+      }
+      const e = backslashEscape(sql, j, 'bigquery')
+      if (!e) return undefined
+      value += e.value
+      j = e.end
       continue
     }
     if (sql.startsWith(close, j)) return { end: j + 3, value }
@@ -360,7 +396,7 @@ export const codeTokens = (tokens: Token[]) => tokens.filter((t) => t.kind !== '
  * Statements by the tokens: split at semicolons (and, for SQL Server, at GO lines). Each is the list of its tokens;
  * statements with no code are left out.
  */
-export function tokenStatements(sql: string, tokens: Token[], driver: DriverId | string): Token[][] {
+export function tokenStatements(sql: string, tokens: Token[], driver: DriverId | string, options: { batches?: boolean } = {}): Token[][] {
   const out: Token[][] = []
   let current: Token[] = []
   const flush = () => {
@@ -368,7 +404,8 @@ export function tokenStatements(sql: string, tokens: Token[], driver: DriverId |
     current = []
   }
   for (const t of tokens) {
-    if (t.kind === 'semicolon') {
+    // (`batches`: only GO separates, as SQL Server runs a batch: semicolons stay inside it.)
+    if (t.kind === 'semicolon' && !options.batches) {
       flush()
       continue
     }
@@ -389,4 +426,119 @@ function lineAlone(sql: string, t: Token): boolean {
   let b = t.end
   while (b < sql.length && (sql[b] === ' ' || sql[b] === '\t')) b++
   return (a < 0 || sql[a] === '\n' || sql[a] === '\r') && (b >= sql.length || sql[b] === '\n' || sql[b] === '\r')
+}
+
+type Escapes = 'postgres' | 'mysql' | 'clickhouse' | 'bigquery'
+
+const hex = (s: string) => /^[0-9A-Fa-f]+$/.test(s)
+
+/** A backslash escape at `at` (the backslash), as the server decodes it; undefined where the server refuses it. */
+function backslashEscape(sql: string, at: number, style: Escapes): { value: string; end: number } | undefined {
+  const e = sql[at + 1]!
+  const code = (digits: string, base: number, end: number) => {
+    const cp = parseInt(digits, base)
+    return cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) ? undefined : { value: String.fromCodePoint(cp), end }
+  }
+  const simple: Record<string, string> = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f' }
+  switch (style) {
+    case 'postgres': {
+      // E'': \ooo (1-3 octal), \xh(h), \uXXXX, \UXXXXXXXX.
+      const oct = /^[0-7]{1,3}/.exec(sql.slice(at + 1, at + 4))?.[0]
+      if (oct) return code(oct, 8, at + 1 + oct.length)
+      if (e === 'x') {
+        const h = /^[0-9A-Fa-f]{1,2}/.exec(sql.slice(at + 2, at + 4))?.[0]
+        if (h) return code(h, 16, at + 2 + h.length)
+      }
+      if (e === 'u' || e === 'U') {
+        const len = e === 'u' ? 4 : 8
+        const h = sql.slice(at + 2, at + 2 + len)
+        return h.length === len && hex(h) ? code(h, 16, at + 2 + len) : undefined
+      }
+      return { value: simple[e] ?? e, end: at + 2 }
+    }
+    case 'mysql':
+      // (\% and \_ keep their backslash: they are for LIKE.)
+      if (e === '%' || e === '_') return { value: `\\${e}`, end: at + 2 }
+      return { value: ({ ...simple, '0': '\0', Z: '\x1a' } as Record<string, string>)[e] ?? e, end: at + 2 }
+    case 'clickhouse': {
+      if (e === 'x' || e === 'X') {
+        const h = sql.slice(at + 2, at + 4)
+        if (h.length === 2 && hex(h)) return { value: String.fromCharCode(parseInt(h, 16)), end: at + 4 }
+      }
+      return { value: ({ ...simple, '0': '\0', a: '\x07', v: '\v' } as Record<string, string>)[e] ?? e, end: at + 2 }
+    }
+    case 'bigquery': {
+      if (/[0-7]/.test(e)) {
+        const o = sql.slice(at + 1, at + 4)
+        return /^[0-7]{3}$/.test(o) ? code(o, 8, at + 4) : undefined
+      }
+      if (e === 'x' || e === 'X') {
+        const h = sql.slice(at + 2, at + 4)
+        return h.length === 2 && hex(h) ? code(h, 16, at + 4) : undefined
+      }
+      if (e === 'u' || e === 'U') {
+        const len = e === 'u' ? 4 : 8
+        const h = sql.slice(at + 2, at + 2 + len)
+        return h.length === len && hex(h) ? code(h, 16, at + 2 + len) : undefined
+      }
+      if (e in simple || e === 'a' || e === 'v') return { value: ({ ...simple, a: '\x07', v: '\v' } as Record<string, string>)[e]!, end: at + 2 }
+      return '\\?"\'`'.includes(e) ? { value: e, end: at + 2 } : undefined
+    }
+  }
+}
+
+/** A UESCAPE 'c' clause after a U&'' or U&"" token at `from` (spaces and comments may come between). */
+function uescape(sql: string, from: number, nests: boolean): { escape: string; end: number } | undefined {
+  const skip = (j: number) => {
+    for (;;) {
+      while (j < sql.length && /\s/.test(sql[j]!)) j++
+      if (sql.startsWith('--', j)) {
+        while (j < sql.length && sql[j] !== '\n') j++
+        continue
+      }
+      if (sql.startsWith('/*', j)) {
+        let depth = 1
+        j += 2
+        while (j < sql.length && depth > 0) {
+          if (nests && sql.startsWith('/*', j)) (depth++, (j += 2))
+          else if (sql.startsWith('*/', j)) (depth--, (j += 2))
+          else j++
+        }
+        continue
+      }
+      return j
+    }
+  }
+  let j = skip(from)
+  if (!/^uescape(?![A-Za-z0-9_$])/i.test(sql.slice(j, j + 8))) return undefined
+  j = skip(j + 7)
+  const m = /^'([^'])'/.exec(sql.slice(j, j + 3))
+  return m ? { escape: m[1]!, end: j + 3 } : undefined
+}
+
+/** U&'' / U&"" text with its escapes resolved: \XXXX, \+XXXXXX, \\ (with another escape character instead of \). */
+function decodeUnicodeEscapes(text: string, escape: string): string | undefined {
+  if (/[0-9A-Fa-f+'"\s]/.test(escape)) return undefined
+  let out = ''
+  for (let j = 0; j < text.length; ) {
+    if (text[j] !== escape) {
+      out += text[j]
+      j++
+      continue
+    }
+    if (text[j + 1] === escape) {
+      out += escape
+      j += 2
+      continue
+    }
+    const plus = text[j + 1] === '+'
+    const h = plus ? text.slice(j + 2, j + 8) : text.slice(j + 1, j + 5)
+    if (h.length !== (plus ? 6 : 4) || !hex(h)) return undefined
+    const cp = parseInt(h, 16)
+    if (cp > 0x10ffff || cp === 0) return undefined
+    // (A surrogate pair, written as two escapes, joins into one character as JavaScript strings do.)
+    out += cp >= 0xd800 && cp <= 0xdfff ? String.fromCharCode(cp) : String.fromCodePoint(cp)
+    j += plus ? 8 : 5
+  }
+  return out
 }

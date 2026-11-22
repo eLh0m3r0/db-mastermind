@@ -327,6 +327,8 @@ export interface SchemaSnapshot {
 export interface ServerInfo {
   product: string
   version: string
+  /** MySQL / MariaDB: how the server's sql_mode reads strings (scripts for it write their literals so). */
+  sqlModes?: { noBackslashEscapes?: boolean; ansiQuotes?: boolean }
 }
 
 export interface StatementOutcome {
