@@ -55,7 +55,7 @@ only what reads, refuses functions that act outside the data (below), and then l
 | SQL Server | the server plans each batch first and it may contain only reads; a transaction that is always rolled back and checked, a lock timeout and a time limit. A login without SHOWPLAN permission is checked by the app's own reading only, and a batch that first creates a `#temp` table and then uses it (your own SQL on a read-only connection) can't be planned up front: in both cases what remains is the rollback and the login's own rights |
 | Oracle | one statement per call, a read-only transaction |
 | SQLite | one statement per call, `query_only` |
-| DuckDB | one read statement by its own parser, a read-only copy with no access to other files, URLs or extensions |
+| DuckDB | one read statement by its own parser, a read-only copy with no access to URLs, extensions or other files, except the files you opened in the app (*Query a file*, a drop) or named with `--allow-files` |
 | ClickHouse | one query per request, `readonly = 2` on every query: writes and changing `readonly` are refused (tested against ClickHouse 24.8) |
 | BigQuery | a dry run must report a query; not tested against the service |
 | Trino | one statement per request; nothing more: only the app's own checks; not tested against a server |
@@ -69,7 +69,35 @@ But a name list only closes the doors it knows: a user-defined function that doe
 name, an Oracle function with an autonomous transaction, or an extension's function can still do it. Reading is
 still reading: SQL nobody confirmed sees what the login sees.
 
+Every tool the AI has (listing tables, describing them, sampling rows, explaining a query, running one) reaches
+the database through one narrow view that offers only these guarded operations; plans are made without running
+the query.
+
 **So give a login used with AI or agents only the rights it needs:** no superuser or DBA role, no `FILE` privilege
 (MySQL, MariaDB), no `pg_read_server_files` / `pg_write_server_files` / `pg_execute_server_program` (PostgreSQL),
 no `sysadmin` or `xp_cmdshell` (SQL Server), and read access to the tables it should answer about. A read-only
 replica, where you have one, is better still.
+
+## What AI permissions promise
+
+Each connection says what AI may do: nothing, *Schema only*, read, or write with your confirmation, and whether
+agents over MCP may use it at all. The permissions are read again for every tool call, every approval and every
+write, in the app's assistant, over the MCP endpoint and in `--mcp` mode, so a change applies to work already
+running. AI turned off by an organization's managed configuration or a team folder applies to the server, not to
+one saved connection: copies and other databases on it are off too.
+
+*Schema only* means no value that comes from a row reaches the AI. Names, types, comments, the catalog's row
+estimates and query plans made without running the query are schema. Errors that can quote a value (conversions,
+constraint violations) are reduced to their kind and position. The knowledge base is your own notes and is shared
+as it is, so don't write there what the AI shouldn't read.
+
+## What the app's window is trusted with
+
+The app has two parts: the main process, which holds connections, secrets and files, and the window, which is a
+sandboxed, context-isolated page whose content security policy runs scripts only from the app itself. Today the window is
+trusted like the user: it receives a connection's saved password to show in the connection form, the settings
+with their keys, and some older file functions accept a path from it without the user having picked that file
+(newer ones don't). So a flaw that let foreign code run inside the window would reach those. No such flaw is
+known; values from databases and files are shown as text, never as markup. Narrowing this (the window gets no
+secrets, and every file method takes only files you handed over) is planned as the next milestone in
+[ROADMAP.md](ROADMAP.md).

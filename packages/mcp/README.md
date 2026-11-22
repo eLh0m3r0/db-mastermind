@@ -86,7 +86,8 @@ returns table contents.
 | `--url <url>` | A connection (see above). Repeat it for several databases. |
 | `--name <name>` | Name for the preceding `--url` (default: host/database) |
 | `--knowledge <dir>` | Knowledge base folder for the preceding `--url` |
-| `--config <file>` | JSON array of connections: `name`, `url` or `driver`/`host`/`port`/`database`/`user`/`password`, `knowledgeBase`, `readOnly` |
+| `--config <file>` | JSON array of connections: `name`, `url` or `driver`/`host`/`port`/`database`/`user`/`password`, `knowledgeBase`, `readOnly`, `files` |
+| `--allow-files <path>` | DuckDB: a file or folder agents may read, for the preceding `--url` (repeatable; `"files": [...]` in `--config`). Without it only the database file is readable. |
 | `--allow-writes` | Allow INSERT, UPDATE, DELETE and DDL |
 | `--allow-knowledge-writes` | Let agents create knowledge base files |
 | `--schema-only` | Never return table contents |
@@ -104,6 +105,12 @@ npx -p dbmastermind-mcp dbm diff model.dbml --url "$DATABASE_URL"   # exit 2 and
 ```
 
 `query` streams one SELECT of any size (csv, tsv, json, jsonl, markdown) and is read-only unless `--allow-writes`.
+DuckDB reads other files only when they are allowed, and compares the path as written, so use absolute paths:
+
+```bash
+npx -p dbmastermind-mcp dbm query --url duckdb:///data/shop.duckdb --allow-files /data/exports "SELECT count(*) FROM read_csv('/data/exports/*.csv')"
+```
+
 `diff` never changes the database and keeps tables only the database has unless `--drop-extra`.
 `npx -p dbmastermind-mcp dbm --help` lists everything.
 

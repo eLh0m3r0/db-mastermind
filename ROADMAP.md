@@ -931,7 +931,7 @@ depth. The specification: [docs/specs/launch.md](docs/specs/launch.md).
   "When tabs don't fit" (Scroll / Shrink), the demo opening on data, toolbar labels kept while they fit, connection
   and AI errors that say what to do, AI ready without the extra click, one Save / Discard / Cancel question
   wherever unsaved grid edits could be lost (e2e/flow116, flow117)
-- ✅ Security, found by four rounds of independent review of this release:
+- ✅ Security, found by six rounds of independent review of this release (the last two by a second AI model):
   - the guard for SQL nobody confirmed (AI, MCP) and for read-only connections could be bypassed in every version
     so far (crafted comments and quoting); it now rests on what the database confirms (one statement per message
     and the transaction status on PostgreSQL, the server's plan on SQL Server, the strictest mode of each other
@@ -940,6 +940,16 @@ depth. The specification: [docs/specs/launch.md](docs/specs/launch.md).
   - files from strangers (models, `.env`, compose files, project folders): size caps, bounded inflate, no links
     followed, linear parsers, and the main process reads only what the user handed to the app
   - text from a model can't run in generated code or end a statement in generated SQL (`sql-guard`)
+  - the AI's tools reach the database only through a guarded view (`agent-db.ts`; `sample_rows` and
+    `explain_query` used to run outside the guard on writable connections); DuckDB reads only files handed to
+    the connection (`files`, `--allow-files`)
+  - AI permissions are decided at the moment of use (chat, HTTP endpoint, `--mcp`), a central ban follows the
+    server, *Schema only* is defined and kept (plans without ANALYZE, value-quoting errors reduced), the MCP
+    token is encrypted at rest
+  - values written into SQL text go through one writer per dialect (`sql-literal.ts`; MySQL backslashes could
+    end a string in exported scripts), proven by a round trip of 302 values on eight engines
+  - Trino follows `nextUri` only to its own server; the knowledge base is contained on the real path; names
+    reach SQL as parameters or quoted; the release workflow's steps hold a token only where they upload
 - ⬜ For the owner: Apple Developer ID for notarization (prepared and off until its secrets exist:
   docs/macos-notarization.md), the npm trusted publisher, the Store submission, the Product Hunt day
 
@@ -949,6 +959,22 @@ behind it is tested); BigQuery and Trino guards are not tested against the servi
 
 After the launch, by demand: Turso / libSQL driver, test data generated in foreign-key order, Snowflake, more
 UI languages.
+
+## Milestone 13 — The window holds no secrets ⬜
+
+From the audit of the documented invariants (2026-11-22). The window is sandboxed and loads only the app's own
+code, but it is trusted like the user (SECURITY.md says so). Narrow it, so a flaw in the page is not a flaw in
+everything:
+
+- ⬜ Connections and settings reach the window without secrets: the form shows "saved" and sends a new value
+  only when the user types one (`listConnections`, `saveConnection`, `duplicateConnection`, `getSettings`,
+  `updateSettings`; API keys, the MCP token, SSH passphrases, password commands)
+- ⬜ Every file method takes only what the user handed over (`readTextFile`, `importPreview`, `importFile`,
+  `sqlFileTime`, models by extension, the knowledge base and team folders, paths inside a saved connection);
+  a chosen path is bound to the file it was (not only its name)
+- ⬜ The IPC dispatcher checks the sender is the app's own page
+- ⬜ Query history keeps no literals of statements run on connections marked production (or masks them)
+- ⬜ The MCP endpoint's allowed origins: the configured port only
 
 ## Backlog — what other tools have (review 2026-11-14) 💡
 
