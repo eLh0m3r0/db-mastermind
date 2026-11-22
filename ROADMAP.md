@@ -904,23 +904,48 @@ where a test can reach it.
 
 Left as it is, for the owner to decide: Linux builds still start with `--no-sandbox` (see 1.3.1).
 
-## Milestone 12 — Launch (1.5.0) 🚧
+## Milestone 12 — Launch (1.5.0) ✅ released 1.5.0 (2026-11-22)
 
 The owner wants to launch publicly (Product Hunt and elsewhere, decided 2026-11-21). The app was built for his
 team first; a wider audience needs ways in that it recognises and a first install without friction, not more
 depth. The specification: [docs/specs/launch.md](docs/specs/launch.md).
 
-- ⬜ A1 Code from a model or a database: Prisma schema, Drizzle schema, SQLAlchemy models, TypeScript types
-  (diagram → Export → Code, `dbm export`); each checked by its own tool
-- ⬜ A2 Models from other tools: Mermaid `erDiagram`, drawDB, MySQL Workbench `.mwb` (Import, Open a model, drop)
-- ⬜ A3 Services by name in the connection form and on the website (Supabase, Neon, Timescale, RDS / Aurora,
-  Azure, Cloud SQL): recognised from the host, TLS on
-- ⬜ A4 Connections from a project: a dropped `.env`, docker-compose file or project folder
-- ⬜ B1 `dbmastermind-mcp` and `dbm` on npm, listed in the MCP registry; a test that the packed package starts
-- ⬜ B2 Linux builds use Chromium's sandbox where it can work (`.deb` always, AppImage when the system allows)
-- ⬜ B3 Website for everyone (hero without DeZign, pages for DeZign users and for people coming from Azure Data
-  Studio, Microsoft Store first on Windows), README, SECURITY.md, CONTRIBUTING.md; the launch kit (texts, plan, video script) is the owner's and is kept outside the repository
-- ⬜ For the owner (issue #1): npm token, Apple Developer ID for notarization, the Product Hunt account and date
+- ✅ A1 Code from a model or a database: Prisma schema, Drizzle schema, SQLAlchemy models, TypeScript types
+  (diagram → Export → Code, `dbm export`); each checked in CI by its own tool (`orm-tools` job), and by a fuzz of
+  hostile models whose output is parsed by the TypeScript compiler, Python and Prisma
+- ✅ A2 Models from other tools: Mermaid `erDiagram`, drawDB, MySQL Workbench `.mwb`, Prisma (Import, Open a model,
+  drop); positions, colors and notes come along; checked on public files of each tool (Sakila from the `.mwb`, from
+  its script and live compare as the same)
+- ✅ A3 Services by name in the connection form and on the website (Supabase, Neon, Timescale, RDS / Aurora,
+  Azure, Cloud SQL): recognised from the host, TLS on; CockroachDB has its own entry
+- ✅ A4 Connections from a project: a dropped `.env`, docker-compose file or project folder
+- ✅ B1 `dbmastermind-mcp` and `dbm` on npm, listed in the MCP registry; the packed package is installed and
+  started in CI on Linux, macOS and Windows; published by a job that has no secrets until the publish step
+- ✅ B2 Linux builds use Chromium's sandbox where it can work (`.deb` always, with a fallback in its menu entry
+  where the system forbids user namespaces; AppImage when the system allows), proven in CI on Ubuntu 24.04
+- ✅ B3 Website for everyone, redesigned (the product drawn as a model in the app's own notation, a getting
+  started guide, pages for DeZign users and for people coming from Azure Data Studio, Microsoft Store first on
+  Windows), README, SECURITY.md, CONTRIBUTING.md; the launch kit is the owner's and is kept outside the repository
+- ✅ A review of the whole app as a stranger meets it (53 findings, 45 fixed): the + for a new tab always in view,
+  the strip's fades, shortcuts and keyboard walking, "Close tabs to the left / right", Settings → Appearance →
+  "When tabs don't fit" (Scroll / Shrink), the demo opening on data, toolbar labels kept while they fit, connection
+  and AI errors that say what to do, AI ready without the extra click, one Save / Discard / Cancel question
+  wherever unsaved grid edits could be lost (e2e/flow116, flow117)
+- ✅ Security, found by four rounds of independent review of this release:
+  - the guard for SQL nobody confirmed (AI, MCP) and for read-only connections could be bypassed in every version
+    so far (crafted comments and quoting); it now rests on what the database confirms (one statement per message
+    and the transaction status on PostgreSQL, the server's plan on SQL Server, the strictest mode of each other
+    engine), an allowlist, total tokenizers per dialect, and a differential fuzz against the real servers
+    (`readonly-differential.integration.test.ts`); SECURITY.md says what it promises and what it can't
+  - files from strangers (models, `.env`, compose files, project folders): size caps, bounded inflate, no links
+    followed, linear parsers, and the main process reads only what the user handed to the app
+  - text from a model can't run in generated code or end a statement in generated SQL (`sql-guard`)
+- ⬜ For the owner: Apple Developer ID for notarization (prepared and off until its secrets exist:
+  docs/macos-notarization.md), the npm trusted publisher, the Store submission, the Product Hunt day
+
+Not done, known: a terminal start of the `.deb` on a system without user namespaces still stops with Chromium's
+error (only the menu entry falls back); a real drag of a folder from Finder was never automated (the import
+behind it is tested); BigQuery and Trino guards are not tested against the services.
 
 After the launch, by demand: Turso / libSQL driver, test data generated in foreign-key order, Snowflake, more
 UI languages.
