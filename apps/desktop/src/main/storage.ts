@@ -86,13 +86,6 @@ const PLAIN_PREFIX = 'plain:'
  * the user's key. Null when unavailable: secrets then use safeStorage as before.
  */
 let macKey: Buffer | null | undefined
-/**
- * The keychain path failed this session (no default keychain, locked, refused, timed out). safeStorage would then ask
- * the same keychain and show a second dialog for the same thing, so it isn't tried either: secrets are stored
- * obfuscated (`plain:`) and the forms say so, until a later save finds the keychain again.
- */
-let keychainFailed = false
-
 /** Apple's `security` tool. Under DBM_DEBUG each call is logged by its command only (never a value). */
 function security(args: string[]): string {
   if (process.env.DBM_DEBUG) console.error(`[secrets] security ${args[0]}`)
@@ -103,29 +96,36 @@ function macSecretKey(): Buffer | null {
   // Development and e2e runs (a fresh data folder each time) would leave a keychain item per run: packaged apps only.
   if (process.platform !== 'darwin' || (!app.isPackaged && !process.env.DBM_MAC_SECRET_KEY)) return null
   if (macKey !== undefined) return macKey
+  // No login keychain: nothing is asked (not even `find`), and the answer isn't kept, so a keychain the user makes
+  // meanwhile is used by the next save.
+  if (!hasDefaultKeychain()) return null
   const service = 'DB Mastermind secrets'
   const account = createHash('sha256').update(app.getPath('userData')).digest('hex').slice(0, 16)
   try {
     macKey = readOrCreateMacKey(security, service, account, hasDefaultKeychain)
   } catch (err) {
-    // Secrets under this key are kept, not lost (UnreadableSecrets); new ones are stored without the keychain.
+    // The keychain is there but didn't give the key (locked, refused, timed out): secrets under this key are kept, not
+    // lost (UnreadableSecrets), and new ones this session use safeStorage, as they always did.
     if (process.env.DBM_DEBUG) console.error('macOS secret key unavailable:', (err as Error).message)
     macKey = null
-    keychainFailed = true
   }
   return macKey
 }
 
 let defaultKeychain: boolean | undefined
+let keychainCheckedAt = 0
+/** How long "no keychain" is believed before it is asked again (the user may be making one as the form suggests). */
+const KEYCHAIN_RECHECK_MS = 3000
 /**
  * macOS: whether the user has a default (login) keychain to keep a key in. Without one, adding an item (ours, or
  * safeStorage's) shows "Keychain Not Found" for each: a new Mac user can be without one. `security default-keychain
  * -d user` asks without a dialog: it exits 1 when there is none; a keychain file that no longer exists counts as none.
- * Read once a session; a keychain made meanwhile counts from the next start.
+ * "There is one" holds for the session; "there is none" is asked again after a moment.
  */
 export function hasDefaultKeychain(): boolean {
   if (process.platform !== 'darwin') return true
-  if (defaultKeychain !== undefined) return defaultKeychain
+  if (defaultKeychain === true || (defaultKeychain === false && Date.now() - keychainCheckedAt < KEYCHAIN_RECHECK_MS)) return defaultKeychain
+  keychainCheckedAt = Date.now()
   try {
     const path = security(['default-keychain', '-d', 'user']).replace(/^\s*"|"\s*$/g, '')
     defaultKeychain = !!path && existsSync(path)
@@ -147,10 +147,9 @@ export function secretKeyInUse(): boolean {
   return !!macKey || safeStorageUsed
 }
 
-/** Whether safeStorage may be used: on macOS only with a keychain that hasn't just failed (no second dialog). */
+/** Whether safeStorage may be used: on macOS only with a login keychain (without one it shows "Keychain Not Found"). */
 function safeStorageAllowed(): boolean {
-  if (process.platform !== 'darwin') return true
-  return !keychainFailed && hasDefaultKeychain()
+  return hasDefaultKeychain()
 }
 
 /** `security` exits with this when the keychain has no such item (errSecItemNotFound). */
@@ -212,7 +211,7 @@ export function takeLegacySecretsFlag(): boolean {
  */
 export function secretsWithoutKeychain(): 'keyring' | 'mac-keychain' | undefined {
   // (macOS: only where a key would be kept in the keychain or safeStorage would be used.)
-  if (process.platform === 'darwin') return !keychainFailed && hasDefaultKeychain() ? undefined : 'mac-keychain'
+  if (process.platform === 'darwin') return hasDefaultKeychain() ? undefined : 'mac-keychain'
   if (process.platform !== 'linux' || process.env.DBM_USER_DATA) return undefined
   try {
     if (!safeStorage.isEncryptionAvailable()) return 'keyring'

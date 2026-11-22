@@ -123,7 +123,7 @@ describe('the MCP endpoint token', () => {
     const token = settings.getSettings().mcp.token
     expect(token.length).toBeGreaterThanOrEqual(16)
     expect(saved('settings.json').mcp.token).toMatch(/^enc:v2:/)
-    expect(mac.calls).toEqual(['find', 'default-keychain', 'add', 'find'])
+    expect(mac.calls).toEqual(['default-keychain', 'find', 'add', 'find'])
     // The next start reads it back with the key that exists.
     const next = await start()
     await next.settings.loadSettings()
@@ -233,14 +233,43 @@ describe('with a keychain', () => {
     expect(await storage.decryptSecret(a)).toBe('one')
   })
 
-  it('when the keychain path fails for another reason, safeStorage is not asked as well (no second dialog)', async () => {
+  it('a keychain that is there but does not give the key: secrets use safeStorage this session, as before, never plain text', async () => {
     const { storage } = await start()
     // A malformed key (as a locked or refusing keychain would) makes the key unavailable for the session.
     const account = (await import('node:crypto')).createHash('sha256').update(mac.data).digest('hex').slice(0, 16)
     mac.items.set(`DB Mastermind secrets/${account}`, 'not-a-key')
-    expect(await storage.encryptSecret('x')).toMatch(/^plain:/)
-    expect(mac.calls.filter((c) => c.startsWith('safeStorage') || c.startsWith('add'))).toEqual([])
-    expect(storage.secretsWithoutKeychain()).toBe('mac-keychain')
+    expect(await storage.encryptSecret('x')).toMatch(/^enc:v1:/)
+    // The key that exists is never replaced.
+    expect(mac.calls.filter((c) => c.startsWith('add'))).toEqual([])
+    expect(mac.items.get(`DB Mastermind secrets/${account}`)).toBe('not-a-key')
+    expect(storage.secretsWithoutKeychain()).toBeUndefined()
+  })
+})
+
+describe('a login keychain made while the app runs', () => {
+  it('is used by the next save, as the form says: no restart needed', async () => {
+    mac.keychain = false
+    const now = vi.spyOn(Date, 'now')
+    let clock = 1_000_000
+    now.mockImplementation(() => clock)
+    try {
+      const { storage } = await start()
+      expect(await storage.encryptSecret('first')).toMatch(/^plain:/)
+      expect(storage.secretsWithoutKeychain()).toBe('mac-keychain')
+      // Asked again only after a moment, never once per secret.
+      const checks = () => mac.calls.filter((c) => c === 'default-keychain').length
+      const before = checks()
+      await storage.encryptSecret('second')
+      expect(checks()).toBe(before)
+      expect(mac.calls.filter((c) => c === 'find' || c.startsWith('add') || c.startsWith('safeStorage'))).toEqual([])
+      mac.keychain = true
+      clock += 5000
+      expect(await storage.encryptSecret('third')).toMatch(/^enc:v2:/)
+      expect(storage.secretsWithoutKeychain()).toBeUndefined()
+      expect(mac.calls.filter((c) => c.includes('DIALOG'))).toEqual([])
+    } finally {
+      now.mockRestore()
+    }
   })
 })
 
