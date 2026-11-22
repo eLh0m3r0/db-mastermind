@@ -8,6 +8,7 @@ import { db } from './api'
 import { listConnections } from './connections'
 import { addHistory } from './library'
 import { getSettings } from './settings'
+import { guardMcpTransport, LiveConnections } from './mcp-live'
 import { writeProposal } from './connection-proposals'
 import { withCommandPassword } from './password-command'
 import { notifyProposals, proposalsDir } from './proposals-watch'
@@ -24,8 +25,10 @@ export function mcpHttpStatus() {
 function authorized(req: IncomingMessage, token: string): boolean {
   // An empty or short token (a hand-edited settings file) must never mean "no token needed".
   if (token.length < 16) return false
-  const header = req.headers.authorization ?? ''
-  const given = Buffer.from(header.replace(/^Bearer\s+/i, ''))
+  // Exactly "Bearer <token>": a bare token is not accepted.
+  const m = /^Bearer (\S+)$/.exec(req.headers.authorization ?? '')
+  if (!m) return false
+  const given = Buffer.from(m[1]!)
   const expected = Buffer.from(token)
   return given.length === expected.length && timingSafeEqual(given, expected)
 }
@@ -37,7 +40,7 @@ function trustedOrigin(req: IncomingMessage): boolean {
 }
 
 async function handle(req: IncomingMessage, res: ServerResponse) {
-  const { mcp, ai } = getSettings()
+  const { mcp } = getSettings()
   if (!req.url?.startsWith('/mcp')) {
     res.writeHead(404).end()
     return
@@ -46,13 +49,14 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     res.writeHead(401, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Unauthorized: send Authorization: Bearer <token> from Settings → MCP server' }))
     return
   }
-  // Stateless: a fresh MCP server per request over the app's open connections (passwords stay in this process).
+  // Stateless: a fresh MCP server per request over the app's open connections (passwords stay in this process), with
+  // the permissions `aiAccess` gives right now.
+  const live = new LiveConnections(agentConnections(listConnections()), listConnections())
   const server = createMcpServer({
     db,
-    connections: agentConnections(listConnections()),
+    connections: live.list,
     allowWrites: mcp.allowWrites,
     allowKnowledgeWrites: mcp.allowWrites,
-    schemaOnly: ai.dataSharing === 'schema',
     version: app.getVersion(),
     prepareConnection: (c) => withCommandPassword(c),
     proposeConnection: async (p) => {
@@ -76,6 +80,8 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     void server.close()
   })
   await server.connect(transport)
+  // Read when the request arrives (a connection whose AI was turned off gets a plain refusal, not "unknown").
+  guardMcpTransport(transport, live, () => live.set(agentConnections(listConnections())))
   await transport.handleRequest(req, res)
 }
 
@@ -84,7 +90,11 @@ export async function applyMcpHttp(): Promise<{ running: boolean; error?: string
   const { mcp } = getSettings()
   if (running && mcp.enabled && running.port === mcp.port) return { running: true }
   if (server) {
-    await new Promise<void>((resolve) => server!.close(() => resolve()))
+    // Agents keep their connections open: without closing them, stopping or moving the endpoint waits for them.
+    await new Promise<void>((resolve) => {
+      server!.close(() => resolve())
+      server!.closeAllConnections()
+    })
     server = undefined
     running = undefined
   }

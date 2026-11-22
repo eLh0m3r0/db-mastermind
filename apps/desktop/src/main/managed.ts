@@ -10,6 +10,11 @@ export function managed(): { config: ManagedConfig; info: ManagedInfo } | null {
   return loaded
 }
 
+/** Reads the managed configuration again on next use (the `--mcp` process, which outlives changes to it). */
+export function reloadManaged(): void {
+  loaded = undefined
+}
+
 export function managedConfig(): ManagedConfig | null {
   return managed()?.config ?? null
 }

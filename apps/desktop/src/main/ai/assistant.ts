@@ -2,7 +2,7 @@ import { addHistory } from '../library'
 import { randomUUID } from 'node:crypto'
 import { app, BrowserWindow } from 'electron'
 import { jsonSchema, stepCountIs, streamText, tool, type ModelMessage, type ToolSet } from 'ai'
-import { agentDatabase, buildSystemPrompt, DB_TOOLS, isReadOnlyScript, describeError, KnowledgeBase, loadSqlTools, type ToolContext } from '@dbmastermind/core'
+import { agentDatabase, buildSystemPrompt, DB_TOOLS, isReadOnlyScript, describeError, KnowledgeBase, loadSqlTools, type AgentDatabase, type ConnectionConfig, type EffectiveAiPermissions, type ToolContext } from '@dbmastermind/core'
 import { AiProblem, explainAiError } from './errors'
 import type { AiChatRequest, AiEvent } from '@shared/api'
 import { db, ensureConnected } from '../api'
@@ -84,30 +84,106 @@ export function startChat(request: AiChatRequest): void {
   })
 }
 
+/**
+ * What AI may do in a chat right now: `aiAccess` is asked again for every tool call, every approval acted on and every
+ * write about to run, so turning AI off or lowering it (in the app, the managed configuration or the team folder)
+ * applies to a chat already running. A connection deleted meanwhile counts as off. `ask` asks the user.
+ */
+export function chatPermissions(connectionId: string, ask: (kind: 'sql' | 'file', detail: string) => Promise<boolean>, autoRunReadQueries: boolean) {
+  const now = (): EffectiveAiPermissions => {
+    try {
+      return aiAccess(getConnection(connectionId))
+    } catch {
+      return { access: 'off', agents: false, agentWrites: false, knowledgeWrites: false }
+    }
+  }
+  const name = () => {
+    try {
+      return getConnection(connectionId).name
+    } catch {
+      return connectionId
+    }
+  }
+  const refusal = () => (now().access === 'off' ? `AI is turned off for "${name()}" now (its AI permissions in DB Mastermind), so this was not run.` : undefined)
+  const writesOff = () => `AI may no longer change data in "${name()}" (its AI permissions in DB Mastermind), so this was not run.`
+
+  /** A write the model asks for: the user confirms it, and it runs only if writes are still allowed then. */
+  const confirmWrite = async (sql: string): Promise<boolean> => {
+    if (now().access !== 'write') throw new Error(writesOff())
+    const ok = await ask('sql', sql)
+    if (ok && now().access !== 'write') throw new Error(writesOff())
+    return ok
+  }
+
+  return {
+    now,
+    refusal,
+    confirmWrite,
+    /** The tools' context with the permissions of this moment. */
+    context(base: ToolContext, view: (allowData: boolean) => AgentDatabase): ToolContext {
+      const p = now()
+      const allowData = p.access === 'read' || p.access === 'write'
+      // The guarded view carries "may it return rows" itself, so it is made for the same answer as the context.
+      return { ...base, db: view(allowData), allowData, allowKnowledgeWrites: p.knowledgeWrites, confirmWrite: p.access === 'write' ? confirmWrite : undefined }
+    },
+    /** The chat's connection for the agent CLIs' MCP endpoint, with the permissions of this moment (none when off). */
+    mcpConnections(): ConnectionConfig[] {
+      const p = now()
+      if (p.access === 'off') return []
+      return [{ ...getConnection(connectionId), ai: { access: p.access, agents: true, agentWrites: false, knowledgeWrites: p.knowledgeWrites } }]
+    },
+    /**
+     * Asks the user before a tool when needed; a returned message is the tool's answer instead. Both chat paths use it.
+     * The permissions are checked before and again after the user answered.
+     */
+    async gate(tool: string, input: Record<string, unknown>): Promise<string | undefined> {
+      const off = refusal()
+      if (off) return off
+      if (tool === 'write_knowledge') {
+        const ok = await ask('file', `${String(input.path)}\n\n${String(input.content ?? '').slice(0, 4000)}`)
+        if (!ok) return 'The user declined to save this file.'
+        if (!now().knowledgeWrites) return refusal() ?? `AI may no longer save knowledge base files for "${name()}", so this was not saved.`
+      }
+      if ((tool === 'run_query' || tool === 'sample_rows') && !autoRunReadQueries) {
+        const sql = tool === 'run_query' ? String(input.sql ?? '') : `sample of ${String(input.table)}`
+        // Writes are confirmed inside the tool; only reads need asking here.
+        if (tool === 'sample_rows' || isReadOnlyScript(sql, getConnection(connectionId).driver)) {
+          const ok = await ask('sql', sql)
+          if (!ok) return 'The user declined to run this query.'
+          const p = now()
+          if (p.access === 'off') return refusal()
+          if (p.access === 'schema') return `AI may see only the schema of "${name()}" now (its AI permissions in DB Mastermind), so this was not run.`
+        }
+      }
+      return undefined
+    },
+  }
+}
+
 async function runChat(request: AiChatRequest): Promise<void> {
   const { chatId, connectionId } = request
   const settings = getSettings().ai
   const provider = activeProvider()
   const config = getConnection(connectionId)
-  const access = aiAccess(config)
-  if (access.access === 'off') throw new Error('AI is turned off for this connection (Settings → AI permissions)')
+
+  const controller = new AbortController()
+  const signal = controller.signal
+  const access = chatPermissions(connectionId, (kind, detail) => askApproval(chatId, kind, detail, signal), settings.autoRunReadQueries)
+  if (access.now().access === 'off') throw new Error('AI is turned off for this connection (Settings → AI permissions)')
   // As every other request: the password command runs, and parallel connects share one attempt.
   await ensureConnected(connectionId)
 
-  const controller = new AbortController()
   running.get(chatId)?.abort()
   running.set(chatId, controller)
-  const signal = controller.signal
 
-  const allowData = access.access === 'read' || access.access === 'write'
-  const ctx: ToolContext = {
-    // The tools' only way to the database: the guarded view (agent-db.ts).
-    db: agentDatabase(db, { allowData }),
+  const base: ToolContext = {
+    // The tools' only way to the database is the guarded view (agent-db.ts); `ctxNow` makes it again for the
+    // permissions of the moment, so this one (no data) is never the one a tool gets.
+    db: agentDatabase(db, { allowData: false }),
     connectionId,
     knowledge: config.knowledgeBasePath ? new KnowledgeBase(config.knowledgeBasePath) : undefined,
-    allowData,
-    allowKnowledgeWrites: access.knowledgeWrites,
-    confirmWrite: access.access === 'write' ? (sql) => askApproval(chatId, 'sql', sql, signal) : undefined,
+    allowData: false,
+    allowKnowledgeWrites: false,
     maxRows: 50,
     // Manual commit: what the user confirms waits in the chat's own transaction (the panel shows Commit / Roll back).
     writeSession: config.manualCommit && !config.readOnly ? aiSession(chatId) : undefined,
@@ -122,25 +198,11 @@ async function runChat(request: AiChatRequest): Promise<void> {
         source: 'ai',
       }),
   }
+  const ctxNow = () => access.context(base, (allowData) => agentDatabase(db, { allowData }))
+  const ctx = ctxNow()
+  const gate = access.gate
 
   if (ctx.writeSession) trackEditorSession(connectionId, ctx.writeSession)
-
-  /** Asks the user before a tool when needed; a returned message is the tool's answer instead. Both chat paths use it. */
-  const gate = async (name: string, input: Record<string, unknown>): Promise<string | undefined> => {
-    if (name === 'write_knowledge') {
-      const ok = await askApproval(chatId, 'file', `${String(input.path)}\n\n${String(input.content ?? '').slice(0, 4000)}`, signal)
-      if (!ok) return 'The user declined to save this file.'
-    }
-    if ((name === 'run_query' || name === 'sample_rows') && !settings.autoRunReadQueries) {
-      const sql = name === 'run_query' ? String(input.sql ?? '') : `sample of ${String(input.table)}`
-      // Writes are confirmed inside the tool; only reads need asking here.
-      if (name === 'sample_rows' || isReadOnlyScript(sql, config.driver)) {
-        const ok = await askApproval(chatId, 'sql', sql, signal)
-        if (!ok) return 'The user declined to run this query.'
-      }
-    }
-    return undefined
-  }
 
   const extra = [
     request.context?.sql ? `The SQL currently in the user's editor:\n\`\`\`sql\n${request.context.sql}\n\`\`\`` : '',
@@ -158,15 +220,15 @@ async function runChat(request: AiChatRequest): Promise<void> {
       // in the app.
       const endpoint =
         provider.id === 'claude-code' || provider.id === 'codex'
-          ? await chatMcpEndpoint({
+          ? await chatMcpEndpoint({ id: config.id, name: config.name }, () => ({
               db,
-              connections: [{ ...config, ai: { access: access.access, agents: true, agentWrites: false, knowledgeWrites: access.knowledgeWrites } }],
-              confirmWrite: ctx.confirmWrite,
+              connections: access.mcpConnections(),
+              confirmWrite: access.confirmWrite,
               writeSession: ctx.writeSession,
               beforeTool: gate,
               version: app.getVersion(),
               onExecuted: (_id, o) => ctx.onExecuted?.(o),
-            })
+            }))
           : undefined
       const transcript = request.messages
         .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
@@ -200,7 +262,7 @@ async function runChat(request: AiChatRequest): Promise<void> {
         execute: async (input: Record<string, unknown>) => {
           const stop = await gate(def.name, input)
           if (stop) return stop
-          return def.run(ctx, input)
+          return def.run(ctxNow(), input)
         },
       })
     }
@@ -212,11 +274,13 @@ async function runChat(request: AiChatRequest): Promise<void> {
         description: def.description,
         inputSchema: jsonSchema<Record<string, unknown>>(def.inputSchema),
         execute: async (input: Record<string, unknown>) => {
+          const off = access.refusal()
+          if (off) return off
           if (!settings.autoRunReadQueries) {
             const ok = await askApproval(chatId, 'sql', `${def.name}(${JSON.stringify(input)})`, signal)
             if (!ok) return 'The user declined to run this tool.'
           }
-          return def.run(ctx, input)
+          return def.run(ctxNow(), input)
         },
       })
     }
