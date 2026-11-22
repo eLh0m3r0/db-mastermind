@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canonicalPiece, createScript, dropScript, generateMigration, getDialect, guardStatements, parseDbml, splitStatements, sqlTextProblem, stripLiterals, compareSchemas, type DriverId, type TableInfo } from '../src/index.js'
+import { canonicalPiece, createScript, dropScript, generateMigration, getDialect, guardStatements, migrationScript, parseDbml, splitStatements, sqlTextProblem, stripLiterals, compareSchemas, type DriverId, type TableInfo } from '../src/index.js'
 
 /** The statements of a script as our splitter reads them, with literals, names and comments blanked (what runs). */
 const code = (script: string, d: DriverId) => splitStatements(script, d).map((s) => stripLiterals(s.text, d).trim())
@@ -195,5 +195,17 @@ describe('the T-SQL statement check lets our own forms through (wave 6)', () => 
     expect(script).toMatch(/ON DELETE CASCADE ON UPDATE SET NULL/)
     const dropped = generateMigration(compareSchemas([{ ...tables[1]!, columns: tables[1]!.columns.slice(0, 1), foreignKeys: [] }], [tables[1]!], { model: true }), getDialect('mssql'))
     expect(dropped.warnings.filter((w) => /Left out/.test(w.message))).toEqual([])
+  })
+})
+
+describe("a live MySQL connection's sql_mode (review round 3, low)", () => {
+  it('with NO_BACKSLASH_ESCAPES, string literals and comments are written without escaping backslashes', () => {
+    const nbe = { noBackslashEscapes: true }
+    expect(canonicalPiece("'C:\\tmp'", 'mysql', 'postgres', nbe)).toEqual({ sql: "'C:\\tmp'" })
+    expect(canonicalPiece("'C:\\tmp'", 'mysql', 'postgres')).toEqual({ sql: "'C:\\\\tmp'" })
+    const table: TableInfo = { name: 't', type: 'table', comment: 'a\\b', columns: [col('id')], primaryKey: [], foreignKeys: [], indexes: [] }
+    const withMode = migrationScript(generateMigration(compareSchemas([table], [], { keepExtra: true, model: true }), getDialect('mysql'), [], { modes: nbe }), getDialect('mysql'))
+    expect(withMode).toContain("COMMENT = 'a\\b'")
+    expect(createScript([table], getDialect('mysql'))).toContain("COMMENT = 'a\\\\b'")
   })
 })

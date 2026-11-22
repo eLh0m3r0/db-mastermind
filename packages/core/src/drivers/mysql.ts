@@ -517,9 +517,10 @@ export class MysqlDriver implements DatabaseDriver {
   }
 
   async serverInfo(): Promise<ServerInfo> {
-    const [rows] = await this.activePool.query<RowDataPacket[]>('SELECT VERSION() AS v')
+    const [rows] = await this.activePool.query<RowDataPacket[]>('SELECT VERSION() AS v, @@SESSION.sql_mode AS m')
     const v = String(rows[0]?.v ?? '')
-    return { product: /mariadb/i.test(v) ? 'MariaDB' : 'MySQL', version: v.split('-')[0] ?? v }
+    const mode = String(rows[0]?.m ?? '')
+    return { product: /mariadb/i.test(v) ? 'MariaDB' : 'MySQL', version: v.split('-')[0] ?? v, sqlModes: { noBackslashEscapes: /NO_BACKSLASH_ESCAPES/i.test(mode), ansiQuotes: /ANSI_QUOTES/i.test(mode) } }
   }
 
   async listDatabases(): Promise<string[]> {

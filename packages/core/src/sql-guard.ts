@@ -1,5 +1,5 @@
 import { getDialect } from './dialect.js'
-import { familyOf, lex, type Token } from './sql-lexer.js'
+import { familyOf, lex, type LexModes, type Token } from './sql-lexer.js'
 import type { DriverId } from './types.js'
 
 /**
@@ -15,8 +15,12 @@ import type { DriverId } from './types.js'
  */
 export type Canonical = { sql: string; problem?: undefined } | { sql?: undefined; problem: string }
 
-export function canonicalPiece(text: string, target: DriverId, source: DriverId = target): Canonical {
-  const read = lex(text, source)
+/**
+ * `modes`: how the target server reads strings (MySQL's sql_mode, ServerInfo.sqlModes, for a script made for a live
+ * connection). Without a connection the default is assumed: backslashes escape, "…" is a string.
+ */
+export function canonicalPiece(text: string, target: DriverId, source: DriverId = target, modes: LexModes = {}): Canonical {
+  const read = lex(text, source, source === target ? modes : {})
   if (!read.ok) return { problem: read.reason }
   const parts: string[] = []
   const kinds: string[] = []
@@ -70,7 +74,7 @@ export function canonicalPiece(text: string, target: DriverId, source: DriverId 
       case 'param':
         return { problem: `a parameter (${raw})` }
       case 'string': {
-        const literal = stringLiteral(raw, t, source, target)
+        const literal = stringLiteral(raw, t, source, target, modes)
         if (literal === undefined) return { problem: `a string this database can't take as it is (${raw.slice(0, 20)})` }
         emit(literal, 'string')
         break
@@ -94,14 +98,14 @@ export function canonicalPiece(text: string, target: DriverId, source: DriverId 
   if (kinds.includes('mapped')) {
     // (A mapped call is several tokens of its own: read back as the target's words.)
     const sql = parts.join('')
-    const back = lex(sql, target)
+    const back = lex(sql, target, modes)
     if (!back.ok || back.tokens.some((t) => t.kind === 'semicolon' || t.kind === 'comment' || t.kind === 'code-open')) return { problem: `it reads differently in ${target}` }
     return depth ? { problem: 'a "(" without its ")"' } : { sql }
   }
   if (depth) return { problem: 'a "(" without its ")"' }
   const sql = parts.join('')
   // Read back by the target: the same tokens, nothing that would end or swallow its statement.
-  const back = lex(sql, target)
+  const back = lex(sql, target, modes)
   if (!back.ok) return { problem: `it reads differently in ${target} (${back.reason})` }
   const backKinds = back.tokens.filter((t) => t.kind !== 'space').map((t) => t.kind)
   if (backKinds.join(',') !== kinds.join(',')) return { problem: `it reads differently in ${target}` }
@@ -136,7 +140,7 @@ function joins(a: string, b: string): boolean {
 }
 
 /** A string token as the target's standard literal of the same value, or undefined where that isn't sure. */
-function stringLiteral(raw: string, t: Token, source: DriverId, target: DriverId): string | undefined {
+function stringLiteral(raw: string, t: Token, source: DriverId, target: DriverId, modes: LexModes = {}): string | undefined {
   const value = t.value ?? ''
   const prefix = /^([A-Za-z&]*)['"$`]/.exec(raw)?.[1]?.toLowerCase() ?? ''
   const sourceFamily = familyOf(source)
@@ -150,7 +154,8 @@ function stringLiteral(raw: string, t: Token, source: DriverId, target: DriverId
   const national = prefix === 'n' || (targetFamily === 'mssql' && /[^\x00-\x7f]/.test(value))
   switch (targetFamily) {
     case 'mysql':
-      return `'${value.replaceAll('\\', '\\\\').replaceAll("'", "''")}'`
+      // (With NO_BACKSLASH_ESCAPES a backslash is an ordinary character there.)
+      return `'${(modes.noBackslashEscapes ? value : value.replaceAll('\\', '\\\\')).replaceAll("'", "''")}'`
     case 'clickhouse':
     case 'bigquery':
       return `'${value.replaceAll('\\', '\\\\').replaceAll("'", "\\'").replaceAll('\n', '\\n').replaceAll('\r', '\\r')}'`

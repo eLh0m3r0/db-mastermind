@@ -39,6 +39,7 @@ export function CompareView({ tab }: { tab: CompareTab }) {
 
   const sourceSchemas = useConnections((s) => (tab.sourceId ? s.runtime[tab.sourceId]?.schema?.schemas : undefined))
   const targetSchemas = useConnections((s) => s.runtime[tab.connectionId]?.schema?.schemas)
+  const targetModes = useConnections((s) => s.runtime[tab.connectionId]?.serverInfo?.sqlModes)
   const target = connections.find((c) => c.id === tab.connectionId)
   const source = connections.find((c) => c.id === tab.sourceId)
   const crossEngine = !!source && !!target && source.driver !== target.driver
@@ -134,8 +135,8 @@ export function CompareView({ tab }: { tab: CompareTab }) {
     const dialect = getDialect(driver)
     // A DeZign project names its keys its own way (`PK_%table%`) and keeps its domains as types: the script follows.
     // Its own begin and end scripts for ALTER scripts go around it (Project options in DeZign).
-    return dezignWrapScript(migrationScript(generateMigration(selected, dialect, snapshots.target.tables, dezignMigrationOptions(tab.sourceScripting, driver)), dialect), tab.sourceScripting, 'alter')
-  }, [selected, driver, snapshots])
+    return dezignWrapScript(migrationScript(generateMigration(selected, dialect, snapshots.target.tables, { ...dezignMigrationOptions(tab.sourceScripting, driver), modes: targetModes }), dialect), tab.sourceScripting, 'alter')
+  }, [selected, driver, snapshots, targetModes])
 
   const pickConnection = (id: string, side: 'source' | 'target') =>
     updateTab(tab.id, side === 'source' ? { sourceId: id, sourceSchema: undefined } : { connectionId: id, targetSchema: undefined })

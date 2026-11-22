@@ -1,7 +1,7 @@
 import { qualify, type Dialect } from './dialect.js'
 import { translateTables } from './type-map.js'
 import { canonicalPiece, oneLine } from './sql-guard.js'
-import { lex } from './sql-lexer.js'
+import { lex, type LexModes } from './sql-lexer.js'
 import { splitStatements } from './sql-split.js'
 import type { ColumnInfo, DriverId, ForeignKeyInfo, IndexInfo, TableInfo, TableRef, CheckInfo } from './types.js'
 
@@ -482,9 +482,12 @@ function constraintName(prefix: string, table: string, columns: string[]): strin
   return `${prefix}_${table}_${columns.join('_')}`.replace(/[^\w]/g, '_').slice(0, 60)
 }
 
+/** How the target of the migration being rendered reads strings (set by generateMigration while it renders). */
+let renderModes: LexModes = {}
+
 function literalComment(text: string, driver: DriverId): string {
-  // (MySQL reads a backslash in a string as an escape: `a\` would end no string.)
-  const escaped = (driver === 'mysql' || driver === 'mariadb' ? text.replaceAll('\\', '\\\\') : text).replaceAll("'", "''")
+  // (MySQL reads a backslash in a string as an escape, `a\` would end no string, unless NO_BACKSLASH_ESCAPES.)
+  const escaped = ((driver === 'mysql' || driver === 'mariadb') && !renderModes.noBackslashEscapes ? text.replaceAll('\\', '\\\\') : text).replaceAll("'", "''")
   return driver === 'mssql' ? `N'${escaped}'` : `'${escaped}'`
 }
 
@@ -611,6 +614,8 @@ export interface MigrationOptions {
   uniqueConstraint?: (table: TableRef, name: string | undefined) => boolean | undefined
   /** The database the model's SQL pieces (defaults, checks, types) were written for, when not the target's. */
   from?: DriverId
+  /** How the target reads strings, for a script made for a live MySQL / MariaDB connection (ServerInfo.sqlModes). */
+  modes?: LexModes
 }
 
 /**
@@ -621,7 +626,13 @@ export interface MigrationOptions {
  */
 export function generateMigration(changes: SchemaChange[], dialect: Dialect, tables: TableInfo[] = [], options: MigrationOptions = {}): Migration {
   const guarded = guardChanges(changes, dialect, options)
-  const migration = renderMigration(guarded.changes, dialect, tables, guarded.options)
+  renderModes = options.modes ?? {}
+  let migration: Migration
+  try {
+    migration = renderMigration(guarded.changes, dialect, tables, guarded.options)
+  } finally {
+    renderModes = {}
+  }
   const out = guardStatements({ ...migration, warnings: [...guarded.warnings, ...migration.warnings] }, dialect)
   // (Tests and e2e runs collect every Left out line the guard writes: DBM_GUARD_LOG=<file>.)
   const log = typeof process !== 'undefined' ? process.env?.DBM_GUARD_LOG : undefined
@@ -644,7 +655,7 @@ function guardChanges(changes: SchemaChange[], d: Dialect, options: MigrationOpt
   // tokens for the target (sql-guard.ts canonicalPiece): undefined when it can't be, with the warning.
   const source = options.from ?? d.id
   const piece = (text: string, what: () => string): string | undefined => {
-    const r = canonicalPiece(text, d.id, source)
+    const r = canonicalPiece(text, d.id, source, options.modes)
     if (r.problem !== undefined) warnings.push({ level: 'warning', message: `Left out: ${what()}, ${r.problem}: ${text.slice(0, 200)}` })
     return r.sql
   }
