@@ -64,8 +64,10 @@ export interface AppInfo {
   dataDir: string
   /** How an agent launches this app as a stdio MCP server. */
   mcpCommand: { command: string; args: string[]; issue?: 'store' | 'temporary' }
-  /** Linux without a keychain: saved passwords are only obfuscated. */
+  /** No keychain to encrypt with: saved passwords and keys are only obfuscated. */
   weakSecrets?: boolean
+  /** Why: Linux without GNOME Keyring or KWallet, or a Mac user without a login keychain. */
+  weakSecretsReason?: 'keyring' | 'mac-keychain'
   /** Set when an organization's managed configuration file is in effect. */
   managed?: ManagedInfo
 }

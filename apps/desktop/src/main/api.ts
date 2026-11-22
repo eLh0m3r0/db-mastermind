@@ -207,6 +207,11 @@ export function mcpLaunch(): McpLaunch {
   if (process.platform === 'darwin' && app.isPackaged && /^\/Volumes\/|\/AppTranslocation\//.test(process.execPath)) return { command: process.execPath, args, issue: 'temporary' }
   return { command: process.execPath, args }
 }
+function weakSecretsInfo() {
+  const reason = secretsWithoutKeychain()
+  return reason ? { weakSecrets: true, weakSecretsReason: reason } : { weakSecrets: false }
+}
+
 export const api: MastermindApi = {
   async getAppInfo() {
     return {
@@ -217,7 +222,7 @@ export const api: MastermindApi = {
       // Linux: Chromium's SUID sandbox check runs before any app code; headless MCP mode doesn't need it.
       mcpCommand: mcpLaunch(),
       managed: managed()?.info,
-      weakSecrets: secretsWithoutKeychain(),
+      ...weakSecretsInfo(),
     }
   },
   async getSettings() {

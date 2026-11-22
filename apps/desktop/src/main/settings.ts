@@ -3,7 +3,7 @@ import { app } from 'electron'
 import type { AiProviderSettings, AppSettings } from '@shared/api'
 import { managedConfig } from './managed'
 import { enforceManagedSettings } from './managed-config'
-import { readJson, takeLegacySecretsFlag, UnreadableSecrets, writeJson } from './storage'
+import { readJson, secretKeyInUse, takeLegacySecretsFlag, UnreadableSecrets, writeJson } from './storage'
 
 const FILE = 'settings.json'
 
@@ -20,7 +20,9 @@ export function defaultSettings(): AppSettings {
     nullDisplay: 'NULL',
     dateFormat: 'iso',
     ai: { providers: [], dataSharing: 'schema-and-samples', autoRunReadQueries: true },
-    mcp: { enabled: false, port: 7337, token: randomBytes(24).toString('base64url'), allowWrites: false },
+    // No token until the endpoint is turned on (updateSettings): a token is a secret, and storing one is what would
+    // ask the keychain for a key on the very first start.
+    mcp: { enabled: false, port: 7337, token: '', allowWrites: false },
   }
 }
 
@@ -36,36 +38,46 @@ function mapKeys(providers: AiProviderSettings[], fn: (owner: string, field: str
 /** Encrypted values start like this (storage.ts); anything else in the token field is a token saved in plain text. */
 const ENCRYPTED = /^(enc:v\d+|plain):/
 
+/** A new token for the MCP endpoint. */
+const newToken = () => randomBytes(24).toString('base64url')
+
 /**
  * The MCP endpoint's token, decrypted. A token saved in plain text by older versions is used as it is (agents are
- * configured with it) and saved encrypted. One that doesn't decrypt (keychain unavailable) is kept as ciphertext and
- * written back on save; meanwhile the token is empty, which the endpoint never accepts. Only a missing or too short
- * token is replaced by a new one.
+ * configured with it). One that doesn't decrypt (keychain unavailable) is kept as ciphertext and written back on save;
+ * meanwhile the token is empty, which the endpoint never accepts. Missing or too short: none (created when the
+ * endpoint is turned on).
  */
-async function readToken(stored: string | undefined, fresh: string): Promise<{ token: string; save: boolean }> {
-  if (!stored) return { token: fresh, save: true }
+async function readToken(stored: string | undefined): Promise<string> {
+  if (!stored) return ''
   const plain = await unreadable.decrypt('mcp', 'token', stored)
-  if (plain === undefined) return { token: '', save: false }
-  if (plain.length < 16) return { token: fresh, save: true }
-  return { token: plain, save: !ENCRYPTED.test(stored) }
+  return plain && plain.length >= 16 ? plain : ''
 }
 
-/** Reads settings and decrypts API keys and the MCP token. Must run after app 'ready'. */
+/** The token was set or the endpoint turned on this session: saving it may create the key (the user asked for it). */
+let tokenChosen = false
+
+/**
+ * Reads settings and decrypts API keys and the MCP token. Must run after app 'ready'. A fresh profile asks nothing of
+ * the keychain: only secrets that exist are decrypted, and nothing new is encrypted.
+ */
 export async function loadSettings(): Promise<void> {
   const defaults = defaultSettings()
   const stored = readJson<Partial<AppSettings>>(FILE, {})
   takeLegacySecretsFlag()
   unreadable.clear()
-  const token = await readToken(stored.mcp?.token, defaults.mcp.token)
+  tokenChosen = false
+  const token = await readToken(stored.mcp?.token)
   cached = enforceManagedSettings({
     ...defaults,
     ...stored,
     ai: { ...defaults.ai, ...stored.ai, providers: await mapKeys(stored.ai?.providers ?? [], (owner, field, v) => unreadable.decrypt(owner, field, v)) },
-    mcp: { ...defaults.mcp, ...stored.mcp, token: token.token },
+    mcp: { ...defaults.mcp, ...stored.mcp, token },
   }, managedConfig())
-  // The first run stores the generated token (also replacing an empty or short one) and the detected language; a
-  // token in plain text is saved encrypted. Also saves secrets read in an older encryption format in the current one.
-  if (token.save || !stored.language || takeLegacySecretsFlag()) persist(cached)
+  // The endpoint is on but its token is missing (a hand-edited file): a new one, stored as the next save decides.
+  const missing = cached.mcp.enabled && !cached.mcp.token && !unreadable.has('mcp', 'token')
+  if (missing) cached = { ...cached, mcp: { ...cached.mcp, token: newToken() } }
+  // The first run stores the detected language. Also saves secrets read in an older encryption format in the current one.
+  if (missing || !stored.language || takeLegacySecretsFlag()) persist(cached)
 }
 
 export function getSettings(): AppSettings {
@@ -75,13 +87,22 @@ export function getSettings(): AppSettings {
 
 let writes = Promise.resolve()
 
+/**
+ * The token as saved: encrypted once a key is in use anyway or the user turned the endpoint on or made a new token.
+ * Until then a token an older version saved in plain text stays as it was: it must never be what creates the key.
+ */
+async function tokenToStore(token: string): Promise<string | undefined> {
+  if (token && !tokenChosen && !secretKeyInUse()) return token
+  return unreadable.encrypt('mcp', 'token', token)
+}
+
 function persist(settings: AppSettings) {
   writes = writes
     .then(async () =>
       writeJson(FILE, {
         ...settings,
         ai: { ...settings.ai, providers: await mapKeys(settings.ai.providers, (owner, field, v) => unreadable.encrypt(owner, field, v)) },
-        mcp: { ...settings.mcp, token: await unreadable.encrypt('mcp', 'token', settings.mcp.token) },
+        mcp: { ...settings.mcp, token: await tokenToStore(settings.mcp.token) },
       }),
     )
     .catch((err: unknown) => console.error('Could not save settings', err))
@@ -105,6 +126,11 @@ export function updateSettings(patch: Partial<AppSettings>): AppSettings {
     ...patch,
     ai: patch.ai ? { ...current.ai, ...patch.ai, ...sharingOf(patch.ai, current.ai) } : current.ai,
     mcp: patch.mcp ? { ...current.mcp, ...patch.mcp } : current.mcp,
+  }
+  // Turning the endpoint on (or a new token) is when the token is needed: made now if there is none.
+  if (patch.mcp && next.mcp.enabled) {
+    tokenChosen = true
+    if (!next.mcp.token && !unreadable.has('mcp', 'token')) next.mcp = { ...next.mcp, token: newToken() }
   }
   cached = enforceManagedSettings(next, managedConfig())
   persist(cached)

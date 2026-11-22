@@ -76,7 +76,7 @@ export function ConnectionForm() {
   const editingId = open ? modal.connectionId : undefined
   const existing = useConnections((s) => (editingId ? s.list.find((c) => c.id === editingId) : undefined))
   const settings = useSettings((s) => s.settings)
-  const weakSecrets = useSettings((s) => !!s.info?.weakSecrets)
+  const weakSecrets = useSettings((s) => (s.info?.weakSecrets ? (s.info.weakSecretsReason ?? 'keyring') : undefined))
   const save = useConnections((s) => s.save)
   const connect = useConnections((s) => s.connect)
   const [config, setConfig] = useState<ConnectionConfig>(blank())
@@ -510,7 +510,9 @@ export function ConnectionForm() {
                     )}
                     {weakSecrets && !!config.password && config.passwordCommand === undefined && (
                       <div className="text-[11.5px] text-warning">
-                        {t('This computer has no keychain (GNOME Keyring or KWallet): the password is saved without real encryption. Install one, or use a password manager.')}
+                        {weakSecrets === 'mac-keychain'
+                          ? t('This Mac user has no login keychain, so the password is saved without real encryption. Create one in Keychain Access (File → New Keychain, named “login”) or log out and in again; the next save then encrypts it.')
+                          : t('This computer has no keychain (GNOME Keyring or KWallet): the password is saved without real encryption. Install one, or use a password manager.')}
                       </div>
                     )}
                     {config.passwordCommand !== undefined && !windowsAuth && !entraAuth && (

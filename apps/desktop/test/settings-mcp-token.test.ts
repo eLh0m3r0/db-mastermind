@@ -23,6 +23,9 @@ vi.mock('../src/main/storage', () => {
       this.kept.delete(`${owner}\n${field}`)
       return encryptSecret(value)
     }
+    has(owner: string, field: string) {
+      return this.kept.has(`${owner}\n${field}`)
+    }
     clear() {
       this.kept.clear()
     }
@@ -31,6 +34,8 @@ vi.mock('../src/main/storage', () => {
     readJson: (file: string, fallback: unknown) => structuredClone(disk.files.get(file) ?? fallback),
     writeJson: (file: string, value: unknown) => void disk.files.set(file, structuredClone(value)),
     takeLegacySecretsFlag: () => false,
+    // No key in use yet (a fresh start): a token from an older version is then left as it is (keychain-start.test.ts).
+    secretKeyInUse: () => false,
     UnreadableSecrets,
   }
 })
@@ -50,8 +55,13 @@ afterEach(() => {
 })
 
 describe('the MCP endpoint token in settings.json', () => {
-  it('is saved encrypted like the API keys', async () => {
+  const turnOn = () => updateSettings({ mcp: { ...getSettings().mcp, enabled: true } })
+
+  it('is made when the endpoint is turned on and saved encrypted like the API keys', async () => {
     await loadSettings()
+    await flush()
+    expect(getSettings().mcp.token).toBe('')
+    turnOn()
     await flush()
     const token = getSettings().mcp.token
     expect(token.length).toBeGreaterThanOrEqual(16)
@@ -62,9 +72,12 @@ describe('the MCP endpoint token in settings.json', () => {
     expect(JSON.stringify(stored())).not.toContain(token)
   })
 
-  it('a token saved in plain text by an older version keeps its value and is saved encrypted', async () => {
-    disk.files.set('settings.json', { language: 'en', mcp: { enabled: true, port: 7337, token: TOKEN, allowWrites: false } })
+  it('a token saved in plain text by an older version keeps its value and is saved encrypted when the endpoint is turned on', async () => {
+    disk.files.set('settings.json', { language: 'en', mcp: { enabled: false, port: 7337, token: TOKEN, allowWrites: false } })
     await loadSettings()
+    await flush()
+    expect(getSettings().mcp.token).toBe(TOKEN)
+    turnOn()
     await flush()
     expect(getSettings().mcp.token).toBe(TOKEN)
     expect(stored().mcp.token).toMatch(/^enc:v2:/)
@@ -74,16 +87,14 @@ describe('the MCP endpoint token in settings.json', () => {
   })
 
   it('a keychain hiccup neither loses nor replaces it, and the endpoint gets no usable token meanwhile', async () => {
-    disk.files.set('settings.json', { language: 'en', mcp: { enabled: true, port: 7337, token: TOKEN, allowWrites: false } })
-    await loadSettings()
-    await flush()
-    const ciphertext = stored().mcp.token
+    disk.files.set('settings.json', { language: 'en', mcp: { enabled: true, port: 7337, token: `enc:v2:${Buffer.from(TOKEN).toString('base64')}`, allowWrites: false } })
     disk.locked = true
     await loadSettings()
     expect(getSettings().mcp.token).toBe('')
     updateSettings({ theme: 'dark' })
+    updateSettings({ mcp: { ...getSettings().mcp, port: 7444 } })
     await flush()
-    expect(stored().mcp.token).toBe(ciphertext)
+    expect(stored().mcp.token).toBe(`enc:v2:${Buffer.from(TOKEN).toString('base64')}`)
     disk.locked = false
     await loadSettings()
     expect(getSettings().mcp.token).toBe(TOKEN)
@@ -91,8 +102,9 @@ describe('the MCP endpoint token in settings.json', () => {
 
   it('never shows up in what is logged when saving fails', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation((...args) => void disk.logged.push(args.map(String).join(' ')))
-    disk.files.set('settings.json', { language: 'en', mcp: { enabled: true, port: 7337, token: TOKEN, allowWrites: false } })
+    disk.files.set('settings.json', { language: 'en', mcp: { enabled: false, port: 7337, token: TOKEN, allowWrites: false } })
     await loadSettings()
+    turnOn()
     await flush()
     disk.files.set = () => {
       throw new Error('disk full')

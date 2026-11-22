@@ -15,6 +15,7 @@ export function AiSettingsSection() {
   const update = useSettings((s) => s.update)
   const ai = settings.ai
   const policies = useSettings((s) => s.info?.managed?.policies)
+  const weakSecrets = useSettings((s) => (s.info?.weakSecrets ? (s.info.weakSecretsReason ?? 'keyring') : undefined))
   const providers = PROVIDERS.filter((p) => !policies?.allowedAiProviders || policies.allowedAiProviders.includes(p.id))
   const [selected, setSelected] = useState<AiProviderId>(ai.activeProvider ?? providers[0]?.id ?? 'anthropic')
   const [models, setModels] = useState<string[]>([])
@@ -96,7 +97,13 @@ export function AiSettingsSection() {
                 )}
               </span>
             }
-            hint={t("Stored encrypted with your operating system's keychain.")}
+            hint={
+              weakSecrets === 'mac-keychain'
+                ? t('This Mac user has no login keychain, so the key is saved without real encryption. Create one in Keychain Access (File → New Keychain, named “login”) or log out and in again; the next save then encrypts it.')
+                : weakSecrets
+                  ? t('This computer has no keychain (GNOME Keyring or KWallet): the key is saved without real encryption.')
+                  : t("Stored encrypted with your operating system's keychain.")
+            }
           >
             <Input type="password" value={config.apiKey ?? ''} onChange={(e) => saveProvider({ apiKey: e.target.value })} placeholder="sk-…" autoComplete="off" />
           </Field>

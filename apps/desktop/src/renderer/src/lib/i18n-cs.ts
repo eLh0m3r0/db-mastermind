@@ -2128,6 +2128,9 @@ export const cs: Record<string, string> = {
   'SQL for any database': 'SQL pro jakoukoli databázi',
   'Opens DBML, Prisma, Mermaid, drawDB, MySQL Workbench and DeZign': 'Otevře DBML, Prisma, Mermaid, drawDB, MySQL Workbench a DeZign',
   'The assistant sees only the text of the model, no database.': 'Asistent vidí jen text modelu, žádnou databázi.',
+  'This Mac user has no login keychain, so the password is saved without real encryption. Create one in Keychain Access (File → New Keychain, named “login”) or log out and in again; the next save then encrypts it.': 'Tento uživatel Macu nemá svazek klíčů „login“, takže se heslo ukládá bez skutečného šifrování. Vytvořte ho v aplikaci Klíčenka (Soubor → Nový svazek klíčů s názvem „login“) nebo se odhlaste a znovu přihlaste; při dalším uložení se pak zašifruje.',
+  'This Mac user has no login keychain, so the key is saved without real encryption. Create one in Keychain Access (File → New Keychain, named “login”) or log out and in again; the next save then encrypts it.': 'Tento uživatel Macu nemá svazek klíčů „login“, takže se klíč ukládá bez skutečného šifrování. Vytvořte ho v aplikaci Klíčenka (Soubor → Nový svazek klíčů s názvem „login“) nebo se odhlaste a znovu přihlaste; při dalším uložení se pak zašifruje.',
+  'This computer has no keychain (GNOME Keyring or KWallet): the key is saved without real encryption.': 'Tento počítač nemá klíčenku (GNOME Keyring ani KWallet): klíč se ukládá bez skutečného šifrování.',
 }
 
 /**

@@ -86,21 +86,71 @@ const PLAIN_PREFIX = 'plain:'
  * the user's key. Null when unavailable: secrets then use safeStorage as before.
  */
 let macKey: Buffer | null | undefined
+/**
+ * The keychain path failed this session (no default keychain, locked, refused, timed out). safeStorage would then ask
+ * the same keychain and show a second dialog for the same thing, so it isn't tried either: secrets are stored
+ * obfuscated (`plain:`) and the forms say so, until a later save finds the keychain again.
+ */
+let keychainFailed = false
+
+/** Apple's `security` tool. Under DBM_DEBUG each call is logged by its command only (never a value). */
+function security(args: string[]): string {
+  if (process.env.DBM_DEBUG) console.error(`[secrets] security ${args[0]}`)
+  return execFileSync('/usr/bin/security', args, { stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 }).toString().trim()
+}
+
 function macSecretKey(): Buffer | null {
   // Development and e2e runs (a fresh data folder each time) would leave a keychain item per run: packaged apps only.
   if (process.platform !== 'darwin' || (!app.isPackaged && !process.env.DBM_MAC_SECRET_KEY)) return null
   if (macKey !== undefined) return macKey
   const service = 'DB Mastermind secrets'
   const account = createHash('sha256').update(app.getPath('userData')).digest('hex').slice(0, 16)
-  const security = (args: string[]) => execFileSync('/usr/bin/security', args, { stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 }).toString().trim()
   try {
-    macKey = readOrCreateMacKey(security, service, account)
+    macKey = readOrCreateMacKey(security, service, account, hasDefaultKeychain)
   } catch (err) {
-    // Secrets this session are encrypted with safeStorage instead; ones under this key are kept, not lost.
-    if (process.env.DBM_DEBUG) console.error('macOS secret key unavailable:', err)
+    // Secrets under this key are kept, not lost (UnreadableSecrets); new ones are stored without the keychain.
+    if (process.env.DBM_DEBUG) console.error('macOS secret key unavailable:', (err as Error).message)
     macKey = null
+    keychainFailed = true
   }
   return macKey
+}
+
+let defaultKeychain: boolean | undefined
+/**
+ * macOS: whether the user has a default (login) keychain to keep a key in. Without one, adding an item (ours, or
+ * safeStorage's) shows "Keychain Not Found" for each: a new Mac user can be without one. `security default-keychain
+ * -d user` asks without a dialog: it exits 1 when there is none; a keychain file that no longer exists counts as none.
+ * Read once a session; a keychain made meanwhile counts from the next start.
+ */
+export function hasDefaultKeychain(): boolean {
+  if (process.platform !== 'darwin') return true
+  if (defaultKeychain !== undefined) return defaultKeychain
+  try {
+    const path = security(['default-keychain', '-d', 'user']).replace(/^\s*"|"\s*$/g, '')
+    defaultKeychain = !!path && existsSync(path)
+  } catch {
+    defaultKeychain = false
+  }
+  if (!defaultKeychain && process.env.DBM_DEBUG) console.error('[secrets] no default keychain: secrets are stored without encryption')
+  return defaultKeychain
+}
+
+let safeStorageUsed = false
+
+/**
+ * Whether encrypting now asks nothing new of the keychain: on macOS, a key is already in use this session (read for
+ * a secret the user saved). Elsewhere encrypting never shows a dialog.
+ */
+export function secretKeyInUse(): boolean {
+  if (process.platform !== 'darwin') return true
+  return !!macKey || safeStorageUsed
+}
+
+/** Whether safeStorage may be used: on macOS only with a keychain that hasn't just failed (no second dialog). */
+function safeStorageAllowed(): boolean {
+  if (process.platform !== 'darwin') return true
+  return !keychainFailed && hasDefaultKeychain()
 }
 
 /** `security` exits with this when the keychain has no such item (errSecItemNotFound). */
@@ -110,13 +160,15 @@ const KEYCHAIN_ITEM_NOT_FOUND = 44
  * Reads the key, creating it only when the keychain says there is none. Any other failure (locked keychain, timeout)
  * throws instead: a new key would replace the one every saved password is encrypted with.
  */
-export function readOrCreateMacKey(security: (args: string[]) => string, service: string, account: string): Buffer {
+export function readOrCreateMacKey(security: (args: string[]) => string, service: string, account: string, keychainExists: () => boolean = () => true): Buffer {
   const find = ['find-generic-password', '-s', service, '-a', account, '-w']
   let hex: string
   try {
     hex = security(find)
   } catch (err) {
     if ((err as { status?: number }).status !== KEYCHAIN_ITEM_NOT_FOUND) throw err
+    // `find` says "not found" also when there is no keychain at all; adding would then show "Keychain Not Found".
+    if (!keychainExists()) throw new Error('This Mac user has no default keychain')
     const created = randomBytes(32).toString('hex')
     try {
       // No -U: never overwrite a key. Adding fails when another process (the MCP server) created one meanwhile.
@@ -158,14 +210,16 @@ export function takeLegacySecretsFlag(): boolean {
  * Linux without a secret service (GNOME Keyring, KWallet): Chromium falls back to a fixed key ('basic_text'), or
  * the app to plain obfuscation. Saved passwords are then readable by anyone who can read the data folder.
  */
-export function secretsWithoutKeychain(): boolean {
-  if (process.platform !== 'linux' || process.env.DBM_USER_DATA) return false
+export function secretsWithoutKeychain(): 'keyring' | 'mac-keychain' | undefined {
+  // (macOS: only where a key would be kept in the keychain or safeStorage would be used.)
+  if (process.platform === 'darwin') return !keychainFailed && hasDefaultKeychain() ? undefined : 'mac-keychain'
+  if (process.platform !== 'linux' || process.env.DBM_USER_DATA) return undefined
   try {
-    if (!safeStorage.isEncryptionAvailable()) return true
+    if (!safeStorage.isEncryptionAvailable()) return 'keyring'
     const backend = (safeStorage as { getSelectedStorageBackend?: () => string }).getSelectedStorageBackend?.()
-    return backend === 'basic_text' || backend === 'unknown'
+    return backend === 'basic_text' || backend === 'unknown' ? 'keyring' : undefined
   } catch {
-    return false
+    return undefined
   }
 }
 
@@ -173,9 +227,14 @@ export async function encryptSecret(value: string | undefined): Promise<string |
   if (!value) return value
   const key = macSecretKey()
   if (key) return sealMac(key, value)
-  if (await safeStorage.isAsyncEncryptionAvailable()) return ENC_PREFIX + (await safeStorage.encryptStringAsync(value)).toString('base64')
-  // No OS keychain (e.g. Linux without a secret service): stored obfuscated only. The connection form says so
-  // (secretsWithoutKeychain).
+  if (safeStorageAllowed() && (await safeStorage.isAsyncEncryptionAvailable())) {
+    if (process.env.DBM_DEBUG) console.error('[secrets] safeStorage encrypt')
+    const sealed = ENC_PREFIX + (await safeStorage.encryptStringAsync(value)).toString('base64')
+    safeStorageUsed = true
+    return sealed
+  }
+  // No OS keychain (Linux without a secret service, a Mac user without a login keychain): stored obfuscated only. The
+  // forms say so (secretsWithoutKeychain).
   return PLAIN_PREFIX + Buffer.from(value, 'utf8').toString('base64')
 }
 
@@ -190,9 +249,17 @@ export async function decryptSecret(value: string | undefined): Promise<string |
     if (value.startsWith(ENC_PREFIX)) {
       // On macOS this asks the keychain one last time; the caller then re-encrypts with the key above.
       if (macSecretKey()) legacyRead = true
-      return (await safeStorage.decryptStringAsync(Buffer.from(value.slice(ENC_PREFIX.length), 'base64'))).result
+      if (!safeStorageAllowed()) throw new Error('The keychain is unavailable')
+      if (process.env.DBM_DEBUG) console.error('[secrets] safeStorage decrypt')
+      const plain = (await safeStorage.decryptStringAsync(Buffer.from(value.slice(ENC_PREFIX.length), 'base64'))).result
+      safeStorageUsed = true
+      return plain
     }
-    if (value.startsWith(PLAIN_PREFIX)) return Buffer.from(value.slice(PLAIN_PREFIX.length), 'base64').toString('utf8')
+    if (value.startsWith(PLAIN_PREFIX)) {
+      // Stored without a keychain on a Mac that has one now: the caller saves again, encrypted (a secret the user gave).
+      if (process.platform === 'darwin' && safeStorageAllowed()) legacyRead = true
+      return Buffer.from(value.slice(PLAIN_PREFIX.length), 'base64').toString('utf8')
+    }
   } catch (err) {
     // Encrypted on another machine/user (e.g. portable folder copied), or the keychain is unavailable right now: the
     // secret must be re-entered. Callers keep the ciphertext (see UnreadableSecrets), so a passing outage loses nothing.
