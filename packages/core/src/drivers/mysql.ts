@@ -11,6 +11,7 @@ import {
   elapsed,
   isShortLivedSession,
   QueryCancelledError,
+  ReadOnlyViolationError,
   SessionTransactions,
   type DatabaseDriver,
   type IntrospectOptions,
@@ -161,6 +162,12 @@ export class MysqlDriver implements DatabaseDriver {
     this.tunnel = undefined
   }
 
+  /** Whether any of the pools was made with multipleStatements (never, by makePool: asserted, not assumed). */
+  private multipleStatements(): boolean {
+    const on = (p: Pool | undefined) => !!(p as unknown as { config?: { connectionConfig?: { multipleStatements?: boolean } } } | undefined)?.config?.connectionConfig?.multipleStatements
+    return on(this.pool) || on(this.sessionPool)
+  }
+
   private get activePool(): Pool {
     if (!this.pool) throw new Error('Not connected')
     return this.pool
@@ -235,6 +242,9 @@ export class MysqlDriver implements DatabaseDriver {
   private transactions = new SessionTransactions()
 
   async execute(sql: string, options: QueryOptions = {}): Promise<QueryResult[]> {
+    // One statement per query is the server's own rule while multipleStatements is off: SQL nobody confirmed never
+    // runs on a connection where it is on.
+    if (options.unconfirmed && this.multipleStatements()) throw new ReadOnlyViolationError('This connection runs several statements in one query: SQL nobody confirmed is not run on it.')
     try {
       return await this.executeTracked(sql, options)
     } catch (err) {

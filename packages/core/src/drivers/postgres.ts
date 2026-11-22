@@ -311,7 +311,9 @@ export class PostgresDriver implements DatabaseDriver {
           values: options.params,
           rowMode: 'array',
           types: typeOverrides,
-        })
+          // Parse/Bind/Execute: the server refuses more than one command in it (the simple protocol runs them all).
+          ...(options.unconfirmed ? { queryMode: 'extended' } : {}),
+        } as pg.QueryArrayConfig)
         const results = (Array.isArray(res) ? res : [res]) as pg.QueryArrayResult[]
         const durationMs = elapsed(start)
         await this.learnTypes(results)

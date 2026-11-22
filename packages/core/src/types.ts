@@ -125,6 +125,12 @@ export interface QueryOptions {
   signal?: AbortSignal
   /** Run on a sticky connection (one per editor tab) so transactions and session settings persist. */
   session?: string
+  /**
+   * SQL nobody confirmed (AI, MCP, read-only connections, raw filters): the driver runs it as exactly one statement
+   * where its protocol allows (PostgreSQL's extended protocol, ClickHouse's one query per request), and refuses
+   * what the server itself says is not a read (DuckDB's statement type, BigQuery's dry run, ClickHouse readonly).
+   */
+  unconfirmed?: boolean
 }
 
 export type ObjectType = 'table' | 'view' | 'materialized_view' | 'foreign_table'

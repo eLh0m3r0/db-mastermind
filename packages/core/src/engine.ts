@@ -1,6 +1,8 @@
 import { checkCondition } from './ddl.js'
 import { qualify } from './dialect.js'
-import { checkAffected, isLockTimeout, QueryCancelledError, ReadOnlyViolationError, TooManyRowsError, RowLockedError, type DatabaseDriver, type StreamBatch, type StreamOptions } from './driver.js'
+import { checkAffected, GuardBrokenError, isLockTimeout, QueryCancelledError, ReadOnlyViolationError, TooManyRowsError, RowLockedError, type DatabaseDriver, type StreamBatch, type StreamOptions } from './driver.js'
+import { readVerdict } from './sql-readonly.js'
+import { lex, type LexModes } from './sql-lexer.js'
 import { BigQueryDriver } from './drivers/bigquery.js'
 import { TrinoDriver } from './drivers/trino.js'
 import { ClickHouseDriver } from './drivers/clickhouse.js'
@@ -48,6 +50,9 @@ export function createDriver(config: ConnectionConfig): DatabaseDriver {
 const GRID_LOCK_TIMEOUT_MS = 5000
 /** How long an unconfirmed (AI) read on SQL Server waits for locked rows. */
 const READ_LOCK_TIMEOUT_MS = 10000
+
+/** Whether a filter has free-form SQL of its own (typed in the grid, or written by AI). */
+const hasRawFilter = (node: FilterNode | undefined): boolean => !!node && (node.kind === 'raw' ? !!node.sql.trim() : node.kind === 'group' ? node.children.some(hasRawFilter) : false)
 
 /** Lock timeout for a grid save inside a session's transaction: set, and set back (session-wide settings). */
 const digits = (v: string) => (/^-?\d+(ms)?$/.test(v) ? v : null)
@@ -319,27 +324,15 @@ export class DatabaseService {
   /** Splits and runs a script statement by statement, collecting per-statement outcomes. */
   async runScript(id: string, script: string, options: RunScriptOptions = {}): Promise<StatementOutcome[]> {
     const entry = this.get(id)
-    // ApplicationIntent=ReadOnly only binds on read replicas, and T-SQL needs no semicolons (`SELECT 1 DELETE …`):
-    // a read-only SQL Server connection also runs everything in a transaction that is rolled back.
-    // (`readOnly: false` is the guarded inner run.)
-    if (entry.config.readOnly && entry.config.driver === 'mssql' && options.readOnly === undefined) {
-      // Same per-statement error as other read-only connections, without running any of the script.
-      if (!fitsReadOnlyTransaction(script, entry.config.driver)) return [{ sql: script, start: 0, end: script.length, error: describeError(new ReadOnlyViolationError()), durationMs: 0 }]
-      options = { ...options, readOnly: true }
-    }
-    if (options.readOnly) {
-      if (!fitsReadOnlyTransaction(script, entry.config.driver)) throw new ReadOnlyViolationError('Only reads are allowed here (no writes, DDL, transaction control or procedure calls).')
-      const begin = entry.driver.dialect.beginReadOnly
-      if (!begin) return this.runScript(id, script, { ...options, readOnly: false })
-      const session = options.session ?? `readonly-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    // SQL nobody confirmed (`readOnly`), and everything on a read-only connection: the guarded path.
+    // (`readOnly: false` is an explicit choice of the caller for a connection that allows writes.)
+    if (options.readOnly || (entry.config.readOnly && options.readOnly === undefined)) {
       try {
-        // SQL Server reads wait for locked rows (an AI chat's own uncommitted write): give up after a while instead.
-        if (entry.config.driver === 'mssql' && !options.session) await entry.driver.execute(`SET LOCK_TIMEOUT ${READ_LOCK_TIMEOUT_MS}`, { session }).catch(() => {})
-        await entry.driver.execute(begin, { session })
-        return await this.runScript(id, script, { ...options, readOnly: false, session })
-      } finally {
-        await entry.driver.execute(entry.driver.dialect.rollback, { session }).catch(() => {})
-        if (!options.session) await entry.driver.releaseSession(session).catch(() => {})
+        return await this.runUnconfirmed(entry, script, options)
+      } catch (err) {
+        // A read-only connection reports a refused script like any failed statement; callers of readOnly get the error.
+        if (options.readOnly || !(err instanceof ReadOnlyViolationError)) throw err
+        return [{ sql: script, start: 0, end: script.length, error: describeError(err), durationMs: 0 }]
       }
     }
     // T-SQL batches run as a whole (variables and temp tables span statements); only GO splits them.
@@ -446,6 +439,130 @@ export class DatabaseService {
   }
 
   /**
+   * SQL nobody confirmed (AI chat, MCP agents, read-only connections). Every layer stands on its own:
+   * 1. sql-lexer.ts reads every character as the server does or the script is refused, and sql-readonly.ts allows
+   *    only what reads (an allowlist of what may start a statement, words that never belong in a read).
+   * 2. The server's own truth, per engine (the table below): one statement per call where the protocol allows,
+   *    inside a read-only transaction that is always rolled back, and SQL Server's own plan of every batch.
+   * 3. After every statement the transaction must still be ours (the protocol's or the server's state): if it is
+   *    gone, nothing further runs and the outcome says the guard was broken.
+   *
+   * | engine        | one statement per call                 | read-only on the server                  | checked after each statement |
+   * |---------------|----------------------------------------|------------------------------------------|------------------------------|
+   * | PostgreSQL    | extended protocol (Parse/Bind/Execute) | BEGIN TRANSACTION READ ONLY, rolled back | protocol transaction status  |
+   * | MySQL/MariaDB | multipleStatements off (asserted)      | START TRANSACTION READ ONLY, rolled back | SERVER_STATUS_IN_TRANS       |
+   * | SQL Server    | no (a batch is many): SHOWPLAN_XML of  | BEGIN TRANSACTION, rolled back           | @@TRANCOUNT / XACT_STATE()   |
+   * |               | the batch must list only reads         |                                          |                              |
+   * | Oracle        | yes (one statement per execute)        | SET TRANSACTION READ ONLY, rolled back   | none (a SELECT can't end it) |
+   * | SQLite        | yes (prepare runs the first only)      | PRAGMA query_only = 1 for the statement  | no transaction (one shared connection) |
+   * | DuckDB        | extractStatements must count one, of   | BEGIN TRANSACTION READ ONLY, rolled back | txid probe                   |
+   * |               | type SELECT or EXPLAIN                 |                                          |                              |
+   * | ClickHouse    | yes (one query per HTTP request)       | readonly = 2 on every query              | no transactions              |
+   * | BigQuery      | a dry run must say SELECT (no scripts) | the dry run's SELECT                     | no transactions              |
+   * | Trino         | yes (one statement per request)        | none: the lexer and allowlist only       | no transactions              |
+   */
+  private async runUnconfirmed(entry: OpenConnection, script: string, options: RunScriptOptions): Promise<StatementOutcome[]> {
+    const driver = entry.config.driver
+    const dialect = entry.driver.dialect
+    const own = !options.session
+    const session = options.session ?? `readonly-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const outcomes: StatementOutcome[] = []
+    let begun = false
+    const broken = (sql: string, at: number) => {
+      const error = new GuardBrokenError()
+      console.error(`[dbm] ${error.message} (${driver})`)
+      outcomes.push({ sql, start: at, end: at, error: describeError(error), durationMs: 0 })
+    }
+    try {
+      // MySQL's sql_mode decides how its strings read (backslashes, double quotes): asked of this session.
+      let modes: LexModes = {}
+      if (driver === 'mysql' || driver === 'mariadb') {
+        const [r] = await entry.driver.execute('SELECT @@SESSION.sql_mode', { session })
+        const mode = String(r?.rows[0]?.[0] ?? '')
+        modes = { ansiQuotes: /ANSI_QUOTES/i.test(mode), noBackslashEscapes: /NO_BACKSLASH_ESCAPES/i.test(mode) }
+      }
+      const verdict = readVerdict(script, driver, modes)
+      if (!verdict.ok) throw new ReadOnlyViolationError(verdict.reason)
+      if (driver === 'mssql') {
+        // SQL Server reads wait for locked rows (an AI chat's own uncommitted write): give up after a while instead.
+        if (own) await entry.driver.execute(`SET LOCK_TIMEOUT ${READ_LOCK_TIMEOUT_MS}`, { session }).catch(() => {})
+        for (const s of verdict.statements) await this.mssqlReadsOnly(entry, session, s.text, verdict.statements.length === 1 ? options.params : undefined)
+      }
+      if (dialect.beginReadOnly) {
+        await entry.driver.execute(dialect.beginReadOnly, { session })
+        begun = true
+      }
+      // Oracle's read-only transaction has no id to ask about; ClickHouse, BigQuery and Trino have none.
+      const tracked = begun && !!entry.driver.transactionState && driver !== 'oracle' && (await entry.driver.transactionState(session)) === 'open'
+      for (const s of verdict.statements) {
+        const started = Date.now()
+        let text = s.text
+        let params = verdict.statements.length === 1 ? options.params : undefined
+        if (options.parameterValues && extractParameters(text, driver).length) {
+          const bound = bindParameters(text, driver, dialect, options.parameterValues)
+          text = bound.sql
+          params = bound.params
+        }
+        let failed = false
+        try {
+          const results = await entry.driver.execute(text, { session, maxRows: options.maxRows, signal: options.signal, params, unconfirmed: true })
+          const messages = results.flatMap((r) => r.messages ?? [])
+          outcomes.push({ sql: s.text, start: s.start, end: s.end, results: results.filter((r) => !r.messagesOnly), durationMs: Date.now() - started, ...(messages.length ? { messages } : {}) })
+        } catch (err) {
+          failed = true
+          outcomes.push({ sql: s.text, start: s.start, end: s.end, error: describeError(err), durationMs: Date.now() - started })
+        }
+        if (tracked && (await entry.driver.transactionState!(session)) === 'none') {
+          broken(s.text, s.end)
+          break
+        }
+        if (failed && (!options.continueOnError || options.signal?.aborted)) break
+      }
+      return outcomes
+    } finally {
+      if (begun) {
+        // SQL Server: the transaction must still be there to be rolled back; if it isn't, the guard was broken.
+        const gone = driver === 'mssql' && !!entry.driver.transactionState && (await entry.driver.transactionState(session).catch(() => 'none' as const)) === 'none'
+        if (gone && !outcomes.some((o) => o.error?.message.includes('guard was broken'))) broken(script, script.length)
+        await entry.driver.execute(dialect.rollback, { session }).catch(() => {})
+      }
+      if (own) await entry.driver.releaseSession(session).catch(() => {})
+    }
+  }
+
+  /**
+   * SQL Server's own reading of a batch, without running it: SHOWPLAN_XML compiles and plans every statement.
+   * Each must be one that reads (SELECT, a variable assignment, a condition, PRINT); a batch the server can't plan
+   * is refused. A login without SHOWPLAN permission gets the lexer alone, which then refuses anything unusual.
+   */
+  private async mssqlReadsOnly(entry: OpenConnection, session: string, batch: string, params?: unknown[]): Promise<void> {
+    const READS = new Set(['SELECT', 'SELECT WITHOUT QUERY', 'ASSIGN', 'COND', 'COND WITH QUERY', 'PRINT'])
+    try {
+      await entry.driver.execute('SET SHOWPLAN_XML ON', { session })
+    } catch (err) {
+      if (!/SHOWPLAN permission/i.test((err as Error).message)) throw err
+      // No permission to ask: fail closed on anything but plain tokens.
+      const lexed = lex(batch, 'mssql')
+      const unusual = !lexed.ok || lexed.tokens.some((t) => t.kind === 'comment' || ((t.kind === 'ident' || t.kind === 'string') && /['"[\]]|--|\/\*/.test(t.value ?? '')))
+      if (unusual) throw new ReadOnlyViolationError('This login may not ask SQL Server for a plan (SHOWPLAN permission), so only plain batches without comments, and without quotes or comment marks inside names and strings, are allowed here.')
+      return
+    }
+    let plans: QueryResult[]
+    try {
+      plans = await entry.driver.execute(batch, { session, params })
+    } catch (err) {
+      throw new ReadOnlyViolationError(`SQL Server could not plan this batch, so it is not run: ${(err as Error).message}`)
+    } finally {
+      await entry.driver.execute('SET SHOWPLAN_XML OFF', { session }).catch(() => {})
+    }
+    const xml = plans.map((r) => String(r.rows[0]?.[0] ?? '')).join('\n')
+    const types = [...xml.matchAll(/<Stmt\w+[^>]*?StatementType="([^"]+)"/g)].map((m) => m[1]!)
+    if (!types.length) throw new ReadOnlyViolationError('SQL Server gave no plan for this batch, so it is not run.')
+    const other = types.find((t) => !READS.has(t))
+    if (other) throw new ReadOnlyViolationError(`Only reads are allowed here (read-only): SQL Server plans this batch with ${other}.`)
+  }
+
+  /**
    * Rows of one statement in batches, holding one batch at a time (exports of any size). Read-only connections
    * only allow reads; drivers without streaming fall back to a normal execute.
    */
@@ -523,7 +640,7 @@ export class DatabaseService {
       },
       entry.driver.dialect,
     )
-    const [result] = await this.readIn(id, entry, this.readSession(entry, options.session), built.sql, built.params, options.signal)
+    const [result] = await this.readIn(id, entry, this.readSession(entry, options.session), built.sql, built.params, options.signal, hasRawFilter(options.filter))
     if (!result) throw new Error('Query returned no result')
     return { result, sql: built.sql }
   }
@@ -537,29 +654,42 @@ export class DatabaseService {
    * A read on a tab's session. On PostgreSQL inside an open transaction it runs behind a savepoint: a failing or
    * cancelled read (a typo in a filter, a page changed quickly) must not abort the tab's pending changes.
    */
-  private async readIn(id: string, entry: OpenConnection, session: string | undefined, sql: string, params: unknown[], signal?: AbortSignal): Promise<QueryResult[]> {
-    if (!session) return entry.driver.execute(sql, { params, signal })
+  private async readIn(id: string, entry: OpenConnection, session: string | undefined, sql: string, params: unknown[], signal?: AbortSignal, rawFilter = false): Promise<QueryResult[]> {
+    // A filter's own SQL nobody confirmed: one statement on the server's word (PostgreSQL's extended protocol), and
+    // SQL Server plans the query first, which must be a read.
+    if (rawFilter) {
+      if (entry.config.driver === 'mssql') {
+        const probe = `rawfilter-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        try {
+          await this.mssqlReadsOnly(entry, probe, sql, params)
+        } finally {
+          await entry.driver.releaseSession(probe).catch(() => {})
+        }
+      }
+    }
+    const unconfirmed = rawFilter || undefined
+    if (!session) return entry.driver.execute(sql, { params, signal, unconfirmed })
     if (entry.config.driver === 'duckdb' && (await this.transactionState(id, session)) === 'open') {
       // DuckDB has no savepoints, and any error or interrupt aborts the whole transaction. The read is tried first on
       // a connection of its own (committed rows; it may be cancelled there), and only then run on the session, in
       // line with saves and never interrupted.
       // (A table only the transaction has created is not there yet: a catalog error doesn't abort a transaction.)
-      await entry.driver.execute(sql, { params, signal }).catch((err: unknown) => {
+      await entry.driver.execute(sql, { params, signal, unconfirmed }).catch((err: unknown) => {
         if (signal?.aborted || !/^Catalog Error/.test((err as Error)?.message ?? '')) throw err
       })
-      return this.serialized(id, session, () => entry.driver.execute(sql, { params, session }))
+      return this.serialized(id, session, () => entry.driver.execute(sql, { params, session, unconfirmed }))
     }
     const guarded = entry.config.driver === 'postgres' && entry.serverInfo?.product === 'PostgreSQL' && (await this.transactionState(id, session)) === 'open'
-    if (!guarded) return entry.driver.execute(sql, { params, signal, session })
+    if (!guarded) return entry.driver.execute(sql, { params, signal, session, unconfirmed })
     // In line with saves and Commit on this session, and not cancelled (a cancel hits the session's process, which
     // could land on a save's statement): a stale read just finishes and its result is dropped.
-    return this.serialized(id, session, () => this.guardedRead(entry, session, sql, params))
+    return this.serialized(id, session, () => this.guardedRead(entry, session, sql, params, unconfirmed))
   }
 
-  private async guardedRead(entry: OpenConnection, session: string, sql: string, params: unknown[]): Promise<QueryResult[]> {
+  private async guardedRead(entry: OpenConnection, session: string, sql: string, params: unknown[], unconfirmed?: boolean): Promise<QueryResult[]> {
     await entry.driver.execute('SAVEPOINT dbm_read', { session })
     try {
-      const results = await entry.driver.execute(sql, { params, session })
+      const results = await entry.driver.execute(sql, { params, session, unconfirmed })
       await entry.driver.execute('RELEASE SAVEPOINT dbm_read', { session }).catch(() => {})
       return results
     } catch (err) {
@@ -577,7 +707,7 @@ export class DatabaseService {
       { table: options.table, filter: options.filter, knownColumns: table?.columns.map((c) => c.name), columnTypes: table && Object.fromEntries(table.columns.map((c) => [c.name, c.dataType])) },
       entry.driver.dialect,
     )
-    const [result] = await this.readIn(id, entry, this.readSession(entry, options.session), built.sql, built.params, options.signal)
+    const [result] = await this.readIn(id, entry, this.readSession(entry, options.session), built.sql, built.params, options.signal, hasRawFilter(options.filter))
     return Number(result?.rows[0]?.[0] ?? 0)
   }
 
@@ -591,7 +721,7 @@ export class DatabaseService {
     const table = await this.findTable(id, options.table)
     const q = profileQueries(options.table, options.column, options.filter, entry.driver.dialect, table)
     const session = this.readSession(entry, options.session)
-    const read = async (query: BuiltQuery) => (await this.readIn(id, entry, session, query.sql, query.params, options.signal))[0]
+    const read = async (query: BuiltQuery) => (await this.readIn(id, entry, session, query.sql, query.params, options.signal, hasRawFilter(options.filter)))[0]
     const optional = async (query: BuiltQuery) => {
       try {
         return await read(query)

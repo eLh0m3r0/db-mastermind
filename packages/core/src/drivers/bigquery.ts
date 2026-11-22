@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { BigQuery, type BigQueryOptions, type Job, type Query, type TableField } from '@google-cloud/bigquery'
 import { bigqueryDialect } from '../dialect.js'
-import { checkAffected, elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
+import { checkAffected, elapsed, QueryCancelledError, ReadOnlyViolationError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import type { CellValue, ColumnInfo, ConnectionConfig, QueryOptions, QueryResult, SchemaSnapshot, ServerInfo, TableInfo } from '../types.js'
 import { normalizeValue } from '../values.js'
@@ -174,6 +174,12 @@ export class BigQueryDriver implements DatabaseDriver {
   async execute(sql: string, options: QueryOptions = {}): Promise<QueryResult[]> {
     if (options.signal?.aborted) throw new QueryCancelledError()
     const start = process.hrtime.bigint()
+    // BigQuery says what a statement is without running it (a dry run): only a SELECT, never a script.
+    if (options.unconfirmed) {
+      const [dry] = await this.bq.createQueryJob({ query: sql.trim().replace(/;\s*$/, ''), useLegacySql: false, location: this.location, dryRun: true, ...bigqueryParams(options.params) })
+      const type = (dry.metadata as { statistics?: { query?: { statementType?: string } } } | undefined)?.statistics?.query?.statementType
+      if (type !== 'SELECT') throw new ReadOnlyViolationError(`Only reads are allowed here (read-only): BigQuery reads this as ${type ?? 'something it would not say'}.`)
+    }
     const job = await this.startJob(sql, options.params)
     return this.cancelOnAbort(job, options.signal, this.read(job, options.maxRows, start))
   }

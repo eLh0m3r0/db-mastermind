@@ -67,49 +67,49 @@ function statementProblem(script: string, code: Token[], family: string): string
   while (code[first] && code[first]!.kind === 'op' && script[code[first]!.start] === '(') first++
   const head = words[first] ?? ''
   const starts = STARTS[family] ?? STARTS.postgres!
-  if (!starts.has(head)) return `Only reads are allowed here: a statement starting with ${head || script.slice(code[0]!.start, code[0]!.end)} is not run.`
+  if (!starts.has(head)) return `Only reads are allowed here (read-only): a statement starting with ${head || script.slice(code[0]!.start, code[0]!.end)} is not run.`
   for (let k = 0; k < words.length; k++) {
     const w = words[k]!
-    if (NEVER.has(w)) return `Only reads are allowed here: ${w} is not.`
+    if (NEVER.has(w)) return `Only reads are allowed here (read-only): ${w} is not.`
     // UPDATE only in FOR UPDATE / FOR NO KEY UPDATE (row locks): refused too, a read takes no locks here.
-    if (w === 'UPDATE') return 'Only reads are allowed here: UPDATE is not.'
+    if (w === 'UPDATE') return 'Only reads are allowed here (read-only): UPDATE is not.'
     // (REPLACE(…) is a string function; REPLACE INTO is MySQL's insert.)
-    if (w === 'REPLACE' && script[code[k + 1]?.start ?? -1] !== '(') return 'Only reads are allowed here: REPLACE is not.'
-    if ((w === 'START' && words[k + 1] === 'TRANSACTION') || (w === 'RELEASE' && words[k + 1] === 'SAVEPOINT') || (w === 'LOAD' && (words[k + 1] === 'DATA' || words[k + 1] === 'XML'))) return `Only reads are allowed here: ${w} ${words[k + 1]} is not.`
-    if (w === 'FOR' && ['SHARE', 'KEY', 'NO'].includes(words[k + 1] ?? '')) return 'Only reads are allowed here: row locks are not.'
+    if (w === 'REPLACE' && script[code[k + 1]?.start ?? -1] !== '(') return 'Only reads are allowed here (read-only): REPLACE is not.'
+    if ((w === 'START' && words[k + 1] === 'TRANSACTION') || (w === 'RELEASE' && words[k + 1] === 'SAVEPOINT') || (w === 'LOAD' && (words[k + 1] === 'DATA' || words[k + 1] === 'XML'))) return `Only reads are allowed here (read-only): ${w} ${words[k + 1]} is not.`
+    if (w === 'FOR' && ['SHARE', 'KEY', 'NO'].includes(words[k + 1] ?? '')) return 'Only reads are allowed here (read-only): row locks are not.'
   }
   // EXPLAIN ANALYZE runs what it explains: only of a read.
   if (head === 'EXPLAIN' && words.some((w) => w === 'ANALYZE' || w === 'ANALYSE')) {
     const rest = words.slice(first + 1).find((w) => ['SELECT', 'WITH', 'VALUES', 'TABLE'].includes(w))
-    if (!rest) return 'Only reads are allowed here: EXPLAIN ANALYZE of something that is not a query is not.'
+    if (!rest) return 'Only reads are allowed here (read-only): EXPLAIN ANALYZE of something that is not a query is not.'
   }
   // A transaction ends with END in PostgreSQL: only CASE … END is allowed.
   const cases = words.filter((w) => w === 'CASE').length
   const ends = words.filter((w) => w === 'END').length
-  if (family !== 'mssql' && ends > cases) return 'Only reads are allowed here: END is not.'
+  if (family !== 'mssql' && ends > cases) return 'Only reads are allowed here (read-only): END is not.'
   if (family === 'mssql') {
     // T-SQL: SET only of a variable (SET @x = …), BEGIN only of a block (not TRAN), no transaction words anywhere.
     for (let k = 0; k < words.length; k++) {
       const w = words[k]!
       if (w === 'SET' && !/^@/.test(script.slice(code[k + 1]?.start ?? 0, code[k + 1]?.end ?? 0))) {
         // (SET is also part of UPDATE … SET, refused above.)
-        return 'Only reads are allowed here: SET is only for variables (SET @x = …).'
+        return 'Only reads are allowed here (read-only): SET is only for variables (SET @x = …).'
       }
-      if (w === 'BEGIN' && ['TRAN', 'TRANSACTION', 'DISTRIBUTED', 'DIALOG', 'CONVERSATION'].includes(words[k + 1] ?? '')) return 'Only reads are allowed here: BEGIN TRANSACTION is not.'
-      if (w === 'SAVE' && ['TRAN', 'TRANSACTION'].includes(words[k + 1] ?? '')) return 'Only reads are allowed here: SAVE TRANSACTION is not.'
-      if (w === 'GO' || w === 'USE' || w === 'SETUSER' || w === 'REVERT') return `Only reads are allowed here: ${w} is not.`
+      if (w === 'BEGIN' && ['TRAN', 'TRANSACTION', 'DISTRIBUTED', 'DIALOG', 'CONVERSATION'].includes(words[k + 1] ?? '')) return 'Only reads are allowed here (read-only): BEGIN TRANSACTION is not.'
+      if (w === 'SAVE' && ['TRAN', 'TRANSACTION'].includes(words[k + 1] ?? '')) return 'Only reads are allowed here (read-only): SAVE TRANSACTION is not.'
+      if (w === 'GO' || w === 'USE' || w === 'SETUSER' || w === 'REVERT') return `Only reads are allowed here (read-only): ${w} is not.`
     }
     // A name that starts with sp_ / xp_ at the head of a batch runs a procedure without EXEC.
-    if (/^(SP|XP)_/.test(head)) return 'Only reads are allowed here: procedures are not.'
+    if (/^(SP|XP)_/.test(head)) return 'Only reads are allowed here (read-only): procedures are not.'
   }
-  if (head === 'SET' && family !== 'mssql') return 'Only reads are allowed here: SET is not.'
+  if (head === 'SET' && family !== 'mssql') return 'Only reads are allowed here (read-only): SET is not.'
   if (head === 'PRAGMA') {
     const name = words[first + 1]?.toLowerCase() ?? ''
     const after = code[first + 2] ? script.slice(code[first + 2]!.start, code[first + 2]!.end) : ''
     // (A schema-qualified pragma: main.table_info(t).)
     const [pragma, sign] = after === '.' ? [words[first + 3]?.toLowerCase() ?? '', code[first + 4] ? script.slice(code[first + 4]!.start, code[first + 4]!.end) : ''] : [name, after]
-    if (sign === '=') return 'Only reads are allowed here: a PRAGMA that sets something is not.'
-    if (sign === '(' ? !READ_PRAGMAS_WITH_ARGUMENT.has(pragma) : !READ_PRAGMAS.has(pragma)) return `Only reads are allowed here: PRAGMA ${pragma} is not.`
+    if (sign === '=') return 'Only reads are allowed here (read-only): a PRAGMA that sets something is not.'
+    if (sign === '(' ? !READ_PRAGMAS_WITH_ARGUMENT.has(pragma) : !READ_PRAGMAS.has(pragma)) return `Only reads are allowed here (read-only): PRAGMA ${pragma} is not.`
   }
   return undefined
 }

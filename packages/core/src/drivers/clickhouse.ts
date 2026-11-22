@@ -106,13 +106,14 @@ export class ClickHouseDriver implements DatabaseDriver {
     const session = options.session ? { session_id: `dbm-${options.session}` } : {}
     try {
       if (!RETURNS_ROWS.test(stripComments(query))) {
-        const r = await this.db.command({ query, abort_signal: options.signal, ...session })
+        // (readonly 2: the server refuses anything that writes, settings may still be given.)
+        const r = await this.db.command({ query, abort_signal: options.signal, ...(options.unconfirmed ? { clickhouse_settings: { ...this.settings, readonly: '2' } } : {}), ...session })
         const written = Number(r.summary?.written_rows ?? 0)
         const command = /^\s*(\w+)/.exec(stripComments(query))?.[1]?.toUpperCase()
         return [{ fields: [], rows: [], rowCount: written, affectedRows: written || undefined, command, durationMs: elapsed(start) }]
       }
       const limit = options.maxRows === undefined ? {} : { max_result_rows: String(options.maxRows + 1), result_overflow_mode: 'break' as const }
-      const rs = await this.db.query({ query, format: 'JSONCompactEachRowWithNamesAndTypes', abort_signal: options.signal, clickhouse_settings: { ...this.settings, ...limit }, ...session })
+      const rs = await this.db.query({ query, format: 'JSONCompactEachRowWithNamesAndTypes', abort_signal: options.signal, clickhouse_settings: { ...this.settings, ...limit, ...(options.unconfirmed ? { readonly: '2' } : {}) }, ...session })
       const lines = (await rs.text()).split('\n').filter((l) => l.trim())
       const [names = [], types = [], ...data] = lines.map(rowOf)
       let rows = data as unknown[][]
