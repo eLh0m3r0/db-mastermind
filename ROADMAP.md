@@ -953,6 +953,10 @@ depth. The specification: [docs/specs/launch.md](docs/specs/launch.md).
 - ⬜ For the owner: Apple Developer ID for notarization (prepared and off until its secrets exist:
   docs/macos-notarization.md), the npm trusted publisher, the Store submission, the Product Hunt day
 
+1.5.1 (2026-11-22), found by the owner on the day of the release: AI on a model that is not linked to a connected
+database said "Connect to a database to chat about it". A chat about a model is now about its text: no connection, no
+database tools, kept with the model (e2e/flow118).
+
 Not done, known: a terminal start of the `.deb` on a system without user namespaces still stops with Chromium's
 error (only the menu entry falls back); a real drag of a folder from Finder was never automated (the import
 behind it is tested); BigQuery and Trino guards are not tested against the services.
