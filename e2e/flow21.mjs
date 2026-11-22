@@ -28,8 +28,9 @@ try {
   await win.getByRole('button', { name: 'Design with AI' }).click()
   await win.getByText('Design or extend the model…').click()
   await win.waitForTimeout(500)
-  const input = win.getByPlaceholder(/Ask about/)
-  await input.fill((await input.inputValue()).replace('Help me design', 'Extend this model with orders and order items for a small coffee shop. Do not ask questions. Help me design'))
+  const input = win.getByPlaceholder(/What should (change in the model|the database store)/)
+  // Design with AI starts with an empty box ("What should the database store?"); its instructions travel as hidden context.
+  await input.fill('Extend this model with orders and order items for a small coffee shop. Do not ask questions.')
   await input.press('Enter')
   await win.getByRole('button', { name: 'Apply to model' }).first().waitFor({ timeout: 240000 })
   await win.getByRole('button', { name: 'Apply to model' }).first().click()
