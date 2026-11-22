@@ -210,7 +210,7 @@
           <source media="(max-width: 719px)" srcset="screenshots/hero-phone-960.png" width="960" height="720">
           <source type="image/avif" srcset="screenshots/hero-1440.avif 1440w, screenshots/hero-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
           <source type="image/webp" srcset="screenshots/hero-1440.webp 1440w, screenshots/hero-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
-          <img src="screenshots/hero-1440.png" width="1440" height="900" alt="DB Mastermind in split view: an ER diagram of a coffee shop database on the left, an SQL query and a line chart of its result on the right." fetchpriority="high" loading="lazy" decoding="async">
+          <img src="screenshots/hero-1440.png" width="1440" height="900" alt="DB Mastermind in split view: the ER diagram of the demo coffee shop database on the left; on the right an SQL query of orders per month and its result as a line chart." fetchpriority="high" loading="lazy" decoding="async">
         </picture>
         <picture class="theme-dark">
           <source media="(max-width: 719px)" type="image/avif" srcset="screenshots/hero-phone-dark-960.avif" width="960" height="720">
@@ -218,7 +218,7 @@
           <source media="(max-width: 719px)" srcset="screenshots/hero-phone-dark-960.png" width="960" height="720">
           <source type="image/avif" srcset="screenshots/hero-dark-1440.avif 1440w, screenshots/hero-dark-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
           <source type="image/webp" srcset="screenshots/hero-dark-1440.webp 1440w, screenshots/hero-dark-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
-          <img src="screenshots/hero-dark-1440.png" width="1440" height="900" alt="DB Mastermind in split view: an ER diagram of a coffee shop database on the left, an SQL query and a line chart of its result on the right." fetchpriority="high" loading="lazy" decoding="async">
+          <img src="screenshots/hero-dark-1440.png" width="1440" height="900" alt="DB Mastermind in split view: the ER diagram of the demo coffee shop database on the left; on the right an SQL query of orders per month and its result as a line chart." fetchpriority="high" loading="lazy" decoding="async">
         </picture>
       </figure>
     </div>
@@ -284,16 +284,22 @@
         <p class="lead">Draw a new database or change the one you have. Every change becomes a migration script you review, checked against the data that is already there.</p>
         <figure class="shot">
           <picture class="theme-light">
+            <source media="(max-width: 719px)" type="image/avif" srcset="screenshots/modeler-phone-960.avif" width="960" height="720">
+            <source media="(max-width: 719px)" type="image/webp" srcset="screenshots/modeler-phone-960.webp" width="960" height="720">
+            <source media="(max-width: 719px)" srcset="screenshots/modeler-phone-960.png" width="960" height="720">
             <source type="image/avif" srcset="screenshots/modeler-1440.avif 1440w, screenshots/modeler-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
             <source type="image/webp" srcset="screenshots/modeler-1440.webp 1440w, screenshots/modeler-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
-            <img src="screenshots/modeler-1440.png" width="1440" height="900" alt="A model on the canvas: five tables in two schemas with crow’s-foot relationships, and the panel of the selected table with its columns and foreign key." loading="lazy" decoding="async">
+            <img src="screenshots/modeler-1440.png" width="1440" height="900" alt="A model on the canvas: five tables in the sales and catalog schemas, with keys, types and crow’s-foot relationships." loading="lazy" decoding="async">
           </picture>
           <picture class="theme-dark">
+            <source media="(max-width: 719px)" type="image/avif" srcset="screenshots/modeler-phone-dark-960.avif" width="960" height="720">
+            <source media="(max-width: 719px)" type="image/webp" srcset="screenshots/modeler-phone-dark-960.webp" width="960" height="720">
+            <source media="(max-width: 719px)" srcset="screenshots/modeler-phone-dark-960.png" width="960" height="720">
             <source type="image/avif" srcset="screenshots/modeler-dark-1440.avif 1440w, screenshots/modeler-dark-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
             <source type="image/webp" srcset="screenshots/modeler-dark-1440.webp 1440w, screenshots/modeler-dark-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
-            <img src="screenshots/modeler-dark-1440.png" width="1440" height="900" alt="A model on the canvas: five tables in two schemas with crow’s-foot relationships, and the panel of the selected table with its columns and foreign key." loading="lazy" decoding="async">
+            <img src="screenshots/modeler-dark-1440.png" width="1440" height="900" alt="A model on the canvas: five tables in the sales and catalog schemas, with keys, types and crow’s-foot relationships." loading="lazy" decoding="async">
           </picture>
-          <figcaption>A model edited on the canvas, with the table’s panel open.</figcaption>
+          <figcaption>A model of five tables in two schemas, edited on the canvas.</figcaption>
         </figure>
         <ul class="items">
           <li id="d-model" class="has-key">
@@ -334,16 +340,22 @@
         <p class="engines" id="q-engines"><strong>PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite, DuckDB, ClickHouse, CockroachDB, BigQuery and Trino</strong>, tested in CI against running servers (BigQuery against its emulator), and CSV, Parquet and Excel files. Hosted databases too: Supabase, Neon, Timescale, Amazon RDS and Aurora, Azure Database and Azure SQL, Google Cloud SQL. Paste their connection string and the app recognizes the service.</p>
         <figure class="shot">
           <picture class="theme-light">
+            <source media="(max-width: 719px)" type="image/avif" srcset="screenshots/table-filters-phone-960.avif" width="960" height="720">
+            <source media="(max-width: 719px)" type="image/webp" srcset="screenshots/table-filters-phone-960.webp" width="960" height="720">
+            <source media="(max-width: 719px)" srcset="screenshots/table-filters-phone-960.png" width="960" height="720">
             <source type="image/avif" srcset="screenshots/table-filters-1440.avif 1440w, screenshots/table-filters-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
             <source type="image/webp" srcset="screenshots/table-filters-1440.webp 1440w, screenshots/table-filters-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
-            <img src="screenshots/table-filters-1440.png" width="1440" height="900" alt="The orders table filtered by status in a list and a date, with foreign-key arrows in the cells and the selected row’s details on the right." loading="lazy" decoding="async">
+            <img src="screenshots/table-filters-1440.png" width="1440" height="900" alt="The orders table filtered by status in a list and by date, with foreign-key arrows in the cells." loading="lazy" decoding="async">
           </picture>
           <picture class="theme-dark">
+            <source media="(max-width: 719px)" type="image/avif" srcset="screenshots/table-filters-phone-dark-960.avif" width="960" height="720">
+            <source media="(max-width: 719px)" type="image/webp" srcset="screenshots/table-filters-phone-dark-960.webp" width="960" height="720">
+            <source media="(max-width: 719px)" srcset="screenshots/table-filters-phone-dark-960.png" width="960" height="720">
             <source type="image/avif" srcset="screenshots/table-filters-dark-1440.avif 1440w, screenshots/table-filters-dark-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
             <source type="image/webp" srcset="screenshots/table-filters-dark-1440.webp 1440w, screenshots/table-filters-dark-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
-            <img src="screenshots/table-filters-dark-1440.png" width="1440" height="900" alt="The orders table filtered by status in a list and a date, with foreign-key arrows in the cells and the selected row’s details on the right." loading="lazy" decoding="async">
+            <img src="screenshots/table-filters-dark-1440.png" width="1440" height="900" alt="The orders table filtered by status in a list and by date, with foreign-key arrows in the cells." loading="lazy" decoding="async">
           </picture>
-          <figcaption>A table filtered by two conditions, with the row’s details on the right.</figcaption>
+          <figcaption>A table filtered by two conditions; an arrow in a foreign-key cell opens the row it points to.</figcaption>
         </figure>
         <ul class="items">
           <li id="q-filters" class="has-key">
@@ -383,16 +395,22 @@
         <p class="lead">Turn a result into a chart in one click, and keep the ones you check often on a dashboard.</p>
         <figure class="shot">
           <picture class="theme-light">
+            <source media="(max-width: 719px)" type="image/avif" srcset="screenshots/dashboard-phone-960.avif" width="960" height="720">
+            <source media="(max-width: 719px)" type="image/webp" srcset="screenshots/dashboard-phone-960.webp" width="960" height="720">
+            <source media="(max-width: 719px)" srcset="screenshots/dashboard-phone-960.png" width="960" height="720">
             <source type="image/avif" srcset="screenshots/dashboard-1440.avif 1440w, screenshots/dashboard-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
             <source type="image/webp" srcset="screenshots/dashboard-1440.webp 1440w, screenshots/dashboard-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
-            <img src="screenshots/dashboard-1440.png" width="1440" height="900" alt="A dashboard of pinned query results: charts and a single number, refreshed by the app." loading="lazy" decoding="async">
+            <img src="screenshots/dashboard-1440.png" width="1440" height="900" alt="A dashboard named Sales: orders per month as a line chart, with more pinned results beside and below it." loading="lazy" decoding="async">
           </picture>
           <picture class="theme-dark">
+            <source media="(max-width: 719px)" type="image/avif" srcset="screenshots/dashboard-phone-dark-960.avif" width="960" height="720">
+            <source media="(max-width: 719px)" type="image/webp" srcset="screenshots/dashboard-phone-dark-960.webp" width="960" height="720">
+            <source media="(max-width: 719px)" srcset="screenshots/dashboard-phone-dark-960.png" width="960" height="720">
             <source type="image/avif" srcset="screenshots/dashboard-dark-1440.avif 1440w, screenshots/dashboard-dark-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
             <source type="image/webp" srcset="screenshots/dashboard-dark-1440.webp 1440w, screenshots/dashboard-dark-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
-            <img src="screenshots/dashboard-dark-1440.png" width="1440" height="900" alt="A dashboard of pinned query results: charts and a single number, refreshed by the app." loading="lazy" decoding="async">
+            <img src="screenshots/dashboard-dark-1440.png" width="1440" height="900" alt="A dashboard named Sales: orders per month as a line chart, with more pinned results beside and below it." loading="lazy" decoding="async">
           </picture>
-          <figcaption>Pinned results on a dashboard.</figcaption>
+          <figcaption>Query results pinned to a dashboard.</figcaption>
         </figure>
         <ul class="items">
           <li id="s-charts" class="has-key">
@@ -425,16 +443,22 @@
       <p class="engines">Claude Code, Codex, Anthropic, OpenAI, OpenRouter, Gemini, Azure OpenAI, Ollama, and any OpenAI-compatible server such as LM Studio or vLLM.</p>
       <figure class="shot">
         <picture class="theme-light">
+          <source media="(max-width: 719px)" type="image/avif" srcset="screenshots/ai-phone-960.avif" width="960" height="720">
+          <source media="(max-width: 719px)" type="image/webp" srcset="screenshots/ai-phone-960.webp" width="960" height="720">
+          <source media="(max-width: 719px)" srcset="screenshots/ai-phone-960.png" width="960" height="720">
           <source type="image/avif" srcset="screenshots/ai-1440.avif 1440w, screenshots/ai-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
           <source type="image/webp" srcset="screenshots/ai-1440.webp 1440w, screenshots/ai-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
-          <img src="screenshots/ai-1440.png" width="1440" height="900" alt="The AI assistant beside an ER diagram: it read the sales notes in the knowledge base, ran a read-only query and answers with a table of revenue by category and the SQL it used." loading="lazy" decoding="async">
+          <img src="screenshots/ai-1440.png" width="1440" height="900" alt="The AI assistant: it read the sales notes in the knowledge base, ran read-only queries and answers with a table of revenue by category." loading="lazy" decoding="async">
         </picture>
         <picture class="theme-dark">
+          <source media="(max-width: 719px)" type="image/avif" srcset="screenshots/ai-phone-dark-960.avif" width="960" height="720">
+          <source media="(max-width: 719px)" type="image/webp" srcset="screenshots/ai-phone-dark-960.webp" width="960" height="720">
+          <source media="(max-width: 719px)" srcset="screenshots/ai-phone-dark-960.png" width="960" height="720">
           <source type="image/avif" srcset="screenshots/ai-dark-1440.avif 1440w, screenshots/ai-dark-2880.avif 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
           <source type="image/webp" srcset="screenshots/ai-dark-1440.webp 1440w, screenshots/ai-dark-2880.webp 2880w" sizes="(min-width: 1296px) 1200px, calc(100vw - 48px)">
-          <img src="screenshots/ai-dark-1440.png" width="1440" height="900" alt="The AI assistant beside an ER diagram: it read the sales notes in the knowledge base, ran a read-only query and answers with a table of revenue by category and the SQL it used." loading="lazy" decoding="async">
+          <img src="screenshots/ai-dark-1440.png" width="1440" height="900" alt="The AI assistant: it read the sales notes in the knowledge base, ran read-only queries and answers with a table of revenue by category." loading="lazy" decoding="async">
         </picture>
-        <figcaption>The assistant answers from the knowledge base and shows the SQL it ran.</figcaption>
+        <figcaption>The assistant reads the knowledge base, runs read-only queries and answers with a table.</figcaption>
       </figure>
       <ul class="items">
         <li id="a-ask" class="has-key">
