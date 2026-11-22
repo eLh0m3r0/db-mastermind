@@ -143,7 +143,7 @@ for (const [driver, spec] of Object.entries(STREAM) as [DriverId, NonNullable<(t
           for await (const _ of svc.streamQuery(readOnly.id, spec.refused[0]!)) void _
         }
         // (DuckDB's guarded instance refuses the file itself.)
-        await expect(take()).rejects.toThrow(/read-only|Permission Error/i)
+        await expect(take()).rejects.toThrow(/read-only|can.t be read here/i)
       }
     })
   })
