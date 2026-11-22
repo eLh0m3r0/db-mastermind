@@ -622,7 +622,14 @@ export interface MigrationOptions {
 export function generateMigration(changes: SchemaChange[], dialect: Dialect, tables: TableInfo[] = [], options: MigrationOptions = {}): Migration {
   const guarded = guardChanges(changes, dialect, options)
   const migration = renderMigration(guarded.changes, dialect, tables, guarded.options)
-  return guardStatements({ ...migration, warnings: [...guarded.warnings, ...migration.warnings] }, dialect)
+  const out = guardStatements({ ...migration, warnings: [...guarded.warnings, ...migration.warnings] }, dialect)
+  // (Tests and e2e runs collect every Left out line the guard writes: DBM_GUARD_LOG=<file>.)
+  const log = typeof process !== 'undefined' ? process.env?.DBM_GUARD_LOG : undefined
+  if (log) {
+    const lines = out.warnings.filter((w) => /Left out/.test(w.message)).map((w) => `${dialect.id}\t${w.message}\n`)
+    if (lines.length) void import('node:fs').then((fs) => fs.appendFileSync(log, lines.join('')))
+  }
+  return out
 }
 
 const FK_ACTIONS = new Set(['CASCADE', 'RESTRICT', 'SET NULL', 'SET DEFAULT', 'NO ACTION'])
