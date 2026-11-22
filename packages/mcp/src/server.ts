@@ -69,16 +69,19 @@ export function createMcpServer(options: McpServerOptions): Server {
     { capabilities: { tools: {}, resources: {}, prompts: {} }, instructions: INSTRUCTIONS },
   )
   const single = connections.length === 1
+  /** A connection that carries AI permissions is served only when they allow agents. */
+  const shared = (c: ConnectionConfig) => !c.ai || (c.ai.access !== 'off' && c.ai.agents !== false)
 
   const findConnection = (ref: unknown): ConnectionConfig => {
-    if ((ref === undefined || ref === '') && single) return connections[0]!
     const key = String(ref ?? '').trim().toLowerCase()
-    const found = connections.find((c) => c.id.toLowerCase() === key || c.name.toLowerCase() === key)
+    const found = (ref === undefined || ref === '') && single ? connections[0] : connections.find((c) => c.id.toLowerCase() === key || c.name.toLowerCase() === key)
     if (!found) {
       throw new Error(
-        `Unknown connection "${String(ref ?? '')}". Available: ${connections.map((c) => c.name).join(', ') || 'none'}`,
+        `Unknown connection "${String(ref ?? '')}". Available: ${connections.filter(shared).map((c) => c.name).join(', ') || 'none'}`,
       )
     }
+    // Whoever built the list should have left it out; a connection whose own permissions say no is not served anyway.
+    if (!shared(found)) throw new Error(`"${found.name}" is not shared with AI agents (its AI permissions), so this was not run.`)
     return found
   }
 
@@ -185,7 +188,7 @@ export function createMcpServer(options: McpServerOptions): Server {
     const { name, arguments: args = {} } = request.params
     try {
       if (name === 'list_connections') {
-        const lines = connections.map(
+        const lines = connections.filter(shared).map(
           (c) =>
             `${c.name} — ${c.driver}${c.driver === 'sqlite' ? ` ${c.filePath}` : ` ${c.host ?? ''}${c.database ? `/${c.database}` : ''}`}${c.readOnly ? ' (read-only)' : ''}${c.environment ? ` [${c.environment}]` : ''}${c.knowledgeBasePath ? ' (has knowledge base)' : ''}`,
         )
@@ -212,7 +215,7 @@ export function createMcpServer(options: McpServerOptions): Server {
   })
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => ({
-    resources: connections.map((c) => ({
+    resources: connections.filter(shared).map((c) => ({
       uri: `dbmastermind://${encodeURIComponent(c.name)}/schema`,
       name: `${c.name} schema`,
       description: `Tables, columns and relationships of ${c.name}`,
