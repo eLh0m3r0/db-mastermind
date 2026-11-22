@@ -109,7 +109,7 @@ export function HomeScreen() {
           <Way
             icon={<Shapes size={18} />}
             title={t('Models')}
-            points={[t('Tables and relationships designed without a database'), t('Compared with a database, with the migration script'), t('SQL for any database'), t('Opens DBML, Prisma, Mermaid, drawDB, MySQL Workbench and DeZign files')]}
+            points={[t('Tables and relationships designed without a database'), t('Compared with a database, with the migration script'), t('SQL for any database'), t('Opens DBML, Prisma, Mermaid, drawDB, MySQL Workbench and DeZign')]}
             actions={
               <>
                 <Button size="sm" variant="primary" icon={<FilePlus2 size={14} />} onClick={() => runCommand('new-model')} title={t('Design a database from scratch: draw the tables, then get the SQL for any database. No connection needed')}>

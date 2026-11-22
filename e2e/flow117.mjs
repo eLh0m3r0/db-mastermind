@@ -112,7 +112,7 @@ try {
       check(`start page ${lang} ${w}×${h}: the demo is an outlined button beside New connection`, p.demoBeside && p.demoOutlined, JSON.stringify(p))
       check(`start page ${lang} ${w}×${h}: no button label cut or wrapped`, p.cut.length === 0, p.cut.join(' | '))
       if (w === 1280) check(`start page ${lang} ${w}×${h}: fits without scrolling`, !p.scrolls)
-      const words = lang === 'en' ? ['docker-compose file on the window', 'Opens DBML, Prisma, Mermaid, drawDB, MySQL Workbench and DeZign files'] : ['docker-compose svého projektu', 'Otevře soubory DBML, Prisma, Mermaid, drawDB, MySQL Workbench a DeZign']
+      const words = lang === 'en' ? ['docker-compose file on the window', 'Opens DBML, Prisma, Mermaid, drawDB, MySQL Workbench and DeZign'] : ['docker-compose svého projektu', 'Otevře DBML, Prisma, Mermaid, drawDB, MySQL Workbench a DeZign']
       check(`start page ${lang}: the drop of a project file and the model formats are named`, words.every((x) => p.text.includes(x)), p.text)
     }
   }

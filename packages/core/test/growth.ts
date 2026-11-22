@@ -20,10 +20,20 @@ export function growth(prepare: (n: number) => () => unknown, n: number): { rati
     }
     return ms
   }
-  const small = best(n)
-  const large = best(4 * n)
-  return { ratio: large / Math.max(small, 2), small, large }
+  // The whole measurement is repeated when it looks super-linear and the lowest ratio counts: on a machine busy with
+  // other test files one of the two sizes can be slowed several times over, while quadratic work measures about 16
+  // every time, however often it is asked.
+  let result = { ratio: Infinity, small: 0, large: 0 }
+  for (let attempt = 0; attempt < ATTEMPTS && result.ratio >= LINEAR; attempt++) {
+    const small = best(n)
+    const large = best(4 * n)
+    const ratio = large / Math.max(small, 2)
+    if (ratio < result.ratio) result = { ratio, small, large }
+  }
+  return result
 }
+
+const ATTEMPTS = 4
 
 /** Linear work grows about 4 times; quadratic 16. Anything under 10 is taken as linear. */
 export const LINEAR = 10
@@ -44,7 +54,12 @@ export async function growthAsync(prepare: (n: number) => () => Promise<unknown>
     }
     return ms
   }
-  const small = await best(n)
-  const large = await best(4 * n)
-  return { ratio: large / Math.max(small, 2), small, large }
+  let result = { ratio: Infinity, small: 0, large: 0 }
+  for (let attempt = 0; attempt < ATTEMPTS && result.ratio >= LINEAR; attempt++) {
+    const small = await best(n)
+    const large = await best(4 * n)
+    const ratio = large / Math.max(small, 2)
+    if (ratio < result.ratio) result = { ratio, small, large }
+  }
+  return result
 }

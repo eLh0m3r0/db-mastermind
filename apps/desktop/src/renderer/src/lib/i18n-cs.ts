@@ -2120,7 +2120,7 @@ export const cs: Record<string, string> = {
   'passes SQL through to the connector, which may write': 'předává SQL konektoru, který může zapisovat',
   "Or drop a project's .env or docker-compose file on the window.": 'Nebo do okna přetáhněte soubor .env nebo docker-compose svého projektu.',
   'SQL for any database': 'SQL pro jakoukoli databázi',
-  'Opens DBML, Prisma, Mermaid, drawDB, MySQL Workbench and DeZign files': 'Otevře soubory DBML, Prisma, Mermaid, drawDB, MySQL Workbench a DeZign',
+  'Opens DBML, Prisma, Mermaid, drawDB, MySQL Workbench and DeZign': 'Otevře DBML, Prisma, Mermaid, drawDB, MySQL Workbench a DeZign',
 }
 
 /**
