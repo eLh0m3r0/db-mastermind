@@ -1,3 +1,5 @@
+import { conditionVerdict, readVerdict } from './sql-readonly.js'
+import { lex } from './sql-lexer.js'
 import type { DriverId } from './types.js'
 
 export interface SqlStatement {
@@ -33,6 +35,12 @@ export function splitStatements(
   let lastWords: string[] = []
   // PostgreSQL COPY … FROM STDIN: its data lines (up to a line "\.") belong to it, they are not SQL.
   let copyData = false
+  // Strings, quoted names and comments as the database reads them (sql-lexer.ts): skipped whole. From where the
+  // lexer can't go on (an unclosed string or comment), the rest of the script belongs to the current statement.
+  const lexed = lex(script, driver)
+  const skip = new Map<number, number>()
+  for (const t of lexed.tokens) if (t.kind === 'comment' || t.kind === 'string' || t.kind === 'ident') skip.set(t.start, t.end)
+  const opaqueFrom = lexed.ok ? Infinity : lexed.at
 
   const push = (endOfText: number, endIncl: number) => {
     const raw = script.slice(stmtStart, endOfText)
@@ -117,62 +125,14 @@ export function splitStatements(
       }
     }
 
-    if (ch === '-' && next === '-') {
-      const lineEnd = script.indexOf('\n', i)
-      i = lineEnd === -1 ? n : lineEnd + 1
+    if (i >= opaqueFrom) {
+      i = n
       continue
     }
-    if (ch === '#' && (driver === 'mysql' || driver === 'mariadb')) {
-      const lineEnd = script.indexOf('\n', i)
-      i = lineEnd === -1 ? n : lineEnd + 1
+    const skipped = skip.get(i)
+    if (skipped !== undefined) {
+      i = skipped
       continue
-    }
-    if (ch === '/' && next === '*') {
-      // PostgreSQL supports nested block comments.
-      let depth = 1
-      i += 2
-      while (i < n && depth > 0) {
-        if (script[i] === '/' && script[i + 1] === '*' && driver === 'postgres') {
-          depth++
-          i += 2
-        } else if (script[i] === '*' && script[i + 1] === '/') {
-          depth--
-          i += 2
-        } else i++
-      }
-      continue
-    }
-    if (ch === "'" || ch === '"' || ch === '`' || (ch === '[' && driver === 'mssql')) {
-      const close = ch === '[' ? ']' : ch
-      // PostgreSQL's E'…' strings take backslash escapes (E'it\'s'); plain '…' ones don't.
-      const escapeString = ch === "'" && (driver === 'postgres' || driver === 'duckdb') && /[eE]/.test(script[i - 1] ?? '') && !isWordChar(script[i - 2])
-      const backslashEscapes = ((driver === 'mysql' || driver === 'mariadb') && ch !== '`') || escapeString
-      i++
-      while (i < n) {
-        if (backslashEscapes && script[i] === '\\') {
-          i += 2
-          continue
-        }
-        if (script[i] === close) {
-          if (script[i + 1] === close) {
-            i += 2
-            continue
-          }
-          break
-        }
-        i++
-      }
-      i++
-      continue
-    }
-    if (ch === '$' && (driver === 'postgres' || driver === 'duckdb') && !isWordChar(script[i - 1])) {
-      const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(script.slice(i))
-      if (m) {
-        const tag = m[0]
-        const close = script.indexOf(tag, i + tag.length)
-        i = close === -1 ? n : close + tag.length
-        continue
-      }
     }
 
     if (isWordChar(ch) && !isWordChar(script[i - 1]) && !(delimiter !== ';' && script.startsWith(delimiter, i))) {
@@ -342,72 +302,20 @@ function isReadPragma(sql: string): boolean {
  * E'' strings), like splitStatements.
  */
 export function stripLiterals(sql: string, driver?: DriverId): string {
-  const mysql = driver === 'mysql' || driver === 'mariadb'
-  const pgLike = driver === 'postgres' || driver === 'duckdb'
-  const n = sql.length
+  const lexed = lex(sql, driver ?? 'postgres')
   let out = ''
-  let i = 0
-  while (i < n) {
-    const ch = sql[i]!
-    const next = sql[i + 1]
-    if ((ch === '-' && next === '-') || (ch === '#' && mysql)) {
-      const lineEnd = sql.indexOf('\n', i)
-      out += ' '
-      i = lineEnd === -1 ? n : lineEnd
-      continue
-    }
-    if (ch === '/' && next === '*') {
-      let depth = 1
-      i += 2
-      while (i < n && depth > 0) {
-        if (sql[i] === '/' && sql[i + 1] === '*' && driver === 'postgres') {
-          depth++
-          i += 2
-        } else if (sql[i] === '*' && sql[i + 1] === '/') {
-          depth--
-          i += 2
-        } else i++
-      }
-      out += ' '
-      continue
-    }
-    if (ch === "'" || ch === '"' || (ch === '`' && mysql) || (ch === '[' && driver === 'mssql')) {
-      const close = ch === '[' ? ']' : ch
-      const escapeString = ch === "'" && pgLike && /[eE]/.test(sql[i - 1] ?? '') && !isWordChar(sql[i - 2])
-      const backslashEscapes = (mysql && ch !== '`') || escapeString
-      let j = i + 1
-      while (j < n) {
-        if (backslashEscapes && sql[j] === '\\') {
-          j += 2
-          continue
-        }
-        if (sql[j] === close) {
-          // (`]]` is a `]` inside a T-SQL [name], as `''` is a quote inside a string: the name goes on.)
-          if (sql[j + 1] === close) {
-            j += 2
-            continue
-          }
-          break
-        }
-        j++
-      }
-      out += ch + close
-      i = j + 1
-      continue
-    }
-    if (ch === '$' && pgLike && !isWordChar(sql[i - 1])) {
-      const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i))
-      if (m) {
-        const end = sql.indexOf(m[0], i + m[0].length)
-        out += "''"
-        i = end === -1 ? n : end + m[0].length
-        continue
-      }
-    }
-    out += ch
-    i++
+  let at = 0
+  for (const t of lexed.tokens) {
+    out += sql.slice(at, t.start)
+    const text = sql.slice(t.start, t.end)
+    if (t.kind === 'comment' || t.kind === 'code-open' || t.kind === 'code-close') out += ' '
+    else if (t.kind === 'string') out += "''"
+    else if (t.kind === 'ident') out += text[0] === '[' ? '[]' : `${text[0]}${text[0]}`
+    else out += text
+    at = t.end
   }
-  return out
+  // What the lexer could not read (an unclosed string or comment) is no code: it stays out, as a literal would.
+  return lexed.ok ? out + sql.slice(at) : `${out}''`
 }
 
 /** Keywords that end, nest or leave a transaction, or run other code: not allowed inside a read-only guard. */
@@ -429,21 +337,15 @@ export function fitsReadOnlyTransaction(script: string, driver: DriverId): boole
  * (or `SELECT 1 COMMIT`) is one statement starting with SELECT, so the whole text is checked for writes too.
  */
 export function isReadOnlyScript(script: string, driver: DriverId): boolean {
-  return splitStatements(script, driver).every((s) => {
-    if (classifyStatement(s.text) !== 'read') return false
-    if (driver !== 'mssql') return true
-    const body = stripLiterals(s.text, driver)
-    return !TSQL_WRITES.test(body) && !ESCAPES_TRANSACTION.test(body)
-  })
+  return readVerdict(script, driver).ok
 }
 
 /**
  * True when free-form filter SQL (typed in the grid, or written by AI) is only a condition: no second statement and
- * nothing that writes, so a filter can't change data even where the connection could.
+ * nothing that writes, so a filter can't change data even where the connection could (sql-readonly.ts).
  */
 export function isReadOnlyCondition(condition: string, driver: DriverId): boolean {
-  const probe = `SELECT 1 WHERE (${condition})`
-  return splitStatements(probe, driver).length === 1 && isReadOnlyScript(probe, driver)
+  return conditionVerdict(condition, driver).ok
 }
 
 /**

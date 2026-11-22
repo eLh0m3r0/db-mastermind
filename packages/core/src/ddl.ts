@@ -1,6 +1,7 @@
 import { qualify, type Dialect } from './dialect.js'
 import { translateTables } from './type-map.js'
-import { oneLine, sqlTextProblem } from './sql-guard.js'
+import { canonicalPiece, oneLine } from './sql-guard.js'
+import { lex } from './sql-lexer.js'
 import { splitStatements } from './sql-split.js'
 import type { ColumnInfo, DriverId, ForeignKeyInfo, IndexInfo, TableInfo, TableRef, CheckInfo } from './types.js'
 
@@ -578,6 +579,8 @@ export interface MigrationOptions {
    * `constraint` flag (a DeZign project: everything unique that is not one of its unique indexes).
    */
   uniqueConstraint?: (table: TableRef, name: string | undefined) => boolean | undefined
+  /** The database the model's SQL pieces (defaults, checks, types) were written for, when not the target's. */
+  from?: DriverId
 }
 
 /**
@@ -600,12 +603,16 @@ const isExpressionKey = (c: string) => /[()]|\s(?:ASC|DESC|NULLS)\b/i.test(c)
 function guardChanges(changes: SchemaChange[], d: Dialect, options: MigrationOptions): { changes: SchemaChange[]; warnings: MigrationWarning[]; options: MigrationOptions } {
   const warnings: MigrationWarning[] = []
   const name = (t: TableRef) => `${t.schema ? `${t.schema}.` : ''}${t.name}`
-  const ok = (text: string | null | undefined, what: () => string) => {
-    if (text === null || text === undefined || text === '') return true
-    const problem = sqlTextProblem(text, d.id)
-    if (problem) warnings.push({ level: 'warning', message: `Left out: ${what()}, ${problem}: ${text.slice(0, 200)}` })
-    return !problem
+  // The model's SQL is read in the dialect it was written for (`from`, else the target's) and written again from its
+  // tokens for the target (sql-guard.ts canonicalPiece): undefined when it can't be, with the warning.
+  const source = options.from ?? d.id
+  const piece = (text: string, what: () => string): string | undefined => {
+    const r = canonicalPiece(text, d.id, source)
+    if (r.problem !== undefined) warnings.push({ level: 'warning', message: `Left out: ${what()}, ${r.problem}: ${text.slice(0, 200)}` })
+    return r.sql
   }
+  const ok = (text: string | null | undefined, what: () => string) => text === null || text === undefined || text === '' || piece(text, what) !== undefined
+  const canonical = <T extends string | null | undefined>(text: T, what: () => string): T | false => (text === null || text === undefined || text === '' ? text : ((piece(text, what) ?? false) as T | false))
   const action = (a: string | undefined, what: () => string) => {
     if (!a) return undefined
     const v = a.trim().toUpperCase().replace(/\s+/g, ' ')
@@ -614,20 +621,38 @@ function guardChanges(changes: SchemaChange[], d: Dialect, options: MigrationOpt
     return undefined
   }
   const column = <T extends DesignColumn>(c: T, table: string): T | undefined => {
-    if (!ok(c.dataType, () => `column ${table}.${c.name} (its type)`)) return undefined
-    const out = { ...c }
+    const dataType = canonical(c.dataType, () => `column ${table}.${c.name} (its type)`)
+    if (dataType === false) return undefined
+    const out = { ...c, dataType }
     if (typeof c.defaultValue === 'string' && !c.defaultValue.trim()) out.defaultValue = null
-    else if (!ok(c.defaultValue, () => `the default of ${table}.${c.name}`)) out.defaultValue = null
-    if (!ok(c.collation, () => `the collation of ${table}.${c.name}`)) delete out.collation
+    else {
+      const value = canonical(c.defaultValue, () => `the default of ${table}.${c.name}`)
+      out.defaultValue = value === false ? null : value
+    }
+    const collation = canonical(c.collation, () => `the collation of ${table}.${c.name}`)
+    if (collation === false) delete out.collation
+    else out.collation = collation
     return out
   }
   const index = <T extends { name?: string; columns: string[]; definition?: string; definitionDriver?: DriverId }>(ix: T, table: string): T | undefined => {
-    if (!ix.columns.every((c) => !isExpressionKey(c) || ok(c, () => `index ${ix.name ?? ''} of ${table}`))) return undefined
-    if (ix.definition && !ok(ix.definition, () => `the server's text of index ${ix.name ?? ''} of ${table}`)) {
-      const { definition: _, definitionDriver: __, ...rest } = ix
-      return rest as T
+    const columns = ix.columns.map((c) => (isExpressionKey(c) ? canonical(c, () => `index ${ix.name ?? ''} of ${table}`) : c))
+    if (columns.some((c) => c === false)) return undefined
+    const own = { ...ix, columns: columns as string[] }
+    // The server's own CREATE INDEX text (same database only): one statement it can read whole, or not kept.
+    if (own.definition) {
+      const read = lex(own.definition, own.definitionDriver ?? d.id)
+      const whole = read.ok && !read.tokens.some((t) => t.kind === 'semicolon' || t.kind === 'code-open')
+      if (!whole) {
+        warnings.push({ level: 'warning', message: `Left out: the server's text of index ${ix.name ?? ''} of ${table}, it can't be read as one statement: ${own.definition.slice(0, 200)}` })
+        const { definition: _, definitionDriver: __, ...rest } = own
+        return rest as T
+      }
     }
-    return ix
+    return own
+  }
+  const check = <T extends CheckInfo>(k: T, table: string): T | undefined => {
+    const expression = canonical(k.expression, () => `check ${k.name ?? ''} of ${table}`)
+    return expression === false ? undefined : { ...k, expression }
   }
   const fk = <T extends { name?: string; onDelete?: string; onUpdate?: string }>(k: T, table: string): T => ({
     ...k,
@@ -651,7 +676,7 @@ function guardChanges(changes: SchemaChange[], d: Dialect, options: MigrationOpt
             primaryKey: t.primaryKey.filter((x) => !gone.has(x)),
             indexes: t.indexes.filter((ix) => !uses(ix.columns)).flatMap((ix) => index(ix, label) ?? []),
             foreignKeys: t.foreignKeys.filter((k) => !uses(k.columns)).map((k) => fk(k, label)),
-            ...(t.checks ? { checks: t.checks.filter((k) => ok(k.expression, () => `check ${k.name ?? ''} of ${label}`)) } : {}),
+            ...(t.checks ? { checks: t.checks.flatMap((k) => check(k, label) ?? []) } : {}),
           },
         })
         break
@@ -674,14 +699,21 @@ function guardChanges(changes: SchemaChange[], d: Dialect, options: MigrationOpt
       case 'add_foreign_key':
         out.push({ ...c, fk: fk(c.fk, name(c.table)) })
         break
-      case 'add_check':
-        if (ok(c.check.expression, () => `check ${c.check.name ?? ''} of ${name(c.table)}`)) out.push(c)
+      case 'add_check': {
+        const k = check(c.check, name(c.table))
+        if (k) out.push({ ...c, check: k })
         break
+      }
       default:
         out.push(c)
     }
   }
-  const domains = options.domains?.filter((x) => ok(x.dataType, () => `domain ${x.name} (its type)`) && ok(x.defaultValue, () => `domain ${x.name} (its default)`) && ok(x.check, () => `domain ${x.name} (its check)`))
+  const domains = options.domains?.flatMap((x) => {
+    const dataType = canonical(x.dataType, () => `domain ${x.name} (its type)`)
+    const defaultValue = canonical(x.defaultValue, () => `domain ${x.name} (its default)`)
+    const domainCheck = canonical(x.check, () => `domain ${x.name} (its check)`)
+    return dataType === false || defaultValue === false || domainCheck === false ? [] : [{ ...x, dataType, defaultValue, check: domainCheck }]
+  })
   return { changes: out, warnings, options: domains ? { ...options, domains } : options }
 }
 

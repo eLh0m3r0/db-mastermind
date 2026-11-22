@@ -297,7 +297,7 @@ describe('stripLiterals', () => {
     expect(stripLiterals(`SELECT 'a -- b', "it's" /* c' */ FROM t`)).toBe(`SELECT '', ""   FROM t`)
     expect(stripLiterals("SELECT 'it\\'s', `x'` # y'\nFROM t", 'mysql')).toBe("SELECT '', ``  \nFROM t")
     expect(stripLiterals("SELECT [it's] FROM t", 'mssql')).toBe('SELECT [] FROM t')
-    expect(stripLiterals("SELECT E'it\\'s', $$ it's $$ FROM t", 'postgres')).toBe("SELECT E'', '' FROM t")
+    expect(stripLiterals("SELECT E'it\\'s', $$ it's $$ FROM t", 'postgres')).toBe("SELECT '', '' FROM t")
   })
   it('T-SQL: an apostrophe in a comment does not hide a write from the read-only check', () => {
     expect(isReadOnlyScript("-- it's\nSELECT 'a' DELETE FROM t", 'mssql')).toBe(false)

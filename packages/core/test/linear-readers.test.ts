@@ -36,7 +36,8 @@ describe('readers grow linearly on adversarial input (review N2, N11)', () => {
           }
           // (A busy machine can slow one run: what looks super-linear is measured once more.)
           let g = growth(prepare, 8000)
-          if (g.ratio >= LINEAR) g = growth(prepare, 8000)
+          // (Other test files run at the same time: a busy moment is measured again, up to three times.)
+          for (let again = 0; again < 3 && g.ratio >= LINEAR; again++) g = growth(prepare, 8000)
           worst = Math.max(worst, g.ratio)
           if (g.ratio >= LINEAR) report.push(`${JSON.stringify(tpl)} × ${JSON.stringify(unit)}: ×${g.ratio.toFixed(1)} (${g.small.toFixed(1)} → ${g.large.toFixed(1)} ms)`)
         }

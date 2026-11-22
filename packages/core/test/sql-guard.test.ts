@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createScript, dropScript, generateMigration, getDialect, parseDbml, splitStatements, sqlTextProblem, stripLiterals, compareSchemas, type DriverId, type TableInfo } from '../src/index.js'
+import { canonicalPiece, createScript, dropScript, generateMigration, getDialect, parseDbml, splitStatements, sqlTextProblem, stripLiterals, compareSchemas, type DriverId, type TableInfo } from '../src/index.js'
 
 /** The statements of a script as our splitter reads them, with literals, names and comments blanked (what runs). */
 const code = (script: string, d: DriverId) => splitStatements(script, d).map((s) => stripLiterals(s.text, d).trim())
@@ -8,44 +8,73 @@ const code = (script: string, d: DriverId) => splitStatements(script, d).map((s)
 const DIALECTS: DriverId[] = ['postgres', 'mysql', 'mariadb', 'mssql', 'sqlite', 'oracle', 'duckdb']
 
 describe('a piece of SQL from a model', () => {
-  it('is fine when every quote and comment closes inside it and its parentheses balance', () => {
-    for (const d of DIALECTS) {
-      for (const ok of ["'a'", '(1 + 2) * 3', "lower(name) = 'x'", 'a /* note */ > 0', 'a > 0 -- note\n', 'now()']) expect(sqlTextProblem(ok, d), `${d}: ${ok}`).toBeUndefined()
-    }
-    expect(sqlTextProblem("E'it\\'s'", 'postgres')).toBeUndefined()
-    expect(sqlTextProblem('[order] > 0', 'mssql')).toBeUndefined()
-    expect(sqlTextProblem('`order` > 0', 'mysql')).toBeUndefined()
-    expect(sqlTextProblem('a /* /* nested */ */ > 0', 'postgres')).toBeUndefined()
+  // What real models have (review M3, wave 6): written again from its tokens, its meaning kept. [dialect, piece, as written]
+  const MUST_PASS: [DriverId, string, string][] = [
+    ['postgres', "nextval('seq'::regclass)", "nextval('seq'::regclass)"],
+    ['postgres', 'a */ b', 'a * / b'],
+    ['postgres', "E'it\\'s'", "'it''s'"],
+    ['postgres', '$$hello$$', "'hello'"],
+    ['postgres', "$fn$it's$fn$", "'it''s'"],
+    ['postgres', "col ~ '^[a-z\\d]+$'", "col ~ '^[a-z\\d]+$'"],
+    ['postgres', "ARRAY['a','b']::text[]", "ARRAY['a','b']::text[]"],
+    ['postgres', 'price > 0 -- must be positive', 'price > 0'],
+    ['postgres', 'price > 0 -- positive\n  AND qty >= 0 /* never negative */', 'price > 0 AND qty >= 0'],
+    ['postgres', 'a /* /* nested */ */ > 0', 'a > 0'],
+    ['postgres', "U&'d\\0061t\\+000061'", "U&'d\\0061t\\+000061'"],
+    ['postgres', 'lower(name) text_pattern_ops', 'lower(name) text_pattern_ops'],
+    ['postgres', '(name COLLATE "C")', '(name COLLATE "C")'],
+    ['postgres', "'{\"a\": 1}'::jsonb", "'{\"a\": 1}'::jsonb"],
+    ['mysql', "'C:\\\\tmp'", "'C:\\\\tmp'"],
+    ['mysql', "code REGEXP '^\\\\d+$'", "code REGEXP '^\\\\d+$'"],
+    ['mysql', "json_extract(doc, '$.a')", "json_extract(doc, '$.a')"],
+    ['mysql', 'CURRENT_TIMESTAMP(6)', 'CURRENT_TIMESTAMP(6)'],
+    ['mysql', "enum('it''s','b')", "enum('it''s','b')"],
+    ['mysql', "enum('it\\'s','b\\\\c')", "enum('it''s','b\\\\c')"],
+    ['mysql', 'a--1', 'a- -1'],
+    ['mysql', 'a > 0 # note\n', 'a > 0'],
+    ['mysql', '"double quoted"', "'double quoted'"],
+    ['mysql', "_utf8mb4'x'", "_utf8mb4 'x'"],
+    ['mssql', "(N'x')", "(N'x')"],
+    ['mssql', '(getdate())', '(getdate())'],
+    ['mssql', '[a]]b] > 0', '[a]]b] > 0'],
+    ['mssql', '([price]*[qty])', '([price]*[qty])'],
+    ['mssql', 'a /* /* nested */ */ > 0', 'a > 0'],
+    ['oracle', 'SYSDATE', 'SYSDATE'],
+    ['oracle', "q'[it's]'", "'it''s'"],
+    ['sqlite', "(datetime('now'))", "(datetime('now'))"],
+    ['sqlite', '[order] > 0', '"order" > 0'],
+  ]
+  // Pieces that end or swallow their statement, or run as code. [dialects, piece]
+  const MUST_REFUSE: [DriverId[], string][] = [
+    [DIALECTS, "'a'); DROP TABLE victim; --"],
+    [DIALECTS, '1); DROP TABLE victim'],
+    [DIALECTS, "'unclosed"],
+    [DIALECTS, '(1'],
+    [DIALECTS, 'a /* unclosed'],
+    [['mysql', 'mariadb'], "'a\\'"],
+    [['mysql', 'mariadb'], '"a\\" = "b)); DROP TABLE victim; CREATE TABLE z (q int, CHECK ("'],
+    [['mysql', 'mariadb'], 'a /*! DROP TABLE victim */'],
+    [['postgres', 'duckdb'], "E'a\\'"],
+    [['postgres'], 'a /* /* */ > 0'],
+    [['postgres'], 'x\n\\! rm -rf ~\n'],
+    [['mssql'], '[a]]; DROP TABLE victim'],
+    [['postgres', 'mssql', 'oracle'], '`a`'],
+    // Review round 2 (H1): what the old lexer let through.
+    [['postgres'], "$é$'$é$ || ''); DROP TABLE s.victim; COMMIT; CREATE TABLE s.z (id int, --'"],
+    [['mssql'], "0 /* /* */ ' */ ) DROP TABLE victim COMMIT CREATE TABLE z (id int --'"],
+  ]
+  it('real models: written again with their meaning kept', () => {
+    for (const [d, text, expected] of MUST_PASS) expect(canonicalPiece(text, d), `${d}: ${text}`).toEqual({ sql: expected })
   })
-
-  it('has a problem when it could end or swallow its statement', () => {
-    const bad: [DriverId[], string][] = [
-      [DIALECTS, "'a'); DROP TABLE victim; --"],
-      [DIALECTS, '1); DROP TABLE victim'],
-      [DIALECTS, "'unclosed"],
-      [DIALECTS, '(1'],
-      [DIALECTS, 'a > 0 -- runs to the end'],
-      [DIALECTS, 'a /* unclosed'],
-      [DIALECTS, 'a */ b'],
-      // MySQL: a backslash escapes the quote, so this string never closes there.
-      [['mysql', 'mariadb'], "'a\\'"],
-      [['mysql', 'mariadb'], '"a\\" = "b)); DROP TABLE victim; CREATE TABLE z (q int, CHECK ("'],
-      [['mysql', 'mariadb'], 'a # comment'],
-      [['mysql', 'mariadb'], 'a--1'],
-      [['mysql', 'mariadb'], 'a /*! DROP TABLE victim */'],
-      [['mysql', 'mariadb'], 'x\ndelimiter //\n'],
-      // PostgreSQL: dollar quoting, an E'' string whose \' doesn't close it, nested comments, psql commands.
-      [['postgres', 'duckdb'], '$$a$$'],
-      [['postgres', 'duckdb'], "E'a\\'"],
-      [['postgres'], 'a /* /* */ > 0'],
-      [['postgres'], 'x\n\\! rm -rf ~\n'],
-      // SQL Server: brackets, and a GO line.
-      [['mssql'], '[a]]; DROP TABLE victim'],
-      [['mssql'], 'x\nGO\n'],
-      [['oracle'], 'x\n/\n'],
-      [['postgres', 'mssql', 'oracle'], '`a`'],
-    ]
-    for (const [dialects, text] of bad) for (const d of dialects) expect(sqlTextProblem(text, d), `${d}: ${text}`).toBeDefined()
+  it('pieces that could end or swallow their statement are refused', () => {
+    for (const [dialects, text] of MUST_REFUSE) for (const d of dialects) expect(sqlTextProblem(text, d), `${d}: ${text}`).toBeDefined()
+  })
+  it('across dialects: a MySQL string with backslashes keeps its value in PostgreSQL, a PostgreSQL XOR never becomes a MySQL comment', () => {
+    expect(canonicalPiece("'C:\\\\tmp'", 'postgres', 'mysql')).toEqual({ sql: "'C:\\tmp'" })
+    expect(canonicalPiece("'C:\\tmp'", 'mysql', 'postgres')).toEqual({ sql: "'C:\\\\tmp'" })
+    expect(canonicalPiece('$$a$$', 'mssql', 'postgres')).toEqual({ sql: "'a'" })
+    expect(canonicalPiece('a # b', 'mysql', 'postgres').problem).toBeDefined()
+    expect(canonicalPiece('"name"', 'mysql', 'postgres')).toEqual({ sql: '`name`' })
   })
 })
 
