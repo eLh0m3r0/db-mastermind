@@ -957,6 +957,11 @@ depth. The specification: [docs/specs/launch.md](docs/specs/launch.md).
 database said "Connect to a database to chat about it". A chat about a model is now about its text: no connection, no
 database tools, kept with the model (e2e/flow118).
 
+1.5.2 (2026-11-22), found by the owner on a new Mac: two "Keychain Not Found" dialogs at the first start (1.5.0
+encrypted a freshly made MCP token at once, and that Mac's user had no login keychain). Nothing asks the keychain
+now before the user saves a secret, and a Mac without a login keychain is never asked at all
+(keychain-start.test.ts).
+
 Not done, known: a terminal start of the `.deb` on a system without user namespaces still stops with Chromium's
 error (only the menu entry falls back); a real drag of a folder from Finder was never automated (the import
 behind it is tested); BigQuery and Trino guards are not tested against the services.
