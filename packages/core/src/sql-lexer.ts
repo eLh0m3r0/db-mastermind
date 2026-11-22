@@ -137,10 +137,11 @@ export function lex(sql: string, driver: DriverId | string, modes: LexModes = {}
     // Block comments.
     if (c === '/' && next === '*') {
       if (inCode) return fail('a comment inside a MySQL executable comment')
-      if (family === 'mysql' && (sql[i + 2] === '!' || sql[i + 2] === '+')) {
-        // MySQL runs what's inside: code, closed by the next */.
-        let j = i + 3
-        if (sql[i + 2] === '!') while (j < n && /[0-9]/.test(sql[j]!)) j++
+      // MySQL runs what's inside /*! … */ and /*+ … */, MariaDB also /*M! … */: code, closed by the next */.
+      const mariadbCode = sql[i + 2] === 'M' && sql[i + 3] === '!'
+      if (family === 'mysql' && (sql[i + 2] === '!' || sql[i + 2] === '+' || mariadbCode)) {
+        let j = i + (mariadbCode ? 4 : 3)
+        if (sql[i + 2] === '!' || mariadbCode) while (j < n && /[0-9]/.test(sql[j]!)) j++
         push('code-open', i, j)
         inCode = true
         i = j
@@ -360,7 +361,7 @@ export const codeTokens = (tokens: Token[]) => tokens.filter((t) => t.kind !== '
  * Statements by the tokens: split at semicolons (and, for SQL Server, at GO lines). Each is the list of its tokens;
  * statements with no code are left out.
  */
-export function tokenStatements(sql: string, tokens: Token[], driver: DriverId | string): Token[][] {
+export function tokenStatements(sql: string, tokens: Token[], driver: DriverId | string, options: { batches?: boolean } = {}): Token[][] {
   const out: Token[][] = []
   let current: Token[] = []
   const flush = () => {
@@ -368,7 +369,8 @@ export function tokenStatements(sql: string, tokens: Token[], driver: DriverId |
     current = []
   }
   for (const t of tokens) {
-    if (t.kind === 'semicolon') {
+    // (`batches`: only GO separates, as SQL Server runs a batch: semicolons stay inside it.)
+    if (t.kind === 'semicolon' && !options.batches) {
       flush()
       continue
     }

@@ -33,8 +33,8 @@ describe.skipIf(skip.has('postgres'))('read-only guard: postgres', () => {
     expect(await value(id, 'SELECT v FROM rg_t')).toBe(2)
     const [blocked] = await svc.runScript(id, 'SELECT rg_bump()', { readOnly: true })
     expect(blocked!.error?.message).toMatch(/read-only transaction/)
-    const [seq] = await svc.runScript(id, "SELECT setval(pg_get_serial_sequence('shop.customers', 'id'), 1)", { readOnly: true })
-    expect(seq!.error?.message).toMatch(/read-only transaction/)
+    // setval is refused by name now (it has effects a read-only transaction stops anyway: that is rg_bump's case).
+    await expect(svc.runScript(id, "SELECT setval(pg_get_serial_sequence('shop.customers', 'id'), 1)", { readOnly: true })).rejects.toThrow(/setval/)
     expect(await value(id, 'SELECT v FROM rg_t')).toBe(2)
     const [read] = await svc.runScript(id, 'SELECT count(*) AS n FROM rg_t', { readOnly: true })
     expect(Number(read!.results![0]!.rows[0]![0])).toBe(1)

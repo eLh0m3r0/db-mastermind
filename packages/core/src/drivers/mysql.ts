@@ -231,7 +231,9 @@ export class MysqlDriver implements DatabaseDriver {
     if (!conn) return
     await conn.query('ROLLBACK').catch(() => {})
     // A tab's connection carries its variables, SET options and temporary tables: closed, never lent to the next tab.
-    if (isShortLivedSession(session) || !this.sessionPool) conn.release()
+    // A guarded run's connection is closed too: named locks (GET_LOCK) and session state go with it.
+    if (/^readonly-/.test(session)) conn.destroy()
+    else if (isShortLivedSession(session) || !this.sessionPool) conn.release()
     else conn.destroy()
   }
 
