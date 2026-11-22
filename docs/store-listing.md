@@ -29,7 +29,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 
 **Short description:**
 
-> Free, open-source database client and data modeler for PostgreSQL, SQL Server, Oracle, MySQL, SQLite and more. Browse and filter data, write SQL, model new databases (DeZign projects open too), design changes with migrations, and ask an AI.
+> Free, open-source database client and data modeler for PostgreSQL, SQL Server, Oracle, MySQL, SQLite and more. Design a database, browse and query it, turn results into charts, and let an AI assistant or your coding agent read it safely.
 
 **Description:**
 
@@ -98,7 +98,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 
 **Search terms** (7): `database client` · `SQL editor` · `PostgreSQL` · `SQL Server` · `data modeling` · `ER diagram` · `database AI`
 
-**What's new in this version** (1.4.0, since 1.3.2, the previous Store version): PostgreSQL polished for daily work: completions know every function (extensions too) and offer columns without the table name; any number of query tabs without the app stalling; NOTICE and RAISE messages in Messages; partitions, sequences, types, triggers and row-level security in the explorer; definitions that re-create what the server has; tables without a primary key edited through a unique index; EXPLAIN of INSERT, UPDATE and DELETE; default schema and query timeout per connection. Server messages on SQL Server, MySQL, MariaDB and Oracle too. And a full review of the last releases: manual commit now holds in the cases it missed, unsaved cell edits survive Commit and Roll back, a grid save can never change more than the edited row, Copy tables asks before replacing rows, the data modeler no longer deletes or renames by accident, and many more fixes.
+**What's new in this version** (1.5.0, since 1.4.0; if the Store still has an older version, put that version's text from the release notes after this one): More ways in: drop a .env, a docker-compose file or a project folder on the window and its databases become connections; connection strings from Supabase, Neon, Amazon RDS, Azure and Google Cloud SQL are recognised; open Mermaid, drawDB, MySQL Workbench and Prisma files as models; export a model or a live database as a Prisma schema, Drizzle schema, SQLAlchemy models or TypeScript types. Easier at first sight: the + for a new tab is always in view, tabs can scroll or shrink (Settings → Appearance), a tab's menu closes the tabs to its left or right; the demo opens on a table with data; toolbars keep their labels; connection and AI errors say what to do; AI is ready as soon as a provider has its key; unsaved changes in a table show on its tab and are never dropped without a question. Safer: the guard for SQL from the AI assistant and from agents, and for read-only connections, now relies on what the database itself confirms; files from other people are read with limits and never run. Also: MySQL models from scripts, MySQL Workbench and live databases compare as the same; DBML from other tools reads as in dbdiagram.io; SQL Server connection URLs with a user and password.
 
 **Copyright and trademark info:** © 2026 Václav Mudra. MIT license. DeZign for Databases is a trademark of Datanamic; DB Mastermind is not affiliated with or endorsed by Datanamic.
 
@@ -108,6 +108,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 
 **Screenshots** (from `docs/screenshots/`, 2880×1800; in this order, with captions):
 
+1. `hero-1440.png` (or a fresh full-size capture of the same split view) — Design, query and chart in one app
 1. `table-filters.png` — Browse and filter data without limits
 2. `query.png` — SQL editor with schema-aware autocomplete
 3. `diagram.png` — Interactive ER diagrams
@@ -124,7 +125,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 
 **Short description:**
 
-> Bezplatný open-source databázový klient a datový modelář pro PostgreSQL, SQL Server, Oracle, MySQL, SQLite a další. Filtrování dat, SQL editor, modelování nových databází (otevře i projekty DeZign), návrh změn s migrací a AI.
+> Bezplatný open-source databázový klient a datový modelář pro PostgreSQL, SQL Server, Oracle, MySQL, SQLite a další. Navrhněte databázi, prohlížejte a dotazujte ji, z výsledků udělejte grafy a nechte AI asistenta nebo svého agenta, ať ji bezpečně čte.
 
 **Description:**
 
@@ -194,7 +195,7 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 
 **Search terms:** `databázový klient` · `SQL editor` · `PostgreSQL` · `SQL Server` · `datové modelování` · `ER diagram` · `databáze AI`
 
-**What's new in this version:** PostgreSQL vyladěný pro každodenní práci: našeptávač zná všechny funkce (i z rozšíření) a nabízí sloupce bez jména tabulky; libovolný počet záložek s dotazy bez zamrznutí aplikace; zprávy NOTICE a RAISE ve Zprávách; partitions, sekvence, typy, triggery a zabezpečení na úrovni řádků v průzkumníku; definice, které znovu vytvoří to, co server má; tabulky bez primárního klíče upravíte přes unikátní index; EXPLAIN pro INSERT, UPDATE a DELETE; výchozí schéma a časový limit dotazu u připojení. Zprávy serveru také na SQL Serveru, MySQL, MariaDB a Oracle. A důkladná kontrola posledních verzí: ruční potvrzování změn drží i v případech, které dřív minulo, neuložené úpravy buněk přežijí Commit i Roll back, uložení v mřížce nikdy nezmění víc než upravený řádek, kopírování tabulek se před nahrazením řádků zeptá, modelář už nic nesmaže ani nepřejmenuje omylem, a řada dalších oprav.
+**What's new in this version:** Víc cest dovnitř: přetáhněte do okna soubor .env, docker-compose nebo složku projektu a jejich databáze se stanou připojeními; připojovací řetězce ze Supabase, Neonu, Amazon RDS, Azure a Google Cloud SQL aplikace pozná; soubory Mermaid, drawDB, MySQL Workbench a Prisma se otevřou jako model; model nebo živou databázi vyexportujete jako schéma Prisma, schéma Drizzle, modely SQLAlchemy nebo typy TypeScriptu. Srozumitelnější na první pohled: tlačítko + pro novou záložku je vždy vidět, záložky se mohou posouvat nebo zužovat (Nastavení → Vzhled), nabídka záložky zavře záložky vlevo nebo vpravo; ukázková databáze se otevře na tabulce s daty; lišty si nechávají popisky; chyby připojení a AI říkají, co dělat; AI je připravené, jakmile má poskytovatel klíč; neuložené změny v tabulce jsou vidět na záložce a nikdy se nezahodí bez dotazu. Bezpečnější: ochrana pro SQL od AI asistenta a agentů a pro připojení jen pro čtení se teď opírá o to, co potvrdí sama databáze; soubory od cizích lidí se čtou s limity a nikdy se nespouštějí. Dále: modely MySQL ze skriptů, z MySQL Workbench a z živé databáze se porovnají jako stejné; DBML z jiných nástrojů se čte jako v dbdiagram.io; připojovací URL pro SQL Server s uživatelem a heslem.
 
 **Screenshots:** the same files; captions:
 
