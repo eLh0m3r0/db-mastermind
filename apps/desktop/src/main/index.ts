@@ -16,9 +16,10 @@ import { isMcpMode, runMcpMode } from './mcp-mode'
 import { configureDataDir, dataPath, readJson, writeJson } from './storage'
 import { swapMacUpdateBeforeKill } from './mac-update'
 import { setBeforeInstall, startUpdateChecks } from './updates'
+import { askPageAboutEdits, ExitGuard } from './exit-guard'
 import { keepChosenSqlFilesIn } from './sql-files'
 import { keepChosenPathsIn, rememberChosenPath } from './chosen-paths'
-import { hasEditorSessions, settleTransactionsBeforeQuit } from './transactions'
+import { settleTransactionsBeforeQuit } from './transactions'
 import { explainMissingSandbox } from './linux-sandbox'
 
 configureDataDir()
@@ -26,33 +27,20 @@ explainMissingSandbox()
 
 let mainWindow: BrowserWindow | null = null
 let quitting = false
-/** Open transactions in query tabs are settled (committed / rolled back as the user chose) once before quitting. */
-let settled = false
-let asking: Promise<boolean> | undefined
-const settleTransactions = (): Promise<boolean> =>
-  (asking ??= settleUnsavedEdits()
-    .then((ok) => ok && settleTransactionsBeforeQuit(db, mainWindow))
-    .then((ok) => {
-      settled = ok
-      if (!ok) asking = undefined
-      return ok
-    }))
-
 /**
- * Unsaved grid edits live in the page, which asks Save / Discard / Cancel itself (the same question as closing their
- * tab). A page that doesn't answer whether it has any (busy, crashed) doesn't keep the app from quitting.
+ * What leaving the app would lose is asked about for each attempt to leave (exit-guard.ts): nothing is remembered from
+ * one attempt to the next, so edits made after a cancelled quit are asked about again.
  */
-let editsSettled = false
-async function settleUnsavedEdits(): Promise<boolean> {
-  const w = mainWindow
-  if (editsSettled || !w || w.isDestroyed()) return true
-  const run = <T>(code: string) => w.webContents.executeJavaScript(code, true) as Promise<T>
-  const has = await Promise.race([run<boolean>('!!window.__dbmHasUnsavedEdits?.()').catch(() => false), new Promise<boolean>((r) => setTimeout(() => r(false), 1500))])
-  if (!has) return true
-  const ok = await run<boolean>('window.__dbmSettleUnsavedEdits ? window.__dbmSettleUnsavedEdits() : true').catch(() => true)
-  if (ok) editsSettled = true
-  return ok !== false
-}
+const exitGuard = new ExitGuard({
+  edits: () => {
+    const w = mainWindow
+    if (!w || w.isDestroyed()) return Promise.resolve(true)
+    return askPageAboutEdits((code) => w.webContents.executeJavaScript(code, true))
+  },
+  transactions: () => settleTransactionsBeforeQuit(db, mainWindow),
+})
+/** Set for the one close an attempt agreed to: the 'close' event it causes goes through. */
+let closeAgreed = false
 
 interface WindowState {
   width: number
@@ -76,7 +64,6 @@ function createWindow() {
   // macOS onto the nearest display, which can be a second monitor somebody is working on.
   const main = e2eBackground ? screen.getPrimaryDisplay().workArea : undefined
   const saved = main ? undefined : reachablePosition(state, screen.getAllDisplays().map((d) => d.workArea))
-  editsSettled = false
   mainWindow = new BrowserWindow({
     width: state.width,
     height: state.height,
@@ -104,22 +91,21 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => (e2eBackground ? mainWindow?.showInactive() : mainWindow?.show()))
   mainWindow.on('close', (event) => {
     if (!mainWindow) return
-    // Closing the window drops the page and its unsaved grid edits (on a Mac too, where the app stays): ask first.
-    if (!quitting && !editsSettled) {
+    // Closing the window drops the page and its unsaved grid edits (on a Mac too, where the app stays); on Windows and
+    // Linux it also quits, so open transactions are asked about while the window is still there.
+    if (!quitting && !closeAgreed) {
       event.preventDefault()
-      void settleUnsavedEdits().then((ok) => {
+      const last = process.platform !== 'darwin'
+      void exitGuard.attempt(last ? 'close-last-window' : 'close-window').then((ok) => {
         if (!ok || !mainWindow) return
-        editsSettled = true
+        // The quit that closing the last window causes doesn't ask again.
+        if (last) exitGuard.passNextQuit()
+        closeAgreed = true
         mainWindow.close()
       })
       return
     }
-    // Closing the last window quits on Windows and Linux: ask while the window is still there.
-    if (process.platform !== 'darwin' && !quitting && !settled && hasEditorSessions()) {
-      event.preventDefault()
-      void settleTransactions().then((ok) => ok && mainWindow?.close())
-      return
-    }
+    closeAgreed = false
     const bounds = mainWindow.getNormalBounds()
     writeJson('window.json', { ...bounds, maximized: mainWindow.isMaximized() } satisfies WindowState)
   })
@@ -219,12 +205,17 @@ function startApp() {
     })
   })
 
-  setBeforeInstall(settleTransactions)
+  // "Restart now": the same questions; the quit into the update then passes once.
+  setBeforeInstall(async () => {
+    const ok = await exitGuard.attempt('quit')
+    if (ok) exitGuard.passNextQuit()
+    return ok
+  })
   app.on('before-quit', (event) => {
     flushHistory()
     if (quitting) return
     event.preventDefault()
-    void settleTransactions().then((ok) => {
+    void exitGuard.attempt('quit').then((ok) => {
       if (!ok || quitting) return
       quitting = true
       shutDown()
