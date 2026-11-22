@@ -8,7 +8,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Input, Select } from '@/components/ui/Input'
 import { Spinner } from '@/components/ui/Spinner'
 import { api } from '@/lib/api'
-import { openDashboard } from '@/lib/dashboards'
+import { openDashboard, tileRequest } from '@/lib/dashboards'
 import { formatDate, useT } from '@/lib/i18n'
 import { cn, debounce, errorMessage, formatDuration, uid } from '@/lib/utils'
 import { useWorkspace, type DashboardTab } from '@/store/workspace'
@@ -168,7 +168,7 @@ export function DashboardView({ tab }: { tab: DashboardTab }) {
     async (tile: DashboardTile) => {
       setStates((s) => ({ ...s, [tile.id]: { ...s[tile.id], loading: true } }))
       try {
-        const outcomes = await api.runQuery({ connectionId: tab.connectionId, sql: tile.sql, runId: uid('dash'), maxRows: 5000 })
+        const outcomes = await api.runQuery(tileRequest(tab.connectionId, tile.sql, uid('dash')))
         const failed = outcomes.find((o) => o.error)
         const result = outcomes.flatMap((o) => o.results ?? []).find((r) => r.fields.length)
         setStates((s) => ({ ...s, [tile.id]: { loading: false, at: Date.now(), result, error: failed?.error?.message ?? (result ? undefined : t('The query returned no rows')) } }))
