@@ -514,10 +514,18 @@ export function checkCondition(check: CheckInfo, columns: { name: string }[], d:
   })
 }
 
+/** A collation as SQL: a name by the collation grammar (`en_US.utf8`, `"de-x-icu"`, `pg_catalog."C"`) or quoted. */
+export function collationName(collation: string, d: Dialect): string {
+  const part = String.raw`(?:"[^"]*(?:""[^"]*)*"|\x60[^\x60]*\x60|[A-Za-z_][\w$@.-]*)`
+  if (new RegExp(`^${part}(?:\\.${part})?$`).test(collation.trim())) return collation.trim()
+  return d.quoteIdent(collation)
+}
+
 function columnDefinition(c: DesignColumn, d: Dialect, opts: { inlinePk?: boolean; sequence?: string } = {}): string {
   if (c.generated && c.defaultValue) return generatedColumn(c, d, opts)
-  // (The collation is written as the model has it: DeZign writes what was typed, quotes included.)
-  const parts = [d.quoteIdent(c.name), c.collation ? `${c.dataType} COLLATE ${c.collation}` : c.dataType]
+  // (The collation is written as the model has it when it is a collation name, quotes included, as DeZign writes what
+  // was typed; anything else is quoted as the name it would have to be.)
+  const parts = [d.quoteIdent(c.name), c.collation ? `${c.dataType} COLLATE ${collationName(c.collation, d)}` : c.dataType]
   // `serial` already brings its sequence.
   if (c.identity && !(d.id === 'postgres' && isSerialType(c.dataType))) {
     if (d.id === 'postgres' || d.id === 'oracle') parts.push(`GENERATED ${c.identityAlways ? 'ALWAYS' : 'BY DEFAULT'} AS IDENTITY`)
@@ -570,7 +578,7 @@ function fkClause(fk: DesignForeignKey, table: string, d: Dialect): string {
 /** Drops a column's default constraint, whose name SQL Server generates. `n` keeps variables unique per batch. */
 function mssqlDropDefault(table: TableRef, column: string, n: number, d: Dialect): string {
   const tableName = `${table.schema ? `${table.schema}.` : ''}${table.name}`
-  return `DECLARE @df${n} NVARCHAR(256) = (SELECT dc.name FROM sys.default_constraints dc JOIN sys.columns c ON c.default_object_id = dc.object_id WHERE dc.parent_object_id = OBJECT_ID(${literalComment(tableName, 'mssql')}) AND c.name = ${literalComment(column, 'mssql')});\nIF @df${n} IS NOT NULL EXEC('ALTER TABLE ${qualify(d, table).replaceAll("'", "''")} DROP CONSTRAINT [' + @df${n} + ']')`
+  return `DECLARE @df${n} NVARCHAR(256) = (SELECT dc.name FROM sys.default_constraints dc JOIN sys.columns c ON c.default_object_id = dc.object_id WHERE dc.parent_object_id = OBJECT_ID(${literalComment(tableName, 'mssql')}) AND c.name = ${literalComment(column, 'mssql')});\nIF @df${n} IS NOT NULL EXEC('ALTER TABLE ${qualify(d, table).replaceAll("'", "''")} DROP CONSTRAINT ' + QUOTENAME(@df${n}))`
 }
 
 const NARROWING = /^(varchar|nvarchar|char|nchar|character varying|varbinary)\((\d+)\)/i

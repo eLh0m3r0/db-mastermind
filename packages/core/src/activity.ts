@@ -129,7 +129,8 @@ export async function stopSession(db: DatabaseService, connectionId: string, id:
     if (o?.error) throw new Error(o.error.message)
     return
   }
-  if (!/^[\d,]+$/.test(id)) throw new Error('Invalid session id')
+  // (An id the server gave: digits, and Oracle's "sid,serial#". Anything else is refused before SQL is built.)
+  if (!(driver === 'oracle' ? /^\d+,\d+$/ : /^\d+$/).test(id)) throw new Error('Invalid session id')
   let sql: string
   if (driver === 'postgres') sql = `SELECT ${mode === 'cancel' ? 'pg_cancel_backend' : 'pg_terminate_backend'}(${id})`
   else if (MYSQL_LIKE.has(driver)) sql = `KILL ${mode === 'cancel' ? 'QUERY ' : ''}${id}`

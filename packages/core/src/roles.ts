@@ -19,14 +19,13 @@ export interface Grant {
   grantable?: boolean
 }
 
-async function rows(db: DatabaseService, id: string, sql: string): Promise<Record<string, string | null>[]> {
-  const [o] = await db.runScript(id, sql, { maxRows: 20_000 })
+async function rows(db: DatabaseService, id: string, sql: string, params?: unknown[]): Promise<Record<string, string | null>[]> {
+  const [o] = await db.runScript(id, sql, { maxRows: 20_000, params })
   if (o?.error) throw new Error(o.error.message)
   const r = o!.results![0] as QueryResult
   return r.rows.map((row) => Object.fromEntries(r.fields.map((f, i) => [f.name.toLowerCase(), row[i] === null || row[i] === undefined ? null : cellToText(row[i]!)])))
 }
 
-const lit = (s: string) => `'${s.replaceAll("'", "''")}'`
 const truthy = (v: string | null | undefined) => v === 'true' || v === '1' || v === 'Y' || v === 'YES'
 const MYSQL_LIKE = new Set(['mysql', 'mariadb'])
 
@@ -91,30 +90,32 @@ export async function listGrants(db: DatabaseService, id: string, principal: str
       db,
       id,
       `SELECT table_schema || '.' || table_name AS object, 'table' AS type, privilege_type AS privilege, is_grantable AS grantable
-         FROM information_schema.role_table_grants WHERE grantee = ${lit(principal)}
+         FROM information_schema.role_table_grants WHERE grantee = $1
        UNION ALL
        SELECT table_schema || '.' || table_name || '.' || column_name, 'column', privilege_type, is_grantable
          FROM information_schema.column_privileges c
-        WHERE grantee = ${lit(principal)}
+        WHERE grantee = $1
           AND NOT EXISTS (SELECT 1 FROM information_schema.role_table_grants t
                            WHERE t.grantee = c.grantee AND t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.privilege_type = c.privilege_type)
        UNION ALL
        SELECT n.nspname, 'schema', p.privilege_type, CASE WHEN p.is_grantable THEN 'YES' ELSE 'NO' END
          FROM pg_namespace n, aclexplode(n.nspacl) p, pg_roles r
-        WHERE r.oid = p.grantee AND r.rolname = ${lit(principal)}
+        WHERE r.oid = p.grantee AND r.rolname = $1
        UNION ALL
        SELECT current_database(), 'database', p.privilege_type, CASE WHEN p.is_grantable THEN 'YES' ELSE 'NO' END
          FROM pg_database d, aclexplode(d.datacl) p, pg_roles r
-        WHERE d.datname = current_database() AND r.oid = p.grantee AND r.rolname = ${lit(principal)}`,
+        WHERE d.datname = current_database() AND r.oid = p.grantee AND r.rolname = $1`,
+      // (The name is a parameter: a role called o'brien, or one made to break out of a literal, stays a value.)
+      [principal],
     )
   } else if (MYSQL_LIKE.has(driver)) {
-    const g = lit(principal)
     r = await rows(
       db,
       id,
-      `SELECT '*' AS object, 'server' AS type, PRIVILEGE_TYPE AS privilege, IS_GRANTABLE AS grantable FROM information_schema.USER_PRIVILEGES WHERE GRANTEE = ${g}
-       UNION ALL SELECT TABLE_SCHEMA, 'schema', PRIVILEGE_TYPE, IS_GRANTABLE FROM information_schema.SCHEMA_PRIVILEGES WHERE GRANTEE = ${g}
-       UNION ALL SELECT CONCAT(TABLE_SCHEMA, '.', TABLE_NAME), 'table', PRIVILEGE_TYPE, IS_GRANTABLE FROM information_schema.TABLE_PRIVILEGES WHERE GRANTEE = ${g}`,
+      `SELECT '*' AS object, 'server' AS type, PRIVILEGE_TYPE AS privilege, IS_GRANTABLE AS grantable FROM information_schema.USER_PRIVILEGES WHERE GRANTEE = ?
+       UNION ALL SELECT TABLE_SCHEMA, 'schema', PRIVILEGE_TYPE, IS_GRANTABLE FROM information_schema.SCHEMA_PRIVILEGES WHERE GRANTEE = ?
+       UNION ALL SELECT CONCAT(TABLE_SCHEMA, '.', TABLE_NAME), 'table', PRIVILEGE_TYPE, IS_GRANTABLE FROM information_schema.TABLE_PRIVILEGES WHERE GRANTEE = ?`,
+      [principal, principal, principal],
     )
   } else if (driver === 'mssql') {
     r = await rows(
@@ -123,14 +124,16 @@ export async function listGrants(db: DatabaseService, id: string, principal: str
       `SELECT CASE WHEN p.class = 0 THEN DB_NAME() WHEN p.class = 3 THEN SCHEMA_NAME(p.major_id) ELSE OBJECT_SCHEMA_NAME(p.major_id) + '.' + OBJECT_NAME(p.major_id) END AS object,
               LOWER(p.class_desc) AS type, p.permission_name AS privilege, CASE WHEN p.state = 'W' THEN 'YES' ELSE 'NO' END AS grantable
          FROM sys.database_permissions p JOIN sys.database_principals pr ON pr.principal_id = p.grantee_principal_id
-        WHERE pr.name = ${lit(principal)} AND p.state IN ('G', 'W')`,
+        WHERE pr.name = @p1 AND p.state IN ('G', 'W')`,
+      [principal],
     )
   } else if (driver === 'oracle') {
     r = await rows(
       db,
       id,
       `SELECT table_schema || '.' || table_name AS "object", type AS "type", privilege AS "privilege", grantable AS "grantable"
-         FROM all_tab_privs WHERE grantee = ${lit(principal)}`,
+         FROM all_tab_privs WHERE grantee = :1`,
+      [principal],
     )
   } else throw new Error('Users and roles are not available for this database')
 

@@ -241,7 +241,7 @@ export async function copyTables(db: DatabaseService, sourceId: string, targetId
       // SQL Server: the catalog says for sure. IDENTITY_INSERT is needed when the rows fill the identity column, and
       // refused (error 545) when they don't.
       if (targetDriver === 'mssql') {
-        const [r] = await exec({ sql: `SELECT name FROM sys.identity_columns WHERE object_id = OBJECT_ID('${qualify(dialect, into).replaceAll("'", "''")}')`, params: [] })
+        const [r] = await exec({ sql: 'SELECT name FROM sys.identity_columns WHERE object_id = OBJECT_ID(@p1)', params: [qualify(dialect, into)] })
         identity = (r?.rows ?? []).some((row) => targetColumns.some((c) => lower(c) === lower(String(row[0]))))
       }
       const from = getDialect(sourceDriver)
@@ -262,7 +262,7 @@ export async function copyTables(db: DatabaseService, sourceId: string, targetId
           // Inside the transaction: a missing privilege fails the copy instead of leaving keys that will collide.
           const table = qualify(dialect, into)
           for (const c of withIdentity) {
-            await exec({ sql: `SELECT setval(pg_get_serial_sequence('${table.replaceAll("'", "''")}', '${c.replaceAll("'", "''")}'), COALESCE((SELECT MAX(${dialect.quoteIdent(c)}) FROM ${table}), 1))`, params: [] })
+            await exec({ sql: `SELECT setval(pg_get_serial_sequence($1, $2), COALESCE((SELECT MAX(${dialect.quoteIdent(c)}) FROM ${table}), 1))`, params: [table, c] })
           }
         } else if (targetDriver === 'duckdb' || targetDriver === 'oracle') {
           warnings.push('New rows’ generated keys are not moved past the copied ones: set the sequence before inserting.')
