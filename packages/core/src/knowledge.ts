@@ -1,5 +1,7 @@
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { lstat, mkdir, open, readdir, realpath, rm } from 'node:fs/promises'
 import { dirname, join, relative, resolve, sep } from 'node:path'
+import { readCapped } from './read-capped.js'
 import { findTable } from './schema-utils.js'
 import type { ForeignKeyInfo, SchemaSnapshot } from './types.js'
 
@@ -43,12 +45,43 @@ export class KnowledgeError extends Error {
   override name = 'KnowledgeError'
 }
 
-/** Resolves a path inside the knowledge base, refusing anything that escapes it. */
+/** Resolves a path inside the knowledge base, refusing anything that escapes it (lexically: see realInside too). */
 export function resolveInside(root: string, path: string): string {
   const base = resolve(root)
   const target = resolve(base, path)
   if (target !== base && !target.startsWith(base + sep)) throw new KnowledgeError('Path is outside the knowledge base')
   return target
+}
+
+/**
+ * The same, on the real path: a shared or cloned knowledge base can carry links. The deepest part of the path that
+ * exists, its links resolved, must be inside the real root (the root itself may be a link the user chose); for a
+ * write or a delete no part between the root and the file may be a link at all. Opening then refuses a link in the
+ * last place (O_NOFOLLOW), which closes the gap between this check and the use where the platform allows.
+ */
+export async function realInside(root: string, path: string, options: { write?: boolean } = {}): Promise<string> {
+  const full = resolveInside(root, path)
+  const base = resolve(root)
+  const realRoot = await realpath(base)
+  let existing = full
+  for (;;) {
+    try {
+      await lstat(existing)
+      break
+    } catch {
+      if (existing === base) break
+      existing = dirname(existing)
+    }
+  }
+  const real = await realpath(existing).catch(() => undefined)
+  if (!real || (real !== realRoot && !real.startsWith(realRoot + sep))) throw new KnowledgeError('Path is outside the knowledge base (through a link)')
+  if (options.write) {
+    for (let part = full; part !== base && part.startsWith(base + sep); part = dirname(part)) {
+      const info = await lstat(part).catch(() => undefined)
+      if (info?.isSymbolicLink()) throw new KnowledgeError('A link inside the knowledge base is not written through')
+    }
+  }
+  return full
 }
 
 export function parseFrontMatter(content: string): { data: Record<string, unknown>; body: string } {
@@ -116,9 +149,11 @@ async function walk(root: string, dir: string, out: string[]): Promise<void> {
   }
   for (const e of entries) {
     if (e.name.startsWith('.') || e.name === 'node_modules') continue
+    // (Links are not followed: a shared folder could link to anywhere.)
+    if (e.isSymbolicLink()) continue
     const full = join(dir, e.name)
     if (e.isDirectory()) await walk(root, full, out)
-    else if (/\.(md|markdown|mdx)$/i.test(e.name)) out.push(full)
+    else if (e.isFile() && /\.(md|markdown|mdx)$/i.test(e.name)) out.push(full)
   }
 }
 
@@ -130,9 +165,9 @@ export class KnowledgeBase {
     await walk(this.root, this.root, files)
     const out: KnowledgeFile[] = []
     for (const full of files) {
-      const info = await stat(full)
+      const info = await lstat(full)
       const rel = relative(this.root, full).split(sep).join('/')
-      const head = info.size > MAX_FILE_BYTES ? '' : await readFile(full, 'utf8')
+      const head = info.size > MAX_FILE_BYTES ? '' : await readNote(full).catch(() => '')
       const { data, body } = parseFrontMatter(head)
       out.push({ path: rel, title: titleOf(rel, body, data), size: info.size, modifiedAt: info.mtime.toISOString(), tables: toList(data.tables) })
     }
@@ -140,10 +175,10 @@ export class KnowledgeBase {
   }
 
   async read(path: string): Promise<KnowledgeDoc> {
-    const full = resolveInside(this.root, path)
-    const info = await stat(full)
+    const full = await realInside(this.root, path)
+    const info = await lstat(full)
     if (info.size > MAX_FILE_BYTES) throw new KnowledgeError('File is too large')
-    const content = await readFile(full, 'utf8')
+    const content = await readNote(full)
     const { data, body } = parseFrontMatter(content)
     const rel = relative(this.root, full).split(sep).join('/')
     return {
@@ -162,10 +197,24 @@ export class KnowledgeBase {
 
   async write(path: string, content: string): Promise<string> {
     if (!/\.(md|markdown)$/i.test(path)) path = `${path}.md`
-    const full = resolveInside(this.root, path)
+    let full = await realInside(this.root, path, { write: true })
     await mkdir(dirname(full), { recursive: true })
-    await writeFile(full, content, 'utf8')
+    // (Again after the folders exist: one of them could have been a link made meanwhile.)
+    full = await realInside(this.root, path, { write: true })
+    const handle = await open(full, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0)).catch((err: NodeJS.ErrnoException) => {
+      throw err.code === 'ELOOP' ? new KnowledgeError('A link inside the knowledge base is not written through') : err
+    })
+    try {
+      await handle.writeFile(content, 'utf8')
+    } finally {
+      await handle.close()
+    }
     return relative(this.root, full).split(sep).join('/')
+  }
+
+  /** Deletes a note (never through a link). */
+  async remove(path: string): Promise<void> {
+    await rm(await realInside(this.root, path, { write: true }))
   }
 
   /** Keyword search: scores files by term frequency, boosting titles and declared tables. */
@@ -279,4 +328,13 @@ export async function staleKnowledge(kb: KnowledgeBase, snapshot: SchemaSnapshot
     if (missing.length) issues.push({ path: r.source, message: `Relationship ${r.fromTable} → ${r.toTable}: column ${missing.join(', ')} no longer exists` })
   }
   return issues
+}
+
+/** A note's text: a plain file only (O_NOFOLLOW: a link swapped in after the check is refused), capped. */
+async function readNote(full: string): Promise<string> {
+  try {
+    return (await readCapped(full, { limit: MAX_FILE_BYTES, what: 'a note', follow: false })).toString('utf8')
+  } catch (err) {
+    throw err instanceof Error && /not a plain file/.test(err.message) ? new KnowledgeError('A link inside the knowledge base is not read') : err
+  }
 }

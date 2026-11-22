@@ -1098,8 +1098,7 @@ export const api: MastermindApi = {
     return saved
   },
   async kbDelete(connectionId, path) {
-    const kb = knowledge(connectionId)
-    await rm(resolveInside(kb.root, path))
+    await knowledge(connectionId).remove(path)
   },
   async listAiModels(provider) {
     return listModels(provider)
