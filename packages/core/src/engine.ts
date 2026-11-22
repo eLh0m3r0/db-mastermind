@@ -555,7 +555,7 @@ export class DatabaseService {
     } finally {
       await entry.driver.execute('SET SHOWPLAN_XML OFF', { session }).catch(() => {})
     }
-    const xml = plans.map((r) => String(r.rows[0]?.[0] ?? '')).join('\n')
+    const xml = plans.map((r) => String(r.rows?.[0]?.[0] ?? '')).join('\n')
     const types = [...xml.matchAll(/<Stmt\w+[^>]*?StatementType="([^"]+)"/g)].map((m) => m[1]!)
     if (!types.length) throw new ReadOnlyViolationError('SQL Server gave no plan for this batch, so it is not run.')
     const other = types.find((t) => !READS.has(t))
