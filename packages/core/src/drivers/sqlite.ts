@@ -74,17 +74,43 @@ const track = (session) => {
 parentPort.on('message', (msg) => {
   try {
     if (msg.type === 'stream-open') {
-      const stmt = db.prepare(msg.sql)
-      stmt.setReadBigInts(true)
-      const columns = stmt.columns()
-      if (columns.length === 0) {
-        stmt.run(...bind(msg.params ?? []))
-        post({ id: msg.id, ok: true, result: { cursor: 0, fields: [] } })
-        return
+      // SQL nobody confirmed: query_only while it is prepared and takes its first step (a write, also one with
+      // RETURNING, runs to completion in that step); not longer, as the connection is shared by all tabs.
+      const queryOnly = msg.queryOnly && !db.prepare('PRAGMA query_only').get()?.query_only
+      if (queryOnly) db.exec('PRAGMA query_only = 1')
+      let stmt, columns, it, first
+      try {
+        stmt = db.prepare(msg.sql)
+        stmt.setReadBigInts(true)
+        columns = stmt.columns()
+        if (columns.length === 0) {
+          if (msg.queryOnly) throw new Error('Only reads are allowed here (read-only): this statement returns no rows.')
+          stmt.run(...bind(msg.params ?? []))
+          post({ id: msg.id, ok: true, result: { cursor: 0, fields: [] } })
+          return
+        }
+        stmt.setReturnArrays(true)
+        it = stmt.iterate(...bind(msg.params ?? []))
+        if (msg.queryOnly) first = it.next()
+      } finally {
+        if (queryOnly) db.exec('PRAGMA query_only = 0')
       }
-      stmt.setReturnArrays(true)
       const cursor = nextCursor++
-      cursors.set(cursor, stmt.iterate(...bind(msg.params ?? [])))
+      // (The step already taken comes first.)
+      if (first) {
+        const rest = it
+        let head = first
+        it = {
+          next: () => {
+            if (!head) return rest.next()
+            const h = head
+            head = undefined
+            return h
+          },
+          return: () => rest.return?.(),
+        }
+      }
+      cursors.set(cursor, it)
       post({ id: msg.id, ok: true, result: { cursor, fields: columns.map((c) => ({ name: c.name, dataType: c.type ?? undefined })) } })
     } else if (msg.type === 'stream-next') {
       const it = cursors.get(msg.cursor)
@@ -371,7 +397,7 @@ export class SqliteDriver implements DatabaseDriver {
   }
 
   async *stream(sql: string, options: StreamOptions = {}): AsyncGenerator<StreamBatch> {
-    const open = (await this.send({ type: 'stream-open', sql, params: options.params ?? [] })) as { cursor: number; fields: ResultField[] }
+    const open = (await this.send({ type: 'stream-open', sql, params: options.params ?? [], queryOnly: !!options.unconfirmed })) as { cursor: number; fields: ResultField[] }
     if (!open.cursor) return
     let done = false
     let yielded = false

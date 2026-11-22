@@ -47,6 +47,10 @@ export interface StreamOptions {
   signal?: AbortSignal
   /** Rows per batch (drivers with their own chunking may differ). */
   batchSize?: number
+  /** Stream on this session's connection (inside its transaction): the guarded path's read-only transaction. */
+  session?: string
+  /** SQL nobody confirmed: the driver's own server-side guard applies, as in QueryOptions.unconfirmed. */
+  unconfirmed?: boolean
 }
 
 /** A stream yields at least one batch for a result with columns, so an empty result still names its columns. */

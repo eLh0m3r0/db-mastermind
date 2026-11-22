@@ -286,7 +286,7 @@ export class OracleDriver implements DatabaseDriver {
 
   async *stream(sql: string, options: StreamOptions = {}): AsyncGenerator<StreamBatch> {
     if (options.signal?.aborted) throw new QueryCancelledError()
-    const conn = await this.activePool.getConnection()
+    const { conn, release } = options.session ? await this.acquire(options.session) : { conn: await this.activePool.getConnection(), release: undefined }
     let cancelled = false
     const onAbort = () => {
       cancelled = true
@@ -315,7 +315,7 @@ export class OracleDriver implements DatabaseDriver {
       throw err
     } finally {
       options.signal?.removeEventListener('abort', onAbort)
-      await conn.close().catch(() => {})
+      await (release ? release() : conn.close()).catch(() => {})
     }
   }
 

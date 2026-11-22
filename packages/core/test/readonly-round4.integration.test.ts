@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, expect, it } from 'vitest'
-import { DatabaseService, type ConnectionConfig } from '../src/index.js'
+import { DatabaseService, type ConnectionConfig, type DriverId } from '../src/index.js'
 import { engines, setupEngine, skip } from './fixtures.js'
 
 /**
@@ -89,3 +89,62 @@ describe.skipIf(skip.has('postgres'))('postgres', () => {
     expect(Number(locks!.results![0]!.rows[0]![0])).toBe(0)
   })
 })
+
+/** A read nobody confirmed, streamed: the same guard as runScript (streamGuarded), on every engine. */
+const ORACLE: ConnectionConfig = { id: 'ora-r4', name: 'ora', driver: 'oracle', host: '127.0.0.1', port: 15219, user: 'shop', password: 'mastermind', database: 'FREEPDB1' }
+const CLICKHOUSE: ConnectionConfig = { id: 'ch-r4', name: 'ch', driver: 'clickhouse', host: '127.0.0.1', port: 18123, user: 'default', password: 'mastermind', database: 'default' }
+const STREAM: Partial<Record<DriverId, { read: string; inTransaction?: [sql: string, expected: string]; refused: string[] }>> = {
+  postgres: { read: 'SELECT g FROM generate_series(1, 12000) g', inTransaction: ["SELECT current_setting('transaction_read_only')", 'on'], refused: ['SELECT pg_sleep(0)', 'SELECT 1; SELECT 2', "SELECT U&\"pg\\005fsleep\"(0)", 'DELETE FROM shop.customers RETURNING id', 'SET search_path TO shop'] },
+  mysql: { read: 'SELECT 1 AS a UNION ALL SELECT 2', refused: ['SELECT SLEEP(0)', "SELECT 'x' INTO OUTFILE '/tmp/dbm_r4s'", 'SELECT 1; SELECT 2'] },
+  mariadb: { read: 'SELECT 1 AS a UNION ALL SELECT 2', refused: ['SELECT SLEEP(0)', 'SELECT 1; SELECT 2'] },
+  mssql: { read: 'SELECT TOP (12000) a.object_id FROM sys.all_columns a CROSS JOIN sys.all_columns b', inTransaction: ['SELECT @@TRANCOUNT', '1'], refused: ["SELECT * FROM sys.fn_get_audit_file('/x*.sqlaudit', default, default)", 'SELECT 1 DELETE FROM shop.customers', "EXEC sp_executesql N'SELECT 1'"] },
+  oracle: { read: 'SELECT level FROM dual CONNECT BY level <= 12000', refused: ['SELECT dbms_random.value FROM dual', 'SELECT 1 FROM dual FOR UPDATE'] },
+  sqlite: { read: 'WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 12000) SELECT i FROM n', refused: ["SELECT load_extension('x')", 'DELETE FROM customers RETURNING id', 'PRAGMA query_only = 0'] },
+  duckdb: { read: 'SELECT * FROM range(12000)', refused: ["SELECT * FROM read_text('/etc/hosts')", 'SELECT 1; SELECT 2', 'CREATE TABLE x AS SELECT 1'] },
+  clickhouse: { read: 'SELECT number FROM numbers(12000)', refused: ["SELECT * FROM file('x')", 'SELECT sleep(0)', 'SELECT 1; SELECT 2'] },
+}
+for (const [driver, spec] of Object.entries(STREAM) as [DriverId, NonNullable<(typeof STREAM)[DriverId]>][]) {
+  describe.skipIf(skip.has(driver))(`${driver}: a read nobody confirmed streams through the guard`, () => {
+    it('rows come in batches, inside the read-only transaction; everything else is refused', { timeout: 120_000 }, async () => {
+      let id: string
+      if (driver === 'oracle' || driver === 'clickhouse') {
+        const c = driver === 'oracle' ? ORACLE : CLICKHOUSE
+        await svc.connect(c)
+        id = c.id
+      } else id = (await setupEngine(svc, config(driver))).id
+      let rows = 0
+      let batches = 0
+      for await (const b of svc.streamQuery(id, spec.read, { readOnly: true, batchSize: 1000 })) {
+        rows += b.rows.length
+        batches++
+      }
+      expect(rows).toBe(spec.read.includes('12000') ? 12000 : 2)
+      if (rows > 2) expect(batches).toBeGreaterThan(1)
+      if (spec.inTransaction) {
+        const seen: string[] = []
+        for await (const b of svc.streamQuery(id, spec.inTransaction[0], { readOnly: true })) seen.push(...b.rows.map((r) => String(r[0])))
+        expect(seen).toEqual([spec.inTransaction[1]])
+      }
+      for (const sql of spec.refused) {
+        const take = async () => {
+          for await (const _ of svc.streamQuery(id, sql, { readOnly: true })) void _
+        }
+        await expect(take(), sql).rejects.toThrow()
+      }
+      // A read-only connection (the desktop app's export) streams through the same guard, with the user's profile.
+      if (driver !== 'oracle' && driver !== 'clickhouse') {
+        const base = config(driver).config
+        const readOnly: ConnectionConfig = { ...base, id: `${base.id}-ro4s`, readOnly: true }
+        await svc.connect(readOnly)
+        let n = 0
+        for await (const b of svc.streamQuery(readOnly.id, spec.read)) n += b.rows.length
+        expect(n).toBe(rows)
+        const take = async () => {
+          for await (const _ of svc.streamQuery(readOnly.id, spec.refused[0]!)) void _
+        }
+        // (DuckDB's guarded instance refuses the file itself.)
+        await expect(take()).rejects.toThrow(/read-only|Permission Error/i)
+      }
+    })
+  })
+}

@@ -52,8 +52,8 @@ const GRID_LOCK_TIMEOUT_MS = 5000
 const READ_LOCK_TIMEOUT_MS = 10000
 /** A time limit for SQL nobody confirmed where the session has none of its own. */
 const UNCONFIRMED_TIMEOUT_MS = 60_000
-/** (SQL Server's limit is the app's own timer: tests shorten it with DBM_UNCONFIRMED_TIMEOUT_MS.) */
-const mssqlUnconfirmedTimeoutMs = () => Number(process.env.DBM_UNCONFIRMED_TIMEOUT_MS) || UNCONFIRMED_TIMEOUT_MS
+/** (SQL Server's limit and a stream's first-batch limit are the app's own timer: tests shorten it with DBM_UNCONFIRMED_TIMEOUT_MS.) */
+const appUnconfirmedTimeoutMs = () => Number(process.env.DBM_UNCONFIRMED_TIMEOUT_MS) || UNCONFIRMED_TIMEOUT_MS
 
 /** Whether a filter has free-form SQL of its own (typed in the grid, or written by AI). */
 const hasRawFilter = (node: FilterNode | undefined): boolean => !!node && (node.kind === 'raw' ? !!node.sql.trim() : node.kind === 'group' ? node.children.some(hasRawFilter) : false)
@@ -530,7 +530,7 @@ export class DatabaseService {
     // engines' limit, unless the connection has a request timeout of its own. (Cancelling is safe: what runs here
     // reads, or writes #temp tables only, and is rolled back.)
     const ownTimeout = Number((entry.config.options as { requestTimeout?: unknown } | undefined)?.requestTimeout ?? 0)
-    const limit = driver === 'mssql' && !ownTimeout ? AbortSignal.timeout(mssqlUnconfirmedTimeoutMs()) : undefined
+    const limit = driver === 'mssql' && !ownTimeout ? AbortSignal.timeout(appUnconfirmedTimeoutMs()) : undefined
     const signal = limit ? (options.signal ? AbortSignal.any([options.signal, limit]) : limit) : options.signal
     try {
       // MySQL's sql_mode decides how its strings read (backslashes, double quotes): asked of this session.
@@ -576,7 +576,7 @@ export class DatabaseService {
         } catch (err) {
           failed = true
           const timedOut = limit?.aborted && !options.signal?.aborted
-          outcomes.push({ sql: s.text, start: s.start, end: s.end, error: timedOut ? { message: `Stopped after ${Math.round(mssqlUnconfirmedTimeoutMs() / 1000)} s: SQL nobody confirmed has a time limit here.` } : describeError(err), durationMs: Date.now() - started })
+          outcomes.push({ sql: s.text, start: s.start, end: s.end, error: timedOut ? { message: `Stopped after ${Math.round(appUnconfirmedTimeoutMs() / 1000)} s: SQL nobody confirmed has a time limit here.` } : describeError(err), durationMs: Date.now() - started })
         }
         // (SQL Server's last batch is checked as it is rolled back, in end().)
         const last = s === verdict.statements.at(-1)
@@ -647,18 +647,81 @@ export class DatabaseService {
   }
 
   /**
-   * Rows of one statement in batches, holding one batch at a time (exports of any size). Read-only connections
-   * only allow reads; drivers without streaming fall back to a normal execute.
+   * Rows of one statement in batches, holding one batch at a time (exports of any size). `readOnly` (SQL nobody
+   * confirmed) and every read-only connection stream through the guard (streamGuarded), as runScript runs them;
+   * drivers without streaming fall back to a normal execute.
    */
-  async *streamQuery(id: string, sql: string, options: StreamOptions = {}): AsyncGenerator<StreamBatch> {
+  async *streamQuery(id: string, sql: string, options: Omit<StreamOptions, 'session' | 'unconfirmed'> & { readOnly?: boolean } = {}): AsyncGenerator<StreamBatch> {
     const entry = this.get(id)
-    this.assertAllowed(entry, sql)
+    if (options.readOnly || (entry.config.readOnly && options.readOnly === undefined)) {
+      yield* this.streamGuarded(entry, sql, options, options.readOnly ? 'agent' : 'user')
+      return
+    }
     if (entry.driver.stream) {
       yield* entry.driver.stream(sql, options)
       return
     }
     const [r] = await entry.driver.execute(sql, { params: options.params, signal: options.signal })
     if (r?.fields.length) yield { fields: r.fields, rows: r.rows }
+  }
+
+  /**
+   * One read nobody confirmed, streamed with the guarantees of runGuarded: the same verdict (one statement, the
+   * allowlist, refused names; SQL Server's plan of the batch), the read-only transaction on a session of its own
+   * whose state is checked before the first row and after the last, and the driver's own server-side guard
+   * (StreamOptions.unconfirmed). The time limit is on the first batch (60 s, the app's own timer): an export of
+   * millions of rows may take longer than any one query should, but a query that sits before its first row is
+   * stopped. Every engine streams this way; a session statement (the user profile's SET or USE) can't be streamed.
+   */
+  private async *streamGuarded(entry: OpenConnection, sql: string, options: StreamOptions, profile: ReadProfile): AsyncGenerator<StreamBatch> {
+    const driver = entry.config.driver
+    const dialect = entry.driver.dialect
+    if (!entry.driver.stream) throw new ReadOnlyViolationError(`${driver} can't stream SQL nobody confirmed.`)
+    const session = `readonly-stream-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    let inTransaction = false
+    let completed = false
+    try {
+      let modes: LexModes = {}
+      if (driver === 'mysql' || driver === 'mariadb') {
+        const [r] = await entry.driver.execute('SELECT @@SESSION.sql_mode', { session })
+        const mode = String(r?.rows[0]?.[0] ?? '')
+        modes = { ansiQuotes: /ANSI_QUOTES/i.test(mode), noBackslashEscapes: /NO_BACKSLASH_ESCAPES/i.test(mode) }
+      }
+      const verdict = readVerdict(sql, driver, { modes, profile })
+      if (!verdict.ok) throw new ReadOnlyViolationError(verdict.reason)
+      const only = verdict.statements[0]!
+      if (verdict.statements.length !== 1 || only.session) throw new ReadOnlyViolationError('Only one read can be streamed here: run session statements and scripts in the SQL editor.')
+      if (driver === 'mssql') await this.mssqlReadsOnly(entry, session, only.text, options.params, profile)
+      if (dialect.beginReadOnly && driver !== 'duckdb') {
+        await entry.driver.execute(driver === 'mssql' ? `SET LOCK_TIMEOUT ${READ_LOCK_TIMEOUT_MS}; ${dialect.beginReadOnly}` : dialect.beginReadOnly, { session })
+        inTransaction = true
+      }
+      const trackable = inTransaction && !!entry.driver.transactionState && driver !== 'oracle'
+      if (trackable && (await entry.driver.transactionState!(session)) !== 'open') throw new GuardBrokenError()
+      const first = new AbortController()
+      const timer = setTimeout(() => first.abort(), appUnconfirmedTimeoutMs())
+      const signal = options.signal ? AbortSignal.any([options.signal, first.signal]) : first.signal
+      try {
+        for await (const batch of entry.driver.stream(only.text, { ...options, signal, session, unconfirmed: true })) {
+          clearTimeout(timer)
+          yield batch
+        }
+      } catch (err) {
+        if (first.signal.aborted && !options.signal?.aborted) throw new Error(`Stopped: no row came within ${Math.round(appUnconfirmedTimeoutMs() / 1000)} s (SQL nobody confirmed has a time limit for its first rows).`)
+        throw err
+      } finally {
+        clearTimeout(timer)
+      }
+      if (trackable && (await entry.driver.transactionState!(session)) !== 'open') throw new GuardBrokenError()
+      completed = true
+    } finally {
+      // (MySQL: a stream stopped early closed its connection, and the transaction with it.)
+      if (inTransaction && (completed || (driver !== 'mysql' && driver !== 'mariadb'))) {
+        await entry.driver.execute(driver === 'mssql' ? 'IF @@TRANCOUNT > 0 ROLLBACK' : dialect.rollback, { session }).catch(() => {})
+      }
+      if (driver === 'postgres' && inTransaction) await entry.driver.execute('DISCARD ALL', { session }).catch(() => {})
+      await entry.driver.releaseSession(session).catch(() => {})
+    }
   }
 
   /** Files the user handed to a DuckDB connection ("Query a file"): SQL nobody confirmed may read them too. */

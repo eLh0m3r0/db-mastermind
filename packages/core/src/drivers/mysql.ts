@@ -431,7 +431,9 @@ export class MysqlDriver implements DatabaseDriver {
 
   async *stream(sql: string, options: StreamOptions = {}): AsyncGenerator<StreamBatch> {
     if (options.signal?.aborted) throw new QueryCancelledError()
-    const conn = await this.activePool.getConnection()
+    if (options.unconfirmed && this.multipleStatements()) throw new ReadOnlyViolationError('This connection runs several statements in one query: SQL nobody confirmed is not run on it.')
+    const session = options.session
+    const conn = session ? (await this.acquire(session)).conn : await this.activePool.getConnection()
     const raw = conn.connection as unknown as CallbackConnection
     const threadId = conn.threadId
     let killed: Promise<void> = Promise.resolve()
@@ -484,10 +486,17 @@ export class MysqlDriver implements DatabaseDriver {
       )
     } finally {
       options.signal?.removeEventListener('abort', onAbort)
-      if (finished) conn.release()
-      else {
-        // Stopped early: the KILL ends the query server-side; the half-read connection is not reused.
+      if (finished) {
+        if (!session) conn.release()
+      } else {
+        // Stopped early: the KILL ends the query server-side; the half-read connection is not reused (a session's
+        // goes too, and its transaction with it).
         await killed
+        if (session && this.sessions.get(session) === conn) {
+          this.sessions.delete(session)
+          this.serverInTransaction.delete(session)
+          this.transactions.released(session)
+        }
         conn.destroy()
       }
     }

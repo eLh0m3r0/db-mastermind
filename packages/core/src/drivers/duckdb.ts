@@ -173,7 +173,19 @@ export class DuckDBDriver implements DatabaseDriver {
   async *stream(sql: string, options: StreamOptions = {}): AsyncGenerator<StreamBatch> {
     if (options.signal?.aborted) throw new QueryCancelledError()
     const duckdb = await loadDuckDB()
-    const conn = await this.db.connect()
+    // SQL nobody confirmed streams from the guarded instance, after DuckDB's parser said it is one read.
+    const conn = options.unconfirmed ? await (await this.guardedInstance()).connect() : await this.db.connect()
+    if (options.unconfirmed) {
+      try {
+        const statements = await conn.extractStatements(sql)
+        if (statements.count !== 1) throw new ReadOnlyViolationError('Only one statement at a time is allowed here.')
+        const prepared = await statements.prepare(0)
+        if (prepared.statementType !== duckdb.StatementType.SELECT && prepared.statementType !== duckdb.StatementType.EXPLAIN) throw new ReadOnlyViolationError(`Only reads are allowed here (read-only): DuckDB reads this as ${duckdb.StatementType[prepared.statementType] ?? 'a statement that is not a query'}.`)
+      } catch (err) {
+        conn.closeSync()
+        throw err
+      }
+    }
     let cancelled = false
     const onAbort = () => {
       cancelled = true

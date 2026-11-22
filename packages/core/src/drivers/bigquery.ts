@@ -175,13 +175,16 @@ export class BigQueryDriver implements DatabaseDriver {
     if (options.signal?.aborted) throw new QueryCancelledError()
     const start = process.hrtime.bigint()
     // BigQuery says what a statement is without running it (a dry run): only a SELECT, never a script.
-    if (options.unconfirmed) {
-      const [dry] = await this.bq.createQueryJob({ query: sql.trim().replace(/;\s*$/, ''), useLegacySql: false, location: this.location, dryRun: true, ...bigqueryParams(options.params) })
-      const type = (dry.metadata as { statistics?: { query?: { statementType?: string } } } | undefined)?.statistics?.query?.statementType
-      if (type !== 'SELECT') throw new ReadOnlyViolationError(`Only reads are allowed here (read-only): BigQuery reads this as ${type ?? 'something it would not say'}.`)
-    }
+    if (options.unconfirmed) await this.dryRunIsSelect(sql, options.params)
     const job = await this.startJob(sql, options.params)
     return this.cancelOnAbort(job, options.signal, this.read(job, options.maxRows, start))
+  }
+
+  /** BigQuery says what a statement is without running it (a dry run): only a SELECT, never a script. */
+  private async dryRunIsSelect(sql: string, params: unknown[] | undefined): Promise<void> {
+    const [dry] = await this.bq.createQueryJob({ query: sql.trim().replace(/;\s*$/, ''), useLegacySql: false, location: this.location, dryRun: true, ...bigqueryParams(params) })
+    const type = (dry.metadata as { statistics?: { query?: { statementType?: string } } } | undefined)?.statistics?.query?.statementType
+    if (type !== 'SELECT') throw new ReadOnlyViolationError(`Only reads are allowed here (read-only): BigQuery reads this as ${type ?? 'something it would not say'}.`)
   }
 
   private async read(job: Job, maxRows: number | undefined, start: bigint): Promise<QueryResult[]> {
@@ -220,6 +223,7 @@ export class BigQueryDriver implements DatabaseDriver {
 
   async *stream(sql: string, options: StreamOptions = {}): AsyncGenerator<StreamBatch> {
     if (options.signal?.aborted) throw new QueryCancelledError()
+    if (options.unconfirmed) await this.dryRunIsSelect(sql, options.params)
     const job = await this.startJob(sql, options.params)
     const size = options.batchSize ?? 1000
     let pageToken: string | undefined
