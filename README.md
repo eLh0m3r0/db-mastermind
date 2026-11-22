@@ -206,6 +206,25 @@ relations:
 `status` P = paid, S = shipped, X = cancelled (excluded from revenue).
 ```
 
+Dashboards of the connection are files `dashboards/<name>.md`: a `# ` title, then per tile a `## ` heading and one
+fenced `sql` block (one read-only query; tiles run as guarded reads). Options on the block: `chart=bar|line|scatter`
+with `x=` and `y=` naming result columns (`#2` for a column without a name), `wide` for the full width; front matter
+`refresh: <seconds>` sets auto-refresh. Text between tiles is kept. The assistant writes them with `write_knowledge`.
+
+````markdown
+---
+dashboard: true
+refresh: 60
+---
+# Sales overview
+
+## Orders per month
+
+```sql chart=line x=month y=orders wide
+select date_trunc('month', ordered_at) as month, count(*) as orders from orders group by 1 order by 1
+```
+````
+
 ## Development
 
 ```bash

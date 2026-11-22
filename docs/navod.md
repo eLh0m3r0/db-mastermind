@@ -61,6 +61,7 @@ Jazyk přepnete v **Nastavení → Obecné → Jazyk**. Při prvním spuštění
 - Našeptávání zná schéma. Po `JOIN` nabídne související tabulky i s celou podmínkou `ON`.
 - ⌘I / Ctrl+I: popište dotaz slovy a AI ho napíše. U chyby je tlačítko *Opravit pomocí AI*.
 - Výsledky můžete připnout, zobrazit jako graf a vložit do dashboardu.
+- Dashboardy patří ke svému připojení a najdete je na kartě *Uložené* v postranním panelu (také *Dotaz → Dashboardy*). Má-li připojení znalostní bázi, jsou to soubory Markdown `dashboards/<název>.md` v ní, sdílené s každým, kdo složku používá; jinak zůstávají v tomto počítači, dokud nezvolíte *Přesunout do znalostní báze*.
 - **Kopírování výsledku:** TSV (pro Excel), JSON nebo Markdown (dobré pro vložení do AI chatu), volitelně i s SQL.
 - **Více výsledků najednou:** když skript vrátí víc výsledků, vpravo v liště jsou *Kopírovat vše* a *Stáhnout vše*
   (Excel s listem pro každý výsledek, ostatní formáty jako ZIP).

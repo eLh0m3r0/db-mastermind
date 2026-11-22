@@ -547,6 +547,31 @@ export function getTool(name: string): DbTool | undefined {
 }
 
 /** System prompt shared by the in-app assistant and agent integrations. */
+/** The dashboard file the system prompt shows as its example (the desktop's parser reads it in a test). */
+export const DASHBOARD_EXAMPLE = `---
+dashboard: true
+refresh: 300
+---
+# Sales overview
+
+## Orders per month
+
+\`\`\`sql chart=line x=month y=orders wide
+select date_trunc('month', ordered_at) as month, count(*) as orders from orders group by 1 order by 1
+\`\`\`
+
+## Customers
+
+\`\`\`sql
+select count(*) as customers from customers
+\`\`\`
+`
+
+/** How dashboards are kept in a knowledge base, for the system prompt (only when the connection has one). */
+export function dashboardPrompt(canWrite: boolean): string {
+  return `Dashboards are knowledge base files dashboards/<name>.md. When the user asks for a dashboard or to add something to one, read the existing file with read_knowledge first, then ${canWrite ? 'write the whole file back with write_knowledge' : 'show the whole file\'s text (you may not write knowledge files here)'}. Format: optional front matter (dashboard: true; refresh: seconds, one of 60, 300, 900, 3600), a "# " title, then per tile one "## " heading and one fenced sql block. The block's options: chart=bar|line|scatter with x=<column> y=<column>[,<column>] naming result columns (quote names with spaces: x="order month"); no chart= shows a table, or a big number for a single value; wide spans the full width. Each block is one read-only query returning the named columns. Example:\n${DASHBOARD_EXAMPLE}`
+}
+
 export async function buildSystemPrompt(ctx: ToolContext, extra = ''): Promise<string> {
   const config = ctx.db.config(ctx.connectionId)
   const snapshot = await ctx.db.schema(ctx.connectionId)
@@ -565,6 +590,7 @@ export async function buildSystemPrompt(ctx: ToolContext, extra = ''): Promise<s
         if (doc) kb += `\n\n${overview.path}:\n${doc.body.slice(0, 6000)}`
       }
     }
+    kb += `\n\n${dashboardPrompt(!!ctx.allowKnowledgeWrites)}`
   }
   return `You are the database assistant inside DB Mastermind, a database client. You help an analyst understand and query a ${info?.product ?? config.driver} database${snapshot.database ? ` "${snapshot.database}"` : ''}.
 
