@@ -1,6 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { formatResultForModel, type DbTool, type JsonSchema } from './ai-tools.js'
+import { formatResultForModel, modelError, type DbTool, type JsonSchema } from './ai-tools.js'
 import { describeError } from './engine.js'
 import type { KnowledgeBase } from './knowledge.js'
 import { isReadOnlyScript } from './sql-split.js'
@@ -89,10 +89,10 @@ export function sqlTool(spec: SqlToolSpec): DbTool {
         const outcomes = await ctx.db.read(ctx.connectionId, spec.sql, { maxRows: ctx.maxRows ?? 200, parameterValues: values })
         for (const o of outcomes) ctx.onExecuted?.(o)
         return outcomes
-          .map((o) => (o.error ? `ERROR: ${o.error.message}` : (o.results ?? []).map((r) => formatResultForModel(r, ctx.maxRows ?? 200)).join('\n\n')))
+          .map((o) => (o.error ? modelError(ctx, o.error) : (o.results ?? []).map((r) => formatResultForModel(r, ctx.maxRows ?? 200)).join('\n\n')))
           .join('\n\n')
       } catch (err) {
-        return `ERROR: ${describeError(err).message}`
+        return modelError(ctx, describeError(err))
       }
     },
   }

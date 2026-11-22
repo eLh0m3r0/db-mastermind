@@ -166,6 +166,40 @@ function summaryWithoutData(r: QueryResult): string {
   return `Done, ${r.affectedRows ?? r.rowCount} row(s) affected.`
 }
 
+/**
+ * An error as the model sees it. Schema only: errors of the classes that can quote a value from the rows (conversion
+ * and constraint errors) are reduced to their class and position; the others (syntax, unknown names, permissions,
+ * the guard's refusals) pass as they are:
+ *
+ * | database          | reduced                                                                                    |
+ * |-------------------|--------------------------------------------------------------------------------------------|
+ * | PostgreSQL, CRDB  | SQLSTATE classes 22 (data exception) and 23 (integrity constraint)                         |
+ * | MySQL, MariaDB    | 1062 duplicate entry, 1264/1265/1292/1366/1406/1690 value conversions, 3819/4025 checks    |
+ * | SQL Server        | 2601/2627 duplicate key, 245/220/232/241/242/295/517/8114/8115/8152/2628 conversions        |
+ * | Oracle            | ORA-01722, ORA-01830–01862 (number and date conversion), ORA-12899                         |
+ * | DuckDB            | Conversion, Constraint, Out of Range and Invalid Input errors                              |
+ * | ClickHouse        | CANNOT_PARSE_*, CANNOT_CONVERT_*, *OUT_OF_RANGE*, TYPE_MISMATCH                            |
+ * | any               | a message about a duplicate, a conversion or a value out of range                          |
+ */
+export function modelError(ctx: Pick<ToolContext, 'allowData'>, error: { message: string; code?: string; position?: number }): string {
+  const code = error.code ? ` [${error.code}]` : ''
+  if (ctx.allowData || !quotesValues(error)) return `ERROR: ${error.message}${code}`
+  return `ERROR${code}: a ${valueClass(error)} error${error.position ? ` at position ${error.position}` : ''}. Its message can quote values from the rows, so it is not shown: the user only shares the schema.`
+}
+
+function quotesValues(e: { message: string; code?: string }): boolean {
+  const code = e.code ?? ''
+  if (/^2[23][0-9A-Z]{3}$/.test(code)) return true
+  if (/^(ER_DUP_ENTRY|ER_TRUNCATED_WRONG_VALUE|ER_TRUNCATED_WRONG_VALUE_FOR_FIELD|WARN_DATA_TRUNCATED|ER_WARN_DATA_OUT_OF_RANGE|ER_DATA_TOO_LONG|ER_DATA_OUT_OF_RANGE|ER_CHECK_CONSTRAINT_VIOLATED|ER_CONSTRAINT_FAILED)$/.test(code)) return true
+  if (/^(1062|1264|1265|1292|1366|1406|1690|3819|4025|2601|2627|245|220|232|241|242|295|517|8114|8115|8152|2628)$/.test(code)) return true
+  if (/ORA-(01722|018[3-6]\d|12899)/.test(e.message)) return true
+  if (/^(Conversion|Constraint|Out of Range|Invalid Input) Error/.test(e.message)) return true
+  if (/CANNOT_PARSE|CANNOT_CONVERT|OUT_OF_RANGE|TYPE_MISMATCH|Cannot parse/i.test(`${code} ${e.message}`)) return true
+  return /duplicate (key|entry)|conver(t|sion)|out of range|invalid input syntax|incorrect \w+ value|truncated incorrect/i.test(e.message)
+}
+
+const valueClass = (e: { message: string; code?: string }) => (/duplicate|unique|constraint|check/i.test(e.message) || /^23/.test(e.code ?? '') ? 'constraint' : 'conversion')
+
 async function runSql(ctx: ToolContext, sql: string, maxRows: number): Promise<string> {
   const config = ctx.db.config(ctx.connectionId)
   const statements = splitStatements(sql, config.driver)
@@ -192,7 +226,7 @@ async function runSql(ctx: ToolContext, sql: string, maxRows: number): Promise<s
   return outcomes
     .map((o, i) => {
       const head = outcomes.length > 1 ? `Statement ${i + 1}: ` : ''
-      if (o.error) return `${head}ERROR: ${o.error.message}${o.error.code ? ` [${o.error.code}]` : ''}`
+      if (o.error) return `${head}${modelError(ctx, o.error)}`
       // Schema only: the user approved a change, not sharing table contents (a SELECT in the script, RETURNING).
       if (!ctx.allowData) return head + ((o.results ?? []).map(summaryWithoutData).join('\n') || 'Done.')
       return head + (o.results ?? []).map((r) => formatResultForModel(r, maxRows)).join('\n\n')
@@ -430,7 +464,7 @@ export const DB_TOOLS: DbTool[] = [
       try {
         return await runSql(ctx, sql, num(input, 'max_rows', ctx.maxRows ?? DEFAULT_ROWS, MAX_ROWS))
       } catch (err) {
-        return `ERROR: ${describeError(err).message}`
+        return modelError(ctx, describeError(err))
       }
     },
   },
@@ -445,15 +479,19 @@ export const DB_TOOLS: DbTool[] = [
       try {
         const plan = await ctx.db.explain(ctx.connectionId, sql)
         const lines: string[] = []
+        // Schema only: MySQL and MariaDB read const tables while planning and write their values into the plan's
+        // conditions, so those are left out there; elsewhere a condition holds the agent's own constants.
+        const driver = ctx.db.config(ctx.connectionId).driver
+        const details = ctx.allowData || (driver !== 'mysql' && driver !== 'mariadb')
         const walk = (n: PlanNode, depth: number) => {
           const facts = [n.cost !== undefined ? `cost ${n.cost}` : '', n.rows !== undefined ? `rows ${n.rows}` : ''].filter(Boolean).join(', ')
-          lines.push(`${'  '.repeat(depth)}${n.operation}${n.object ? ` on ${n.object}` : ''}${facts ? ` (${facts})` : ''}${n.detail ? ` — ${n.detail}` : ''}`)
+          lines.push(`${'  '.repeat(depth)}${n.operation}${n.object ? ` on ${n.object}` : ''}${facts ? ` (${facts})` : ''}${n.detail && details ? ` — ${n.detail}` : ''}`)
           for (const c of n.children) walk(c, depth + 1)
         }
         walk(plan.root, 0)
         return lines.join('\n')
       } catch (err) {
-        return `ERROR: ${describeError(err).message}`
+        return modelError(ctx, describeError(err))
       }
     },
   },
