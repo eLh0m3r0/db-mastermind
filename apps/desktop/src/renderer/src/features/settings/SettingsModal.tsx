@@ -20,6 +20,7 @@ const SECTIONS = [
   ['appearance', 'Appearance'],
   ['editor', 'Editor & data'],
   ['snippets', 'Snippets'],
+  ['language', 'Language'],
   ['ai', 'AI assistant'],
   ['permissions', 'AI permissions'],
   ['mcp', 'MCP server'],
@@ -63,6 +64,41 @@ export function SettingsModal() {
           </div>
         </nav>
         <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-auto p-5">
+          {current === 'language' && (
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium">{t('Language Requests')}</h3>
+              <p className="text-sm text-fg-muted">{t('Suggest a language or vote for existing requests to help prioritize translations.')}</p>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium">Spanish</div>
+                    <div className="text-sm text-fg-muted">15 votes</div>
+                  </div>
+                  <Button size="sm">Vote</Button>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium">German</div>
+                    <div className="text-sm text-fg-muted">8 votes</div>
+                  </div>
+                  <Button size="sm">Vote</Button>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium">French</div>
+                    <div className="text-sm text-fg-muted">5 votes</div>
+                  </div>
+                  <Button size="sm">Vote</Button>
+                </div>
+              </div>
+              <div className="pt-3 border-t border-line">
+                <div className="flex gap-2">
+                  <Input placeholder={t('Suggest a new language...')} />
+                  <Button>{t('Submit')}</Button>
+                </div>
+              </div>
+            </div>
+          )}
           {current === 'general' && (
             <>
               <Row label={t('Language')}>

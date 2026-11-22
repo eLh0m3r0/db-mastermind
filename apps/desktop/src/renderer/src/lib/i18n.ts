@@ -76,3 +76,13 @@ export function useT(): typeof t {
   useSettings((s) => s.settings?.language)
   return t
 }
+
+// Translation strings for the language voting feature
+export const languageStrings = {
+  'Language Requests': 'Language Requests',
+  'Suggest a language or vote for existing requests to help prioritize translations.': 'Suggest a language or vote for existing requests to help prioritize translations.',
+  'Suggest a new language...': 'Suggest a new language...',
+  'Submit': 'Submit',
+  'Vote': 'Vote',
+  'votes': 'votes'
+}

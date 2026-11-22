@@ -83,6 +83,13 @@ The UI is in English and Czech. English text is written in the code; the Czech t
 request and the maintainer will add them. Shortcuts in UI text go through `keys('⇧⌘↵')`, so Windows and Linux show
 Ctrl.
 
+### Language Requests
+
+If you'd like to see DB Mastermind in another language, you can request it in the settings under 'Language Request'.
+This will help prioritize which languages to add next. If you're interested in contributing or maintaining a
+translation, please mention that in your request. The maintainer will generalize the language system before adding
+new languages, as described in the roadmap.
+
 ## License
 
 By contributing you agree that your contribution is licensed under the [MIT license](LICENSE) of the project.
