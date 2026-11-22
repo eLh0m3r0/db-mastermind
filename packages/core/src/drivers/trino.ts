@@ -127,18 +127,37 @@ export class TrinoDriver implements DatabaseDriver {
     return body
   }
 
+  /**
+   * A URL the server handed back (nextUri), checked before the credentials go to it: the same scheme, host and port
+   * as the connection's server. Anything else (another host, https turned into http) is an error that names it.
+   */
+  private serverUrl(url: string): string {
+    const base = new URL(this.baseUrl)
+    let next: URL
+    try {
+      next = new URL(url, base)
+    } catch {
+      throw new Error('Trino answered with a next URL that is not one')
+    }
+    if (next.protocol !== base.protocol || next.hostname.toLowerCase() !== base.hostname.toLowerCase() || (next.port || defaultPort(next.protocol)) !== (base.port || defaultPort(base.protocol))) {
+      throw new Error(`Trino sent the next page to ${next.protocol}//${next.host}, not to the server this connection uses (${base.protocol}//${base.host}): not followed, the password is not sent there`)
+    }
+    return next.toString()
+  }
+
   /** The responses of one statement; stopping early (or `signal`) cancels the query on the server. */
   private async *pages(sql: string, signal?: AbortSignal): AsyncGenerator<TrinoResponse> {
     let next: string | undefined
     let done = false
     const cancel = () => {
+      // (Only a URL of the connection's own server: next is checked when it arrives.)
       if (next) void fetch(next, { method: 'DELETE', headers: this.headers() }).catch(() => undefined)
     }
     signal?.addEventListener('abort', cancel, { once: true })
     try {
       let page = await this.request(`${this.baseUrl}/v1/statement`, { method: 'POST', body: sql, signal })
       for (;;) {
-        next = page.nextUri
+        next = page.nextUri === undefined ? undefined : this.serverUrl(page.nextUri)
         yield page
         if (!next) break
         if (signal?.aborted) throw new QueryCancelledError()
@@ -296,3 +315,5 @@ export class TrinoDriver implements DatabaseDriver {
     }
   }
 }
+
+const defaultPort = (protocol: string) => (protocol === 'https:' ? '443' : protocol === 'http:' ? '80' : '')

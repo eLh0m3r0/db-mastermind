@@ -33,3 +33,40 @@ describe('Trino SQL', () => {
     expect(parseConnectionString('presto://h/iceberg')).toMatchObject({ driver: 'trino', port: 8080, database: 'iceberg' })
   })
 })
+
+describe('Trino: the password goes only to the connection\'s server (wave 10)', () => {
+  it('a nextUri on another host or port is not followed, and says so', async () => {
+    const { createServer } = await import('node:http')
+    const { TrinoDriver } = await import('../src/drivers/trino.js')
+    const seen: { url: string; auth?: string }[] = []
+    let foreignHits = 0
+    const foreign = createServer((req, res) => {
+      foreignHits++
+      res.end('{}')
+    })
+    await new Promise<void>((r) => foreign.listen(0, '127.0.0.1', r))
+    const foreignPort = (foreign.address() as { port: number }).port
+    let answer = (path: string) => ({ nextUri: `http://127.0.0.1:${foreignPort}/v1/statement/x/1` }) as object
+    const server = createServer((req, res) => {
+      seen.push({ url: req.url ?? '', auth: req.headers.authorization })
+      if (req.url === '/v1/info') return res.end(JSON.stringify({ nodeVersion: { version: '483' }, starting: false }))
+      res.end(JSON.stringify(answer(req.url ?? '')))
+    })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+    const port = (server.address() as { port: number }).port
+    const driver = new TrinoDriver({ id: 't', name: 't', driver: 'trino', host: '127.0.0.1', port, user: 'u', password: 'secret', ssl: undefined } as never)
+    try {
+      // (connect runs SELECT 1, which gets the foreign nextUri.)
+      await expect(driver.connect()).rejects.toThrow(new RegExp(`127\\.0\\.0\\.1:${foreignPort}.*not followed, the password is not sent there`))
+      // Another scheme on the same host, and a relative URL of the same server, which is fine.
+      answer = (path) => (path === '/v1/statement' ? { nextUri: `https://127.0.0.1:${port}/v1/statement/x/1` } : {})
+      await expect(driver.execute('SELECT 1')).rejects.toThrow(/https:\/\/127\.0\.0\.1/)
+      answer = (path) => (path === '/v1/statement' ? { nextUri: '/v1/statement/x/2' } : { columns: [{ name: 'a', type: 'integer' }], data: [[1]] })
+      expect((await driver.execute('SELECT 1'))[0]!.rows).toEqual([[1]])
+      expect(foreignHits).toBe(0)
+    } finally {
+      server.close()
+      foreign.close()
+    }
+  })
+})
