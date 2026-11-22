@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { zipSync, strToU8 } from 'fflate'
-import { cellToText, isBinaryValue, type CellValue, type Dialect, type ResultField } from '@dbmastermind/core'
+import { cellToText, isBinaryValue, sqlValue, type CellValue, type Dialect, type LexModes, type ResultField } from '@dbmastermind/core'
 import type { ExportFormat } from '@shared/api'
 
 export const EXPORT_EXTENSIONS: Record<ExportFormat, string> = {
@@ -32,13 +32,9 @@ function jsonCell(value: CellValue): unknown {
   return value
 }
 
-function sqlLiteral(value: CellValue, dialect?: Dialect): string {
-  if (value === null) return 'NULL'
-  if (typeof value === 'number') return String(value)
-  if (typeof value === 'boolean') return value ? (dialect?.trueLiteral ?? 'TRUE') : (dialect?.falseLiteral ?? 'FALSE')
-  if (isBinaryValue(value)) return dialect?.id === 'postgres' ? `'\\x${value.$binary}'` : `0x${value.$binary}`
-  const text = cellToText(value).replaceAll("'", "''")
-  return dialect?.id === 'mssql' ? `N'${text}'` : `'${text}'`
+/** A cell as a literal of the target dialect: the one literal writer (core sql-literal.ts). */
+function sqlLiteral(value: CellValue, dialect?: Dialect, modes?: LexModes): string {
+  return sqlValue(value, dialect?.id ?? 'postgres', modes)
 }
 
 function markdownCell(value: CellValue): string {
@@ -55,7 +51,8 @@ export function createExportWriter(
   path: string,
   format: ExportFormat,
   fields: ResultField[],
-  options: { tableName?: string; dialect?: Dialect; csvDelimiter?: string } = {},
+  /** `modes`: the source connection's sql_mode (MySQL / MariaDB), for the SQL format's string literals. */
+  options: { tableName?: string; dialect?: Dialect; csvDelimiter?: string; modes?: LexModes } = {},
 ): ExportWriter {
   const sep = options.csvDelimiter ?? ','
   // Semicolon CSV is what Excel uses where the decimal separator is a comma (Czech): numbers follow, else Excel reads
@@ -111,7 +108,7 @@ export function createExportWriter(
       case 'jsonl':
         return JSON.stringify(Object.fromEntries(names.map((n, i) => [n, jsonCell(r[i] ?? null)]))) + '\n'
       case 'sql':
-        return `INSERT INTO ${target} (${columnList}) VALUES (${r.map((v) => sqlLiteral(v, options.dialect)).join(', ')});\n`
+        return `INSERT INTO ${target} (${columnList}) VALUES (${r.map((v) => sqlLiteral(v, options.dialect, options.modes)).join(', ')});\n`
       case 'markdown':
         return `| ${r.map(markdownCell).join(' | ')} |\n`
       default:

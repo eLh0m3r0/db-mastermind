@@ -1,3 +1,5 @@
+import { inlineValues } from './sql-literal.js'
+import type { LexModes } from './sql-lexer.js'
 import { qualify, type Dialect } from './dialect.js'
 import { ParamCollector, type BuiltQuery } from './filters.js'
 import type { DriverId, TableRef } from './types.js'
@@ -109,21 +111,13 @@ export function buildChangeStatements(table: TableRef, changes: RowChange[], dia
   })
 }
 
-/** Renders a parameterized query with inlined literals — for previews only, never for execution. */
-export function inlineParams(query: BuiltQuery, dialect: Dialect): string {
-  const literal = (v: unknown): string => {
-    if (v === null || v === undefined) return 'NULL'
-    if (typeof v === 'number') return String(v)
-    if (typeof v === 'boolean') return v ? dialect.trueLiteral : dialect.falseLiteral
-    const text = String(v).replaceAll("'", "''")
-    return dialect.id === 'mssql' ? `N'${text}'` : `'${text}'`
-  }
-  if (dialect.placeholder(1) === '?') {
-    let i = 0
-    return query.sql.replace(/\?/g, () => literal(query.params[i++]))
-  }
-  const pattern = dialect.id === 'mssql' || dialect.id === 'bigquery' ? /@p(\d+)/g : dialect.id === 'oracle' ? /:(\d+)/g : dialect.id === 'clickhouse' || dialect.id === 'trino' ? /\{__p(\d+)\}/g : /\$(\d+)/g
-  return query.sql.replace(pattern, (_, n: string) => literal(query.params[Number(n) - 1]))
+/**
+ * A parameterized query with its values written in (the review SQL, the audit text, the data-compare sync script):
+ * the one literal writer (sql-literal.ts), placeholders found by the tokenizer. `modes`: the target session's
+ * sql_mode on MySQL / MariaDB (ServerInfo.sqlModes); without it the default (backslash escapes) is assumed.
+ */
+export function inlineParams(query: BuiltQuery, dialect: Dialect, modes: LexModes = {}): string {
+  return inlineValues(query.sql, query.params, dialect.id, modes)
 }
 
 /**

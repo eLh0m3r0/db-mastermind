@@ -1,3 +1,4 @@
+import { inlineValues, sqlValue } from '../sql-literal.js'
 import { createClient, type ClickHouseClient, type ClickHouseSettings } from '@clickhouse/client'
 import { clickhouseDialect } from '../dialect.js'
 import { checkAffected, elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
@@ -13,23 +14,15 @@ const RETURNS_ROWS = /^(\(|SELECT|WITH|SHOW|DESC|DESCRIBE|EXISTS|EXPLAIN|CHECK|V
 const stripComments = (sql: string) => sql.replace(/--[^\n]*|\/\*[\s\S]*?\*\//g, ' ').trim()
 
 /** A literal for an inlined parameter; ClickHouse converts string literals to the compared column's type. */
+/** A value as a clickhouse literal: the one literal writer (sql-literal.ts). */
 export function clickhouseLiteral(v: unknown): string {
-  if (v === null || v === undefined) return 'NULL'
-  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL'
-  if (typeof v === 'bigint') return v.toString()
-  if (typeof v === 'boolean') return v ? 'true' : 'false'
-  if (v instanceof Date) return `'${v.toISOString().replace('T', ' ').replace('Z', '')}'`
-  if (Array.isArray(v)) return `[${v.map(clickhouseLiteral).join(', ')}]`
-  return `'${String(v).replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`
+  return sqlValue(v, 'clickhouse')
 }
 
 /** Replaces the dialect's `{__pN}` placeholders with literals. */
 export function inlineClickHouseParams(sql: string, params: unknown[] = []): string {
-  return sql.replace(/\{__p(\d+)\}/g, (_, n: string) => {
-    const i = Number(n) - 1
-    if (i >= params.length) throw new Error(`Missing value for parameter ${n}`)
-    return clickhouseLiteral(params[i])
-  })
+  // (The one literal writer, placeholders found by the tokenizer: a `{__p1}` inside a string stays text.)
+  return params.length ? inlineValues(sql, params, 'clickhouse') : sql
 }
 
 /** One line of a JSONCompactEachRow response; a line that isn't one is the error that ended the query. */

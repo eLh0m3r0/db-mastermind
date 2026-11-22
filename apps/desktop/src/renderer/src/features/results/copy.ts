@@ -1,4 +1,4 @@
-import { cellToText, getDialect, isBinaryValue, qualify, type CellValue, type DriverId, type ResultField, type TableRef } from '@dbmastermind/core/browser'
+import { cellToText, getDialect, isBinaryValue, qualify, sqlValue, type CellValue, type DriverId, type ResultField, type TableRef } from '@dbmastermind/core/browser'
 import type { ExportFormat } from '@shared/api'
 
 export const EXPORT_FORMATS: { id: ExportFormat; label: string }[] = [
@@ -100,13 +100,8 @@ export function copyRowsAs(
     }
     case 'sql': {
       const dialect = getDialect(driver ?? 'postgres')
-      const lit = (v: CellValue) => {
-        if (v === null) return 'NULL'
-        if (typeof v === 'number') return String(v)
-        if (typeof v === 'boolean') return v ? dialect.trueLiteral : dialect.falseLiteral
-        const t = cellToText(v).replaceAll("'", "''")
-        return dialect.id === 'mssql' ? `N'${t}'` : `'${t}'`
-      }
+      // (The one literal writer, core sql-literal.ts.)
+      const lit = (v: CellValue) => sqlValue(v, dialect.id)
       const cols = names.map((n) => dialect.quoteIdent(n)).join(', ')
       const target = qualify(dialect, table)
       return rows.map((r) => `INSERT INTO ${target} (${cols}) VALUES (${r.map((v) => lit(v ?? null)).join(', ')});`).join('\n')

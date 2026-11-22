@@ -1,3 +1,4 @@
+import { inlineValues, sqlValue } from '../sql-literal.js'
 import { trinoDialect } from '../dialect.js'
 import { checkAffected, elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
@@ -20,23 +21,15 @@ interface TrinoResponse {
 }
 
 /** A literal for an inlined parameter (Trino compares typed values; the dialect casts them to the column type). */
+/** A value as a trino literal: the one literal writer (sql-literal.ts). */
 export function trinoLiteral(v: unknown): string {
-  if (v === null || v === undefined) return 'NULL'
-  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL'
-  if (typeof v === 'bigint') return v.toString()
-  if (typeof v === 'boolean') return v ? 'true' : 'false'
-  if (v instanceof Date) return `TIMESTAMP '${v.toISOString().replace('T', ' ').replace('Z', '')}'`
-  if (Array.isArray(v)) return `ARRAY[${v.map(trinoLiteral).join(', ')}]`
-  return `'${String(v).replaceAll("'", "''")}'`
+  return sqlValue(v, 'trino')
 }
 
 /** Replaces the dialect's `{__pN}` placeholders with literals. */
 export function inlineTrinoParams(sql: string, params: unknown[] = []): string {
-  return sql.replace(/\{__p(\d+)\}/g, (_, n: string) => {
-    const i = Number(n) - 1
-    if (i >= params.length) throw new Error(`Missing value for parameter ${n}`)
-    return trinoLiteral(params[i])
-  })
+  // (The one literal writer, placeholders found by the tokenizer: a `{__p1}` inside a string stays text.)
+  return params.length ? inlineValues(sql, params, 'trino') : sql
 }
 
 /** Parses a protocol response keeping 64-bit integers exact (text beyond 2^53). */
@@ -249,7 +242,7 @@ export class TrinoDriver implements DatabaseDriver {
   async introspect(options: IntrospectOptions = {}): Promise<SchemaSnapshot> {
     if (!this.catalog) throw new Error('Enter a catalog (the connection\'s "Catalog" field) to browse its schemas')
     const info = `${this.dialect.quoteIdent(this.catalog)}.information_schema`
-    const wanted = options.schemas?.length ? ` AND table_schema IN (${options.schemas.map(trinoLiteral).join(', ')})` : ''
+    const wanted = options.schemas?.length ? ` AND table_schema IN (${options.schemas.map((x) => sqlValue(x, 'trino')).join(', ')})` : ''
     const [schemaRows, tableRows, columnRows, viewRows] = await Promise.all([
       this.rows(`SELECT schema_name FROM ${info}.schemata WHERE schema_name <> 'information_schema' ORDER BY schema_name`),
       this.rows(`SELECT table_schema, table_name, table_type FROM ${info}.tables WHERE table_schema <> 'information_schema'${wanted}`),

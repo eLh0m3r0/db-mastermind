@@ -210,7 +210,7 @@ export class DuckDBDriver implements DatabaseDriver {
           if (first && fields.length) yield { fields, rows: [] }
           return
         }
-        yield { fields, rows: chunk.convertRows(duckdb.JsonDuckDBValueConverter).map((r) => r.map((v) => normalizeValue(v) as CellValue)) }
+        yield { fields, rows: withBlobs(chunk.convertRows(duckdb.JsonDuckDBValueConverter) as unknown[][], types, () => chunk.getRows() as unknown[][]).map((r) => r.map((v) => normalizeValue(v) as CellValue)) }
       }
     } catch (err) {
       if (cancelled) throw new QueryCancelledError()
@@ -229,7 +229,7 @@ export class DuckDBDriver implements DatabaseDriver {
     }
     const names = result.columnNames()
     const types = result.columnTypes().map(String)
-    let rows = result.getRowsJson() as unknown[][]
+    let rows = withBlobs(result.getRowsJson() as unknown[][], types, () => result.getRows() as unknown[][])
     const truncated = maxRows !== undefined && rows.length > maxRows
     if (truncated) rows = rows.slice(0, maxRows)
     return {
@@ -451,4 +451,22 @@ export function fileRefusal(err: unknown): unknown {
   const m = /Permission Error: Cannot access (?:file|directory) "([^"]*)"/.exec((err as Error)?.message ?? '')
   if (!m) return err
   return new ReadOnlyViolationError(`"${m[1]}" can't be read here: open it in DB Mastermind with Query a file, or allow it with --allow-files (dbmastermind-mcp, dbm).`)
+}
+
+/**
+ * BLOB columns as their bytes: DuckDB's JSON form of a blob is its escaped text (`\x27`, `\\`), which can't be told
+ * apart from text and isn't the value.
+ */
+function withBlobs(rows: unknown[][], types: string[], raw: () => unknown[][]): unknown[][] {
+  const blobs = types.flatMap((t, i) => (/^BLOB$/i.test(t) ? [i] : []))
+  if (!blobs.length || !rows.length) return rows
+  const values = raw()
+  return rows.map((r, k) => {
+    const out = [...r]
+    for (const i of blobs) {
+      const v = values[k]?.[i] as { bytes?: Uint8Array } | null | undefined
+      out[i] = v?.bytes ?? null
+    }
+    return out
+  })
 }

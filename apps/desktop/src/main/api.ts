@@ -159,6 +159,11 @@ async function csvOptions(path: string): Promise<string> {
 /** Parallel requests on a closed connection (a restored tab's data, count and schema) open it once. */
 const connectOnce = singleFlight<ServerInfo>()
 
+/** A live MySQL / MariaDB connection's sql_mode: how SQL text written for it spells string literals. */
+function modesOf(id: string | undefined) {
+  return id && db.isOpen(id) ? db.serverInfo(id)?.sqlModes : undefined
+}
+
 export async function ensureConnected(id: string) {
   if (db.isOpen(id)) return
   await connectOnce(id, async () => {
@@ -897,7 +902,7 @@ export const api: MastermindApi = {
   },
   async previewChanges(connectionId, table, changes) {
     const dialect = getDialect(connections.getConnection(connectionId).driver)
-    return buildChangeStatements(table, changes, dialect).map((q) => inlineParams(q, dialect))
+    return buildChangeStatements(table, changes, dialect).map((q) => inlineParams(q, dialect, modesOf(connectionId)))
   },
   async applyChanges(connectionId, table, changes, session) {
     await ensureConnected(connectionId)
@@ -907,7 +912,7 @@ export const api: MastermindApi = {
     for (const q of buildChangeStatements(table, changes, dialect)) {
       library.addHistory({
         connectionId,
-        sql: inlineParams(q, dialect),
+        sql: inlineParams(q, dialect, modesOf(connectionId)),
         executedAt: new Date().toISOString(),
         durationMs: 0,
         source: 'grid',
@@ -963,7 +968,7 @@ export const api: MastermindApi = {
     const path = await askSavePath(request.format, request.defaultName)
     if (!path) return null
     const dialect = request.connectionId ? getDialect(connections.getConnection(request.connectionId).driver) : undefined
-    const writer = createExportWriter(path, request.format, request.result.fields, { tableName: request.tableName, dialect, csvDelimiter: csvDelimiter() })
+    const writer = createExportWriter(path, request.format, request.result.fields, { tableName: request.tableName, dialect, csvDelimiter: csvDelimiter(), modes: modesOf(request.connectionId) })
     await writer.writeRows(request.result.rows)
     await writer.close()
     return path
@@ -997,6 +1002,7 @@ export const api: MastermindApi = {
         tableName: qualify(dialect, request.table),
         dialect,
         csvDelimiter: csvDelimiter(),
+        modes: modesOf(request.connectionId),
       })
       await writer.writeRows(page.result.rows)
       offset += page.result.rows.length
@@ -1014,7 +1020,7 @@ export const api: MastermindApi = {
     let rows = 0
     try {
       for await (const batch of db.streamQuery(request.connectionId, request.sql.trim().replace(/;\s*$/, ''))) {
-        writer ??= createExportWriter(path, request.format, batch.fields, { tableName: request.defaultName, dialect, csvDelimiter: csvDelimiter() })
+        writer ??= createExportWriter(path, request.format, batch.fields, { tableName: request.defaultName, dialect, csvDelimiter: csvDelimiter(), modes: modesOf(request.connectionId) })
         await writer.writeRows(batch.rows)
         rows += batch.rows.length
       }

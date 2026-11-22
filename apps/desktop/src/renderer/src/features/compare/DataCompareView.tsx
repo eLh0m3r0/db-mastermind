@@ -53,6 +53,7 @@ export function DataCompareView({ tab }: { tab: DataCompareTab }) {
   const [filter, setFilter] = useState<'all' | RowDiff['kind']>('all')
   const [sync, setSync] = useState({ insertMissing: true, updateChanged: true, deleteExtra: false })
   const target = connections.find((c) => c.id === tab.connectionId)
+  const targetModes = useConnections((s) => s.runtime[tab.connectionId]?.serverInfo?.sqlModes)
 
   const run = async () => {
     if (!tab.sourceId || !tab.sourceTable || !tab.targetTable) return
@@ -71,11 +72,12 @@ export function DataCompareView({ tab }: { tab: DataCompareTab }) {
   const script = useMemo(() => {
     if (!result || !target || !tab.targetTable) return ''
     try {
-      return dataSyncScript(result, tab.targetTable, getDialect(target.driver), sync)
+      // (The target's sql_mode, when it is a live MySQL / MariaDB connection: how the script's literals are written.)
+      return dataSyncScript(result, tab.targetTable, getDialect(target.driver), { ...sync, modes: targetModes })
     } catch (err) {
       return `-- ${errorMessage(err)}`
     }
-  }, [result, target, tab.targetTable, sync])
+  }, [result, target, tab.targetTable, sync, targetModes])
 
   const diffs = useMemo(() => (result?.diffs ?? []).filter((d) => filter === 'all' || d.kind === filter).slice(0, 1000), [result, filter])
   const totalDiffs = result ? result.counts.missing + result.counts.extra + result.counts.changed : 0

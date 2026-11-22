@@ -1,3 +1,4 @@
+import type { LexModes } from './sql-lexer.js'
 import type { Dialect } from './dialect.js'
 import type { DatabaseService } from './engine.js'
 import { buildChangeStatements, inlineParams, type EditValue, type RowChange } from './mutations.js'
@@ -154,6 +155,8 @@ function editValue(v: CellValue): EditValue {
 }
 
 export interface DataSyncOptions {
+  /** The target session's sql_mode (MySQL / MariaDB, ServerInfo.sqlModes): how its string literals are written. */
+  modes?: LexModes
   insertMissing?: boolean
   updateChanged?: boolean
   deleteExtra?: boolean
@@ -180,7 +183,7 @@ export function dataSyncScript(result: DataCompareResult, table: TableRef, diale
     }
   }
   if (!changes.length) return ''
-  const statements = buildChangeStatements(table, changes, dialect).map((q) => `${inlineParams(q, dialect)};`)
+  const statements = buildChangeStatements(table, changes, dialect).map((q) => `${inlineParams(q, dialect, options.modes)};`)
   const notes: string[] = []
   if (result.diffs.length < result.counts.missing + result.counts.extra + result.counts.changed) {
     notes.push(`-- Only the first ${result.diffs.length} differences are included; compare again after running this script.`)
