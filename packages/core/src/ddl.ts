@@ -1,5 +1,8 @@
 import { qualify, type Dialect } from './dialect.js'
 import { translateTables } from './type-map.js'
+import { canonicalPiece, oneLine } from './sql-guard.js'
+import { lex } from './sql-lexer.js'
+import { splitStatements } from './sql-split.js'
 import type { ColumnInfo, DriverId, ForeignKeyInfo, IndexInfo, TableInfo, TableRef, CheckInfo } from './types.js'
 
 /**
@@ -25,6 +28,8 @@ export interface DesignColumn {
   domain?: string
   /** See ColumnInfo.collation. */
   collation?: string
+  /** A generated column (its expression is `defaultValue`): its value stored, or computed when read. */
+  generated?: 'stored' | 'virtual'
   /** See ColumnInfo.remarks. */
   remarks?: string
   /** See ColumnInfo.package. */
@@ -152,6 +157,7 @@ export function toDesignTable(t: TableInfo): DesignTable {
       defaultValue: c.defaultValue ?? null,
       identity: c.isIdentity,
       ...(c.identityAlways ? { identityAlways: true } : {}),
+      ...(c.isGenerated ? { generated: c.generatedStored === false ? ('virtual' as const) : ('stored' as const) } : {}),
       comment: c.comment ?? null,
       ...(c.domain ? { domain: c.domain } : {}),
       ...(c.collation ? { collation: c.collation } : {}),
@@ -228,6 +234,13 @@ const normDefault = (value: string | null | undefined) => {
   if (/^(now\(\)|current_timestamp(\(\))?|localtimestamp|getdate\(\)|sysdatetime\(\))$/i.test(v)) return 'now()'
   if (/^(current_date|curdate\(\)|cast\(getdate\(\) as date\)|convert\(\s*["[]?date["\]]?\s*,\s*getdate\(\)\s*\)|trunc\(sysdate\))$/i.test(v)) return 'current_date'
   if (/^n'.*'$/is.test(v)) v = v.slice(1)
+  // The other ways to write a string (Oracle q'[…]', PostgreSQL E'…' and $$…$$) are the same value as '…'.
+  const other = /^n?q'/i.test(v) ? 'oracle' : /^(e'|\$[A-Za-z_]*\$)/i.test(v) ? 'postgres' : undefined
+  if (other) {
+    const read = lex(v, other)
+    const only = read.ok && read.tokens.length === 1 && read.tokens[0]!.kind === 'string' ? read.tokens[0]!.value : undefined
+    if (only !== undefined) v = `'${only.replaceAll("'", "''")}'`
+  }
   // MySQL takes "…" for a string as well.
   if (/^"[^"']*"$/.test(v)) v = `'${v.slice(1, -1)}'`
   return v.includes("'") ? v : v.toLowerCase()
@@ -470,7 +483,8 @@ function constraintName(prefix: string, table: string, columns: string[]): strin
 }
 
 function literalComment(text: string, driver: DriverId): string {
-  const escaped = text.replaceAll("'", "''")
+  // (MySQL reads a backslash in a string as an escape: `a\` would end no string.)
+  const escaped = (driver === 'mysql' || driver === 'mariadb' ? text.replaceAll('\\', '\\\\') : text).replaceAll("'", "''")
   return driver === 'mssql' ? `N'${escaped}'` : `'${escaped}'`
 }
 
@@ -491,6 +505,7 @@ export function checkCondition(check: CheckInfo, columns: { name: string }[], d:
 }
 
 function columnDefinition(c: DesignColumn, d: Dialect, opts: { inlinePk?: boolean; sequence?: string } = {}): string {
+  if (c.generated && c.defaultValue) return generatedColumn(c, d, opts)
   // (The collation is written as the model has it: DeZign writes what was typed, quotes included.)
   const parts = [d.quoteIdent(c.name), c.collation ? `${c.dataType} COLLATE ${c.collation}` : c.dataType]
   // `serial` already brings its sequence.
@@ -506,9 +521,28 @@ function columnDefinition(c: DesignColumn, d: Dialect, opts: { inlinePk?: boolea
   if (hasDefault && d.id === 'oracle') parts.push(`DEFAULT ${c.defaultValue}`)
   if (opts.inlinePk) parts.push('PRIMARY KEY')
   if (!c.nullable) parts.push('NOT NULL')
-  if (hasDefault && d.id !== 'oracle') parts.push(`DEFAULT ${c.defaultValue}`)
+  // SQLite takes an expression as a default only in parentheses (it reports datetime('now') without them).
+  const defaultSql = d.id === 'sqlite' && hasDefault && /\(/.test(c.defaultValue!) && !/^\(.*\)$/s.test(c.defaultValue!.trim()) ? `(${c.defaultValue})` : c.defaultValue
+  if (hasDefault && d.id !== 'oracle') parts.push(`DEFAULT ${defaultSql}`)
   if (c.comment && (d.id === 'mysql' || d.id === 'mariadb')) parts.push(`COMMENT ${literalComment(c.comment, d.id)}`)
   return parts.join(' ')
+}
+
+/**
+ * A generated column as each database writes one: SQL Server `name AS (expr) [PERSISTED]` without a type,
+ * PostgreSQL STORED (VIRTUAL only from 18), DuckDB VIRTUAL only, the others as the model says.
+ */
+function generatedColumn(c: DesignColumn, d: Dialect, opts: { inlinePk?: boolean }): string {
+  const expr = /^\(.*\)$/s.test(c.defaultValue!.trim()) ? c.defaultValue!.trim() : `(${c.defaultValue!.trim()})`
+  const stored = c.generated === 'stored'
+  const tail = [opts.inlinePk ? 'PRIMARY KEY' : '', !c.nullable && d.id !== 'mssql' ? 'NOT NULL' : ''].filter(Boolean).join(' ')
+  const head =
+    d.id === 'mssql' ? `${d.quoteIdent(c.name)} AS ${expr}${stored ? ' PERSISTED' : ''}` :
+    d.id === 'postgres' ? `${d.quoteIdent(c.name)} ${c.dataType} GENERATED ALWAYS AS ${expr} STORED` :
+    d.id === 'duckdb' ? `${d.quoteIdent(c.name)} ${c.dataType} GENERATED ALWAYS AS ${expr} VIRTUAL` :
+    d.id === 'oracle' ? `${d.quoteIdent(c.name)} ${c.dataType} GENERATED ALWAYS AS ${expr} VIRTUAL` :
+    `${d.quoteIdent(c.name)} ${c.dataType} GENERATED ALWAYS AS ${expr} ${stored ? 'STORED' : 'VIRTUAL'}`
+  return tail ? `${head} ${tail}` : head
 }
 
 function fkClause(fk: DesignForeignKey, table: string, d: Dialect): string {
@@ -575,10 +609,212 @@ export interface MigrationOptions {
    * `constraint` flag (a DeZign project: everything unique that is not one of its unique indexes).
    */
   uniqueConstraint?: (table: TableRef, name: string | undefined) => boolean | undefined
+  /** The database the model's SQL pieces (defaults, checks, types) were written for, when not the target's. */
+  from?: DriverId
 }
 
-/** Renders a change set as SQL. `tables` is the live schema (needed by MySQL MODIFY and SQLite rebuilds). */
+/**
+ * Renders a change set as SQL. `tables` is the live schema (needed by MySQL MODIFY and SQLite rebuilds).
+ * Whatever a model gives as SQL (types, defaults, checks, index expressions, collations, actions) is checked first
+ * (guardChanges), and every statement made is checked again: one statement as our splitter reads it (guardStatements).
+ * What fails is left out, and a warning says what and why.
+ */
 export function generateMigration(changes: SchemaChange[], dialect: Dialect, tables: TableInfo[] = [], options: MigrationOptions = {}): Migration {
+  const guarded = guardChanges(changes, dialect, options)
+  const migration = renderMigration(guarded.changes, dialect, tables, guarded.options)
+  const out = guardStatements({ ...migration, warnings: [...guarded.warnings, ...migration.warnings] }, dialect)
+  // (Tests and e2e runs collect every Left out line the guard writes: DBM_GUARD_LOG=<file>.)
+  const log = typeof process !== 'undefined' ? process.env?.DBM_GUARD_LOG : undefined
+  if (log) {
+    const lines = out.warnings.filter((w) => /Left out/.test(w.message)).map((w) => `${dialect.id}\t${w.message}\n`)
+    if (lines.length) void import('node:fs').then((fs) => fs.appendFileSync(log, lines.join('')))
+  }
+  return out
+}
+
+const FK_ACTIONS = new Set(['CASCADE', 'RESTRICT', 'SET NULL', 'SET DEFAULT', 'NO ACTION'])
+/** An index key written as SQL rather than quoted as a column name (see indexKey). */
+const isExpressionKey = (c: string) => /[()]|\s(?:ASC|DESC|NULLS)\b/i.test(c)
+
+/** The model's own SQL pieces checked (sql-guard.ts): a piece with a problem is left out, with a warning. */
+function guardChanges(changes: SchemaChange[], d: Dialect, options: MigrationOptions): { changes: SchemaChange[]; warnings: MigrationWarning[]; options: MigrationOptions } {
+  const warnings: MigrationWarning[] = []
+  const name = (t: TableRef) => `${t.schema ? `${t.schema}.` : ''}${t.name}`
+  // The model's SQL is read in the dialect it was written for (`from`, else the target's) and written again from its
+  // tokens for the target (sql-guard.ts canonicalPiece): undefined when it can't be, with the warning.
+  const source = options.from ?? d.id
+  const piece = (text: string, what: () => string): string | undefined => {
+    const r = canonicalPiece(text, d.id, source)
+    if (r.problem !== undefined) warnings.push({ level: 'warning', message: `Left out: ${what()}, ${r.problem}: ${text.slice(0, 200)}` })
+    return r.sql
+  }
+  const ok = (text: string | null | undefined, what: () => string) => text === null || text === undefined || text === '' || piece(text, what) !== undefined
+  const canonical = <T extends string | null | undefined>(text: T, what: () => string): T | false => (text === null || text === undefined || text === '' ? text : ((piece(text, what) ?? false) as T | false))
+  const action = (a: string | undefined, what: () => string) => {
+    if (!a) return undefined
+    const v = a.trim().toUpperCase().replace(/\s+/g, ' ')
+    if (FK_ACTIONS.has(v)) return v
+    warnings.push({ level: 'warning', message: `Left out: ${what()}, not a referential action: ${a.slice(0, 200)}` })
+    return undefined
+  }
+  const column = <T extends DesignColumn>(c: T, table: string): T | undefined => {
+    const dataType = canonical(c.dataType, () => `column ${table}.${c.name} (its type)`)
+    if (dataType === false) return undefined
+    const out = { ...c, dataType }
+    if (typeof c.defaultValue === 'string' && !c.defaultValue.trim()) out.defaultValue = null
+    else {
+      const value = canonical(c.defaultValue, () => `the default of ${table}.${c.name}`)
+      out.defaultValue = value === false ? null : value
+    }
+    const collation = canonical(c.collation, () => `the collation of ${table}.${c.name}`)
+    if (collation === false) delete out.collation
+    else out.collation = collation
+    return out
+  }
+  const index = <T extends { name?: string; columns: string[]; definition?: string; definitionDriver?: DriverId }>(ix: T, table: string): T | undefined => {
+    const columns = ix.columns.map((c) => (isExpressionKey(c) ? canonical(c, () => `index ${ix.name ?? ''} of ${table}`) : c))
+    if (columns.some((c) => c === false)) return undefined
+    const own = { ...ix, columns: columns as string[] }
+    // The server's own CREATE INDEX text (same database only): one statement it can read whole, or not kept.
+    if (own.definition) {
+      const read = lex(own.definition, own.definitionDriver ?? d.id)
+      const whole = read.ok && !read.tokens.some((t) => t.kind === 'semicolon' || t.kind === 'code-open')
+      if (!whole) {
+        warnings.push({ level: 'warning', message: `Left out: the server's text of index ${ix.name ?? ''} of ${table}, it can't be read as one statement: ${own.definition.slice(0, 200)}` })
+        const { definition: _, definitionDriver: __, ...rest } = own
+        return rest as T
+      }
+    }
+    return own
+  }
+  const check = <T extends CheckInfo>(k: T, table: string): T | undefined => {
+    const expression = canonical(k.expression, () => `check ${k.name ?? ''} of ${table}`)
+    return expression === false ? undefined : { ...k, expression }
+  }
+  const fk = <T extends { name?: string; onDelete?: string; onUpdate?: string }>(k: T, table: string): T => ({
+    ...k,
+    onDelete: action(k.onDelete, () => `ON DELETE of ${k.name ?? 'a foreign key'} of ${table}`),
+    onUpdate: action(k.onUpdate, () => `ON UPDATE of ${k.name ?? 'a foreign key'} of ${table}`),
+  })
+  const out: SchemaChange[] = []
+  for (const c of changes) {
+    switch (c.kind) {
+      case 'create_table': {
+        const t = c.table
+        const label = name(t)
+        const columns = t.columns.flatMap((x) => column(x, label) ?? [])
+        const gone = new Set(t.columns.filter((x) => !columns.some((y) => y.id === x.id)).map((x) => x.name))
+        const uses = (cols: string[]) => cols.some((x) => gone.has(x))
+        out.push({
+          ...c,
+          table: {
+            ...t,
+            columns,
+            primaryKey: t.primaryKey.filter((x) => !gone.has(x)),
+            indexes: t.indexes.filter((ix) => !uses(ix.columns)).flatMap((ix) => index(ix, label) ?? []),
+            foreignKeys: t.foreignKeys.filter((k) => !uses(k.columns)).map((k) => fk(k, label)),
+            ...(t.checks ? { checks: t.checks.flatMap((k) => check(k, label) ?? []) } : {}),
+          },
+        })
+        break
+      }
+      case 'add_column': {
+        const col = column(c.column, name(c.table))
+        if (col) out.push({ ...c, column: col })
+        break
+      }
+      case 'alter_column': {
+        const after = column(c.after, name(c.table))
+        if (after && ok(c.before.dataType, () => `the change of ${name(c.table)}.${c.column} (its type before)`) && ok(c.before.defaultValue, () => `the change of ${name(c.table)}.${c.column} (its default before)`)) out.push({ ...c, after })
+        break
+      }
+      case 'add_index': {
+        const ix = index(c.index, name(c.table))
+        if (ix) out.push({ ...c, index: ix })
+        break
+      }
+      case 'add_foreign_key':
+        out.push({ ...c, fk: fk(c.fk, name(c.table)) })
+        break
+      case 'add_check': {
+        const k = check(c.check, name(c.table))
+        if (k) out.push({ ...c, check: k })
+        break
+      }
+      default:
+        out.push(c)
+    }
+  }
+  const domains = options.domains?.flatMap((x) => {
+    const dataType = canonical(x.dataType, () => `domain ${x.name} (its type)`)
+    const defaultValue = canonical(x.defaultValue, () => `domain ${x.name} (its default)`)
+    const domainCheck = canonical(x.check, () => `domain ${x.name} (its check)`)
+    return dataType === false || defaultValue === false || domainCheck === false ? [] : [{ ...x, dataType, defaultValue, check: domainCheck }]
+  })
+  return { changes: out, warnings, options: domains ? { ...options, domains } : options }
+}
+
+/**
+ * Every statement must still be the statement it was made as, read by our own splitter for this database: one
+ * (two for the T-SQL DECLARE … IF pairs), and nothing left open behind it (a quote or comment that would swallow the
+ * next one). A statement that isn't is not written; a warning says so. Warnings themselves become one line each.
+ */
+/**
+ * T-SQL needs no separators: `CREATE TABLE t (…) DROP TABLE x` is two statements in one. The statements made here
+ * start with one keyword; a second statement's keyword outside parentheses (a DROP after CREATE, a COMMIT or DELETE
+ * anywhere) means a piece broke out. (ALTER TABLE … DROP CONSTRAINT and IF … EXEC(…) are our own forms.)
+ */
+const TSQL_STARTS = new Set('COMMIT ROLLBACK DELETE INSERT UPDATE MERGE TRUNCATE GRANT REVOKE DENY SHUTDOWN KILL WAITFOR BACKUP RESTORE USE SELECT CREATE'.split(' '))
+function tsqlSecondStatement(sql: string): boolean {
+  const lexed = lex(sql, 'mssql')
+  if (!lexed.ok) return true
+  let depth = 0
+  let first = ''
+  let previous = ''
+  for (const t of lexed.tokens) {
+    const text = sql.slice(t.start, t.end)
+    if (t.kind === 'space' || t.kind === 'comment') continue
+    const before = previous
+    previous = t.kind === 'word' ? text.toUpperCase() : text
+    if (t.kind === 'op' && text === '(') depth++
+    else if (t.kind === 'op' && text === ')') depth--
+    else if (t.kind === 'word' && depth === 0) {
+      const w = text.toUpperCase()
+      if (!first) {
+        first = w
+        continue
+      }
+      // (DECLARE @x = (SELECT …); IF @x … EXEC(…): our own default-constraint drop is two statements by design.)
+      if (first === 'DECLARE' || first === 'IF') return false
+      // (ON DELETE / ON UPDATE are a foreign key's actions.)
+      if (before === 'ON' && (w === 'DELETE' || w === 'UPDATE')) continue
+      if (TSQL_STARTS.has(w) || (w === 'DROP' && first !== 'ALTER' && first !== 'DROP')) return true
+    }
+  }
+  return false
+}
+
+export function guardStatements(m: Migration, d: Dialect): Migration {
+  const warnings = m.warnings.map((w) => ({ ...w, message: oneLine(w.message) }))
+  const whole = (sql: string) => {
+    const expected = d.id === 'mssql' && /^\s*DECLARE\s+@/i.test(sql) ? 2 : 1
+    // (On a line of its own: a statement may end in a comment, `-- data is not restored`. A rollback step can be a
+    // comment alone, which is no statement at all.)
+    const parts = splitStatements(`${sql}\n;\nSELECT 1`, d.id)
+    if (parts.at(-1)?.text !== 'SELECT 1') return false
+    if (d.id === 'mssql' && tsqlSecondStatement(sql)) return false
+    return parts.length === expected + 1 || (parts.length === 1 && !splitStatements(sql, d.id).length)
+  }
+  const keep = (list: string[], what: string) =>
+    list.filter((sql) => {
+      if (whole(sql)) return true
+      warnings.push({ level: 'danger', message: oneLine(`Left out of the ${what}: a statement that would not be one statement: ${sql.slice(0, 200)}`) })
+      return false
+    })
+  return { ...m, statements: keep(m.statements, 'script'), rollback: keep(m.rollback, 'rollback'), warnings }
+}
+
+function renderMigration(changes: SchemaChange[], dialect: Dialect, tables: TableInfo[] = [], options: MigrationOptions = {}): Migration {
   // DuckDB can't alter a table once a new table references it: create new tables after the alters.
   if (dialect.id === 'duckdb') changes = [...changes.filter((c) => c.kind !== 'create_table'), ...changes.filter((c) => c.kind === 'create_table')]
   const d = dialect
@@ -1178,6 +1414,7 @@ export function designToTableInfo(t: DesignTable): TableInfo {
       defaultValue: c.defaultValue ?? null,
       isPrimaryKey: t.primaryKey.includes(c.name),
       isIdentity: !!c.identity,
+      ...(c.generated ? { isGenerated: true, generatedStored: c.generated === 'stored' } : {}),
       comment: c.comment ?? null,
       ...(c.domain ? { domain: c.domain } : {}),
       ...(c.collation ? { collation: c.collation } : {}),

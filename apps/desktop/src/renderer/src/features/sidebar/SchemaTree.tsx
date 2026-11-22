@@ -272,7 +272,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
             {
               label: tr('Explain with AI'),
               icon: <Sparkles size={13} />,
-              onClick: () => askAi({ prompt: tr(EXPLAIN_TABLE_PROMPT, { table: t.schema ? `${t.schema}.${t.name}` : t.name }), send: true }),
+              onClick: () => askAi({ prompt: tr(EXPLAIN_TABLE_PROMPT, { table: t.schema ? `${t.schema}.${t.name}` : t.name }), send: true, newChat: true }),
             },
           ]
         : []),
@@ -455,7 +455,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
                 >
                   <button
                     type="button"
-                    className="-ml-1 flex h-5 w-4 shrink-0 items-center justify-center text-fg-faint hover:text-fg"
+                    className="relative -ml-1 flex h-5 w-4 shrink-0 items-center justify-center text-fg-faint after:absolute after:-inset-x-1 after:-inset-y-0.5 after:content-[''] hover:text-fg"
                     onClick={(e) => {
                       e.stopPropagation()
                       toggle(node.key)
@@ -494,7 +494,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
                             {
                               label: tr('Explain with AI'),
                               icon: <Sparkles size={13} />,
-                              onClick: () => askAi({ prompt: tr(EXPLAIN_COLUMN_PROMPT, { column: `${node.table.schema ? `${node.table.schema}.` : ''}${node.table.name}.${c.name}` }), send: true }),
+                              onClick: () => askAi({ prompt: tr(EXPLAIN_COLUMN_PROMPT, { column: `${node.table.schema ? `${node.table.schema}.` : ''}${node.table.name}.${c.name}` }), send: true, newChat: true }),
                             },
                           ]
                         : []),
@@ -584,7 +584,7 @@ export function SchemaTree({ connection, schema }: { connection: StoredConnectio
                           {
                             label: tr('Explain with AI'),
                             icon: <Sparkles size={13} />,
-                            onClick: () => askAi({ prompt: tr(EXPLAIN_ROUTINE_PROMPT, { routine: qualifiedRoutine }), send: true }),
+                            onClick: () => askAi({ prompt: tr(EXPLAIN_ROUTINE_PROMPT, { routine: qualifiedRoutine }), send: true, newChat: true }),
                           },
                         ]
                       : []),

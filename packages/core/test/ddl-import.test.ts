@@ -214,3 +214,34 @@ describe('what a script left out reads as the script wrote it (review L10)', () 
     expect(JSON.stringify(skipped)).not.toMatch(/__dbm/)
   })
 })
+
+describe('MySQL 8 key parts and parts the reader cannot take (review N4)', () => {
+  it('a functional key part is an index part, and a part DuckDB refuses never costs the table', async () => {
+    const { tables, skipped } = await tablesFromDdl('CREATE TABLE `people` (\n  `id` int NOT NULL,\n  `name` varchar(100) NOT NULL,\n  `n` int GENERATED ALWAYS AS (char_length(`name`)) STORED,\n  PRIMARY KEY (`id`),\n  KEY `idx_lower` ((lower(`name`))),\n  KEY `idx_mixed` (`name`,(char_length(`name`))),\n  KEY `odd` (`name`) WITH SOMETHING NEW\n);')
+    expect(tables.map((t) => [t.name, t.columns.map((c) => c.name)])).toEqual([['people', ['id', 'name', 'n']]])
+    expect(tables[0]!.indexes.map((i) => [i.name, i.columns])).toEqual(expect.arrayContaining([['idx_lower', ['(lower(`name`))']], ['idx_mixed', ['name', '(char_length(`name`))']]]))
+    expect(skipped.map((s) => s.sql)).toEqual(['KEY "odd" ("name") WITH SOMETHING NEW'])
+  })
+})
+
+describe('tables read the last ways never come out wrong (review round 2, M1)', () => {
+  it('an EXCLUDE constraint and an unknown range type keep the inline primary key and NOT NULL', async () => {
+    const { tables, skipped } = await tablesFromDdl('CREATE TABLE r (id int primary key, during tsrange NOT NULL, room int NOT NULL, EXCLUDE USING gist (room WITH =, during WITH &&));')
+    expect(tables[0]).toMatchObject({ primaryKey: ['id'] })
+    expect(tables[0]!.columns.map((c) => [c.name, c.dataType, c.nullable])).toEqual([['id', 'int', false], ['during', 'tsrange', false], ['room', 'int', false]])
+    expect(skipped.map((s) => s.sql)).toEqual(['EXCLUDE  (room WITH =, during WITH &&)'])
+  })
+
+  it('MySQL COLUMN_FORMAT and STORAGE keep NOT NULL, the key, identity and defaults', async () => {
+    const { tables } = await tablesFromDdl('CREATE TABLE m (id int NOT NULL AUTO_INCREMENT, a varchar(10) NOT NULL COLUMN_FORMAT FIXED, b int NOT NULL STORAGE DISK DEFAULT 3, PRIMARY KEY (id));')
+    expect(tables[0]!.primaryKey).toEqual(['id'])
+    expect(tables[0]!.columns.map((c) => [c.name, c.nullable, c.defaultValue, c.isIdentity])).toEqual([['id', false, null, true], ['a', false, null, false], ['b', false, '3', false]])
+  })
+})
+
+describe('a MySQL functional unique key mixed with a column (review round 2)', () => {
+  it('keeps the column as a column name, the expression as written', async () => {
+    const { tables } = await tablesFromDdl('CREATE TABLE `p` (`id` int NOT NULL, `name` varchar(10), PRIMARY KEY (`id`), UNIQUE KEY `ux` ((lower(`name`)), `id`));')
+    expect(tables[0]!.indexes.find((i) => i.name === 'ux')).toMatchObject({ columns: ['(lower(`name`))', 'id'], unique: true })
+  })
+})

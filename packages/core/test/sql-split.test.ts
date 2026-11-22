@@ -297,10 +297,19 @@ describe('stripLiterals', () => {
     expect(stripLiterals(`SELECT 'a -- b', "it's" /* c' */ FROM t`)).toBe(`SELECT '', ""   FROM t`)
     expect(stripLiterals("SELECT 'it\\'s', `x'` # y'\nFROM t", 'mysql')).toBe("SELECT '', ``  \nFROM t")
     expect(stripLiterals("SELECT [it's] FROM t", 'mssql')).toBe('SELECT [] FROM t')
-    expect(stripLiterals("SELECT E'it\\'s', $$ it's $$ FROM t", 'postgres')).toBe("SELECT E'', '' FROM t")
+    expect(stripLiterals("SELECT E'it\\'s', $$ it's $$ FROM t", 'postgres')).toBe("SELECT '', '' FROM t")
   })
   it('T-SQL: an apostrophe in a comment does not hide a write from the read-only check', () => {
     expect(isReadOnlyScript("-- it's\nSELECT 'a' DELETE FROM t", 'mssql')).toBe(false)
     expect(isReadOnlyScript("SELECT 1 /* don't */ UPDATE t SET a = 1", 'mssql')).toBe(false)
+  })
+})
+
+describe('T-SQL [names] with ]] inside (found by the SQL fuzz)', () => {
+  it('a ]] goes on with the name, so a write after it is seen', () => {
+    const sql = "SELECT [a]]' , 1 AS [b] DELETE FROM t --']"
+    expect(stripLiterals(sql, 'mssql')).toMatch(/DELETE FROM t/)
+    expect(isReadOnlyScript(sql, 'mssql')).toBe(false)
+    expect(isReadOnlyScript('SELECT [a]]b] FROM t', 'mssql')).toBe(true)
   })
 })

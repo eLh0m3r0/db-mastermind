@@ -22,7 +22,7 @@ export interface Look {
 export const LOOKS: Look[] = [
   { id: 'violet', group: 'standard', name: 'Violet', swatch: ['#ffffff', '#f6f7f9', '#6d4aff'] },
   { id: 'blue', group: 'standard', name: 'Blue', swatch: ['#ffffff', '#f6f7f9', '#2563eb'] },
-  { id: 'teal', group: 'standard', name: 'Teal', swatch: ['#ffffff', '#f6f7f9', '#0f8f8a'] },
+  { id: 'teal', group: 'standard', name: 'Teal', swatch: ['#ffffff', '#f6f7f9', '#0b7a76'] },
   { id: 'green', group: 'standard', name: 'Green', swatch: ['#ffffff', '#f6f7f9', '#16803c'] },
   { id: 'orange', group: 'standard', name: 'Orange', swatch: ['#ffffff', '#f6f7f9', '#c2410c'] },
   { id: 'rose', group: 'standard', name: 'Rose', swatch: ['#ffffff', '#f6f7f9', '#d6336c'] },

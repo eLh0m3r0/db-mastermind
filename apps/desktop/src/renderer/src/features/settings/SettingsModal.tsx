@@ -65,7 +65,6 @@ export function SettingsModal() {
         <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-auto p-5">
           {current === 'general' && (
             <>
-              <TeamFolderRow />
               <Row label={t('Language')}>
                 <Select className="w-48" value={settings.language} onChange={(e) => set({ language: e.target.value as 'en' | 'cs' })}>
                   <option value="en">English</option>
@@ -88,6 +87,8 @@ export function SettingsModal() {
                   hint={t('Asks GitHub every few hours. Nothing about you or your databases is sent.')}
                 />
               </Row>
+              {/* Last: it matters to teams, not on the first visit. */}
+              <TeamFolderRow />
             </>
           )}
           {current === 'appearance' && <AppearanceSection settings={settings} set={set} />}

@@ -73,10 +73,25 @@ export function installKeymap(): () => void {
       }
       return
     }
-    if (e.ctrlKey && e.key === 'Tab') {
+    // Next / previous tab: Ctrl+Tab everywhere, ⌘⇧] / ⌘⇧[ on a Mac (Safari, Chrome, VS Code), Ctrl+PageDown / PageUp.
+    const step =
+      e.ctrlKey && e.key === 'Tab'
+        ? e.shiftKey
+          ? -1
+          : 1
+        : isMac && e.metaKey && e.shiftKey && !e.altKey && (e.code === 'BracketRight' || e.code === 'BracketLeft')
+          ? e.code === 'BracketRight'
+            ? 1
+            : -1
+          : e.ctrlKey && !e.shiftKey && !e.altKey && (e.key === 'PageDown' || e.key === 'PageUp')
+            ? e.key === 'PageDown'
+              ? 1
+              : -1
+            : 0
+    if (step) {
       const ws = useWorkspace.getState()
       const i = ws.tabs.findIndex((t) => t.id === ws.activeTabId)
-      const next = ws.tabs[(i + (e.shiftKey ? -1 : 1) + ws.tabs.length) % ws.tabs.length]
+      const next = ws.tabs[(i + step + ws.tabs.length) % ws.tabs.length]
       if (next) {
         e.preventDefault()
         ws.activate(next.id)

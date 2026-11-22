@@ -121,7 +121,8 @@ signed by Microsoft).
 *More info → Run anyway*.
 
 **Linux**: the `.deb` runs inside Chromium's sandbox (its install script adds an AppArmor profile that allows it on
-Ubuntu 23.10 and later). The AppImage uses the sandbox where the system lets applications create user namespaces;
+Ubuntu 23.10 and later); on a system that doesn't let users create user namespaces at all, its menu entry starts the
+app without the sandbox and the installation says so. The AppImage uses the sandbox where the system lets applications create user namespaces;
 where it doesn't (Ubuntu 23.10 and later by default) it starts without it and says so in the terminal, so prefer the
 `.deb` there. On Ubuntu 24.04 the AppImage needs FUSE 2: `sudo apt install libfuse2t64`.
 

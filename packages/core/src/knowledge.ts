@@ -57,7 +57,7 @@ export function parseFrontMatter(content: string): { data: Record<string, unknow
   const data: Record<string, unknown> = {}
   let currentKey: string | null = null
   for (const rawLine of m[1]!.split(/\r?\n/)) {
-    const line = rawLine.replace(/\s+#.*$/, '')
+    const line = rawLine.replace(/(?<!\s)\s+#.*$/, '')
     if (!line.trim()) continue
     const item = /^\s*-\s+(.*)$/.exec(line)
     if (item && currentKey) {

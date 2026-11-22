@@ -1,4 +1,5 @@
 import type { ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfo } from './types.js'
+import { normalizeText, tooLongMessage } from './text-lines.js'
 import { designId, toDesignTable, type DesignTable } from './ddl.js'
 
 /**
@@ -179,7 +180,10 @@ function parseRefTarget(s: string, defaultSchema?: string): { schema?: string; t
 
 const ACTION = /(delete|update)\s*:\s*(cascade|restrict|set null|set default|no action)/gi
 
-export function parseDbml(text: string, options: { defaultSchema?: string; /** Database type for columns typed with a DBML Enum. */ enumType?: string } = {}): DbmlModel {
+export function parseDbml(input: string, options: { defaultSchema?: string; /** Database type for columns typed with a DBML Enum. */ enumType?: string } = {}): DbmlModel {
+  // Runs of spaces collapsed and overlong lines out before any regex sees the text (text-lines.ts).
+  const normalized = normalizeText(input, { quotes: `'"\``, tripleQuotes: true, lineComments: ['//'], blockComments: true })
+  const text = normalized.text
   const lines = foldBrackets(foldStrings(stripComments(text)).split('\n'))
   const tables: TableInfo[] = []
   const enums: Record<string, string[]> = {}
@@ -187,7 +191,7 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
   const extras: string[] = []
   // Line for line the same as `lines`, with comments and multi-line strings as written.
   const original = text.split('\n')
-  const errors: DbmlError[] = []
+  const errors: DbmlError[] = normalized.tooLong.map((line) => ({ line, message: tooLongMessage }))
   const aliases = new Map<string, TableInfo>()
   const refs: { line: number; from: string; op: string; to: string; settings: string; name?: string }[] = []
   let i = 0
@@ -400,16 +404,26 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
     if (en) {
       const end = blockEnd(i)
       const body = lines.slice(i, end + 1).join('\n')
-      const content = body.slice(body.indexOf('{') + 1, body.lastIndexOf('}')).replace(/\[[^\]]*\]/g, ' ')
+      const content = body.slice(body.indexOf('{') + 1, body.lastIndexOf('}')).replace(/\[[^[\]]*\]/g, ' ')
       enums[en[1]!.split('.').map(ident).at(-1)!] = (content.match(/"[^"]*"|[^\s]+/g) ?? []).map(ident)
       i = end + 1
       continue
     }
     /** `a.x > b.y [delete: cascade]`, the relationship of a Ref line or of a line in a Ref block. */
     const addRef = (text: string, lineNo: number, refName: string | undefined) => {
-      const m = /^(.+?)\s*(\[([^\]]*)\])?\s*$/.exec(text)
+      // The settings are the bracket at the end (from the first [ after any earlier ]), found by hand: a lazy regex
+      // backtracks through every [ of a long line.
+      const trimmed = text.trimEnd()
+      let body = text
+      let settings = ''
+      if (trimmed.endsWith(']')) {
+        const open = trimmed.indexOf('[', trimmed.lastIndexOf(']', trimmed.length - 2) + 1)
+        if (open > 0 && open < trimmed.length - 1 && trimmed.slice(0, open).trim()) {
+          body = trimmed.slice(0, open).trimEnd()
+          settings = trimmed.slice(open + 1, -1)
+        }
+      }
       // The operator is the first <, > or - outside quotes: a name like "user-id" has a hyphen of its own.
-      const body = m?.[1] ?? text
       let quote: string | null = null
       let at = -1
       for (let k = 0; k < body.length && at === -1; k++) {
@@ -422,7 +436,7 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
       if (body.slice(at, at + 2) === '<>') return void errors.push({ line: lineNo, message: `Many-to-many relationships are not in the model: ${body}` })
       const from = at === -1 ? '' : body.slice(0, at).trim()
       const to = at === -1 ? '' : body.slice(at + 1).trim()
-      if (from && to) refs.push({ line: lineNo, from, op: body[at]!, to, settings: m?.[3] ?? '', name: refName })
+      if (from && to) refs.push({ line: lineNo, from, op: body[at]!, to, settings, name: refName })
       else errors.push({ line: lineNo, message: `Can't read reference: ${body}` })
     }
     // The long form: `Ref name {` with the relationship on its own line(s).
@@ -445,7 +459,7 @@ export function parseDbml(text: string, options: { defaultSchema?: string; /** D
     if (group) {
       const end = blockEnd(i)
       const body = lines.slice(i, end + 1).join('\n')
-      const content = body.slice(body.indexOf('{') + 1, body.lastIndexOf('}')).replace(/\[[^\]]*\]/g, ' ').replace(/Note\s*:\s*'[^']*'/gi, ' ')
+      const content = body.slice(body.indexOf('{') + 1, body.lastIndexOf('}')).replace(/\[[^[\]]*\]/g, ' ').replace(/Note\s*:\s*'[^']*'/gi, ' ')
       groups[ident(group[1]!)] = (content.match(/"[^"]+"|[\w$.]+/g) ?? []).map((n) => ident(n.split('.').pop()!))
       i = end + 1
       continue
@@ -554,9 +568,10 @@ export const checkOneLine = (expression: string) =>
       }
       return line
     })
-    .join('\n')
-    .replace(/\s*\n\s*/g, ' ')
-    .trim()
+    // (Joined line by line: a regex over the lines backtracks through a long run of spaces.)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(' ')
 const checkText = (expression: string) => `\`${checkOneLine(expression.replaceAll('`', "'"))}\``
 /** The check written on a column (the first, if there are several: a column setting holds one). */
 const ownCheck = (t: TableInfo, column: string) => t.checks?.find((c) => c.column === column)
@@ -651,7 +666,7 @@ export function toDbml(tables: TableInfo[], options: { defaultSchema?: string; e
  */
 export function designFromDbml(text: string, live: TableInfo[], options: { defaultSchema?: string } = {}): { drafts: Record<string, DesignTable>; errors: DbmlError[] } {
   // Tables the reply defines; the other live tables are put in front as context so references to them resolve.
-  const defined = new Set([...text.matchAll(/^\s*Table\s+((?:"[^"]+"|[\w$]+)(?:\.(?:"[^"]+"|[\w$]+))?)/gim)].map((m) => ident(m[1]!.split('.').pop()!).toLowerCase()))
+  const defined = new Set([...text.matchAll(/^[ \t]*Table\s+((?:"[^"]+"|[\w$]+)(?:\.(?:"[^"]+"|[\w$]+))?)/gim)].map((m) => ident(m[1]!.split('.').pop()!).toLowerCase()))
   const context = toDbml(live.filter((l) => l.type === 'table' && !defined.has(l.name.toLowerCase())), options)
     .split('\n')
     .filter((l) => !/^Ref(\s+("[^"]+"|[\w$]+))?\s*:/.test(l))
@@ -698,7 +713,7 @@ export function designFromDbml(text: string, live: TableInfo[], options: { defau
     }
     drafts[existing ? keyOf(existing) : draft.id] = draft
   }
-  for (const m of text.matchAll(/^\s*\/\/\s*drop\s+table\s+["`]?([\w$.]+?)["`]?\s*$/gim)) {
+  for (const m of text.matchAll(/^[ \t]*\/\/[ \t]*drop\s+table\s+["`]?([\w$.]+?)["`]?\s*$/gim)) {
     const [schema, name] = m[1]!.includes('.') ? (m[1]!.split('.') as [string, string]) : [undefined, m[1]!]
     const existing = find(name, schema)
     if (existing) drafts[keyOf(existing)] = { ...toDesignTable(existing), dropped: true }

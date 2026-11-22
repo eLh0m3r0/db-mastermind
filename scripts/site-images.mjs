@@ -8,17 +8,25 @@
 //
 // <folder> holds <name>.png and <name>-dark.png for every name below. With --placeholders a missing shot is
 // replaced by the nearest existing one (see FALLBACK), so the layout can be judged before the retake.
-// The shot list with the exact states is tmp/web/shots-needed.md (kept with the launch notes).
+// The states of the shots are in e2e/screenshots.mjs, which takes them.
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-const SHOTS = ['hero', 'hero-phone', 'table-filters', 'query', 'query-file', 'chart', 'dashboard', 'modeler', 'migration', 'diagram', 'ai', 'home', 'connect', 'mcp-settings']
-const FALLBACK = { hero: 'table-filters', 'hero-phone': 'table-filters', dashboard: 'chart', connect: 'home', 'mcp-settings': 'home' }
-// The phone hero is a crop of a full window (CSS pixels of the 1440×900 window): the filter bar and the first rows.
-const PHONE_CROP = { x: 268, y: 70, w: 480, h: 360 }
+const SHOTS = ['hero', 'table-filters', 'query', 'chart', 'dashboard', 'modeler', 'migration', 'diagram', 'ai', 'home', 'connect', 'mcp-settings']
+// Phone versions of the home page's pictures: <name>.png is a whole window like the others, and only this rectangle
+// of it (CSS px of the 1440×900 window) is kept, written at 960 px wide. e2e/screenshots.mjs uses the same table
+// (PHONE_CROPS there): change both together.
+const PHONE_CROPS = {
+  'hero-phone': { x: 268, y: 70, w: 480, h: 360 },
+  'table-filters-phone': { x: 330, y: 75, w: 480, h: 360 },
+  'modeler-phone': { x: 520, y: 280, w: 480, h: 360 },
+  'dashboard-phone': { x: 270, y: 60, w: 480, h: 360 },
+  'ai-phone': { x: 918, y: 45, w: 480, h: 360 },
+}
+const FALLBACK = { hero: 'table-filters', dashboard: 'chart', connect: 'home', 'mcp-settings': 'home', ...Object.fromEntries(Object.keys(PHONE_CROPS).map((n) => [n, n.replace(/-phone$/, '')])) }
 
 const args = process.argv.slice(2)
 const placeholders = args.includes('--placeholders')
@@ -114,7 +122,7 @@ const encode = async (file, region, width) => {
 const avif = (pngFile, target) => execFileSync('sips', ['-s', 'format', 'avif', '-s', 'formatOptions', '70', pngFile, '--out', target], { stdio: 'ignore' })
 
 let written = 0
-for (const name of SHOTS) {
+for (const name of [...SHOTS, ...Object.keys(PHONE_CROPS)]) {
   for (const dark of [false, true]) {
     const file = source(name, dark)
     const base = `${name}${dark ? '-dark' : ''}`
@@ -122,8 +130,9 @@ for (const name of SHOTS) {
       console.warn(`missing: ${base}.png`)
       continue
     }
-    if (name === 'hero-phone') {
-      const region = { x: PHONE_CROP.x * 2, y: PHONE_CROP.y * 2, w: PHONE_CROP.w * 2, h: PHONE_CROP.h * 2 }
+    const crop = PHONE_CROPS[name]
+    if (crop) {
+      const region = { x: crop.x * 2, y: crop.y * 2, w: crop.w * 2, h: crop.h * 2 }
       const r = await encode(file, region, 960)
       writeFileSync(join(out, `${base}-960.webp`), r.webp)
       writeFileSync(join(out, `${base}-960.png`), r.png)

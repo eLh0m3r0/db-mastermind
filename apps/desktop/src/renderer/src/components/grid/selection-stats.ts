@@ -133,3 +133,20 @@ export function selectionStats(
   }
   return { cells, count, empty, distinct: distinct.size }
 }
+
+/**
+ * A statistic as the app writes numbers: digits grouped by spaces (like every count in the app), a decimal point,
+ * whatever the system's locale (a Czech Mac showed "1 329,285714" in the English UI). `decimals` rounds (an
+ * average); without it every digit stays. Exact text past what a double holds is grouped, not rounded.
+ */
+export function formatStat(text: string, decimals?: number): string {
+  const negative = text.startsWith('-')
+  let [whole = '0', fraction = ''] = text.replace('-', '').split('.')
+  if (decimals !== undefined && fraction.length > decimals && whole.length + decimals <= 15) {
+    const rounded = Math.abs(Number(text)).toFixed(decimals)
+    ;[whole = '0', fraction = ''] = rounded.split('.')
+    fraction = fraction.replace(/0+$/, '')
+  }
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+  return `${negative && /[1-9]/.test(whole + fraction) ? '-' : ''}${grouped}${fraction ? `.${fraction}` : ''}`
+}

@@ -65,6 +65,66 @@ try {
   check('search_path field in Advanced', (await win.getByTestId('pg-search-path').inputValue()) === 'shop, public')
   await win.keyboard.press('Escape')
 
+  // (On the demo database: no server needed for this part.)
+  await api('createSampleDatabase')
+  await win.reload()
+  await win.waitForTimeout(1000)
+  await openConsole('Demo coffee shop')
+  // Enter accepts the highlighted suggestion the moment the list shows, at machine and at human typing speed (it
+  // used to insert a line break for a moment after the list appeared: CodeMirror's interaction delay).
+  for (const [speed, delay, pause] of [['machine', 0, 0], ['human', 110, 180]]) {
+    const ed = win.locator('.cm-content:visible').first()
+    await ed.click()
+    await win.keyboard.press(`${mod}+a`)
+    await win.keyboard.press('Backspace')
+    await win.keyboard.type('select * from orders o join ', { delay })
+    await win.locator('.cm-tooltip-autocomplete li[aria-selected="true"]').waitFor({ timeout: 10000 }).catch(() => {})
+    if (pause) await win.waitForTimeout(pause)
+    const highlighted = await win.locator('.cm-tooltip-autocomplete li[aria-selected="true"] .cm-completionLabel').textContent().catch(() => '')
+    await win.keyboard.press('Enter')
+    await win.waitForTimeout(200)
+    const text = await ed.innerText()
+    check(`${speed} speed: Enter takes the highlighted "${highlighted}" (${JSON.stringify(text)})`, !!highlighted && !text.includes('\n') && text.includes(highlighted.split(' ')[0]))
+  }
+  // The instant the list appears (CodeMirror ignored Enter for its first 75 ms and the line broke instead).
+  {
+    const ed = win.locator('.cm-content:visible').first()
+    await ed.click()
+    await win.keyboard.press(`${mod}+a`)
+    await win.keyboard.press('Backspace')
+    await win.evaluate(() => {
+      const observer = new MutationObserver(() => {
+        if (!document.querySelector('.cm-tooltip-autocomplete li[aria-selected="true"]')) return
+        observer.disconnect()
+        const content = [...document.querySelectorAll('.cm-content')].find((c) => c.offsetWidth > 0)
+        content.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, cancelable: true }))
+      })
+      observer.observe(document.body, { subtree: true, childList: true, attributes: true })
+    })
+    await win.keyboard.type('select * from orders o join ', { delay: 0 })
+    await win.waitForTimeout(600)
+    const text = await ed.innerText()
+    check(`Enter the instant the list shows takes the suggestion: ${JSON.stringify(text)}`, !text.includes('\n') && /join \w/.test(text))
+  }
+  // Tab accepts too; with no list, Enter is a new line.
+  {
+    const ed = win.locator('.cm-content:visible').first()
+    await ed.click()
+    await win.keyboard.press(`${mod}+a`)
+    await win.keyboard.press('Backspace')
+    await win.keyboard.type('select * from custo', { delay: 0 })
+    await win.locator('.cm-tooltip-autocomplete li[aria-selected="true"]').waitFor({ timeout: 10000 }).catch(() => {})
+    const highlighted = await win.locator('.cm-tooltip-autocomplete li[aria-selected="true"] .cm-completionLabel').textContent().catch(() => '')
+    await win.keyboard.press('Tab')
+    await win.waitForTimeout(200)
+    check(`Tab takes the highlighted "${highlighted}": ${JSON.stringify(await ed.innerText())}`, !!highlighted && (await ed.innerText()).trim() === `select * from ${highlighted}`)
+    await win.keyboard.press('Escape')
+    const listShown = await win.locator('.cm-tooltip-autocomplete').count()
+    await win.keyboard.press('Enter')
+    await win.waitForTimeout(150)
+    check(`with no list (${listShown} shown), Enter is a new line`, listShown === 0 && (await ed.locator('.cm-line').count()) === 2)
+  }
+
   await api('saveConnection', { id: '', name: 'Shop PG', driver: 'postgres', host: '127.0.0.1', port: 54329, user: 'postgres', password: 'mastermind', database: 'mastermind', options: { searchPath: 'shop' } })
   await api('saveConnection', { id: '', name: 'Lite', driver: 'sqlite', filePath: liteFile })
   await win.reload()

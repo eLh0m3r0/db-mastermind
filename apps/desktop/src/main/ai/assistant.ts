@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { app, BrowserWindow } from 'electron'
 import { jsonSchema, stepCountIs, streamText, tool, type ModelMessage, type ToolSet } from 'ai'
 import { buildSystemPrompt, DB_TOOLS, isReadOnlyScript, describeError, KnowledgeBase, loadSqlTools, type ToolContext } from '@dbmastermind/core'
+import { AiProblem, explainAiError } from './errors'
 import type { AiChatRequest, AiEvent } from '@shared/api'
 import { db, ensureConnected } from '../api'
 import { aiAccess } from '../ai-access'
@@ -67,8 +68,20 @@ function mcpCommandFor(connectionId: string) {
 }
 
 /** Starts a chat run in the background; every outcome, including setup errors, arrives as events. */
+/** The provider in use, when there is one (for explaining an error that came before the chat started). */
+function currentProvider() {
+  try {
+    return activeProvider()
+  } catch {
+    return undefined
+  }
+}
+
 export function startChat(request: AiChatRequest): void {
-  runChat(request).catch((err) => send({ chatId: request.chatId, type: 'error', message: describeError(err).message }))
+  runChat(request).catch((err) => {
+    const problem = explainAiError(err, currentProvider())
+    send({ chatId: request.chatId, type: 'error', message: problem.message, code: (problem as AiProblem).code })
+  })
 }
 
 async function runChat(request: AiChatRequest): Promise<void> {
@@ -244,7 +257,10 @@ async function runChat(request: AiChatRequest): Promise<void> {
     send({ chatId, type: 'done' })
   } catch (err) {
     if (signal.aborted) send({ chatId, type: 'done' })
-    else send({ chatId, type: 'error', message: describeError(err).message })
+    else {
+      const problem = explainAiError(err, provider)
+      send({ chatId, type: 'error', message: problem.message, code: (problem as AiProblem).code })
+    }
   } finally {
     if (running.get(chatId) === controller) running.delete(chatId)
   }

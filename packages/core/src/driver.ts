@@ -234,6 +234,17 @@ export class ReadOnlyViolationError extends Error {
   }
 }
 
+/**
+ * The read-only transaction around SQL nobody confirmed was gone after a statement: something ended it (a COMMIT
+ * that got past every check). Nothing after that statement runs; this is reported, never passed over.
+ */
+export class GuardBrokenError extends Error {
+  override name = 'GuardBrokenError'
+  constructor(message = 'The read-only guard was broken: the read-only transaction ended inside the statement, so nothing after it ran. Please report this.') {
+    super(message)
+  }
+}
+
 export function elapsed(start: bigint): number {
   return Math.round(Number(process.hrtime.bigint() - start) / 1e5) / 10
 }

@@ -172,6 +172,8 @@ export interface AppSettings {
   lookFont?: 'look' | 'standard'
   /** Compact: denser rows in tables and the explorer. */
   density?: 'comfortable' | 'compact'
+  /** What the tab strip does with more tabs than fit: scroll (default) or shrink the inactive ones down to a readable floor. */
+  tabOverflow?: 'scroll' | 'shrink'
   language: 'en' | 'cs'
   pageSize: number
   maxResultRows: number
@@ -480,7 +482,7 @@ export type AiEvent =
   | { chatId: string; type: 'approval'; id: string; kind: 'sql' | 'file'; detail: string }
   | { chatId: string; type: 'usage'; inputTokens: number; outputTokens: number }
   | { chatId: string; type: 'done' }
-  | { chatId: string; type: 'error'; message: string }
+  | { chatId: string; type: 'error'; message: string; /** AiProblem's code: the window explains it and offers AI settings. */ code?: string }
 
 export interface WorkspaceState {
   tabs: unknown[]

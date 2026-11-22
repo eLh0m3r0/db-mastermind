@@ -46,7 +46,7 @@ export function parseDotenv(text: string, outer: Record<string, string> = {}): R
       // (An escaped \$ is a dollar sign, never the start of a variable.)
       if (quote === '"') value = expand(value.replace(/\\([nrt"\\$])/g, (_, c: string) => ({ n: '\n', r: '\r', t: '\t', $: '\u0000' })[c] ?? c), vars, outer, 0, 'dotenv').replaceAll('\u0000', '$')
     } else {
-      raw = raw.replace(/\s+#.*$/, '')
+      raw = raw.replace(/(?<!\s)\s+#.*$/, '')
       value = expand(raw, vars, outer, 0, 'dotenv')
     }
     vars[key] = value
@@ -111,7 +111,8 @@ const looksLikeUrl = (v: string) => URL_SCHEME.test(v.trim()) && /:\/\/|^jdbc:/i
 
 /** A URL as people write them in .env files (`postgresql+asyncpg://`, `cockroachdb://`), as a connection. */
 function fromUrl(value: string): ImportedConnection | undefined {
-  const text = value.trim().replace(/^([a-z]+)\+[\w-]+:/i, '$1:').replace(/^cockroachdb:/i, 'postgresql:')
+  // (cockroachdb:// stays: connection-url gives it CockroachDB's port, 26257, and TLS required.)
+  const text = value.trim().replace(/^([a-z]+)\+[\w-]+:/i, '$1:')
   try {
     const parsed = parseConnectionString(text)
     // A template (postgres://USER:PASSWORD@HOST:PORT/DB) parses as nothing useful: a port must be a number.
@@ -216,16 +217,23 @@ export interface ComposeService {
   connection?: ImportedConnection
 }
 
+/**
+ * A YAML value as text, for a string, number or boolean only (undefined otherwise). Every value this file reads
+ * from a compose file goes through it: a YAML alias can make a list of lists of lists, which String() or Number()
+ * would spell out billions of times.
+ */
+function scalarText(v: unknown): string | undefined {
+  return typeof v === 'string' ? v : typeof v === 'number' || typeof v === 'boolean' ? String(v) : undefined
+}
+
 /** The `environment` of a service as a map (compose writes it as a list or a map). */
 function environmentOf(service: Record<string, unknown>, env: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = Object.create(null) as Record<string, string>
   const e = service.environment
-  // Only scalars: a YAML alias can make a list of lists of lists, which String() would spell out billions of times.
-  const scalar = (v: unknown) => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'
   if (Array.isArray(e)) {
     for (const item of e) {
-      if (!scalar(item)) continue
-      const s = String(item)
+      const s = scalarText(item)
+      if (s === undefined) continue
       const eq = s.indexOf('=')
       // `- KEY` alone takes the value from the environment compose runs in: here, the .env beside the file.
       if (eq === -1) {
@@ -234,10 +242,9 @@ function environmentOf(service: Record<string, unknown>, env: Record<string, str
     }
   } else if (e && typeof e === 'object') {
     for (const [k, v] of Object.entries(e as Record<string, unknown>)) {
-      if (v !== null && v !== undefined && !scalar(v)) continue
       if (v === null || v === undefined) {
         if (own(env, k) !== undefined) out[k] = own(env, k)!
-      } else out[k] = expand(String(v), {}, env)
+      } else if (scalarText(v) !== undefined) out[k] = expand(scalarText(v)!, {}, env)
     }
   }
   return out
@@ -246,17 +253,19 @@ function environmentOf(service: Record<string, unknown>, env: Record<string, str
 /** Where a service's container port is published: `"54329:5432"`, `"127.0.0.1:5433:5432"`, `{ target: 5432, published: 5433 }`. */
 function publishedPort(service: Record<string, unknown>, target: number, env: Record<string, string>): { port: number; host: string } | undefined {
   for (const p of Array.isArray(service.ports) ? service.ports : []) {
-    if (Array.isArray(p)) continue
-    if (p && typeof p === 'object') {
-      if (typeof (p as { published?: unknown }).published === 'object') continue
+    if (p && typeof p === 'object' && !Array.isArray(p)) {
       const o = p as { target?: unknown; published?: unknown; host_ip?: unknown }
-      if (Number(o.target) === target && o.published !== undefined) {
-        const port = Number(expand(String(o.published), {}, env).split('-')[0])
-        if (port > 0) return { port, host: hostOf(o.host_ip ? String(o.host_ip) : '') }
+      const targetText = scalarText(o.target)
+      const publishedText = scalarText(o.published)
+      if (targetText !== undefined && Number(targetText) === target && publishedText !== undefined) {
+        const port = Number(expand(publishedText, {}, env).split('-')[0])
+        if (port > 0) return { port, host: hostOf(scalarText(o.host_ip) ?? '') }
       }
       continue
     }
-    const text = expand(String(p), {}, env).replace(/\/(tcp|udp)$/, '')
+    const plain = scalarText(p)
+    if (plain === undefined) continue
+    const text = expand(plain, {}, env).replace(/\/(tcp|udp)$/, '')
     // [host_ip:]published:target, the address possibly an IPv6 one in brackets.
     const m = /^(?:(\[[^\]]+\]|[\d.]+|[^:]*):)?(\d+)(?:-\d+)?:(\d+)(?:-\d+)?$/.exec(text)
     if (m && Number(m[3]) === target) return { port: Number(m[2]), host: hostOf(m[1] ?? '') }
@@ -280,7 +289,7 @@ export function servicesFromCompose(yaml: string, env: Record<string, string>, l
   if (!doc || typeof doc !== 'object') return []
   const out: ComposeService[] = []
   for (const [name, service] of Object.entries(doc.services ?? {})) {
-    if (!service || typeof service !== 'object' || typeof service.image !== 'string') continue
+    if (!service || typeof service !== 'object' || Array.isArray(service) || typeof service.image !== 'string') continue
     const engine = databaseImage(expand(service.image, {}, env))
     if (!engine) continue
     const environment = environmentOf(service, env)
@@ -309,7 +318,7 @@ export function servicesFromCompose(yaml: string, env: Record<string, string>, l
 
 /** The datasource of a Prisma schema: its URL as written, or from the environment (`env("DATABASE_URL")`). */
 export function connectionFromPrisma(schema: string, env: Record<string, string>, label: string): ImportedConnection | undefined {
-  const block = /datasource\s+\w+\s*\{([^}]*)\}/.exec(schema.replace(/^\s*\/\/.*$/gm, ''))?.[1]
+  const block = /datasource\s+\w+\s*\{([^}]*)\}/.exec(schema.replace(/^[ \t]*\/\/.*$/gm, ''))?.[1]
   if (!block) return undefined
   const url = /\burl\s*=\s*(?:env\(\s*"([^"]+)"\s*\)|"([^"]+)")/.exec(block)
   const value = url?.[1] ? own(env, url[1]) : url?.[2]

@@ -11,6 +11,7 @@ import {
   elapsed,
   isShortLivedSession,
   QueryCancelledError,
+  ReadOnlyViolationError,
   SessionTransactions,
   type DatabaseDriver,
   type IntrospectOptions,
@@ -161,6 +162,12 @@ export class MysqlDriver implements DatabaseDriver {
     this.tunnel = undefined
   }
 
+  /** Whether any of the pools was made with multipleStatements (never, by makePool: asserted, not assumed). */
+  private multipleStatements(): boolean {
+    const on = (p: Pool | undefined) => !!(p as unknown as { config?: { connectionConfig?: { multipleStatements?: boolean } } } | undefined)?.config?.connectionConfig?.multipleStatements
+    return on(this.pool) || on(this.sessionPool)
+  }
+
   private get activePool(): Pool {
     if (!this.pool) throw new Error('Not connected')
     return this.pool
@@ -235,6 +242,9 @@ export class MysqlDriver implements DatabaseDriver {
   private transactions = new SessionTransactions()
 
   async execute(sql: string, options: QueryOptions = {}): Promise<QueryResult[]> {
+    // One statement per query is the server's own rule while multipleStatements is off: SQL nobody confirmed never
+    // runs on a connection where it is on.
+    if (options.unconfirmed && this.multipleStatements()) throw new ReadOnlyViolationError('This connection runs several statements in one query: SQL nobody confirmed is not run on it.')
     try {
       return await this.executeTracked(sql, options)
     } catch (err) {
@@ -549,7 +559,7 @@ export class MysqlDriver implements DatabaseDriver {
       ),
       this.rows(
         `SELECT TABLE_SCHEMA AS s, TABLE_NAME AS t, COLUMN_NAME AS name, ORDINAL_POSITION AS ord, COLUMN_TYPE AS type,
-                IS_NULLABLE AS nullable, COLUMN_DEFAULT AS def, EXTRA AS extra, COLUMN_KEY AS col_key,
+                IS_NULLABLE AS nullable, COLUMN_DEFAULT AS def, EXTRA AS extra, COLUMN_KEY AS col_key, GENERATION_EXPRESSION AS gen,
                 COLUMN_COMMENT AS comment, CHARACTER_MAXIMUM_LENGTH AS max_len, VERSION() AS ver
            FROM information_schema.COLUMNS WHERE TABLE_SCHEMA IN (${inList})
           ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION`,
@@ -607,10 +617,13 @@ export class MysqlDriver implements DatabaseDriver {
         ordinal: Number(c.ord),
         dataType: String(c.type),
         nullable: c.nullable === 'YES',
-        defaultValue: c.def === null || c.def === undefined ? null : mysqlDefaultSql(String(c.def), extra, /mariadb/i.test(String(c.ver ?? ''))),
+        // (A generated column's expression is its "default": MySQL keeps it apart, in GENERATION_EXPRESSION.)
+        defaultValue: /\b(virtual|stored|persistent) generated\b/.test(extra) && c.gen ? String(c.gen) : c.def === null || c.def === undefined ? null : mysqlDefaultSql(String(c.def), extra, /mariadb/i.test(String(c.ver ?? ''))),
         isPrimaryKey: c.col_key === 'PRI',
         isIdentity: extra.includes('auto_increment'),
-        isGenerated: extra.includes('generated'),
+        // (DEFAULT_GENERATED is an expression default, not a generated column.)
+        isGenerated: /\b(virtual|stored|persistent) generated\b/.test(extra),
+        ...(/\b(virtual|stored|persistent) generated\b/.test(extra) ? { generatedStored: /\b(stored|persistent) generated\b/.test(extra) } : {}),
         maxLength: c.max_len === null || c.max_len === undefined ? null : Number(c.max_len),
         comment: c.comment ? String(c.comment) : null,
       })

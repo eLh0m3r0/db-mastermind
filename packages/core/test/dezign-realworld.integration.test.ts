@@ -23,6 +23,29 @@ const SERVERS: Partial<Record<DriverId, ConnectionConfig>> = {
 }
 const ORDER = ['sequence', 'view', 'procedure', 'trigger']
 /** Words of SQL itself: safe to show when the database stops at one. */
+/**
+ * Every script made here is watched for the SQL guard's `Left out` lines (ddl.ts guardChanges): a DeZign model's
+ * own defaults, checks and types are legitimate SQL, so a line here is a guard bug until proven otherwise. Only
+ * the kind of piece and the guard's reason are printed (never a name or text from a model).
+ */
+const leftOut: string[] = []
+let scripts = 0
+const watched = (script: string) => {
+  scripts++
+  for (const line of script.split('\n').filter((l) => /^-- \w+: Left out/.test(l))) {
+    const what = /Left out(?: of the \w+)?: (column|the default|the collation|check|index|the server's text|ON DELETE|ON UPDATE|domain|the change|a statement)/.exec(line)?.[1] ?? '?'
+    const why = /, (a [^:]{1,60}|an [^:]{1,60}|dollar quoting|BEGIN ATOMIC|not a referential action)(?::|$)/.exec(line)?.[1] ?? '?'
+    leftOut.push(`${what}: ${why}`)
+    if (process.env.DBM_DEZ_DEBUG) report(`   LEFT OUT ${line.slice(0, 300)}`)
+  }
+  return script
+}
+const assertNothingLeftOut = () => {
+  const counts = leftOut.reduce<Record<string, number>>((all, k) => ({ ...all, [k]: (all[k] ?? 0) + 1 }), {})
+  report(`SQL guard: ${leftOut.length} Left out lines in ${scripts} scripts ${JSON.stringify(counts)}`)
+  expect(leftOut).toEqual([])
+}
+
 const SQL_WORDS = new Set('as default not null check constraint primary key references unique create table domain alter add column on in and or is user date time timestamp interval boolean integer numeric decimal varchar char character text value values precision with without zone order group by to from select where like between current_date current_timestamp true false bit real double float bigint smallint int serial'.split(' '))
 /** The engine a model was drawn for, when it is one that runs here. */
 const nativeEngine = (target: string): DriverId | null => (/^postgres/i.test(target) ? 'postgres' : /^(mysql|mariadb)/i.test(target) ? 'mysql' : /^mssql/i.test(target) ? 'mssql' : null)
@@ -104,7 +127,7 @@ async function exercise(svc: DatabaseService, n: number, model: { tables: TableI
   const options = dezignMigrationOptions(model.scripting, driver)
   // As the app does it: types are translated unless the model was drawn for this database.
   const from = dezignDriver(model.targetDatabase)
-  const outcomes = await svc.runScript(config.id, createScript(tables, getDialect(driver), { translateTypes: true, from, ...options }), { continueOnError: true })
+  const outcomes = await svc.runScript(config.id, watched(createScript(tables, getDialect(driver), { translateTypes: true, from, ...options })), { continueOnError: true })
   const errors = outcomes.filter((o) => o.error)
   const mine = (t: TableInfo) => t.type === 'table'
   const live = (await svc.schema(config.id, true)).tables.filter(mine)
@@ -168,7 +191,7 @@ async function exercise(svc: DatabaseService, n: number, model: { tables: TableI
       const planned = compareSchemas(edited, current, { keepExtra: false, model: true })
       totals.checks += planned.filter((c) => c.kind === 'add_check' || c.kind === 'drop_check').length
       const migration = generateMigration(planned, getDialect(driver), current, options)
-      const ran = migration.statements.length ? await svc.runScript(config.id, migrationScript(migration, getDialect(driver)), { continueOnError: true }) : []
+      const ran = migration.statements.length ? await svc.runScript(config.id, watched(migrationScript(migration, getDialect(driver))), { continueOnError: true }) : []
       const failed = ran.filter((o) => o.error)
       const after = (await svc.schema(config.id, true)).tables.filter(mine)
       const left = failed.length ? [] : compareSchemas(edited, after, { keepExtra: false, model: true })
@@ -208,6 +231,7 @@ describe.skipIf(!root)('DeZign models become real schemas', () => {
       await svc.disconnectAll()
     }
     expect(failures).toEqual([])
+    assertNothingLeftOut()
   })
 })
 
@@ -266,6 +290,7 @@ Ref: orders.customer_id > customer.id
       await svc.disconnectAll()
     }
     expect(failures).toEqual([])
+    assertNothingLeftOut()
   })
 })
 
@@ -284,11 +309,13 @@ describe.skipIf(!pairs || skipped.includes('postgres'))('our script makes the da
       for (const [n, name] of readdirSync(pairs!).filter((d) => statSync(join(pairs!, d)).isDirectory()).entries()) {
         const model = readDezign(readFileSync(join(pairs!, name, 'model.dez'), 'latin1'))
         const asText = parseDbml(toDbml(model.tables))
-        const ours = createScript(unquotedNames(asText.tables, 'postgres'), getDialect('postgres'), {
-          translateTypes: true,
-          from: dezignDriver(model.targetDatabase),
-          ...dezignMigrationOptions(model.scripting, 'postgres'),
-        })
+        const ours = watched(
+          createScript(unquotedNames(asText.tables, 'postgres'), getDialect('postgres'), {
+            translateTypes: true,
+            from: dezignDriver(model.targetDatabase),
+            ...dezignMigrationOptions(model.scripting, 'postgres'),
+          }),
+        )
         const made: TableInfo[][] = []
         for (const [side, script] of [['a', readFileSync(join(pairs!, name, 'dezign.sql'), 'utf8')], ['b', ours]] as const) {
           const database = `dzp_${n + 1}_${side}`
@@ -326,5 +353,6 @@ describe.skipIf(!pairs || skipped.includes('postgres'))('our script makes the da
       await svc.disconnectAll()
     }
     expect(failures).toEqual([])
+    assertNothingLeftOut()
   })
 })

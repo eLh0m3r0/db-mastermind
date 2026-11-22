@@ -1,6 +1,6 @@
 import type { DuckDBConnection, DuckDBInstance, DuckDBResultReader } from '@duckdb/node-api'
 import { duckdbDialect } from '../dialect.js'
-import { checkAffected, elapsed, QueryCancelledError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
+import { checkAffected, elapsed, QueryCancelledError, ReadOnlyViolationError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
 import type { CellValue, ConnectionConfig, QueryOptions, QueryResult, SchemaSnapshot, ServerInfo, TableInfo, TransactionState } from '../types.js'
 import { normalizeValue } from '../values.js'
@@ -111,6 +111,15 @@ export class DuckDBDriver implements DatabaseDriver {
     const start = process.hrtime.bigint()
     try {
       const params = options.params as Parameters<DuckDBConnection['run']>[1]
+      // DuckDB's own parser decides: one statement, and one that reads (a SELECT, which SHOW, DESCRIBE, SUMMARIZE
+      // and FROM … are to it, or an EXPLAIN).
+      if (options.unconfirmed) {
+        const duckdb = await loadDuckDB()
+        const statements = await conn.extractStatements(sql)
+        if (statements.count !== 1) throw new ReadOnlyViolationError('Only one statement at a time is allowed here.')
+        const prepared = await statements.prepare(0)
+        if (prepared.statementType !== duckdb.StatementType.SELECT && prepared.statementType !== duckdb.StatementType.EXPLAIN) throw new ReadOnlyViolationError(`Only reads are allowed here (read-only): DuckDB reads this as ${duckdb.StatementType[prepared.statementType] ?? 'a statement that is not a query'}.`)
+      }
       const result: DuckDBResultReader =
         options.maxRows === undefined ? await conn.runAndReadAll(sql, params) : await conn.runAndReadUntil(sql, options.maxRows + 1, params)
       return [this.toResult(result, options.maxRows, elapsed(start))]

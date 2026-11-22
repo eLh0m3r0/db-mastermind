@@ -2,7 +2,7 @@ import { Unzip, UnzipInflate } from 'fflate'
 import type { ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfo } from './types.js'
 import { parseDezignXml, unescapeDezignText, type DezignElement } from './dezign.js'
 import { emptyImport, layoutKey, leaveOut, spreadLayout, type ImportedModel } from './imported-model.js'
-import { isPlainType, plainDefault } from './foreign-sql.js'
+import { isPlainType, plainDefault, plainIndexPart } from './foreign-sql.js'
 import { checkSize, FILE_LIMITS, megabytes } from './untrusted.js'
 
 /**
@@ -104,7 +104,7 @@ function columnType(c: GrtObject, byId: Map<string, GrtObject>): string {
 function columnDefault(c: GrtObject, type: string): string | null | undefined {
   if (num(c.defaultValueIsNull) === 1) return null
   const d = str(c.defaultValue)
-    .replace(/\s+ON\s+UPDATE\s+.*$/is, '')
+    .replace(/(?<!\s)\s+ON\s+UPDATE\s+.*$/is, '')
     .trim()
   if (!d || /^null$/i.test(d)) return null
   const quoted = /^'(-?\d+(?:\.\d+)?)'$/.exec(d)
@@ -236,8 +236,15 @@ export function tablesFromMwb(bytes: Uint8Array): ImportedModel {
         const parts = list(ix.columns)
           .map(obj)
           .filter((p): p is GrtObject => !!p)
-          .map((p) => ({ column: columnName.get(linkId(p.referencedColumn) ?? '') ?? '', length: num(p.columnLength), desc: num(p.descend) === 1, expression: str(p.expression) }))
-        const columns = parts.map((p) => p.column || (p.expression ? `(${p.expression})` : '')).filter(Boolean)
+          .map((p) => ({ column: columnName.get(linkId(p.referencedColumn) ?? '') ?? '', length: Number.isInteger(num(p.columnLength)) ? num(p.columnLength) : 0, desc: num(p.descend) === 1, expression: str(p.expression) }))
+        // A part is a column of the model or an expression the check grammar takes (foreign-sql.ts); an index with
+        // any other part is left out, with a note on the table.
+        const own = new Set(table.columns.map((c) => c.name))
+        const columns = parts.map((p) => (p.column ? (own.has(p.column) ? p.column : '') : p.expression ? (plainIndexPart(`(${p.expression})`, []) ?? '') : ''))
+        if (!columns.length || columns.some((c) => !c)) {
+          if (parts.length) leaveOut(out, table, 'indexes', 'MySQL Workbench', `${str(ix.name)} (${parts.map((p) => p.column || p.expression).join(', ')})`)
+          continue
+        }
         const kind = str(ix.indexType).toUpperCase()
         const primary = num(ix.isPrimary) === 1 || kind === 'PRIMARY'
         if (primary) {
@@ -265,7 +272,14 @@ export function tablesFromMwb(bytes: Uint8Array): ImportedModel {
           count('brokenRelationships', 1)
           continue
         }
-        const rule = (r: string) => (r.trim() ? r.trim().toUpperCase() : undefined)
+        // Only the actions there are; anything else is left out with a note (never written into a script).
+        const rule = (r: string) => {
+          const v = r.trim().toUpperCase().replace(/\s+/g, ' ')
+          if (!v) return undefined
+          if (['CASCADE', 'RESTRICT', 'SET NULL', 'SET DEFAULT', 'NO ACTION'].includes(v)) return v
+          leaveOut(out, table, 'actions', 'MySQL Workbench', `${str(fk.name)}: ${r}`)
+          return undefined
+        }
         const info: ForeignKeyInfo = { name: str(fk.name), columns, ...(target.schema ? { refSchema: target.schema } : {}), refTable: target.name, refColumns, onDelete: rule(str(fk.deleteRule)), onUpdate: rule(str(fk.updateRule)) }
         // Workbench's one-to-one (many = 0) is a relationship at most one row of this table has.
         if (num(fk.many) === 0) info.cardinality = 'zero-or-one'

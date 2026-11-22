@@ -62,7 +62,11 @@ interface Model {
   schemaOf(t: { schema?: string }): string | undefined
   /** A named enum a column is typed with. */
   enumOf(c: ColumnInfo): { name: string; values: string[] } | undefined
+  /** What a table had that the code can't say (a referential action that is none), for a comment by it. */
+  leftOut(t: TableInfo): string[]
 }
+
+const ACTIONS = new Set(['CASCADE', 'RESTRICT', 'SET NULL', 'SET DEFAULT', 'NO ACTION'])
 
 /**
  * MySQL can't put a key on TEXT, SQL Server not on nvarchar(max): such a column in a key is a bounded string there,
@@ -71,6 +75,7 @@ interface Model {
 const KEY_STRING: Partial<Record<CodeDatabase, string>> = { mysql: 'varchar(255)', mariadb: 'varchar(255)', mssql: 'nvarchar(450)' }
 
 function modelOf(tables: TableInfo[], options: CodeOptions): Model {
+  const leftOut = new Map<TableInfo, string[]>()
   const keyString = KEY_STRING[options.database ?? 'postgres']
   const list = tables
     .filter((t) => t.type === 'table')
@@ -86,6 +91,22 @@ function modelOf(tables: TableInfo[], options: CodeOptions): Model {
       const binaryKey = options.database === 'mssql' ? 'varbinary(900)' : 'varbinary(255)'
       return t.columns.some((c) => unbounded(c) || blob(c)) ? { ...t, columns: t.columns.map((c) => (unbounded(c) ? { ...c, dataType: keyString } : blob(c) ? { ...c, dataType: binaryKey } : c)) } : t
     })
+    // Referential actions are one of the five, as every generator writes them (an identifier, an enum member or a
+    // string the ORM puts into SQL): anything else is left out with a comment.
+    .map((t) => {
+      const notes: string[] = []
+      const action = (a: string | undefined, what: string, fk: ForeignKeyInfo) => {
+        if (!a) return undefined
+        const v = a.trim().toUpperCase().replace(/\s+/g, ' ')
+        if (ACTIONS.has(v)) return v
+        notes.push(`${what} of the foreign key ${fk.name || fk.columns.join(', ')} is left out: ${a} is not a referential action.`)
+        return undefined
+      }
+      const foreignKeys = t.foreignKeys.map((fk) => ({ ...fk, onDelete: action(fk.onDelete, 'ON DELETE', fk), onUpdate: action(fk.onUpdate, 'ON UPDATE', fk) }))
+      const table = { ...t, foreignKeys }
+      if (notes.length) leftOut.set(table, notes)
+      return table
+    })
   const defaults = new Set([options.defaultSchema, 'public', 'dbo', 'main'].filter(Boolean).map((s) => s!.toLowerCase()))
   const schemaOf = (t: { schema?: string }) => (t.schema && !defaults.has(t.schema.toLowerCase()) ? t.schema : undefined)
   const enums = new Map(Object.entries(options.enums ?? {}).map(([name, values]) => [name.toLowerCase(), { name, values }]))
@@ -99,6 +120,7 @@ function modelOf(tables: TableInfo[], options: CodeOptions): Model {
     schemaOf,
     // (PostgreSQL's catalog qualifies a type outside the search path: `app.status`; DBML may quote it.)
     enumOf: (c) => enums.get(c.dataType.trim().replace(/"/g, '').toLowerCase()) ?? enums.get(c.dataType.trim().replace(/"/g, '').split('.').pop()!.toLowerCase()),
+    leftOut: (t) => leftOut.get(t) ?? [],
   }
   return model
 }
@@ -601,6 +623,7 @@ export function toPrisma(tables: TableInfo[], options: CodeOptions = {}): string
   ]
 
   const keyNameDefault = (t: TableInfo, cols: string[], suffix: string) => `${t.name}_${cols.join('_')}_${suffix}`
+  let longDefaults = 0
   // A constraint name the database could not have (longer than it allows) is not kept: Prisma refuses it.
   const nameLimit = provider === 'sqlserver' ? 128 : provider === 'mysql' ? 64 : 63
   const fits = (name: string) => new TextEncoder().encode(name).length <= nameLimit
@@ -638,7 +661,10 @@ export function toPrisma(tables: TableInfo[], options: CodeOptions = {}): string
       if (pk.length === 1 && pk[0] === c.name) attrs.push(pkMap ? `@id(${pkMap})` : '@id')
       const d = defaultOf(c, f.type)
       const dflt = prismaDefault(d, f, numbered.includes(f), provider)
-      if (dflt) attrs.push(`@default(${dflt})`)
+      // SQL Server names a default constraint after table and column: when that name is longer than SQL Server
+      // allows, Prisma cuts it and two of them can end up the same; such a default gets a short name of its own.
+      const dfMap = provider === 'sqlserver' && dflt && !/^(autoincrement|sequence)\(/.test(dflt) && !fits(`${t.name}_${c.name}_df`) ? `, map: ${prismaString(`DF_${++longDefaults}`)}` : ''
+      if (dflt) attrs.push(`@default(${dflt}${dfMap})`)
       if (singleUnique.has(c.name)) attrs.push(singleUnique.get(c.name) ? `@unique(map: ${prismaString(singleUnique.get(c.name)!)})` : '@unique')
       if (f.name !== c.name) attrs.push(`@map(${prismaString(c.name)})`)
       if (f.native) attrs.push(`@db.${f.native}`)
@@ -647,12 +673,18 @@ export function toPrisma(tables: TableInfo[], options: CodeOptions = {}): string
     }
     for (const r of relations.filter((x) => x.child === t)) {
       const optional = r.fk.columns.some((c) => field(t, c)!.column.nullable)
+      // Prisma refuses SET NULL on a required field (the database would refuse to do it): no action, said so.
+      const settable = (a: string | undefined, what: string) => {
+        if (a?.toUpperCase() !== 'SET NULL' || optional) return a
+        note(t, `${what} SET NULL of the foreign key ${r.fk.name || r.fk.columns.join(', ')} is left out: its columns are required.`)
+        return undefined
+      }
       const args = [
         ...(r.name ? [prismaString(r.name)] : []),
         `fields: [${r.fk.columns.map((c) => field(t, c)!.name).join(', ')}]`,
         `references: [${r.fk.refColumns.map((c) => field(r.parent, c)!.name).join(', ')}]`,
-        `onDelete: ${prismaAction(r.fk.onDelete, provider)}`,
-        `onUpdate: ${prismaAction(r.fk.onUpdate, provider)}`,
+        `onDelete: ${prismaAction(settable(r.fk.onDelete, 'ON DELETE'), provider)}`,
+        `onUpdate: ${prismaAction(settable(r.fk.onUpdate, 'ON UPDATE'), provider)}`,
         ...(r.fk.name && fits(r.fk.name) && r.fk.name !== keyNameDefault(t, r.fk.columns, 'fkey') && provider !== 'sqlite' ? [`map: ${prismaString(r.fk.name)}`] : []),
       ]
       lines.push([r.childField, `${modelNames.get(r.parent)}${optional ? '?' : ''}`, `@relation(${args.join(', ')})`])
@@ -665,7 +697,7 @@ export function toPrisma(tables: TableInfo[], options: CodeOptions = {}): string
     if (ignored.has(t)) blockAttrs.push('@@ignore')
     out.push('')
     if (ignored.has(t)) out.push('/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.')
-    for (const n of notes.get(t) ?? []) out.push(`// ${commentText(n, 'prisma')}`)
+    for (const n of [...(notes.get(t) ?? []), ...model.leftOut(t)]) out.push(`// ${commentText(n, 'prisma')}`)
     out.push(...commentLines(t.comment, '/// ', 'prisma'), `model ${modelNames.get(t)} {`, ...aligned(lines, '  '))
     if (blockAttrs.length) out.push('', ...blockAttrs.map((a) => `  ${a}`))
     out.push('}')
@@ -702,6 +734,8 @@ function prismaAction(action: string | undefined, provider: string): string {
 function prismaDefault(d: Default | undefined, f: PrismaField, numbered: boolean, provider: string): string | undefined {
   if (!d) return undefined
   const generated = (sql: string) => `dbgenerated(${prismaString(sql)})`
+  // A list field's default is a list in Prisma: a single value is the database's to give.
+  if (f.list && d.kind !== 'autoincrement' && d.kind !== 'expr') return generated(d.kind === 'string' ? `'${d.value.replaceAll("'", "''")}'` : d.kind === 'number' ? d.value : d.kind === 'bool' ? String(d.value) : 'now()')
   switch (d.kind) {
     case 'autoincrement':
       // CockroachDB numbers an Int through a sequence (its autoincrement() is unique_rowid(), a BigInt).
@@ -1010,6 +1044,7 @@ export function toDrizzle(tables: TableInfo[], options: CodeOptions = {}): strin
     tableBlocks.push(
       [
         ...missing.map((fk) => `// ${commentText(`The foreign key ${fk.name || fk.columns.join(', ')} → ${fk.refTable} is left out: ${fk.refTable} is not in the model.`, 'js')}`),
+        ...model.leftOut(t).map((n) => `// ${commentText(n, 'js')}`),
         ...commentLines(t.comment, '// ', 'js'),
         `export const ${name} = ${fn}(${jsString(t.name)}, {`,
         ...lines,
@@ -1259,6 +1294,7 @@ export function toSqlAlchemy(tables: TableInfo[], options: CodeOptions = {}): st
         '',
         '',
         ...docs.map((l) => `# ${l}`),
+        ...model.leftOut(t).map((n) => `# ${commentText(n, 'python')}`),
         `${name} = Table(`,
         `    ${pyString(t.name)},`,
         '    Base.metadata,',
@@ -1271,7 +1307,7 @@ export function toSqlAlchemy(tables: TableInfo[], options: CodeOptions = {}): st
       continue
     }
     const name = className(pascal(model.schemaOf(t) && model.tables.some((o) => o !== t && o.name === t.name) ? `${schema}_${t.name}` : t.name))
-    const lines = [`class ${name}(Base):`, ...(docs.length ? [`    ${docstring(t.comment)}`, ''] : []), `    __tablename__ = ${pyString(t.name)}`]
+    const lines = [...model.leftOut(t).map((n) => `# ${commentText(n, 'python')}`), `class ${name}(Base):`, ...(docs.length ? [`    ${docstring(t.comment)}`, ''] : []), `    __tablename__ = ${pyString(t.name)}`]
     const options = [...(schema ? [`"schema": ${pyString(schema)}`] : []), ...(t.comment ? [`"comment": ${pyString(t.comment)}`] : [])]
     if (tableArgs.length || options.length) {
       lines.push('    __table_args__ = (', ...tableArgs.map((a) => `        ${a},`), ...(options.length ? [`        {${options.join(', ')}},`] : []), '    )')

@@ -2304,8 +2304,9 @@ function DiagramInner({ tab, focused, model, modelDriver, modelEnums, domains, u
           </Controls>
           <ZoomLevel />
           {modelMode && !selected && selectedCount < 2 && (
-            <Panel position="bottom-center" className="pointer-events-none !mb-2 max-w-[60%] truncate rounded bg-bg/80 px-2 py-0.5 text-[11px] text-fg-faint" data-testid="canvas-hint">
-              {tr('Double-click a name or a type to change it, the rest of a table or a line for its details; drag from a column’s dot to another table to relate them.')}
+            // Short enough for a 900 px window, clear of the zoom controls on the left; the rest is its tooltip.
+            <Panel position="bottom-center" className="!mb-2 max-w-[calc(100%-240px)] cursor-help rounded bg-bg/80 px-2 py-0.5 text-center text-[11px] text-fg-faint" data-testid="canvas-hint">
+              <span title={tr('Double-click a name or a type to change it, the rest of a table or a line for its details; drag from a column’s dot to another table to relate them.')}>{tr('Double-click to change, drag a column’s dot to relate')}</span>
             </Panel>
           )}
           {selectedCount >= 2 && (
@@ -2359,6 +2360,7 @@ function DiagramInner({ tab, focused, model, modelDriver, modelEnums, domains, u
       {design && selected && selectedDraft && editorDriver && (
         <TableEditor
           key={selected}
+          focusName={!!model && !!tab.startDesign && selected === tab.startDesign}
           table={selectedDraft}
           driver={editorDriver}
           allTables={tables}

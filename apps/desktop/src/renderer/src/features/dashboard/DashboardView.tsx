@@ -126,7 +126,7 @@ function DashboardList({ tab }: { tab: DashboardTab }) {
   if (!list.length)
     return (
       <EmptyState icon={<LayoutDashboard size={28} />} title={t('No dashboards yet')}>
-        {t('Run a query and use the pin button above its result to put it on a dashboard. Charts stay charts, single values become big numbers.')}
+        {t('Run a query and use Add to dashboard above its result. Charts stay charts, single values become big numbers.')}
       </EmptyState>
     )
   return (
@@ -240,7 +240,7 @@ export function DashboardView({ tab }: { tab: DashboardTab }) {
       </div>
       {dashboard.tiles.length === 0 ? (
         <EmptyState icon={<LayoutDashboard size={28} />} title={t('This dashboard is empty')}>
-          {t('Run a query and use the pin button above its result to put it on a dashboard. Charts stay charts, single values become big numbers.')}
+          {t('Run a query and use Add to dashboard above its result. Charts stay charts, single values become big numbers.')}
         </EmptyState>
       ) : (
         <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-3 overflow-auto p-3">

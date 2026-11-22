@@ -1,4 +1,5 @@
 import type { ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfo } from './types.js'
+import { normalizeText, tooLongMessage } from './text-lines.js'
 
 /**
  * Tables from a Prisma schema (`schema.prisma`): models with @map/@@map, scalar and native (@db.*) types,
@@ -19,7 +20,10 @@ function withoutComment(line: string): string {
   return line
 }
 
-export function tablesFromPrisma(text: string): { tables: TableInfo[]; enums: Record<string, string[]>; errors: { line: number; message: string }[] } {
+export function tablesFromPrisma(input: string): { tables: TableInfo[]; enums: Record<string, string[]>; errors: { line: number; message: string }[] } {
+  // Runs of spaces collapsed and overlong lines out before any regex sees the text (text-lines.ts).
+  const normalized = normalizeText(input, { quotes: '"', lineComments: ['//'] })
+  const text = normalized.text
   // `///` comments document the model or field below them: they are kept as a marker line, other comments go.
   // (Not the warnings `prisma db pull` writes there itself.)
   const clean = text
@@ -29,7 +33,7 @@ export function tablesFromPrisma(text: string): { tables: TableInfo[]; enums: Re
     .join('\n')
   const docOf = (lines: string[]) => lines.map((l) => /^\s*@@__doc\((".*")\)\s*$/.exec(l)).map((m) => (m ? (JSON.parse(m[1]!) as string) : null))
   const enums: Record<string, string[]> = {}
-  const errors: { line: number; message: string }[] = []
+  const errors: { line: number; message: string }[] = normalized.tooLong.map((line) => ({ line, message: tooLongMessage }))
   // Blocks found line by line (a block a stranger's file never closes ends where the next one starts, so reading
   // stays linear), each with the `///` lines right above it.
   const blocks: [string, string, string, string][] = []

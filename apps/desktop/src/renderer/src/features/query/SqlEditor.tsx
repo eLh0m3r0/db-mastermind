@@ -1,12 +1,12 @@
 import { analysable } from './analyse-limit'
 import { useEffect, useImperativeHandle, useRef, type Ref } from 'react'
-import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, type Completion } from '@codemirror/autocomplete'
+import { acceptCompletion, autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, type Completion } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab, toggleComment } from '@codemirror/commands'
 import { keywordCompletionSource, MSSQL, MySQL, MariaSQL, PLSQL, PostgreSQL, schemaCompletionSource, SQLite, type SQLDialect, type SQLNamespace } from '@codemirror/lang-sql'
 import { bracketMatching, HighlightStyle, indentOnInput, LanguageSupport, syntaxHighlighting } from '@codemirror/language'
 import { highlightSelectionMatches, openSearchPanel, searchKeymap } from '@codemirror/search'
 import { linter, type Diagnostic } from '@codemirror/lint'
-import { Compartment, EditorSelection, EditorState, RangeSetBuilder, StateEffect, StateField, type Extension } from '@codemirror/state'
+import { Compartment, EditorSelection, EditorState, Prec, RangeSetBuilder, StateEffect, StateField, type Extension } from '@codemirror/state'
 import {
   Decoration,
   drawSelection,
@@ -111,6 +111,7 @@ export function editorTheme(dark: boolean): Extension {
         '.cm-panels': { backgroundColor: 'var(--bg-subtle)', color: 'var(--text)', borderColor: 'var(--border)' },
         '.cm-panel.cm-search input, .cm-panel.cm-search button': { fontSize: '12px' },
         '.cm-placeholder': { color: 'var(--text-faint)' },
+        '.cm-placeholder .cm-placeholder-keys': { marginLeft: '2.2em' },
         // Warnings are quiet: a wavy underline in the warning color, the explanation on hover.
         '.cm-lintRange-warning': { backgroundImage: 'none', textDecoration: 'underline wavy color-mix(in srgb, var(--warning) 75%, transparent)', textUnderlineOffset: '3px' },
         '.cm-tooltip-lint': { padding: '0' },
@@ -269,11 +270,15 @@ export function SqlEditor({ value, driver, schema, sessionTables, dark, onChange
           indentOnInput(),
           bracketMatching(),
           closeBrackets(),
-          autocompletion({ activateOnTyping: true, maxRenderedOptions: 80 }),
+          // A highlighted suggestion is what Enter (and Tab) take, from the moment the list shows: CodeMirror's default
+          // ignored accept keys for 75 ms after it opened, and the Enter fell through to a line break.
+          autocompletion({ activateOnTyping: true, maxRenderedOptions: 80, interactionDelay: 0 }),
+          Prec.highest(keymap.of([{ key: 'Tab', run: acceptCompletion }])),
           rectangularSelection(),
           highlightActiveLine(),
           highlightSelectionMatches(),
-          placeholderExt(tr('Write SQL…   {run} runs the statement under the cursor, {runAll} runs everything', { run: keys('⌘↵'), runAll: keys('⇧⌘↵') })),
+          // In a narrow editor (split view) only "Write SQL…": the keys wrapped under it and read like code.
+          placeholderExt(() => placeholderElement(tr('Write SQL…'), tr('{run} runs the statement under the cursor, {runAll} runs everything', { run: keys('⌘↵'), runAll: keys('⇧⌘↵') }))),
           statementHighlight(() => driverRef.current),
           // Extra completion sources next to the SQL language's own (tables, qualified columns, keywords).
           // Sources need a stable identity: autocompletion matches results to sources by reference.
@@ -420,4 +425,30 @@ export function SqlEditor({ value, driver, schema, sessionTables, dark, onChange
   }))
 
   return <div ref={host} className="h-full min-h-0 overflow-hidden" />
+}
+
+/** "Write SQL…" and, when the line has room for it, the keys that run it. */
+function placeholderElement(lead: string, keysHint: string): HTMLElement {
+  const el = document.createElement('span')
+  el.append(lead)
+  const hint = document.createElement('span')
+  hint.className = 'cm-placeholder-keys'
+  hint.textContent = keysHint
+  el.append(hint)
+  // Shown only while "Write SQL…" and the keys fit on one line (in a split pane they wrapped and read like code).
+  const fit = () => {
+    hint.style.display = ''
+    const line = parseFloat(getComputedStyle(el).lineHeight) || 20
+    if (el.getBoundingClientRect().height > line * 1.5) hint.style.display = 'none'
+  }
+  let tries = 0
+  const attach = () => {
+    const content = el.closest('.cm-editor')
+    if (!content) return void (tries++ < 20 && requestAnimationFrame(attach))
+    fit()
+    const observer = new ResizeObserver(() => (el.isConnected ? fit() : observer.disconnect()))
+    observer.observe(content)
+  }
+  requestAnimationFrame(attach)
+  return el
 }

@@ -475,6 +475,7 @@ export class OracleDriver implements DatabaseDriver {
         isPrimaryKey: t.primaryKey.includes(name),
         isIdentity: c.ident === 'YES',
         isGenerated: c.virt === 'YES',
+        ...(c.virt === 'YES' ? { generatedStored: false } : {}),
         comment: c.comment ? String(c.comment) : null,
       })
     }

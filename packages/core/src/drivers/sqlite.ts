@@ -107,9 +107,14 @@ parentPort.on('message', (msg) => {
     } else if (msg.type === 'exec') {
       guard(msg.session, msg.write)
       let result
+      // SQL nobody confirmed: SQLite itself refuses every write while query_only is on (only for this statement:
+      // the connection is shared by all tabs).
+      const queryOnly = msg.queryOnly && !db.prepare('PRAGMA query_only').get()?.query_only
+      if (queryOnly) db.exec('PRAGMA query_only = 1')
       try {
         result = run(msg.sql, msg.params ?? [], msg.maxRows ?? Infinity)
       } finally {
+        if (queryOnly) db.exec('PRAGMA query_only = 0')
         track(msg.session)
       }
       post({ id: msg.id, ok: true, result })
@@ -328,6 +333,7 @@ export class SqliteDriver implements DatabaseDriver {
             maxRows: options.maxRows,
             session: options.session,
             write: !isReadOnlyScript(sql, 'sqlite'),
+            queryOnly: !!options.unconfirmed,
           },
           options.session,
         ),

@@ -53,7 +53,8 @@ const sql = async (connectionId, text) => {
 /** Opens the compare of the model with its database and returns the script it writes ('' when identical). */
 const compare = async () => {
   await win.getByText('team.dez', { exact: true }).first().click()
-  await win.getByRole('button', { name: /Compare with Team DB/ }).click()
+  // (The model bar's button names no database since the UX pass: the model's own connection is Team DB.)
+  await win.getByTestId('model-compare').click()
   await win.getByRole('button', { name: 'Compare', exact: true }).last().click()
   // Earlier compare tabs stay in the page, hidden: only what is on screen counts.
   const shown = (text) => win.evaluate((text) => [...document.querySelectorAll('span, div, h3, p')].some((e) => e.offsetParent !== null && e.childElementCount === 0 && e.textContent.includes(text)), text)

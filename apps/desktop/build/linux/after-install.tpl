@@ -57,26 +57,48 @@ if apparmor_status --enabled > /dev/null 2>&1; then
 fi
 
 # --- DB Mastermind addition (everything above is electron-builder 26.15.3's own after-install.tpl, unchanged) ---
-# The test above runs `unshare` as root, which can create user namespaces even where ordinary users can't. Where they
-# can't, Chromium's only other sandbox is the SUID helper, and that can't work here: Chromium runs it by a command line
-# it splits at spaces, and this app lives in "/opt/DB Mastermind" (CI run 44943689826: execve("/opt/DB", …) ENOENT).
-# Without a sandbox Chromium refuses to start, so the menu entry then starts the app with --no-sandbox, as every
-# version before 1.5 did, and this script says so. Users can't create user namespaces when:
-#   - user.max_user_namespaces = 0 or kernel.unprivileged_userns_clone = 0 (older Debian defaults, hardened kernels);
-#   - AppArmor restricts unprivileged user namespaces (Ubuntu 23.10+) and this app's profile isn't loaded (AppArmor
-#     too old for the profile, apparmor_parser missing or failing).
-users_get_userns() {
-  [ -L /proc/self/ns/user ] || return 1
-  [ "$(cat /proc/sys/user/max_user_namespaces 2>/dev/null || echo 1)" != 0 ] || return 1
-  [ "$(cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || echo 1)" != 0 ] || return 1
-  if [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo 0)" = 1 ]; then
-    grep -qs '^${executable} ' /sys/kernel/security/apparmor/profiles || return 1
+# Chromium needs user namespaces for ordinary users (or its SUID helper). The test above runs `unshare` as root, which
+# can create them even where users can't, and the SUID helper can't work for this app at all: Chromium runs it by a
+# command line it splits at spaces, and the app lives in "/opt/DB Mastermind" (CI run 44943689826:
+# execve("/opt/DB", …) = ENOENT). So the stock 4755 is useless here and only leaves a SUID-root binary: 0755 instead.
+DBM_DIR='/opt/${sanitizedProductName}'
+case "$DBM_DIR" in *' '*) chmod 0755 "$DBM_DIR/chrome-sandbox" || true ;; esac
+
+# Without any sandbox Chromium refuses to start, so the menu entry gets --no-sandbox, but only when this running
+# system positively shows that ordinary users can't create user namespaces. When the answer can't be known here, the
+# entry stays sandboxed (an image or chroot build, whose profile loads at boot, mustn't be left unsandboxed for good):
+#
+#   condition (checked in this order)                                        answer     menu entry
+#   in a chroot (ischroot), or /proc/sys/user/max_user_namespaces unreadable  unknown    sandboxed
+#   user.max_user_namespaces = 0                                              no         --no-sandbox
+#   kernel.unprivileged_userns_clone = 0 (Debian-style kernels)               no         --no-sandbox
+#   apparmor_restrict_unprivileged_userns = 1, AppArmor not enforcing          yes        sandboxed
+#     (/sys/module/apparmor/parameters/enabled is not Y)
+#   … = 1, AppArmor's profile list unreadable                                 unknown    sandboxed
+#   … = 1, this app's profile loaded                                          yes        sandboxed
+#   … = 1, this app's profile not loaded (AppArmor too old for it, parser     no         --no-sandbox
+#     missing or failing)
+#   anything else                                                             yes        sandboxed
+#
+# Reinstalling or upgrading decides again (dpkg puts the package's entry back first). CI's linux-sandbox job tests
+# every row the runner can produce.
+users_lack_userns() {
+  if [ -x /usr/bin/ischroot ] && /usr/bin/ischroot; then return 1; fi
+  local max
+  max=$(cat /proc/sys/user/max_user_namespaces 2>/dev/null) || return 1
+  [ "$max" = 0 ] && return 0
+  [ "$(cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null)" = 0 ] && return 0
+  if [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ]; then
+    [ "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null)" = Y ] || return 1
+    [ -r /sys/kernel/security/apparmor/profiles ] || return 1
+    grep -q '^${executable} ' /sys/kernel/security/apparmor/profiles && return 1
+    return 0
   fi
-  return 0
+  return 1
 }
 DBM_DESKTOP='/usr/share/applications/${executable}.desktop'
-DBM_BIN='/opt/${sanitizedProductName}/${executable}'
-if ! users_get_userns && [ -f "$DBM_DESKTOP" ] && ! grep -q -- '--no-sandbox' "$DBM_DESKTOP"; then
+DBM_BIN="$DBM_DIR/${executable}"
+if users_lack_userns && [ -f "$DBM_DESKTOP" ] && ! grep -q -- '--no-sandbox' "$DBM_DESKTOP"; then
   sed -i "s|^Exec=\"$DBM_BIN\" %U\$|Exec=\"$DBM_BIN\" --no-sandbox %U|" "$DBM_DESKTOP"
-  echo "DB Mastermind: this system doesn't let applications create user namespaces, so the app starts without Chromium's sandbox (--no-sandbox in its menu entry). To run it sandboxed, allow them (e.g. sysctl kernel.unprivileged_userns_clone=1, or load /etc/apparmor.d/db-mastermind) and reinstall the package."
+  echo "DB Mastermind: this system doesn't let applications create user namespaces, so the app starts without Chromium's sandbox (--no-sandbox in its menu entry). To run it sandboxed, allow them (e.g. sysctl kernel.unprivileged_userns_clone=1, or load /etc/apparmor.d/${executable}) and reinstall the package."
 fi

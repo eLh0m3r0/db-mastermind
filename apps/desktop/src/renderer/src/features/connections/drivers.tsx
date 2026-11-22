@@ -7,7 +7,7 @@ export const DRIVERS: { id: DriverId; label: string; color: string; mark: string
   { id: 'mysql', label: 'MySQL', color: '#00758f', mark: 'My' },
   { id: 'mariadb', label: 'MariaDB', color: '#7d5a3c', mark: 'Ma' },
   { id: 'oracle', label: 'Oracle', color: '#c74634', mark: 'Or' },
-  { id: 'sqlite', label: 'SQLite', color: '#0f80cc', mark: 'Lt' },
+  { id: 'sqlite', label: 'SQLite', color: '#0b6fb3', mark: 'Lt' },
   { id: 'duckdb', label: 'DuckDB', color: '#8a7a00', mark: 'Dk' },
   { id: 'clickhouse', label: 'ClickHouse', color: '#a8781c', mark: 'CH' },
   { id: 'bigquery', label: 'BigQuery', color: '#3b78e7', mark: 'BQ' },
@@ -36,4 +36,10 @@ export function DriverIcon({ driver, size = 16 }: { driver: DriverId; size?: num
 export function connectionDetail(c: { driver: DriverId; filePath?: string; user?: string; host?: string; database?: string }, withUser = false): string {
   if (isFileDriver(c.driver)) return c.filePath ? (c.filePath.split(/[\\/]/).pop() ?? c.filePath) : t('in-memory')
   return `${withUser && c.user ? `${c.user}@` : ''}${c.host ?? ''}${c.database ? `/${c.database}` : ''}`
+}
+
+/** The line under a connection's name: its address, or the database kind when the name already is the address. */
+export function connectionSubtitle(c: { name: string; driver: DriverId; filePath?: string; user?: string; host?: string; database?: string }): string {
+  const detail = connectionDetail(c)
+  return detail === c.name ? driverLabel(c.driver) : detail
 }

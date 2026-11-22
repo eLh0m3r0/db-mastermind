@@ -22,8 +22,8 @@ export function modelFormatOf(name: string, head: string): ModelFormat | undefin
     return at !== -1 && /```\s*mermaid/.test(head.slice(0, at)) ? 'mermaid' : undefined
   }
   // A script picked in the Import dialog may be any of them: the content says which.
-  if (/^\s*(?:%%.*\n\s*)*erDiagram\b/m.test(head) && !/\bCREATE\s+TABLE\b/i.test(head)) return 'mermaid'
-  if (/^\s*(model|datasource|generator)\s+\w+\s*\{/m.test(head)) return 'prisma'
+  if (/^[ \t]*erDiagram\b/m.test(head) && !/\bCREATE\s+TABLE\b/i.test(head)) return 'mermaid'
+  if (/^[ \t]*(model|datasource|generator)[ \t]+\w+\s*\{/m.test(head)) return 'prisma'
   if (/^\s*\{/.test(head) && isDrawDb(head)) return 'drawdb'
   return undefined
 }

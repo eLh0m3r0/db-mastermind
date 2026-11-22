@@ -1,4 +1,4 @@
-import type { ImportedModel } from './imported-model.js'
+import { layoutKey, type ImportedModel } from './imported-model.js'
 import type { ImportedConnection } from './connection-imports.js'
 import type { TableInfo } from './types.js'
 
@@ -60,19 +60,82 @@ function cleanTable(t: TableInfo): TableInfo {
   }
 }
 
-/** Another tool's model with its names and texts cleaned and its coordinates bounded. */
+/**
+ * A name not yet taken, as written (email and Email are two names, as in DBML and case-sensitive databases):
+ * itself, or itself with `_2`, `_3` … (cut to stay within `max`).
+ */
+function untaken(name: string, taken: Set<string>, max = 128): string {
+  let out = name
+  for (let n = 2; taken.has(out); n++) out = `${name.slice(0, max - String(n).length - 1)}_${n}`
+  taken.add(out)
+  return out
+}
+
+/**
+ * Another tool's model with its names and texts cleaned and its coordinates bounded. Cleaning (control characters
+ * out, 128 characters at most) can make two names one: those get a number (`_2`), references follow them, and
+ * the import's notice counts them (`leftOut.renamed`).
+ */
 export function cleanImportedModel(m: ImportedModel): ImportedModel {
   const point = (p: { x: number; y: number }) => ({ x: at(p.x), y: at(p.y) })
-  const keyed = <T,>(map: Record<string, T>, f: (v: T) => T) => Object.fromEntries(Object.entries(map).map(([k, v]) => [cleanName(k, 300), f(v)]))
+  let renamed = 0
+  const tables = m.tables.map(cleanTable)
+  // Tables, per schema.
+  const takenTables = new Map<string, Set<string>>()
+  const tableOf = (raw: TableInfo) => raw
+  const finalName = new Map<TableInfo, string>()
+  tables.forEach((t, i) => {
+    const taken = takenTables.get((t.schema ?? '').toLowerCase()) ?? new Set<string>()
+    takenTables.set((t.schema ?? '').toLowerCase(), taken)
+    const name = untaken(t.name, taken)
+    if (name !== t.name) renamed++
+    t.name = name
+    finalName.set(tableOf(m.tables[i]!), name)
+  })
+  // Columns, per table; what names them follows.
+  const columnMaps = tables.map((t, i) => {
+    const taken = new Set<string>()
+    const map = new Map<string, string>()
+    t.columns = t.columns.map((c, k) => {
+      const name = untaken(c.name, taken)
+      if (name !== c.name) renamed++
+      map.set(m.tables[i]!.columns[k]!.name, name)
+      return { ...c, name }
+    })
+    return map
+  })
+  const targetOf = (i: number, refTable: string, refSchema: string | undefined) => {
+    const raw = m.tables[i]!
+    const candidates = m.tables.map((x, k) => [x, k] as const).filter(([x]) => x.name === refTable)
+    return (candidates.find(([x]) => (x.schema ?? '') === (refSchema ?? raw.schema ?? '')) ?? (candidates.length === 1 ? candidates[0] : undefined))?.[1]
+  }
+  tables.forEach((t, i) => {
+    const raw = m.tables[i]!
+    const col = (map: Map<string, string>) => (name: string) => map.get(name) ?? cleanName(name)
+    const own = col(columnMaps[i]!)
+    t.primaryKey = raw.primaryKey.map(own)
+    t.indexes = t.indexes.map((ix, k) => ({ ...ix, columns: raw.indexes[k]!.columns.map(own) }))
+    t.foreignKeys = t.foreignKeys.map((fk, k) => {
+      const rawFk = raw.foreignKeys[k]!
+      const target = targetOf(i, rawFk.refTable, rawFk.refSchema)
+      return { ...fk, columns: rawFk.columns.map(own), ...(target !== undefined ? { refTable: tables[target]!.name, refColumns: rawFk.refColumns.map(col(columnMaps[target]!)) } : {}) }
+    })
+    if (t.checks) t.checks = t.checks.map((c, k) => (raw.checks![k]!.column ? { ...c, column: own(raw.checks![k]!.column!) } : c))
+  })
+  // Layout keys follow the tables they name.
+  const keys = new Map(m.tables.map((raw, i) => [layoutKey(raw), layoutKey(tables[i]!)]))
+  const key = (k: string) => keys.get(k) ?? cleanName(k, 300)
+  const keyed = <T,>(map: Record<string, T>, f: (v: T) => T) => Object.fromEntries(Object.entries(map).map(([k, v]) => [key(k), f(v)]))
   return {
     ...m,
-    tables: m.tables.map(cleanTable),
+    tables,
     enums: Object.fromEntries(Object.entries(m.enums).map(([name, values]) => [cleanName(name), values.map((v) => cleanName(v))])),
     positions: keyed(m.positions, point),
     colors: keyed(m.colors, (c) => (/^#[0-9a-f]{6}$/i.test(c) ? c : '#ffffff')),
     notes: m.notes.map((n) => ({ id: cleanName(n.id), text: cleanText(n.text), ...point(n) })),
     boxes: m.boxes.map((b) => ({ id: cleanName(b.id), title: cleanName(b.title, 200), ...point(b), w: Math.max(0, at(b.w)), h: Math.max(0, at(b.h)) })),
-    diagrams: m.diagrams.map((d) => ({ ...d, id: cleanName(d.id), name: cleanName(d.name, 200), tables: d.tables.map((k) => cleanName(k, 300)), positions: keyed(d.positions, point), colors: keyed(d.colors, (c) => c) })),
+    diagrams: m.diagrams.map((d) => ({ ...d, id: cleanName(d.id), name: cleanName(d.name, 200), tables: d.tables.map(key), positions: keyed(d.positions, point), colors: keyed(d.colors, (c) => c) })),
+    leftOut: renamed ? { ...m.leftOut, renamed: (m.leftOut.renamed ?? 0) + renamed } : m.leftOut,
   }
 }
 

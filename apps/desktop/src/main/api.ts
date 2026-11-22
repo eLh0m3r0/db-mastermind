@@ -426,7 +426,8 @@ export const api: MastermindApi = {
     for (const [name, content] of Object.entries(SAMPLE_KNOWLEDGE)) await writeFile(join(kbDir, name), content, 'utf8')
     const saved = connections.saveConnection({
       id: existing?.id ?? '',
-      name: 'Demo coffee shop',
+      // Named in the app's language like the group below; a saved connection keeps the name it has.
+      name: existing?.name ?? (getSettings().language === 'cs' ? 'Ukázková kavárna' : 'Demo coffee shop'),
       driver: 'sqlite',
       filePath: file,
       knowledgeBasePath: kbDir,
@@ -770,6 +771,11 @@ export const api: MastermindApi = {
       const r = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
       if (r.canceled || !r.filePaths[0]) return null
       path = r.filePaths[0]
+      rememberChosenPath(path)
+    } else {
+      // A path from the renderer is one the user handed to the app (opened with it, dropped, given on the command
+      // line): anything else is refused, as for models and projects (chosen-paths.ts).
+      path = checkChosenPath(path)
     }
     // A database file opens as its own connection (it used to go through read_csv and fail).
     const database = await databaseFileDriver(path)

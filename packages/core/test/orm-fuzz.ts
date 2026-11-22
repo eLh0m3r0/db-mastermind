@@ -68,6 +68,7 @@ export function fuzzModel(seed: number, database: CodeDatabase): { tables: Table
     })
     const name = unique(i === 0 && r() < 0.5 ? 'plain' : hostile(6) || `t${i}`)
     const keyless = r() < 0.15
+    if (r() < 0.3) Object.assign(columns[0]!, { identityAlways: r() < 0.5 })
     tables.push({
       name,
       type: 'table',
@@ -75,7 +76,7 @@ export function fuzzModel(seed: number, database: CodeDatabase): { tables: Table
       columns: keyless ? columns.map((c) => ({ ...c, isPrimaryKey: false })) : columns,
       primaryKey: keyless ? [] : ['id'],
       foreignKeys: [],
-      indexes: [...(keyless ? [] : [{ name: hostile(5), columns: ['id'], unique: true, primary: true }]), ...(r() < 0.5 ? [{ name: hostile(6), columns: [columns[1]!.name], unique: r() < 0.5, primary: false }] : [])],
+      indexes: [...(keyless ? [] : [{ name: hostile(5), columns: ['id'], unique: true, primary: true }]), ...(r() < 0.5 ? [{ name: hostile(6), columns: [columns[1]!.name], unique: r() < 0.5, primary: false, ...(r() < 0.5 ? { method: hostile(4) } : {}) }] : [])],
     })
   }
   // References with hostile names, to tables of the model and to one that isn't there.
@@ -83,7 +84,9 @@ export function fuzzModel(seed: number, database: CodeDatabase): { tables: Table
     const target = pick(tables)
     if (!target.primaryKey.length || r() < 0.2) continue
     const column = t.columns.find((c) => c.name !== 'id' && c.dataType === target.columns[0]!.dataType)
-    if (column) t.foreignKeys.push({ name: hostile(6), columns: [column.name], refTable: target.name, refColumns: ['id'], onDelete: r() < 0.3 ? 'CASCADE' : undefined })
+    // Every enum-like field gets hostile values too (review N6): actions, index methods, identity kinds.
+    const action = () => (r() < 0.3 ? pick(['CASCADE', 'set null', 'Restrict', 'NO ACTION']) : r() < 0.6 ? pick(["CASCADE'),console.log('PWNED'),('", 'CASCADE"); __import__("os").system("echo PWNED"); ("', '`); process.exit(1); (`']) + hostile(3) : undefined)
+    if (column) t.foreignKeys.push({ name: hostile(6), columns: [column.name], refTable: target.name, refColumns: ['id'], onDelete: action(), onUpdate: action() })
   }
   if (r() < 0.3) tables[0]!.foreignKeys.push({ name: hostile(4), columns: ['id'], refTable: hostile(6), refColumns: ['id'] })
   return { tables, enums }

@@ -311,7 +311,9 @@ export class PostgresDriver implements DatabaseDriver {
           values: options.params,
           rowMode: 'array',
           types: typeOverrides,
-        })
+          // Parse/Bind/Execute: the server refuses more than one command in it (the simple protocol runs them all).
+          ...(options.unconfirmed ? { queryMode: 'extended' } : {}),
+        } as pg.QueryArrayConfig)
         const results = (Array.isArray(res) ? res : [res]) as pg.QueryArrayResult[]
         const durationMs = elapsed(start)
         await this.learnTypes(results)
@@ -655,6 +657,8 @@ export class PostgresDriver implements DatabaseDriver {
         isIdentity: c.identity !== '' || /^nextval\(/.test(c.default ?? ''),
         ...(c.identity === 'a' ? { identityAlways: true } : {}),
         isGenerated: c.generated !== '',
+        // (attgenerated: 's' stored, 'v' virtual in PostgreSQL 18.)
+        ...(c.generated !== '' ? { generatedStored: c.generated === 's' } : {}),
         comment: c.comment,
       }
       t.columns.push(column)

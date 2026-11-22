@@ -81,3 +81,18 @@ describe('text columns whose type names contain tiny / long', () => {
     expect(selectionStats([{ name: 'n', dataType: 'longlong' }], [['9007199254740993'], ['1']], { r0: 0, r1: 1, c0: 0, c1: 0 })).toMatchObject({ sum: '9007199254740994' })
   })
 })
+
+describe('how a statistic is written', () => {
+  it('groups digits with spaces and keeps the decimal point, whatever the system locale', async () => {
+    const { formatStat } = await import('../src/renderer/src/components/grid/selection-stats')
+    expect(formatStat('9305')).toBe('9 305')
+    expect(formatStat('1329.285714285714', 2)).toBe('1 329.29')
+    expect(formatStat('-1234567.5')).toBe('-1 234 567.5')
+    expect(formatStat('129')).toBe('129')
+    expect(formatStat('0.10', 2)).toBe('0.10')
+    expect(formatStat('2.5', 2)).toBe('2.5')
+    expect(formatStat('-0.001', 2)).toBe('0')
+    // Exact text longer than a double: grouped, every digit kept.
+    expect(formatStat('12345678901234567890.123')).toBe('12 345 678 901 234 567 890.123')
+  })
+})

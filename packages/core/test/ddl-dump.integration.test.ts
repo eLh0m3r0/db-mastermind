@@ -45,7 +45,8 @@ function localModels(): { label: string; tables: TableInfo[]; driver: DriverId; 
       const path = join(dir, name)
       if (statSync(path).isDirectory()) {
         if (name.toLowerCase() !== 'archived versions') walk(path)
-      } else if (/\.dezproj$/i.test(name) || /\.dez$/i.test(name)) found.push(path)
+      // (As the real-world test: a file of DeZign 3 and older, format 30, is not one the app reads.)
+      } else if (/\.dezproj$/i.test(name) || (/\.dez$/i.test(name) && !/<FILEFORMATVERSIONNUMBER>/.test(readFileSync(path, 'latin1').slice(0, 600)))) found.push(path)
     }
   }
   walk(root)
@@ -272,6 +273,61 @@ CREATE TABLE store_log (id INT NOT NULL, staff_id TINYINT UNSIGNED, PRIMARY KEY 
       }).toEqual({ modelVsLive: [], dumpVsLive: [], scriptVsLive: [], modelVsScript: [], modelVsDump: [] })
     } finally {
       await svc.runScript(server.id, 'DROP DATABASE IF EXISTS dump_wb').catch(() => {})
+      await svc.disconnectAll()
+    }
+  })
+})
+
+// Review N4: what MySQL 8 writes into a dump for indexes and columns a script reader may not know. Every table
+// must come back with all its columns; an index part the reader can't take costs that part (said in `skipped`),
+// never the table.
+describe.skipIf(!myContainer)('MySQL 8 dumps with functional, prefix, descending, invisible and FULLTEXT parser indexes', () => {
+  it('read back with every table and column', { timeout: 120_000 }, async () => {
+    const svc = new DatabaseService()
+    const server = SERVERS.mysql!
+    const config: ConnectionConfig = { ...server, id: 'dump-my-n4', database: 'dump_n4' }
+    try {
+      await svc.connect(server)
+      await svc.runScript(server.id, 'DROP DATABASE IF EXISTS dump_n4')
+      await svc.runScript(server.id, 'CREATE DATABASE dump_n4')
+      await svc.connect(config)
+      const made = await svc.runScript(
+        config.id,
+        `CREATE TABLE people (
+          id INT NOT NULL AUTO_INCREMENT,
+          name VARCHAR(100) NOT NULL,
+          \`key\` VARCHAR(20),
+          bio TEXT,
+          full_name VARCHAR(200) GENERATED ALWAYS AS (concat(name, ' ', \`key\`)) VIRTUAL,
+          name_len INT AS (char_length(name)) STORED,
+          PRIMARY KEY (id),
+          KEY idx_lower ((lower(name))),
+          KEY idx_prefix (name(10), \`key\` DESC),
+          KEY idx_hidden (\`key\`) INVISIBLE,
+          KEY idx_mixed (name, (char_length(bio))),
+          UNIQUE KEY ux_key (\`key\`),
+          FULLTEXT KEY ft_bio (bio) WITH PARSER ngram
+        ) ENGINE=InnoDB;
+        CREATE TABLE notes (id INT PRIMARY KEY, person_id INT, body JSON, KEY idx_json ((CAST(body->>'$.tag' AS CHAR(20)))), CONSTRAINT fk_person FOREIGN KEY (person_id) REFERENCES people (id));`,
+      )
+      expect(made.filter((o) => o.error).map((o) => o.error!.message)).toEqual([])
+      const dump = execFileSync('docker', server.dump(myContainer!, 'dump_n4'), { encoding: 'utf8' })
+      // (The dump really has what this test is about.)
+      expect(dump).toMatch(/KEY `idx_lower` \(\(lower/)
+      expect(dump).toMatch(/INVISIBLE/)
+      expect(dump).toMatch(/WITH PARSER/)
+      const read = await tablesFromDdl(dump)
+      const byName = new Map(read.tables.map((t) => [t.name, t]))
+      expect([...byName.keys()].sort()).toEqual(['notes', 'people'])
+      expect(byName.get('people')!.columns.map((c) => c.name)).toEqual(['id', 'name', 'key', 'bio', 'full_name', 'name_len'])
+      expect(byName.get('notes')!.columns.map((c) => c.name)).toEqual(['id', 'person_id', 'body'])
+      const indexes = byName.get('people')!.indexes.map((i) => i.name)
+      for (const name of ['idx_lower', 'idx_prefix', 'idx_hidden', 'idx_mixed', 'ux_key', 'ft_bio']) expect(indexes, name).toContain(name)
+      expect(byName.get('notes')!.foreignKeys.map((f) => f.refTable)).toEqual(['people'])
+      // Whatever was left out is a part, said so, never a table.
+      for (const s of read.skipped) expect(s.sql).not.toMatch(/^CREATE TABLE/i)
+    } finally {
+      await svc.runScript(server.id, 'DROP DATABASE IF EXISTS dump_n4').catch(() => {})
       await svc.disconnectAll()
     }
   })
