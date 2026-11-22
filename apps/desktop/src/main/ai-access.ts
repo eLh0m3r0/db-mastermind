@@ -40,13 +40,21 @@ export function turnedOffCentrally(connection: string | ConnectionConfig): boole
   return off(managedConfig()?.connections) || off(team()?.connections)
 }
 
+/**
+ * Whether AI may be used at all: the organization's managed configuration can turn it off. This is all that decides a
+ * chat about a model's text, which involves no connection; `aiAccess` adds the connection's permissions on top.
+ */
+export function aiAllowed(): boolean {
+  return managedConfig()?.policies?.allowAi !== false
+}
+
 /** What AI may do on this connection, organization policies included. Every AI entry point checks this. */
 export function aiAccess(config: ConnectionConfig): EffectiveAiPermissions {
   const p = resolveAiPermissions(config, aiDefaults())
   if (turnedOffCentrally(config)) return { access: 'off', agents: false, agentWrites: false, knowledgeWrites: false }
   const policies = managedConfig()?.policies ?? {}
   let access = p.access
-  if (policies.allowAi === false) access = 'off'
+  if (!aiAllowed()) access = 'off'
   // The app-wide "schema only" of older versions still restricts every connection, as the MCP servers applied it on
   // top (a second answer); saving the app's defaults sets it again (settings.ts).
   if (policies.maxAiDataSharing === 'schema' || getSettings().ai.dataSharing === 'schema') access = capAccess(access, 'schema')

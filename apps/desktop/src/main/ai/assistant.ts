@@ -1,12 +1,12 @@
 import { addHistory } from '../library'
 import { randomUUID } from 'node:crypto'
 import { app, BrowserWindow } from 'electron'
-import { jsonSchema, stepCountIs, streamText, tool, type ModelMessage, type ToolSet } from 'ai'
+import { jsonSchema, stepCountIs, streamText, tool, type ModelMessage, type TextStreamPart, type ToolSet } from 'ai'
 import { agentDatabase, buildSystemPrompt, DB_TOOLS, isReadOnlyScript, describeError, KnowledgeBase, loadSqlTools, type AgentDatabase, type ConnectionConfig, type EffectiveAiPermissions, type ToolContext } from '@dbmastermind/core'
 import { AiProblem, explainAiError } from './errors'
 import type { AiChatRequest, AiEvent } from '@shared/api'
 import { db, ensureConnected } from '../api'
-import { aiAccess } from '../ai-access'
+import { aiAccess, aiAllowed } from '../ai-access'
 import { chatMcpEndpoint } from './chat-mcp'
 import { getConnection } from '../connections'
 import { trackEditorSession } from '../transactions'
@@ -160,7 +160,96 @@ export function chatPermissions(connectionId: string, ask: (kind: 'sql' | 'file'
   }
 }
 
+/** The conversation as one prompt for an agent CLI. */
+function cliPrompt(request: AiChatRequest): string {
+  const transcript = request.messages.map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n')
+  return request.messages.length > 1 ? `Conversation so far:\n\n${transcript}\n\nRespond to the last user message.` : (request.messages[0]?.content ?? '')
+}
+
+/** Sends a streamed answer to the chat as events. */
+async function relay(chatId: string, stream: AsyncIterable<TextStreamPart<ToolSet>>, signal: AbortSignal): Promise<void> {
+  for await (const part of stream) {
+    if (signal.aborted) break
+    switch (part.type) {
+      case 'text-delta':
+        send({ chatId, type: 'text', text: part.text })
+        break
+      case 'tool-call':
+        send({ chatId, type: 'tool-start', id: part.toolCallId, name: part.toolName, input: part.input })
+        break
+      case 'tool-result':
+        send({ chatId, type: 'tool-end', id: part.toolCallId, output: String(part.output ?? '') })
+        break
+      case 'tool-error':
+        send({ chatId, type: 'tool-end', id: part.toolCallId, output: describeError(part.error).message, error: true })
+        break
+      case 'error':
+        throw part.error
+      case 'finish':
+        send({ chatId, type: 'usage', inputTokens: part.totalUsage.inputTokens ?? 0, outputTokens: part.totalUsage.outputTokens ?? 0 })
+        break
+    }
+  }
+}
+
+/** The longest model text a chat about a model carries along (a large DeZign project is a few hundred kB of DBML). */
+const MAX_MODEL_TEXT = 200_000
+
+export function modelSystemPrompt(name: string, dbml: string | undefined): string {
+  const text = dbml?.trim() ?? ''
+  return [
+    `You help with a database model the user is designing in DB Mastermind: "${name}". It is a model written in DBML (dbdiagram.io syntax), not a database: no database is connected and you have no tools. Answer from the model's text.`,
+    'When you change the model, reply with a short explanation and the complete updated model in one ```dbml block, so the user can apply it.',
+    text ? `The model as it is now:\n\n\`\`\`dbml\n${text.length > MAX_MODEL_TEXT ? `${text.slice(0, MAX_MODEL_TEXT)}\n// … (the rest of the model is left out: it is too long)` : text}\n\`\`\`` : 'The model is empty so far.',
+  ].join('\n\n')
+}
+
+/**
+ * A chat about a model's text: no connection is opened, no connection's permissions apply (there is none), and the
+ * assistant gets no tools at all, so nothing from any database can reach it. The organization's policy and the
+ * provider still decide whether AI runs.
+ */
+async function runModelChat(request: AiChatRequest & { model: { name: string } }): Promise<void> {
+  const { chatId } = request
+  if (!aiAllowed()) throw new Error('AI is turned off by your organization (managed configuration)')
+  const provider = activeProvider()
+  const controller = new AbortController()
+  const signal = controller.signal
+  running.get(chatId)?.abort()
+  running.set(chatId, controller)
+  const system = modelSystemPrompt(request.model.name, request.context?.model)
+  try {
+    if (provider.id === 'claude-code' || provider.id === 'codex') {
+      // No MCP endpoint: the agent gets nothing but the text.
+      await runCli({
+        provider: provider.id,
+        prompt: cliPrompt(request),
+        system,
+        model: provider.model,
+        signal,
+        onEvent: (e) => {
+          if (e.type === 'text') send({ chatId, type: 'text', text: `${e.text}\n\n` })
+        },
+      })
+    } else {
+      const messages: ModelMessage[] = request.messages.map((m) => (m.role === 'user' ? { role: 'user', content: m.content } : { role: 'assistant', content: m.content }))
+      await relay(chatId, streamText({ model: createModel(provider), system, messages, abortSignal: signal }).fullStream, signal)
+    }
+    send({ chatId, type: 'done' })
+  } catch (err) {
+    if (signal.aborted) send({ chatId, type: 'done' })
+    else {
+      const problem = explainAiError(err, provider)
+      send({ chatId, type: 'error', message: problem.message, code: (problem as AiProblem).code })
+    }
+  } finally {
+    if (running.get(chatId) === controller) running.delete(chatId)
+  }
+}
+
 async function runChat(request: AiChatRequest): Promise<void> {
+  // A chat about a model never touches a connection, even when the request names one.
+  if (request.model) return runModelChat(request as AiChatRequest & { model: { name: string } })
   const { chatId, connectionId } = request
   const settings = getSettings().ai
   const provider = activeProvider()
@@ -230,13 +319,10 @@ async function runChat(request: AiChatRequest): Promise<void> {
               onExecuted: (_id, o) => ctx.onExecuted?.(o),
             }))
           : undefined
-      const transcript = request.messages
-        .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
-        .join('\n\n')
       try {
         await runCli({
           provider: provider.id,
-          prompt: request.messages.length > 1 ? `Conversation so far:\n\n${transcript}\n\nRespond to the last user message.` : (request.messages[0]?.content ?? ''),
+          prompt: cliPrompt(request),
           system,
           model: provider.model,
           mcp: endpoint ? { url: endpoint.url, headers: endpoint.headers } : mcpCommandFor(connectionId),
@@ -298,28 +384,7 @@ async function runChat(request: AiChatRequest): Promise<void> {
       abortSignal: signal,
     })
 
-    for await (const part of result.fullStream) {
-      if (signal.aborted) break
-      switch (part.type) {
-        case 'text-delta':
-          send({ chatId, type: 'text', text: part.text })
-          break
-        case 'tool-call':
-          send({ chatId, type: 'tool-start', id: part.toolCallId, name: part.toolName, input: part.input })
-          break
-        case 'tool-result':
-          send({ chatId, type: 'tool-end', id: part.toolCallId, output: String(part.output ?? '') })
-          break
-        case 'tool-error':
-          send({ chatId, type: 'tool-end', id: part.toolCallId, output: describeError(part.error).message, error: true })
-          break
-        case 'error':
-          throw part.error
-        case 'finish':
-          send({ chatId, type: 'usage', inputTokens: part.totalUsage.inputTokens ?? 0, outputTokens: part.totalUsage.outputTokens ?? 0 })
-          break
-      }
-    }
+    await relay(chatId, result.fullStream, signal)
     send({ chatId, type: 'done' })
   } catch (err) {
     if (signal.aborted) send({ chatId, type: 'done' })

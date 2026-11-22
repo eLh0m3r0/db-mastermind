@@ -470,9 +470,16 @@ export interface AiChatMessage {
 
 export interface AiChatRequest {
   chatId: string
+  /** The connection the chat is about; empty for a chat about a model. */
   connectionId: string
+  /**
+   * A chat about a model's text, not a database: no connection is opened and the assistant gets no database tools.
+   * `name` is how the user knows the model (its file or tab).
+   */
+  model?: { name: string }
   messages: AiChatMessage[]
-  context?: { sql?: string; table?: string; error?: string }
+  /** `model`: the model's current DBML, for a chat about a model. */
+  context?: { sql?: string; table?: string; error?: string; model?: string }
 }
 
 export type AiEvent =

@@ -1,13 +1,13 @@
 import { generateText } from 'ai'
 import type { AiProviderSettings } from '@shared/api'
-import { assertAiAllowed } from '../managed'
+import { aiAllowed } from '../ai-access'
 import { getSettings } from '../settings'
 import { runCli } from './cli'
 import { createModel } from './models'
 import { explainAiError } from './errors'
 
 export function activeProvider(): AiProviderSettings {
-  assertAiAllowed()
+  if (!aiAllowed()) throw new Error('AI is turned off by your organization (managed configuration)')
   const ai = getSettings().ai
   const provider = ai.providers.find((p) => p.id === ai.activeProvider)
   if (!provider) throw new Error('Choose an AI provider in Settings → AI assistant')

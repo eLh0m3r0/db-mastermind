@@ -19,7 +19,3 @@ export function managedConfig(): ManagedConfig | null {
   return managed()?.config ?? null
 }
 
-/** Throws when the organization turned AI off. */
-export function assertAiAllowed(): void {
-  if (managedConfig()?.policies?.allowAi === false) throw new Error('AI is turned off by your organization (managed configuration)')
-}

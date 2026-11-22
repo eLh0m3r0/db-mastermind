@@ -110,10 +110,19 @@ const useChats = create<ChatStore>((set, get) => ({
 /** The session the chat's confirmed writes run on with manual commit (main/ai/assistant.ts aiSession). */
 export const aiSession = (chatId: string) => `ai-${chatId}`
 
+/**
+ * A chat about a model's text belongs to the model: its file, or its tab while it has none. Its key stands where a
+ * connection's id stands for a database chat (the chat store, saved chats, history search).
+ */
+export function modelChatKey(tab: { id: string; path?: string; source?: { path: string } }): string {
+  return `model:${tab.path ?? tab.source?.path ?? tab.id}`
+}
+const isModelChat = (key: string) => key.startsWith('model:')
+
 /** Before leaving a chat: its open transaction is committed or rolled back, then its session closes. */
 async function leaveChat(connectionId: string): Promise<boolean> {
   const old = useChats.getState().chats[connectionId]
-  if (!old) return true
+  if (!old || isModelChat(connectionId)) return true
   const session = aiSession(old.id)
   if (!(await settleTransactions([session], () => translate('AI assistant')))) return false
   void api.releaseSession(connectionId, session).catch(() => {})
@@ -189,16 +198,27 @@ const SUGGESTIONS = [
 ]
 
 export function AiPanel() {
-  const connectionId = useCurrentConnectionId()
-  const connection = useConnections((s) => s.list.find((c) => c.id === connectionId))
-  const status = useConnections((s) => (connectionId ? s.runtime[connectionId]?.status : undefined))
+  const currentConnectionId = useCurrentConnectionId()
+  const activeTab = useActiveTab()
+  const modelTab = activeTab?.kind === 'model' ? activeTab : undefined
+  // A model tab's own database only (not the one picked in the sidebar).
+  const databaseId = modelTab ? modelTab.connectionId || undefined : currentConnectionId
+  const connection = useConnections((s) => s.list.find((c) => c.id === databaseId))
+  const status = useConnections((s) => (databaseId ? s.runtime[databaseId]?.status : undefined))
   const access = useAiAccess(connection)
+  /**
+   * With a model in front, the chat is about its database only while that database is open and allows AI; otherwise it
+   * is about the model's text, with no database tools, so nothing from a database goes into a chat about a file.
+   */
+  const modelChat = !!modelTab && !(connection && status === 'connected' && access !== 'off')
+  const modelName = modelTab ? ((modelTab.path ?? modelTab.source?.path)?.split(/[\\/]/).pop() || modelTab.title) : ''
+  // Whose chat it is: the model's (modelChatKey) or the database's.
+  const connectionId = modelChat && modelTab ? modelChatKey(modelTab) : databaseId
   const settings = useSettings((s) => s.settings)
   const chat = useChats((s) => (connectionId ? (s.chats[connectionId] ?? null) : null))
   const update = useChats((s) => s.update)
   const reset = useChats((s) => s.reset)
   const setUi = useUi((s) => s.set)
-  const activeTab = useActiveTab()
   const [input, setInput] = useState('')
   const [showHistory, setShowHistory] = useState(false)
   // Hidden instructions and a placeholder that a request (Design with AI) leaves for the next message.
@@ -232,12 +252,16 @@ export function AiPanel() {
     const messages = [...current.messages, userMsg]
     update(connectionId, () => ({ ...current, messages, running: true }))
     setInput('')
-    const context: { sql?: string; table?: string } = {}
+    const context: { sql?: string; table?: string; model?: string } = {}
     if (activeTab?.connectionId === connectionId && activeTab.kind === 'query' && activeTab.sql.trim()) context.sql = activeTab.sql.slice(0, 8000)
     if (activeTab?.connectionId === connectionId && activeTab.kind === 'table') context.table = activeTab.table.name
+    // A chat about a model gets the model as it is now (an answer applied since changed it).
+    const model = modelChat && modelTab ? useWorkspace.getState().tabs.find((x) => x.id === modelTab.id) : undefined
+    if (model?.kind === 'model') context.model = model.text
     void api.aiChat({
       chatId: current.id,
-      connectionId,
+      connectionId: modelChat ? '' : connectionId,
+      ...(modelChat ? { model: { name: modelName } } : {}),
       messages: messages.map((m) => ({ role: m.role, content: m.hidden ? `${m.hidden}\n\n${messageText(m)}` : messageText(m) || '(tool calls only)' })),
       context,
     })
@@ -256,7 +280,7 @@ export function AiPanel() {
       }
       pendingContext.current = aiRequest.context
       setPlaceholder(aiRequest.placeholder)
-      if (aiRequest.prompt && aiRequest.send && status === 'connected' && !useChats.getState().chats[connectionId ?? '']?.running) send(aiRequest.prompt)
+      if (aiRequest.prompt && aiRequest.send && (modelChat || status === 'connected') && !useChats.getState().chats[connectionId ?? '']?.running) send(aiRequest.prompt)
       else if (aiRequest.prompt) setInput(aiRequest.prompt)
       requestAnimationFrame(() => inputRef.current?.focus())
     })()
@@ -294,11 +318,12 @@ export function AiPanel() {
     if (!connectionId) return
     const ws = useWorkspace.getState()
     const active = ws.tabs.find((x) => x.id === ws.activeTabId)
-    const target = active?.kind === 'model' ? active : ws.tabs.find((x) => x.kind === 'model' && x.connectionId === connectionId)
+    const target =
+      active?.kind === 'model' ? active : ws.tabs.find((x) => x.kind === 'model' && (modelChat ? modelChatKey(x) === connectionId : x.connectionId === connectionId))
     if (target) {
       ws.update(target.id, { text: dbml, dirty: true })
       ws.activate(target.id)
-    } else ws.open({ kind: 'model', connectionId, title: t('Model'), text: dbml }, { reuse: false })
+    } else ws.open({ kind: 'model', connectionId: modelChat ? '' : connectionId, title: t('Model'), text: dbml }, { reuse: false })
   }
 
   // With a live ER diagram open, DBML from the assistant becomes pending design changes (reviewed as a migration).
@@ -377,12 +402,12 @@ export function AiPanel() {
             {t('Set up AI')}
           </Button>
         </div>
-      ) : !connection ? (
+      ) : !modelChat && !connection ? (
         <div className="flex flex-1 items-center justify-center p-6 text-center text-[12px] text-fg-faint">{t('Connect to a database to chat about it.')}</div>
-      ) : access === 'off' ? (
+      ) : !modelChat && access === 'off' ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
           <Sparkles size={26} className="text-fg-faint" />
-          <div className="text-[13px] font-medium">{t('AI is turned off for {name}', { name: connection.name })}</div>
+          <div className="text-[13px] font-medium">{t('AI is turned off for {name}', { name: connection?.name ?? '' })}</div>
           <p className="text-[12px] leading-relaxed text-fg-muted">{t('Nothing from this connection is sent to an AI model. You can allow it in AI permissions.')}</p>
           <Button onClick={() => setUi({ modal: { kind: 'settings', section: 'permissions' } })}>{t('AI permissions')}</Button>
         </div>
@@ -401,7 +426,14 @@ export function AiPanel() {
       ) : (
         <>
           <div ref={listRef} className="min-h-0 flex-1 overflow-auto px-3 py-3">
-            {(!chat || chat.messages.length === 0) && (
+            {(!chat || chat.messages.length === 0) && modelChat && (
+              <div className="flex flex-col gap-2 pt-4">
+                <div className="mb-1 text-[12.5px] text-fg-muted">
+                  {t('Ask anything about')} <b className="text-fg">{modelName}</b>. {t('The assistant sees only the text of the model, no database.')}
+                </div>
+              </div>
+            )}
+            {(!chat || chat.messages.length === 0) && !modelChat && connection && (
               <div className="flex flex-col gap-2 pt-4">
                 <div className="mb-1 text-[12.5px] text-fg-muted">
                   {t('Ask anything about')} <b className="text-fg">{connection.name}</b>.{' '}
@@ -442,7 +474,7 @@ export function AiPanel() {
                 <div key={m.id} className="mb-3">
                   {m.parts.map((p, i) =>
                     p.type === 'text' ? (
-                      <Markdown key={i} text={p.text} actions={{ onInsert: insertSql, onRun: runSql, onApplyModel: applyModel, onApplyDesign: diagramTab ? applyDesign : undefined }} />
+                      <Markdown key={i} text={p.text} actions={{ onInsert: modelChat ? undefined : insertSql, onRun: modelChat ? undefined : runSql, onApplyModel: applyModel, onApplyDesign: diagramTab ? applyDesign : undefined }} />
                     ) : p.type === 'tool' ? (
                       <ToolCall key={p.id || i} part={p} />
                     ) : (
@@ -480,7 +512,7 @@ export function AiPanel() {
             )}
           </div>
           <div className="border-t border-line p-2">
-            {chat && connection && (
+            {chat && connection && !modelChat && (
               <div className="mb-1.5 flex justify-end empty:hidden">
                 <TransactionBar tabId={aiSession(chat.id)} driver={connection.driver} manual={false} busy={chat.running} />
               </div>
@@ -497,7 +529,7 @@ export function AiPanel() {
                   }
                 }}
                 rows={Math.min(8, Math.max(2, input.split('\n').length))}
-                placeholder={placeholder ?? t('Ask about the {name} database…', { name: connection.name })}
+                placeholder={placeholder ?? (modelChat || !connection ? t('What should change in the model?') : t('Ask about the {name} database…', { name: connection.name }))}
                 className="max-h-48 min-h-[36px] flex-1 resize-none bg-transparent px-1.5 py-1 text-[12.5px] outline-none placeholder:text-fg-faint"
               />
               {chat?.running ? (
@@ -505,7 +537,7 @@ export function AiPanel() {
                   <Square size={12} fill="currentColor" />
                 </IconButton>
               ) : (
-                <IconButton label={t('Send (Enter)')} size="md" disabled={!input.trim() || status !== 'connected'} onClick={() => send(input)} className="bg-accent text-accent-fg hover:bg-accent-hover hover:text-accent-fg">
+                <IconButton label={t('Send (Enter)')} size="md" disabled={!input.trim() || (!modelChat && status !== 'connected')} onClick={() => send(input)} className="bg-accent text-accent-fg hover:bg-accent-hover hover:text-accent-fg">
                   <ArrowUp size={14} />
                 </IconButton>
               )}
