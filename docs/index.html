@@ -175,7 +175,7 @@
             <ul>
               <li data-col="chart"><a href="#see"><svg class="g g-key" aria-hidden="true" focusable="false"><use href="#i-key"/></svg><span class="col pk">chart</span> <span class="type">bar, line</span></a></li>
               <li data-col="result"><a href="#query"><svg class="g g-link" aria-hidden="true" focusable="false"><use href="#i-link"/></svg><span class="col">result</span> <span class="type">query</span></a></li>
-              <li data-col="dashboards"><a href="#s-charts"><span class="g"></span><span class="col">dashboards</span> <span class="type">live</span></a></li>
+              <li data-col="dashboards"><a href="#s-dashboards"><span class="g"></span><span class="col">dashboards</span> <span class="type">live</span></a></li>
               <li data-col="ai"><a href="#ai"><svg class="g g-link" aria-hidden="true" focusable="false"><use href="#i-link"/></svg><span class="col">ai</span> <span class="type">optional</span></a></li>
             </ul>
           </details>
@@ -227,13 +227,12 @@
   <section class="sec tour" id="tour" aria-labelledby="tour-h">
     <div class="wrap">
       <h2 id="tour-h">Watch it work</h2>
-      <p class="body">Forty seconds on a coffee shop’s database, no sound: filter and follow a foreign key, a query with a chart, the diagram, a change to the model and the migration that checks the data first.</p>
+      <p class="body">A minute and a half with a coffee shop’s database, from the project’s <code>.env</code> file to a migration, a question to the assistant and an agent in the terminal.</p>
       <figure class="shot tour-shot">
-        <video id="tour-video" controls muted loop playsinline preload="none" poster="video/tour-poster.jpg" width="1920" height="1080" aria-describedby="tour-cap">
+        <video id="tour-video" controls playsinline preload="none" poster="video/tour-poster.jpg" width="1920" height="1080">
           <source src="video/tour.mp4" type="video/mp4">
-          <a href="video/tour.mp4">Download the video (MP4, 2 MB)</a>
+          <a href="video/tour.mp4">Download the video (MP4, 11 MB)</a>
         </video>
-        <figcaption id="tour-cap">Recorded in the released app. The captions are in the picture; the video plays while it is in view and has no sound.</figcaption>
       </figure>
     </div>
   </section>
@@ -430,7 +429,11 @@
           <li id="s-charts" class="has-key">
             <svg class="g g-key" aria-hidden="true" focusable="false"><use href="#i-key"/></svg>
             <h3>Charts from any result</h3>
-            <p>Bar, line or scatter, from the result you already have. Pin a chart or a single number to a dashboard that refreshes itself.</p>
+            <p>Bar, line or scatter, from the result you already have, exported with the query that made it.</p>
+          </li>
+          <li id="s-dashboards">
+            <h3>Dashboards your team shares</h3>
+            <p>Pin charts and single numbers to a dashboard of the database. It sits with your saved queries and refreshes itself. With a knowledge base a dashboard is a Markdown file in it, so everyone who shares the folder has it, and the assistant can write one when you ask.</p>
           </li>
           <li id="s-find">
             <h3>Find any value</h3>
@@ -445,7 +448,7 @@
             <p>One HTML page documenting every table, with your notes, for people who don’t use the app.</p>
           </li>
         </ul>
-        <p class="also">Also here: results copied as TSV for Excel, JSON or Markdown, several result sets saved at once, and charts exported with the query that made them. <a href="guide.html#sql">Results in the guide</a></p>
+        <p class="also">Also here: results copied as TSV for Excel, JSON or Markdown, and several result sets saved at once. <a href="guide.html#sql">Results in the guide</a></p>
       </div>
     </section>
   </div>
@@ -486,7 +489,7 @@
         </li>
         <li id="a-knowledge">
           <h3>A knowledge base</h3>
-          <p>Markdown notes per database explain what tables, codes and statuses mean. Keep them in Git, share them with your team, and let AI draft the first version.</p>
+          <p>Markdown notes per database explain what tables, codes and statuses mean. Keep them in Git, share them with your team, and let AI draft the first version. Dashboards and the team’s SQL tools live in the same folder.</p>
         </li>
         <li id="a-design">
           <h3>Design with AI</h3>
