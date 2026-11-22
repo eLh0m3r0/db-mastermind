@@ -37,7 +37,10 @@ describe('values as SQL literals', () => {
     expect(sqlValue({ $binary: '5c27', length: 2 }, 'duckdb')).toBe("'\\x5C\\x27'::BLOB")
     expect(() => sqlValue({ $binary: '5c27', length: 5000 }, 'mysql')).toThrow(/only in part/)
     expect(sqlValue({ a: "it's" }, 'postgres')).toBe(`'{"a":"it''s"}'`)
-    expect(sqlValue(['a"b', null], 'postgres')).toBe(`'{"a\\"b",NULL}'`)
+    // (A backslash makes it an escape string, which PostgreSQL reads the same in its old and its standard mode.)
+    expect(sqlValue(['a"b', null], 'postgres')).toBe(`E'{"a\\\\"b",NULL}'`)
+    expect(sqlValue("a\\'; --", 'postgres')).toBe("E'a\\\\''; --'")
+    expect(sqlValue("it's", 'postgres')).toBe("'it''s'")
     expect(clickhouseLiteral(['x', 1])).toBe("['x', 1]")
   })
 

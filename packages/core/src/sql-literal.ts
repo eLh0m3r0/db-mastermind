@@ -119,6 +119,8 @@ export function stringValue(text: string, driver: DriverId | string, modes: LexM
     case 'postgres':
       if (driver === 'duckdb') return joinWithChar(text, (s) => `'${s.replaceAll("'", "''")}'`, () => 'chr(0)', (parts) => `concat(${parts.join(', ')})`, /\u0000/)
       if (text.includes('\u0000')) throw new Error("PostgreSQL text can't hold a NUL character")
+      // (A backslash: an escape string, which reads the same whether standard_conforming_strings is on or off.)
+      if (text.includes('\\')) return `E'${text.replaceAll('\\', '\\\\').replaceAll("'", "''")}'`
       return `'${text.replaceAll("'", "''")}'`
     case 'mssql':
       // (T-SQL drops a backslash-newline inside a string, a line continuation: that line break is joined in.)

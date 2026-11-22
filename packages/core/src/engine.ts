@@ -52,6 +52,14 @@ const GRID_LOCK_TIMEOUT_MS = 5000
 const READ_LOCK_TIMEOUT_MS = 10000
 /** A time limit for SQL nobody confirmed where the session has none of its own. */
 const UNCONFIRMED_TIMEOUT_MS = 60_000
+/**
+ * The guard's PostgreSQL transaction reads strings in the standard way whatever the database or role says: with
+ * standard_conforming_strings off a backslash is an escape, the server would read a text differently from the
+ * tokenizer, and what the app takes for one string could hold a call it refuses by name.
+ */
+const PG_STANDARD_STRINGS = `SELECT set_config('standard_conforming_strings', 'on', true)`
+/** That, and a time limit where the session has none (pg_sleep and friends). */
+const PG_GUARD_SETTINGS = `${PG_STANDARD_STRINGS}, set_config('statement_timeout', CASE WHEN current_setting('statement_timeout') = '0' THEN '${UNCONFIRMED_TIMEOUT_MS}ms' ELSE current_setting('statement_timeout') END, true)`
 /** (SQL Server's limit and a stream's first-batch limit are the app's own timer: tests shorten it with DBM_UNCONFIRMED_TIMEOUT_MS.) */
 const appUnconfirmedTimeoutMs = () => Number(process.env.DBM_UNCONFIRMED_TIMEOUT_MS) || UNCONFIRMED_TIMEOUT_MS
 
@@ -507,7 +515,7 @@ export class DatabaseService {
       if (!dialect.beginReadOnly || driver === 'duckdb') return
       const sql =
         driver === 'postgres'
-          ? `${dialect.beginReadOnly}; SELECT set_config('statement_timeout', CASE WHEN current_setting('statement_timeout') = '0' THEN '${UNCONFIRMED_TIMEOUT_MS}ms' ELSE current_setting('statement_timeout') END, true)`
+          ? `${dialect.beginReadOnly}; ${PG_GUARD_SETTINGS}`
           : driver === 'mssql' && (own || session.startsWith('readonly-shared-'))
             ? `SET LOCK_TIMEOUT ${READ_LOCK_TIMEOUT_MS}; ${dialect.beginReadOnly}`
             : dialect.beginReadOnly
@@ -715,7 +723,10 @@ export class DatabaseService {
       if (verdict.statements.length !== 1 || only.session) throw new ReadOnlyViolationError('Only one read can be streamed here: run session statements and scripts in the SQL editor.')
       if (driver === 'mssql') await this.mssqlReadsOnly(entry, session, only.text, options.params, profile)
       if (dialect.beginReadOnly && driver !== 'duckdb') {
-        await entry.driver.execute(driver === 'mssql' ? `SET LOCK_TIMEOUT ${READ_LOCK_TIMEOUT_MS}; ${dialect.beginReadOnly}` : dialect.beginReadOnly, { session })
+        await entry.driver.execute(
+          driver === 'mssql' ? `SET LOCK_TIMEOUT ${READ_LOCK_TIMEOUT_MS}; ${dialect.beginReadOnly}` : driver === 'postgres' ? `${dialect.beginReadOnly}; ${PG_STANDARD_STRINGS}` : dialect.beginReadOnly,
+          { session },
+        )
         inTransaction = true
       }
       const trackable = inTransaction && !!entry.driver.transactionState && driver !== 'oracle'

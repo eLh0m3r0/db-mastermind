@@ -50,7 +50,7 @@ only what reads, refuses functions that act outside the data (below), and then l
 
 | Database | What the database itself enforces |
 |---|---|
-| PostgreSQL | one statement per message (extended protocol), a read-only transaction that is always rolled back, its state checked after every statement, a time limit where the session has none; the session is reset afterwards |
+| PostgreSQL | one statement per message (extended protocol), a read-only transaction that is always rolled back, its state checked after every statement, strings read the standard way whatever the database is set to, a time limit where the session has none; the session is reset afterwards |
 | MySQL, MariaDB | one statement per query, a read-only transaction that is always rolled back, a time limit; the connection is closed afterwards |
 | SQL Server | the server plans each batch first and it may contain only reads; a transaction that is always rolled back and checked, a lock timeout and a time limit. A login without SHOWPLAN permission is checked by the app's own reading only, and a batch that first creates a `#temp` table and then uses it (your own SQL on a read-only connection) can't be planned up front: in both cases what remains is the rollback and the login's own rights |
 | Oracle | one statement per call, a read-only transaction |
