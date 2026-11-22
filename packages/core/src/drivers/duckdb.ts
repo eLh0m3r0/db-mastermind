@@ -1,4 +1,6 @@
 import type { DuckDBConnection, DuckDBInstance, DuckDBResultReader } from '@duckdb/node-api'
+import { lstatSync, readdirSync } from 'node:fs'
+import { isAbsolute, join, sep } from 'node:path'
 import { duckdbDialect } from '../dialect.js'
 import { checkAffected, elapsed, QueryCancelledError, ReadOnlyViolationError, type DatabaseDriver, type IntrospectOptions, type StreamBatch, type StreamOptions } from '../driver.js'
 import type { BuiltQuery } from '../filters.js'
@@ -32,19 +34,22 @@ export class DuckDBDriver implements DatabaseDriver {
   /**
    * SQL nobody confirmed runs on an instance of its own: the database file opened read-only (an in-memory
    * connection: an empty one), external access off, extensions neither loaded nor installed, and the configuration
-   * locked, with exactly the files this connection was opened for or handed (allowFile) still readable. DuckDB can't
-   * turn external access back on in a running instance, so the user's own instance is never touched.
+   * locked, with exactly the files this connection was given still readable: its `files` (saved with the connection:
+   * "Query a file" and dropped files in the app, --allow-files for dbmastermind-mcp and dbm) and those handed to it
+   * while it is open (allowFile). DuckDB can't turn external access back on in a running instance, so the user's own
+   * instance is never touched.
    */
   private guarded?: { instance: DuckDBInstance; files: string }
   private allowed = new Set<string>()
 
-  /** A file the user handed to this connection ("Query a file"): SQL nobody confirmed may read it too. */
+  /** A file or folder the user handed to this connection: SQL nobody confirmed may read it too. */
   allowFile(path: string): void {
     this.allowed.add(path)
   }
 
   private async guardedInstance(): Promise<DuckDBInstance> {
-    const files = JSON.stringify([...this.allowed].sort())
+    const entries = allowedEntries([...this.allowed])
+    const files = JSON.stringify(entries)
     if (this.guarded?.files === files) return this.guarded.instance
     this.guarded?.instance.closeSync()
     this.guarded = undefined
@@ -53,8 +58,8 @@ export class DuckDBDriver implements DatabaseDriver {
     const instance = await duckdb.DuckDBInstance.create(path, path === ':memory:' ? {} : { access_mode: 'READ_ONLY' })
     const conn = await instance.connect()
     try {
-      const list = [...this.allowed].map((f) => `'${f.replaceAll("'", "''")}'`).join(', ')
-      for (const sql of [`SET allowed_paths = [${list}]`, 'SET autoload_known_extensions = false', 'SET autoinstall_known_extensions = false', 'SET enable_external_access = false', 'SET lock_configuration = true']) await conn.run(sql)
+      const list = (items: string[]) => items.map((f) => `'${f.replaceAll("'", "''")}'`).join(', ')
+      for (const sql of [`SET allowed_paths = [${list(entries.paths)}]`, `SET allowed_directories = [${list(entries.dirs)}]`, 'SET autoload_known_extensions = false', 'SET autoinstall_known_extensions = false', 'SET enable_external_access = false', 'SET lock_configuration = true']) await conn.run(sql)
     } finally {
       conn.closeSync()
     }
@@ -62,7 +67,9 @@ export class DuckDBDriver implements DatabaseDriver {
     return instance
   }
 
-  constructor(readonly config: ConnectionConfig) {}
+  constructor(readonly config: ConnectionConfig) {
+    for (const f of config.files ?? []) this.allowed.add(f)
+  }
 
   async connect(): Promise<void> {
     const duckdb = await loadDuckDB()
@@ -163,7 +170,7 @@ export class DuckDBDriver implements DatabaseDriver {
       return [this.toResult(result, options.maxRows, elapsed(start))]
     } catch (err) {
       if (cancelled) throw new QueryCancelledError()
-      throw err
+      throw options.unconfirmed ? fileRefusal(err) : err
     } finally {
       options.signal?.removeEventListener('abort', onAbort)
       release()
@@ -183,7 +190,7 @@ export class DuckDBDriver implements DatabaseDriver {
         if (prepared.statementType !== duckdb.StatementType.SELECT && prepared.statementType !== duckdb.StatementType.EXPLAIN) throw new ReadOnlyViolationError(`Only reads are allowed here (read-only): DuckDB reads this as ${duckdb.StatementType[prepared.statementType] ?? 'a statement that is not a query'}.`)
       } catch (err) {
         conn.closeSync()
-        throw err
+        throw fileRefusal(err)
       }
     }
     let cancelled = false
@@ -207,7 +214,7 @@ export class DuckDBDriver implements DatabaseDriver {
       }
     } catch (err) {
       if (cancelled) throw new QueryCancelledError()
-      throw err
+      throw options.unconfirmed ? fileRefusal(err) : err
     } finally {
       options.signal?.removeEventListener('abort', onAbort)
       conn.closeSync()
@@ -391,4 +398,57 @@ const STATEMENTS = ['INVALID', 'SELECT', 'INSERT', 'UPDATE', 'EXPLAIN', 'DELETE'
 
 function statementName(type: number): string | undefined {
   return STATEMENTS[type]
+}
+
+/**
+ * The files and folders SQL nobody confirmed may read, as DuckDB's allowed_paths and allowed_directories. The same
+ * discipline as the project-folder reader: absolute paths only, no `..`, no links (a link inside an allowed folder
+ * would be followed by DuckDB, so a folder with a link anywhere in it is not allowed at all), and what doesn't
+ * exist is left out. A folder is looked through up to 5000 entries; a bigger one is not allowed (allow its files).
+ */
+export function allowedEntries(list: string[]): { paths: string[]; dirs: string[] } {
+  const paths = new Set<string>()
+  const dirs = new Set<string>()
+  for (const path of list) {
+    if (!isAbsolute(path) || path.split(/[\\/]/).includes('..')) continue
+    let stat
+    try {
+      stat = lstatSync(path)
+    } catch {
+      continue
+    }
+    if (stat.isSymbolicLink()) continue
+    if (stat.isFile()) paths.add(path)
+    else if (stat.isDirectory() && folderWithoutLinks(path)) dirs.add(path.endsWith(sep) ? path : path + sep)
+  }
+  return { paths: [...paths].sort(), dirs: [...dirs].sort() }
+}
+
+function folderWithoutLinks(dir: string): boolean {
+  let seen = 0
+  const queue = [dir]
+  while (queue.length) {
+    const current = queue.pop()!
+    let items
+    try {
+      items = readdirSync(current, { withFileTypes: true })
+    } catch {
+      return false
+    }
+    for (const item of items) {
+      if (++seen > 5000 || item.isSymbolicLink()) return false
+      if (item.isDirectory()) queue.push(join(current, item.name))
+    }
+  }
+  return true
+}
+
+/**
+ * DuckDB's refusal of a file the guarded instance may not read, as one sentence that says what to do (an agent
+ * and a person read it). Other errors pass as they are.
+ */
+export function fileRefusal(err: unknown): unknown {
+  const m = /Permission Error: Cannot access (?:file|directory) "([^"]*)"/.exec((err as Error)?.message ?? '')
+  if (!m) return err
+  return new ReadOnlyViolationError(`"${m[1]}" can't be read here: open it in DB Mastermind with Query a file, or allow it with --allow-files (dbmastermind-mcp, dbm).`)
 }

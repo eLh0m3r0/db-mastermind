@@ -22,7 +22,7 @@ import {
   type ConnectionConfig,
   type ResultField,
 } from '@dbmastermind/core'
-import { connectionFromUrl, connectionsFromFile } from './connection-args.js'
+import { allowFiles, connectionFromUrl, connectionsFromFile } from './connection-args.js'
 
 export const DBM_HELP = `dbm: DB Mastermind on the command line (scripts, CI)
 
@@ -39,6 +39,8 @@ Connections:
   --url <url>          postgres://…, mysql://…, sqlserver://…, sqlite:///path, JDBC or ADO.NET; \${ENV_VAR} is expanded
                        (in single quotes, so the shell doesn't put the password into the command line)
   --config <file>      JSON array of connections; pick one with --connection <name>
+  --allow-files <path> DuckDB: a file or folder query may read without --allow-writes (repeatable; "files" in
+                       --config). Without it only the database file is readable.
 
 Exit codes:
   0  done (diff: the database matches the model; check: no problems)
@@ -74,6 +76,8 @@ interface Options {
   out?: string
   file?: string
   schemas: string[]
+  /** --allow-files, for the connection (DuckDB). */
+  files: string[]
   database?: string
   allowWrites: boolean
   strict: boolean
@@ -82,7 +86,7 @@ interface Options {
 
 function parse(argv: string[]): Options {
   const [command = '', ...rest] = argv
-  const o: Options = { command, positional: [], schemas: [], allowWrites: false, strict: false, dropExtra: false }
+  const o: Options = { command, positional: [], schemas: [], files: [], allowWrites: false, strict: false, dropExtra: false }
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i]!
     const next = () => {
@@ -96,6 +100,9 @@ function parse(argv: string[]): Options {
         break
       case '--config':
         o.config = next()
+        break
+      case '--allow-files':
+        o.files.push(next())
         break
       case '--connection':
         o.connection = next()
@@ -139,6 +146,7 @@ function pickConnection(o: Options): ConnectionConfig {
   if (!list.length) throw new Error('Give a connection: --url <url> or --config <file>')
   const config = o.connection ? list.find((c) => c.name === o.connection || c.id === o.connection) : list.length === 1 ? list[0] : undefined
   if (!config) throw new Error(o.connection ? `No connection named ${o.connection}` : 'The config has several connections: pick one with --connection <name>')
+  for (const f of o.files) allowFiles(config, f)
   // Writes only when asked; read-only is enforced by the database where it can (session settings).
   return { ...config, readOnly: o.allowWrites ? config.readOnly : true }
 }

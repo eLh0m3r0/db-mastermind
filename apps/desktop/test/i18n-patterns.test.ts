@@ -68,6 +68,11 @@ describe('read-only refusals in Czech', () => {
     }
   })
 
+  it("DuckDB's refusal of a file nobody handed to the connection says what to do, in Czech too", () => {
+    const czech = t(`"/data/other.csv" can't be read here: open it in DB Mastermind with Query a file, or allow it with --allow-files (dbmastermind-mcp, dbm).`)
+    expect(czech).toBe('„/data/other.csv“ tu nejde číst: otevřete ho v DB Mastermindu přes Dotaz nad souborem, nebo ho povolte přepínačem --allow-files (dbmastermind-mcp, dbm).')
+  })
+
   it('texts with an entry of their own still use it, and other texts stay as they are', () => {
     expect(t('This connection is read-only. Only SELECT-like statements are allowed.')).toBe('Připojení je jen pro čtení. Povolené jsou jen příkazy typu SELECT.')
     expect(t('relation "nope" does not exist')).toBe('relation "nope" does not exist')

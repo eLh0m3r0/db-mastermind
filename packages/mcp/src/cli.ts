@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { DatabaseService, type ConnectionConfig } from '@dbmastermind/core'
-import { connectionFromUrl, connectionsFromFile } from './connection-args.js'
+import { allowFiles, connectionFromUrl, connectionsFromFile } from './connection-args.js'
 import { createMcpServer } from './server.js'
 
 const HELP = `dbmastermind-mcp: MCP server for your databases
@@ -16,8 +16,10 @@ Connections:
                          single quotes so the shell leaves them for the server (the password stays out of the
                          agent's configuration).
   --name <name>          Name for the preceding --url (default: host/database)
-  --config <file>        JSON array of connections: [{ "name", "url" | driver/host/port/database/user/password, "knowledgeBase", "readOnly" }]
+  --config <file>        JSON array of connections: [{ "name", "url" | driver/host/port/database/user/password, "knowledgeBase", "readOnly", "files" }]
   --knowledge <dir>      Knowledge base folder for the preceding --url
+  --allow-files <path>   DuckDB: a file or folder agents may read, for the preceding --url (repeatable; "files" in
+                         --config). Without it only the database file is readable.
 
 Options:
   --allow-writes         Allow INSERT/UPDATE/DELETE/DDL (off by default)
@@ -59,6 +61,9 @@ function parseArgs(argv: string[]) {
         last.knowledgeBasePath = next()
         break
       }
+      case '--allow-files':
+        allowFiles(connections.at(-1), next())
+        break
       case '--config':
         connections.push(...connectionsFromFile(next(), connections.length))
         break

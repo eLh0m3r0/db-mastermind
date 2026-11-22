@@ -52,6 +52,12 @@ export interface ConnectionConfig {
   passwordCommand?: string
   /** SQLite database file. */
   filePath?: string
+  /**
+   * DuckDB: the files and folders SQL nobody confirmed (AI, agents) may read besides the database file: those the
+   * user opened with the connection ("Query a file", dropped files; at most 50, missing ones dropped) or allowed with
+   * --allow-files. Never taken from a team folder, a managed configuration or an import, and left out when shared.
+   */
+  files?: string[]
   ssl?: SslConfig
   ssh?: SshConfig
   /** SQL Server: domain for NTLM auth, instance name, trustServerCertificate… */

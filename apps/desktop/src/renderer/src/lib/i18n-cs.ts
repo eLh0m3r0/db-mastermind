@@ -2134,6 +2134,7 @@ export const csPatterns: [RegExp, string][] = [
   [/^Only reads are allowed here \(read-only\): SQL Server plans this batch with (.+)\.$/s, 'Tady jsou povolená jen čtení (připojení jen pro čtení): SQL Server tuto dávku plánuje jako $1.'],
   [/^Only reads are allowed here \(read-only\): (DuckDB|BigQuery) reads this as (.+)\.$/s, 'Tady jsou povolená jen čtení (připojení jen pro čtení): $1 to čte jako $2.'],
   [/^Only reads are allowed here \(read-only\): (.+) is not\.$/s, 'Tady jsou povolená jen čtení (připojení jen pro čtení): %1 není povolené.'],
+  [/^"(.+)" can't be read here: open it in DB Mastermind with Query a file, or allow it with --allow-files \(dbmastermind-mcp, dbm\)\.$/s, '„$1“ tu nejde číst: otevřete ho v DB Mastermindu přes Dotaz nad souborem, nebo ho povolte přepínačem --allow-files (dbmastermind-mcp, dbm).'],
   [/^SQL Server could not plan this batch, so it is not run: (.*)$/s, 'SQL Server tuto dávku nedokázal naplánovat, proto se nespustí: $1'],
   [/^It could not be read completely \((.+)\), so it is not run\.$/s, 'Nedalo se přečíst celé ($1), proto se nespustí.'],
   [/^The filter could not be read completely \((.+)\)\.$/s, 'Filtr se nedal přečíst celý ($1).'],

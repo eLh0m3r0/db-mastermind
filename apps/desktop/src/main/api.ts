@@ -230,7 +230,9 @@ export const api: MastermindApi = {
   },
   async saveConnection(config) {
     const before = db.isOpen(config.id) ? connections.getConnection(config.id) : undefined
-    const saved = connections.saveConnection(config)
+    // (The files agents may read are only ever set by Query a file here in main, never by the form.)
+    const files = connections.listConnections().find((c) => c.id === config.id)?.files
+    const saved = connections.saveConnection({ ...config, files })
     if (before && !needsReconnect(before, connections.getConnection(saved.id))) {
       // A name, color, AI permissions or commit mode: no new connection, so open transactions stay open.
       db.reconfigure(connections.getConnection(saved.id))
@@ -788,7 +790,11 @@ export const api: MastermindApi = {
     const existing = connections.listConnections().find((c) => c.driver === 'duckdb' && !c.filePath && c.group === FILES_GROUP)
     const connection = existing ?? connections.saveConnection({ id: '', name: 'Files (DuckDB)', driver: 'duckdb', group: FILES_GROUP })
     const literal = `'${path.replaceAll("'", "''")}'`
-    // SQL nobody confirmed (the AI asked about this file) may read the file the user handed, and no other.
+    // SQL nobody confirmed (the AI asked about this file, an agent through MCP) may read the files the user handed
+    // to this connection, and no other: kept with the connection (the --mcp child and later runs read them there),
+    // the 50 most recent that still exist.
+    const files = [path, ...(connection.files ?? []).filter((f) => f !== path && existsSync(f))].slice(0, 50)
+    if (JSON.stringify(files) !== JSON.stringify(connection.files ?? [])) connections.saveConnection({ ...connection, files })
     db.allowFiles(connection.id, [path])
     const ext = extname(path).slice(1).toLowerCase()
     const reader =

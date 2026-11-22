@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import { parseConnectionString, type ConnectionConfig } from '@dbmastermind/core'
 
 /** `${ENV_VAR}` placeholders, so passwords stay out of command lines and files. */
@@ -7,6 +8,13 @@ export const expandEnv = (s: string) => s.replace(/\$\{(\w+)\}/g, (_, name: stri
 interface FileConnection extends Partial<ConnectionConfig> {
   url?: string
   knowledgeBase?: string
+}
+
+/** `--allow-files <file-or-folder>` for the connection before it (DuckDB): what SQL nobody confirmed may read. */
+export function allowFiles(connection: ConnectionConfig | undefined, path: string): void {
+  if (!connection) throw new Error('--allow-files must follow --url')
+  if (connection.driver !== 'duckdb') throw new Error('--allow-files is for DuckDB connections')
+  connection.files = [...(connection.files ?? []), resolve(path)]
 }
 
 /** A connection from `--url` (postgres://…, JDBC, ADO.NET), named after its host and database. */
@@ -28,6 +36,8 @@ export function connectionsFromFile(path: string, already = 0): ConnectionConfig
       id: item.id ?? `c${already + i + 1}`,
       name: item.name ?? `connection ${already + i + 1}`,
       knowledgeBasePath: item.knowledgeBase ?? item.knowledgeBasePath,
+      // DuckDB: files and folders agents may read (relative to the config file).
+      ...(item.files ? { files: item.files.map((f) => resolve(dirname(path), expandEnv(f))) } : {}),
     } as ConnectionConfig
   })
 }

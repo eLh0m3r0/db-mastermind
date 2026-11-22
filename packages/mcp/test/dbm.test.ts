@@ -81,6 +81,19 @@ describe('dbm query', () => {
     expect(await dbm('--help')).toMatchObject({ stdout: expect.stringMatching(/SQL nobody confirmed/) })
   })
 
+  it('DuckDB: --allow-files lets query read a file or folder; without it only the database file (wave 10)', async () => {
+    const csv = join(dir, 'sales.csv')
+    writeFileSync(csv, 'amount\n3\n4\n')
+    const sql = `SELECT sum(amount) AS total FROM read_csv('${csv}')`
+    const refused = await dbm('query', '--url', 'duckdb://', sql)
+    expect(refused.code).toBe(1)
+    expect(refused.stderr).toContain(`"${csv}" can't be read here: open it in DB Mastermind with Query a file, or allow it with --allow-files`)
+    expect((await dbm('query', '--url', 'duckdb://', '--allow-files', csv, sql)).stdout).toBe('total\n7\n')
+    expect((await dbm('query', '--url', 'duckdb://', '--allow-files', dir, sql)).stdout).toBe('total\n7\n')
+    expect(await dbm('query', '--url', url, '--allow-files', csv, 'SELECT 1')).toMatchObject({ code: 1, stderr: expect.stringMatching(/for DuckDB connections/) })
+    expect(await dbm('--help')).toMatchObject({ stdout: expect.stringMatching(/--allow-files/) })
+  })
+
   it('waits for a slow output and reports a file it can not write (review findings)', async () => {
     let text = ''
     let pending = 0
