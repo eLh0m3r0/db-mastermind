@@ -6,7 +6,7 @@ import { t } from '@/lib/i18n'
 import { errorMessage, uid } from '@/lib/utils'
 import { toast } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
-import { confirmAction } from '@/components/ui/ConfirmDialog'
+import { askText, confirmAction } from '@/components/ui/ConfirmDialog'
 
 /**
  * How a tile runs: as SQL nobody confirmed (a dashboard may come from a teammate's file), on the guarded read path, in
@@ -17,18 +17,30 @@ export function tileRequest(connectionId: string, sql: string, runId: string): R
   return { connectionId, sql, runId, maxRows: 5000, readOnly: true }
 }
 
+/** A chart's columns by name where the result has them (a knowledge base file names them), else by index. */
+export function resolveChart(chart: NonNullable<DashboardTile['chart']>, fields: { name: string }[]) {
+  const at = (name: string | undefined, fallback: number) => {
+    const i = name ? fields.findIndex((f) => f.name === name) : -1
+    return i >= 0 ? i : fallback
+  }
+  return { ...chart, x: at(chart.xName, chart.x), ys: chart.ys.map((y, i) => at(chart.yNames?.[i], y)) }
+}
+
 const CHANGED = 'dbm:dashboards-changed'
 
-/** Tells every list and open dashboard of this connection that its dashboards changed (saved, renamed, deleted). */
-export function dashboardsChanged(connectionId: string, dashboardId?: string) {
-  window.dispatchEvent(new CustomEvent(CHANGED, { detail: { connectionId, dashboardId } }))
+/**
+ * Tells every list and open dashboard of this connection that its dashboards changed (saved, renamed, deleted).
+ * `origin`: who changed it (an open dashboard ignores its own saves).
+ */
+export function dashboardsChanged(connectionId: string, dashboardId?: string, origin?: string) {
+  window.dispatchEvent(new CustomEvent(CHANGED, { detail: { connectionId, dashboardId, origin } }))
 }
 
 /** Calls `fn` whenever a dashboard of this connection changes anywhere in the window. */
-export function onDashboardsChanged(connectionId: string, fn: (dashboardId?: string) => void): () => void {
+export function onDashboardsChanged(connectionId: string, fn: (dashboardId?: string, origin?: string) => void): () => void {
   const listener = (e: Event) => {
-    const detail = (e as CustomEvent<{ connectionId: string; dashboardId?: string }>).detail
-    if (detail.connectionId === connectionId) fn(detail.dashboardId)
+    const detail = (e as CustomEvent<{ connectionId: string; dashboardId?: string; origin?: string }>).detail
+    if (detail.connectionId === connectionId) fn(detail.dashboardId, detail.origin)
   }
   window.addEventListener(CHANGED, listener)
   return () => window.removeEventListener(CHANGED, listener)
@@ -46,10 +58,41 @@ export function useDashboards(connectionId: string): Dashboard[] {
 }
 
 /** Saves a dashboard and tells the lists. */
-export async function saveDashboard(dashboard: Parameters<typeof api.saveDashboard>[0]): Promise<Dashboard> {
+export async function saveDashboard(dashboard: Parameters<typeof api.saveDashboard>[0], origin?: string): Promise<Dashboard> {
   const saved = await api.saveDashboard(dashboard)
-  dashboardsChanged(saved.connectionId, saved.id)
+  // A rename may give it a new id (a knowledge base file is named after it): open tabs follow.
+  if (dashboard.id && saved.id !== dashboard.id) {
+    const ws = useWorkspace.getState()
+    for (const tab of ws.tabs) if (tab.kind === 'dashboard' && tab.dashboardId === dashboard.id) ws.update(tab.id, { dashboardId: saved.id, title: saved.name })
+  }
+  dashboardsChanged(saved.connectionId, saved.id, origin)
   return saved
+}
+
+/** Moves a dashboard kept on this computer into the connection's knowledge base (its SQL is then shared). */
+export async function moveToKnowledge(d: Dashboard): Promise<void> {
+  try {
+    const moved = await api.moveDashboardToKnowledge(d.id)
+    const ws = useWorkspace.getState()
+    for (const tab of ws.tabs) if (tab.kind === 'dashboard' && tab.dashboardId === d.id) ws.update(tab.id, { dashboardId: moved.id })
+    dashboardsChanged(d.connectionId, moved.id)
+    toast({ kind: 'success', message: t('“{name}” is in the knowledge base', { name: moved.name }), detail: t('Everyone who uses the knowledge base folder sees it.') })
+  } catch (err) {
+    toast({ kind: 'error', message: t('Could not move the dashboard'), detail: errorMessage(err) })
+  }
+}
+
+/** Renames a dashboard (asked in a dialog) and the tabs that show it. */
+export async function renameDashboard(d: Dashboard): Promise<void> {
+  const name = (await askText({ title: t('Rename dashboard'), value: d.name, confirmLabel: t('Rename') }))?.trim()
+  if (!name || name === d.name) return
+  try {
+    const saved = await saveDashboard({ ...d, name })
+    const ws = useWorkspace.getState()
+    for (const tab of ws.tabs) if (tab.kind === 'dashboard' && tab.dashboardId === saved.id) ws.update(tab.id, { title: saved.name })
+  } catch (err) {
+    toast({ kind: 'error', message: t('Could not rename the dashboard'), detail: errorMessage(err) })
+  }
 }
 
 /** Asks, deletes, and tells the lists (an open tab of it closes). */
@@ -97,9 +140,10 @@ export async function pinToDashboard(anchor: HTMLElement, connectionId: string, 
       toast({ kind: 'error', message: t('Could not pin the result'), detail: errorMessage(err) })
     }
   }
+  const usable = dashboards.filter((d) => !d.problem)
   openMenu(anchor, [
-    ...dashboards.map((d) => ({ label: d.name, onClick: () => void add(d.id) })),
-    ...(dashboards.length ? ['separator' as const] : []),
+    ...usable.map((d) => ({ label: d.name, onClick: () => void add(d.id) })),
+    ...(usable.length ? ['separator' as const] : []),
     { label: t('New dashboard'), onClick: () => void add() },
   ])
 }

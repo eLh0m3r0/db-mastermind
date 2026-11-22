@@ -8,11 +8,11 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Input, Select } from '@/components/ui/Input'
 import { Spinner } from '@/components/ui/Spinner'
 import { api } from '@/lib/api'
-import { openDashboard, tileRequest } from '@/lib/dashboards'
+import { deleteDashboard, onDashboardsChanged, openDashboard, resolveChart, saveDashboard, tileRequest, useDashboards } from '@/lib/dashboards'
+import { useConnections } from '@/store/connections'
 import { formatDate, useT } from '@/lib/i18n'
 import { cn, debounce, errorMessage, formatDuration, uid } from '@/lib/utils'
 import { useWorkspace, type DashboardTab } from '@/store/workspace'
-import { confirmAction } from '@/components/ui/ConfirmDialog'
 
 interface TileState {
   result?: QueryResult
@@ -78,7 +78,12 @@ function TileView({
             <Spinner size={16} className="text-fg-faint" />
           </div>
         ) : tile.chart ? (
-          <ResultChart fields={r.fields} rows={r.rows} config={tile.chart} onConfigChange={(chart) => onChange({ ...tile, chart })} />
+          <ResultChart
+            fields={r.fields}
+            rows={r.rows}
+            config={resolveChart(tile.chart, r.fields)}
+            onConfigChange={(chart) => onChange({ ...tile, chart: { ...chart, xName: r.fields[chart.x]?.name, yNames: chart.ys.map((y) => r.fields[y]?.name ?? '') } })}
+          />
         ) : r.fields.length === 1 && r.rows.length === 1 ? (
           // A single value reads best as a big number.
           <div className="flex h-full flex-col items-center justify-center gap-1">
@@ -118,11 +123,7 @@ function TileView({
 
 function DashboardList({ tab }: { tab: DashboardTab }) {
   const t = useT()
-  const [list, setList] = useState<Dashboard[] | null>(null)
-  useEffect(() => {
-    void api.listDashboards(tab.connectionId).then(setList)
-  }, [tab.connectionId])
-  if (!list) return null
+  const list = useDashboards(tab.connectionId)
   if (!list.length)
     return (
       <EmptyState icon={<LayoutDashboard size={28} />} title={t('No dashboards yet')}>
@@ -132,11 +133,11 @@ function DashboardList({ tab }: { tab: DashboardTab }) {
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3 p-4">
       {list.map((d) => (
-        <button key={d.id} type="button" onClick={() => openDashboard(tab.connectionId, d.id, d.name)} className="flex flex-col gap-1 rounded-lg border border-line bg-elevated p-4 text-left hover:border-accent/60">
+        <button key={d.id} type="button" onClick={() => openDashboard(tab.connectionId, d.id, d.name)} className="flex flex-col gap-1 rounded-lg border border-line bg-elevated p-4 text-left hover:border-accent/60" data-testid="dashboard-card">
           <span className="flex items-center gap-2 text-[13px] font-semibold">
             <LayoutDashboard size={14} className="text-accent" /> {d.name}
           </span>
-          <span className="text-[12px] text-fg-muted">{t('{n} tiles', { n: String(d.tiles.length) })}</span>
+          <span className="text-[12px] text-fg-muted">{d.problem ? d.problem : t('{n} tiles', { n: String(d.tiles.length) })}</span>
         </button>
       ))}
     </div>
@@ -148,21 +149,56 @@ export function DashboardView({ tab }: { tab: DashboardTab }) {
   const t = useT()
   const updateTab = useWorkspace((s) => s.update)
   const close = useWorkspace((s) => s.close)
-  const [dashboard, setDashboard] = useState<Dashboard | null>(null)
+  // undefined: loading; null: it no longer exists (deleted elsewhere, its file removed).
+  const [dashboard, setDashboard] = useState<Dashboard | null | undefined>(undefined)
   const [states, setStates] = useState<Record<string, TileState>>({})
   const dashboardRef = useRef(dashboard)
   dashboardRef.current = dashboard
+  const active = useWorkspace((s) => s.activeTabId === tab.id)
+  const status = useConnections((s) => s.runtime[tab.connectionId]?.status)
+  const byUser = useConnections((s) => !!s.runtime[tab.connectionId]?.byUser)
+  const connectionName = useConnections((s) => s.list.find((c) => c.id === tab.connectionId)?.name ?? '')
+
+  /** Reads the dashboard again (a change elsewhere: a pin, the Saved tab, the file edited outside); tiles that changed run again. */
+  const load = useCallback(async () => {
+    if (!tab.dashboardId) return
+    const next = (await api.listDashboards(tab.connectionId).catch(() => [])).find((d) => d.id === tab.dashboardId) ?? null
+    const now = dashboardRef.current
+    if (now && next && JSON.stringify({ ...now, updatedAt: '', createdAt: '' }) === JSON.stringify({ ...next, updatedAt: '', createdAt: '' })) return
+    if (now && next) {
+      const same = (a: DashboardTile, b?: DashboardTile) => !!b && a.sql === b.sql
+      setStates((s) => Object.fromEntries(next.tiles.flatMap((x, i) => (same(x, now.tiles[i]) && s[now.tiles[i]!.id] ? [[x.id, s[now.tiles[i]!.id]!]] : []))))
+    }
+    setDashboard(next)
+    if (next) updateTab(tab.id, { title: next.name })
+  }, [tab.connectionId, tab.dashboardId, tab.id, updateTab])
 
   useEffect(() => {
-    if (!tab.dashboardId) return
-    void api.listDashboards(tab.connectionId).then((all) => setDashboard(all.find((d) => d.id === tab.dashboardId) ?? null))
-  }, [tab.connectionId, tab.dashboardId])
+    void load()
+    // Its own saves come back here too: ignored (origin), the rest is read again.
+    return onDashboardsChanged(tab.connectionId, (id, origin) => origin !== tab.id && (!id || id === tab.dashboardId) && void load())
+  }, [load, tab.connectionId, tab.dashboardId, tab.id])
+  // A file changed outside the app (a pull, a hand edit): read again when the window or the tab comes back.
+  useEffect(() => {
+    if (!active) return
+    void load()
+    const look = () => void load()
+    window.addEventListener('focus', look)
+    return () => window.removeEventListener('focus', look)
+  }, [active, load])
 
-  const persist = useMemo(() => debounce((d: Dashboard) => void api.saveDashboard(d), 500), [])
+  const persist = useMemo(() => debounce((d: Dashboard) => void saveDashboard(d, tab.id).catch(() => {}), 500), [tab.id])
   const change = (d: Dashboard) => {
     setDashboard(d)
     persist(d)
   }
+
+  // A connection not open yet (after a restart) is opened once, as a tab of it would; one the user closed or that
+  // failed waits for Connect instead of failing every tile.
+  useEffect(() => {
+    if (tab.dashboardId && status !== 'connected' && status !== 'connecting' && status !== 'error' && !byUser) void useConnections.getState().connect(tab.connectionId)
+  }, [tab.dashboardId, tab.connectionId, status, byUser])
+  const connected = status === 'connected'
 
   const runTile = useCallback(
     async (tile: DashboardTile) => {
@@ -183,37 +219,74 @@ export function DashboardView({ tab }: { tab: DashboardTab }) {
     for (const tile of dashboardRef.current?.tiles ?? []) void runTile(tile)
   }, [runTile])
 
+  // Tiles run when the dashboard is open and its connection is: each one that has no result yet.
   useEffect(() => {
-    if (dashboard) refreshAll()
-    // Run once when the dashboard loads; later runs come from refresh.
+    if (!dashboard || !connected) return
+    for (const tile of dashboard.tiles) if (!states[tile.id]) void runTile(tile)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dashboard?.id])
+  }, [dashboard, connected])
 
+  // Auto-refresh only while the tab is open.
   useEffect(() => {
-    if (!dashboard?.refreshSeconds) return
+    if (!dashboard?.refreshSeconds || !connected) return
     const timer = setInterval(refreshAll, dashboard.refreshSeconds * 1000)
     return () => clearInterval(timer)
-  }, [dashboard?.refreshSeconds, refreshAll])
+  }, [dashboard?.refreshSeconds, refreshAll, connected])
 
   if (!tab.dashboardId) return <DashboardList tab={tab} />
-  if (!dashboard)
+  if (dashboard === undefined)
     return (
       <div className="flex h-full items-center justify-center">
         <Spinner size={18} className="text-fg-faint" />
       </div>
+    )
+  if (dashboard === null)
+    return (
+      <EmptyState icon={<LayoutDashboard size={28} />} title={t('This dashboard no longer exists')}>
+        <span>{t('It was deleted, or its file was removed from the knowledge base.')}</span>
+        <Button size="sm" onClick={() => close(tab.id)}>
+          {t('Close tab')}
+        </Button>
+      </EmptyState>
+    )
+  if (dashboard.problem)
+    return (
+      <EmptyState icon={<LayoutDashboard size={28} />} title={t('This dashboard file can’t be read')}>
+        {dashboard.problem}
+      </EmptyState>
+    )
+  if (!connected && status !== 'connecting')
+    return (
+      <EmptyState icon={<LayoutDashboard size={28} />} title={t('{name} is not connected', { name: connectionName })}>
+        <Button size="sm" variant="primary" onClick={() => void useConnections.getState().connect(tab.connectionId)}>
+          {t('Connect')}
+        </Button>
+      </EmptyState>
     )
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-line px-3 py-1.5">
         <LayoutDashboard size={15} className="text-accent" />
+        {/* Given on Enter or when leaving the field: a knowledge base file is named after the dashboard. */}
         <Input
+          key={`${dashboard.id}:${dashboard.name}`}
           inputSize="sm"
           className="w-64 font-semibold"
-          value={dashboard.name}
-          onChange={(e) => {
-            change({ ...dashboard, name: e.target.value })
-            updateTab(tab.id, { title: e.target.value || t('Dashboard') })
+          defaultValue={dashboard.name}
+          data-testid="dashboard-name"
+          onBlur={(e) => {
+            const name = e.target.value.trim()
+            if (!name || name === dashboard.name) return void (e.target.value = dashboard.name)
+            change({ ...dashboard, name })
+            updateTab(tab.id, { title: name })
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+            if (e.key === 'Escape') {
+              ;(e.target as HTMLInputElement).value = dashboard.name
+              ;(e.target as HTMLInputElement).blur()
+            }
           }}
         />
         <div className="flex-1" />
@@ -230,10 +303,7 @@ export function DashboardView({ tab }: { tab: DashboardTab }) {
         </Button>
         <IconButton
           label={t('Delete dashboard')}
-          onClick={async () => {
-            if (!(await confirmAction({ title: t('Delete dashboard “{name}”?', { name: dashboard.name }), confirmLabel: t('Delete'), danger: true }))) return
-            void api.deleteDashboard(dashboard.id).then(() => close(tab.id))
-          }}
+          onClick={() => void deleteDashboard(dashboard)}
         >
           <Trash2 size={13} />
         </IconButton>

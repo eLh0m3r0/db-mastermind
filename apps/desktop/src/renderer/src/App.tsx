@@ -20,6 +20,7 @@ import { listenForConnectionProposals } from '@/lib/proposals'
 import { useConnections } from '@/store/connections'
 import { useSettings } from '@/store/settings'
 import { askAi, dismissToast, toast, useUi } from '@/store/ui'
+import { openDashboard } from '@/lib/dashboards'
 import { confirmCloseTabs, useWorkspace } from '@/store/workspace'
 import { ActivityView } from './features/activity/ActivityView'
 import { FindValueView } from './features/search/FindValueView'
@@ -145,6 +146,9 @@ function useGlobalCommands() {
             if (connId) {
               void useConnections.getState().disconnect(connId).then((done) => done && ui.set({ selectedConnectionId: undefined }))
             }
+            break
+          case 'dashboards':
+            if (connId) openDashboard(connId)
             break
           case 'history':
           case 'saved-queries':

@@ -2131,6 +2131,19 @@ export const cs: Record<string, string> = {
   'This Mac user has no login keychain, so the password is saved without real encryption. Create one in Keychain Access (File → New Keychain, named “login”) or log out and in again; the next save then encrypts it.': 'Tento uživatel Macu nemá svazek klíčů „login“, takže se heslo ukládá bez skutečného šifrování. Vytvořte ho v aplikaci Klíčenka (Soubor → Nový svazek klíčů s názvem „login“) nebo se odhlaste a znovu přihlaste; při dalším uložení se pak zašifruje.',
   'This Mac user has no login keychain, so the key is saved without real encryption. Create one in Keychain Access (File → New Keychain, named “login”) or log out and in again; the next save then encrypts it.': 'Tento uživatel Macu nemá svazek klíčů „login“, takže se klíč ukládá bez skutečného šifrování. Vytvořte ho v aplikaci Klíčenka (Soubor → Nový svazek klíčů s názvem „login“) nebo se odhlaste a znovu přihlaste; při dalším uložení se pak zašifruje.',
   'This computer has no keychain (GNOME Keyring or KWallet): the key is saved without real encryption.': 'Tento počítač nemá klíčenku (GNOME Keyring ani KWallet): klíč se ukládá bez skutečného šifrování.',
+  'This dashboard no longer exists': 'Tento dashboard už neexistuje',
+  'It was deleted, or its file was removed from the knowledge base.': 'Byl smazán, nebo byl jeho soubor odstraněn ze znalostní báze.',
+  'This dashboard file can’t be read': 'Soubor tohoto dashboardu nejde přečíst',
+  '{name} is not connected': '{name} není připojené',
+  'Search saved…': 'Hledat v uložených…',
+  'In the knowledge base: shared with everyone who uses it': 'Ve znalostní bázi: sdílí ho každý, kdo ji používá',
+  'Move to the knowledge base': 'Přesunout do znalostní báze',
+  'Queries': 'Dotazy',
+  '“{name}” is in the knowledge base': '„{name}“ je ve znalostní bázi',
+  'Everyone who uses the knowledge base folder sees it.': 'Uvidí ho každý, kdo používá složku znalostní báze.',
+  'Could not move the dashboard': 'Dashboard se nepodařilo přesunout',
+  'Rename dashboard': 'Přejmenovat dashboard',
+  'Could not rename the dashboard': 'Dashboard se nepodařilo přejmenovat',
 }
 
 /**

@@ -82,6 +82,7 @@ import { applyMcpHttp, mcpHttpStatus } from './mcp-http'
 import { buildMenu, setMenuContext } from './menu'
 import { forgetEditorSession, forgetEditorSessionsOf, openTransactions, trackEditorSession } from './transactions'
 import * as library from './library'
+import * as dashboards from './dashboards'
 import { getSettings, updateSettings } from './settings'
 import { checkSqlFilePath, LARGE_SQL_FILE, readSqlFile, rememberChosenSqlFile, sqlFileSize, sqlFileTime, writeSqlFile } from './sql-files'
 import { withCommandPassword } from './password-command'
@@ -942,13 +943,16 @@ export const api: MastermindApi = {
     library.deleteSavedQuery(id)
   },
   async listDashboards(connectionId) {
-    return library.listDashboards(connectionId)
+    return dashboards.listDashboards(connectionId)
   },
   async saveDashboard(dashboard) {
-    return library.saveDashboard(dashboard)
+    return dashboards.saveDashboard(dashboard)
+  },
+  async moveDashboardToKnowledge(id) {
+    return dashboards.moveDashboardToKnowledge(id)
   },
   async deleteDashboard(id) {
-    library.deleteDashboard(id)
+    await dashboards.deleteDashboard(id)
   },
   async listDiagrams(connectionId) {
     return library.listDiagrams(connectionId)

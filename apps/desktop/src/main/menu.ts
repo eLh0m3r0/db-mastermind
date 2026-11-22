@@ -38,6 +38,7 @@ const CS: Record<string, string> = {
   'Ask AI…': 'Zeptat se AI…',
   History: 'Historie',
   'Saved Queries': 'Uložené dotazy',
+  Dashboards: 'Dashboardy',
   'DB Mastermind Website': 'Web DB Mastermind',
   Documentation: 'Dokumentace',
   Roadmap: 'Plán vývoje',
@@ -175,6 +176,7 @@ export function buildMenu(): void {
         { type: 'separator' },
         cmd(m('History'), 'history', isMac ? 'Cmd+Y' : 'Ctrl+Shift+H'),
         cmd(m('Saved Queries'), 'saved-queries'),
+        cmd(m('Dashboards'), 'dashboards'),
       ],
     },
     {
@@ -222,6 +224,7 @@ const APPLIES: Record<string, (c: MenuContext) => boolean> = {
   // The sidebar shows these lists for the selected connection only.
   history: (c) => !!c.connection,
   'saved-queries': (c) => !!c.connection,
+  dashboards: (c) => !!c.connection,
   'refresh-schema': (c) => c.connected,
 }
 

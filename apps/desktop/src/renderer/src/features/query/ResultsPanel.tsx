@@ -379,7 +379,10 @@ export function ResultsPanel({
                   void pinToDashboard(e.currentTarget, connectionId, {
                     title: tileTitle(current.result, charts[current.key] ?? null),
                     sql: current.statement.sql,
-                    chart: charts[current.key] ?? null,
+                    // Chart columns by name too: a knowledge base file names them.
+                    chart: charts[current.key]
+                      ? { ...charts[current.key]!, xName: current.result.fields[charts[current.key]!.x]?.name, yNames: charts[current.key]!.ys.map((y) => current.result.fields[y]?.name ?? '') }
+                      : null,
                     span: charts[current.key] ? 2 : 1,
                   })
                 }

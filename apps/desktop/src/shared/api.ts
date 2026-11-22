@@ -345,9 +345,13 @@ export interface DashboardTile {
   id: string
   title: string
   sql: string
-  chart: { kind: 'bar' | 'line' | 'scatter'; x: number; ys: number[] } | null
+  /** Columns by index; `xName` / `yNames` by name win when the result has them (a knowledge base file names them). */
+  chart: { kind: 'bar' | 'line' | 'scatter'; x: number; ys: number[]; xName?: string; yNames?: string[] } | null
   /** Grid columns the tile spans (1 or 2). */
   span: 1 | 2
+  /** A knowledge base file's own text before and after the tile's SQL, kept as it is. */
+  before?: string
+  after?: string
 }
 
 export interface Dashboard {
@@ -359,6 +363,12 @@ export interface Dashboard {
   refreshSeconds: number
   createdAt: string
   updatedAt: string
+  /** In the connection's knowledge base (`dashboards/<name>.md`), shared with everyone who uses it; else on this computer. */
+  shared?: boolean
+  /** A knowledge base file that can't be read as a dashboard: what is wrong (it is listed, nothing runs). */
+  problem?: string
+  /** A knowledge base file's text between the title and the first tile. */
+  intro?: string
 }
 
 export interface SavedQuery {
@@ -850,6 +860,8 @@ export interface MastermindApi {
   listDashboards(connectionId: string): Promise<Dashboard[]>
   saveDashboard(dashboard: Omit<Dashboard, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<Dashboard>
   deleteDashboard(id: string): Promise<void>
+  /** Moves a dashboard kept on this computer into the connection's knowledge base (shared with everyone who uses it). */
+  moveDashboardToKnowledge(id: string): Promise<Dashboard>
 
   exportResult(request: ExportRequest): Promise<string | null>
   exportResults(request: ExportResultsRequest): Promise<string | null>
@@ -1015,6 +1027,7 @@ export const API_METHODS = [
   'listDashboards',
   'saveDashboard',
   'deleteDashboard',
+  'moveDashboardToKnowledge',
   'exportResult',
   'exportTable',
   'exportQuery',
