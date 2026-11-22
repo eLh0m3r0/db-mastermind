@@ -223,3 +223,32 @@ const route = (child, ci, parent, pi) => {
   const missing = document.getElementById('missing-path')
   if (missing) missing.textContent = `path = '${decodeURIComponent(location.pathname)}'`
 })()
+
+// --- The tour video: plays (muted) while it is in view; never for people who asked for less motion --------------
+{
+  const video = document.getElementById('tour-video')
+  const calm = window.matchMedia('(prefers-reduced-motion: reduce)')
+  if (video && 'IntersectionObserver' in window) {
+    // Once the visitor pauses or plays it by hand, the page leaves it alone.
+    let own = false
+    let byPage = false
+    const mine = () => {
+      if (byPage) byPage = false
+      else own = true
+    }
+    video.addEventListener('pause', mine)
+    video.addEventListener('play', mine)
+    new IntersectionObserver(
+      ([entry]) => {
+        if (own || calm.matches) return
+        const play = entry.isIntersecting && entry.intersectionRatio >= 0.6
+        if (play === !video.paused) return
+        byPage = true
+        if (play) video.play().catch(() => (byPage = false))
+        else video.pause()
+      },
+      { threshold: [0, 0.6] },
+    ).observe(video)
+  }
+}
+

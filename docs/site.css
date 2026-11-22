@@ -257,6 +257,9 @@ h3 { font-size: 18px; line-height: 1.25; font-weight: 600; }
 :root[data-theme="dark"] .shot picture.theme-light { display: none; }
 .shot img { display: block; width: 100%; border: 1px solid var(--rule); border-radius: 8px; box-shadow: var(--shadow-shot); background: var(--node); }
 .shot figcaption { margin-top: 12px; font-size: 14px; color: var(--slate); }
+/* The tour: a video in the place and frame of a screenshot (its own picture is dark in both themes). */
+.tour-shot { margin-top: 28px; }
+.tour-shot video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; border: 1px solid var(--rule); border-radius: 8px; box-shadow: var(--shadow-shot); background: #0f1420; }
 .hero-shot { margin: 0; }
 
 /* --- Sections --------------------------------------------------------------------------------------------- */
