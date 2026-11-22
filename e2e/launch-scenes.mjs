@@ -4,11 +4,12 @@
 //   node e2e/launch-scenes.mjs <scene> --pg <postgres url> [options]
 //
 //   <scene>          1 hook · 2 browse · 3 query · 4 understand · 5 design · 6 code · 7 ai · 7f ai without a provider
-//                    · 8 looks
+//                    · 7t the terminal beat (seeds and writes the project, prints the agent's command; no app) · 8 looks
 //   --pg <url>       a PostgreSQL server the script may create the database coffee_shop on (dropped and seeded again
 //                    on every run), e.g. postgresql://postgres:coffee@localhost:5432/postgres
-//   --exe <path>     the released app (DB Mastermind.exe, or …/DB Mastermind.app/Contents/MacOS/DB Mastermind);
-//                    without it the development build runs (npm run build first). DBM_EXE works too.
+//   --exe <path>     the released app (DB Mastermind.exe, or …/DB Mastermind.app/Contents/MacOS/DB Mastermind), which
+//                    then shows its own version; without it the development build runs (npm run build first). DBM_EXE
+//                    works too.
 //   --project <dir>  where the coffee-shop project folder with its .env is written (default: ~/coffee-shop)
 //   --ai <provider>  scene 7: 'claude-code' or 'codex' (signed-in command-line tools; the app then uses your real home
 //                    folder), or 'openrouter' with --ai-env <file> holding OPENROUTER_API_KEY and OPENROUTER_MODEL
@@ -24,7 +25,6 @@ import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { sampleDatabaseSql } from '../packages/core/src/sample.ts'
-import { askAi, closeTab, mod, palette, park, quietToasts, readAiEnv, repo, run, session, setUpOpenRouter } from './screenshots.mjs'
 
 const argv = process.argv.slice(2)
 const opt = (name) => {
@@ -32,12 +32,15 @@ const opt = (name) => {
   return i >= 0 ? argv[i + 1] : undefined
 }
 const scene = argv[0]
-const SCENES = ['1', '2', '3', '4', '5', '6', '7', '7f', '8']
+const SCENES = ['1', '2', '3', '4', '5', '6', '7', '7f', '7t', '8']
 if (!SCENES.includes(scene) || !opt('pg')) {
-  console.error('Usage: node e2e/launch-scenes.mjs <1|2|3|4|5|6|7|7f|8> --pg <postgres url> [--exe <app>] [--project <dir>] [--ai claude-code|codex|openrouter] [--ai-env <file>] [--look dark,teal,terminal] [--rehearse <dir>]')
+  console.error('Usage: node e2e/launch-scenes.mjs <1|2|3|4|5|6|7|7f|7t|8> --pg <postgres url> [--exe <app>] [--project <dir>] [--ai claude-code|codex|openrouter] [--ai-env <file>] [--look dark,teal,terminal] [--rehearse <dir>]')
   process.exit(1)
 }
 if (opt('exe')) process.env.DBM_EXE = resolve(opt('exe'))
+// A released app shows its own version (screenshots.mjs would otherwise set the one of the website's shots).
+if (process.env.DBM_EXE && process.env.DBM_SHOT_VERSION === undefined) process.env.DBM_SHOT_VERSION = ''
+const { askAi, closeTab, mod, palette, park, quietToasts, readAiEnv, repo, run, session, setUpOpenRouter } = await import('./screenshots.mjs')
 const rehearse = opt('rehearse') && resolve(opt('rehearse'))
 const project = resolve(opt('project') ?? join(homedir(), 'coffee-shop'))
 const looks = (opt('look') ?? 'dark,teal,terminal').split(',')
@@ -116,13 +119,21 @@ async function seed(url) {
   return { url: target.toString(), ...rows[0] }
 }
 
-/** The project folder whose .env the hook scene drops on the window. */
+/** The MCP server of this checkout, which the terminal beat (7t) starts for a coding agent. */
+const MCP_CLI = join(repo, 'packages', 'mcp', 'dist', 'cli.js')
+/** The question of the terminal beat: it needs a join over four tables. */
+const AGENT_QUESTION = 'Which product category brought in the most revenue from shipped orders? Answer in two sentences and show the SQL you ran.'
+
+/** The project folder whose .env the hook scene drops on the window, and the agent's MCP configuration. */
 function writeProject(dir, url) {
   mkdirSync(join(dir, 'src'), { recursive: true })
   writeFileSync(join(dir, '.env'), `# Coffee shop API, local development\nPORT=3000\nDATABASE_URL="${url}"\n`)
   writeFileSync(join(dir, 'package.json'), `${JSON.stringify({ name: 'coffee-shop', private: true, scripts: { dev: 'node src/server.js' } }, null, 2)}\n`)
   writeFileSync(join(dir, 'src', 'server.js'), "// The shop's API (a placeholder for the video).\n")
   writeFileSync(join(dir, 'README.md'), '# Coffee shop\n\nThe online shop of a small coffee roaster.\n')
+  // Only for the agent's command line (--mcp-config): no client's own configuration is touched.
+  const server = { command: 'node', args: [MCP_CLI, '--url', url, '--name', 'coffee_shop'] }
+  writeFileSync(join(dir, 'mcp.json'), `${JSON.stringify({ mcpServers: { coffee_shop: server } }, null, 2)}\n`)
 }
 
 // --- the app ---------------------------------------------------------------------------------------------------
@@ -466,6 +477,12 @@ const db = await seed(opt('pg'))
 writeProject(project, db.url)
 console.log(`coffee_shop seeded: ${db.orders} orders, newest ${db.newest}, ${db.unshipped} not shipped yet`)
 console.log(`project folder: ${project}${existsSync(join(project, '.env')) ? ' (with .env)' : ''}`)
+if (scene === '7t') {
+  if (!existsSync(MCP_CLI)) console.log('Build the MCP server first: npm run build -w packages/mcp')
+  console.log(`Scene 7t: in a terminal in ${project}, signed in to Claude Code, type:\n`)
+  console.log(`claude -p "${AGENT_QUESTION}" --mcp-config mcp.json --strict-mcp-config --tools "" --allowedTools mcp__coffee_shop`)
+  process.exit(0)
+}
 const ctx = await session({ ...WINDOW, scale: rehearse ? 2 : 0, theme: 'light', background: !!(argv.includes('--background') || rehearse), realHome: ai === 'claude-code' || ai === 'codex' })
 try {
   await SCENE[scene].setup(ctx)
