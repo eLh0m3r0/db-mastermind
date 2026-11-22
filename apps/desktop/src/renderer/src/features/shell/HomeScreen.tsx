@@ -45,8 +45,9 @@ export function HomeScreen() {
           <LookDecoration size={36} />
         </div>
 
-        {/* The two ways in: a database, or a model (a document of its own, no database needed). */}
-        <div className="grid gap-4 md:grid-cols-2">
+        {/* The two ways in: a database, or a model (a document of its own, no database needed). Side by side while each
+            card still has room for New connection and the demo in one row (in Czech too); one under the other below. */}
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,27rem),1fr))] gap-4">
           <Way
             icon={<Database size={18} />}
             title={t('Databases')}
@@ -56,12 +57,24 @@ export function HomeScreen() {
                 <Button size="sm" variant="primary" icon={<Plus size={14} />} onClick={() => setUi({ modal: { kind: 'connection' } })}>
                   {t('New connection')}
                 </Button>
+                {/* With no database at hand yet, the demo is the first click: next to New connection, the other two on
+                    their own line. */}
+                {!list.length && (
+                  <>
+                    <Button size="sm" variant="secondary" icon={<Coffee size={13} />} onClick={() => void openDemo(t)} data-testid="home-demo">
+                      {t('Try the demo database')}
+                    </Button>
+                    <span className="basis-full" />
+                  </>
+                )}
                 <Button size="sm" variant="ghost" icon={<Download size={13} />} onClick={(e) => void openImportMenu(e.currentTarget)} title={t('From Beekeeper, DBeaver, DataGrip, pgAdmin, SSMS, Workbench, HeidiSQL…')}>
                   {t('Import connections')}
                 </Button>
-                <Button size="sm" variant="ghost" icon={<Coffee size={13} />} onClick={() => void openDemo(t)}>
-                  {t('Try the demo database')}
-                </Button>
+                {!!list.length && (
+                  <Button size="sm" variant="ghost" icon={<Coffee size={13} />} onClick={() => void openDemo(t)} data-testid="home-demo">
+                    {t('Try the demo database')}
+                  </Button>
+                )}
                 <Button size="sm" variant="ghost" icon={<FileSpreadsheet size={13} />} onClick={() => void queryFile()} title={t('CSV, Parquet, JSON or Excel: query it with SQL, no import needed')}>
                   {t('Query a file')}
                 </Button>
@@ -86,14 +99,17 @@ export function HomeScreen() {
                 />
               ))
             ) : (
-              <Empty>{t('No connections yet. PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite, DuckDB, ClickHouse, CockroachDB, BigQuery, Trino.')}</Empty>
+              <Empty>
+                {t('No connections yet. PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite, DuckDB, ClickHouse, CockroachDB, BigQuery, Trino.')}
+                <span className="mt-1.5 block">{t("Or drop a project's .env or docker-compose file on the window.")}</span>
+              </Empty>
             )}
           </Way>
 
           <Way
             icon={<Shapes size={18} />}
             title={t('Models')}
-            points={[t('Tables and relationships designed without a database'), t('Compared with a database, with the migration script'), t('SQL for any database; opens DeZign for Databases projects too')]}
+            points={[t('Tables and relationships designed without a database'), t('Compared with a database, with the migration script'), t('SQL for any database'), t('Opens DBML, Prisma, Mermaid, drawDB, MySQL Workbench and DeZign files')]}
             actions={
               <>
                 <Button size="sm" variant="primary" icon={<FilePlus2 size={14} />} onClick={() => runCommand('new-model')} title={t('Design a database from scratch: draw the tables, then get the SQL for any database. No connection needed')}>

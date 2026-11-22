@@ -1119,7 +1119,6 @@ export const cs: Record<string, string> = {
   'Models': 'Modely',
   'Tables and relationships designed without a database': 'Návrh tabulek a vztahů bez databáze',
   'Compared with a database, with the migration script': 'Porovnání s databází a migrační skript',
-  'SQL for any database; opens DeZign for Databases projects too': 'SQL pro jakoukoli databázi; otevře i projekty DeZign for Databases',
   'Models you open show here.': 'Tady se objeví modely, které otevřete.',
   'Remove from the list': 'Odebrat ze seznamu',
   'Report': 'Report',
@@ -2119,6 +2118,9 @@ export const cs: Record<string, string> = {
   'loads native code': 'načítá nativní kód',
   'runs SQL on an external database': 'spouští SQL v externí databázi',
   'passes SQL through to the connector, which may write': 'předává SQL konektoru, který může zapisovat',
+  "Or drop a project's .env or docker-compose file on the window.": 'Nebo do okna přetáhněte soubor .env nebo docker-compose svého projektu.',
+  'SQL for any database': 'SQL pro jakoukoli databázi',
+  'Opens DBML, Prisma, Mermaid, drawDB, MySQL Workbench and DeZign files': 'Otevře soubory DBML, Prisma, Mermaid, drawDB, MySQL Workbench a DeZign',
 }
 
 /**

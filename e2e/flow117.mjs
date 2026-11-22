@@ -7,7 +7,7 @@
 import { _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
 import { connect } from 'node:net'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -80,6 +80,71 @@ const testWith = async (url) => {
 try {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1280, 800))
   await win.waitForTimeout(1000)
+
+  // The start page on a fresh profile: the demo is a real button next to New connection, the drop of a project file
+  // is mentioned, the model formats are listed; nothing is cut, and at laptop size the page needs no scrolling.
+  const startPage = () =>
+    win.evaluate(() => {
+      const cards = [...document.querySelectorAll('section')].filter((s) => s.offsetWidth > 0)
+      const buttons = cards.flatMap((c) => [...c.querySelectorAll('button')].filter((b) => !b.closest('ul') && b.offsetWidth > 0 && b.textContent.trim() && !b.className.includes('border-line px-2.5')))
+      const box = (e) => e.getBoundingClientRect()
+      const first = buttons[0]
+      const demo = document.querySelector('[data-testid="home-demo"]')
+      const scroller = cards[0]?.closest('.overflow-auto')
+      return {
+        columns: getComputedStyle(cards[0].parentElement).gridTemplateColumns.split(' ').length,
+        demoBeside: !!demo && Math.abs(box(demo).top - box(first).top) < 2 && box(demo).height === box(first).height,
+        demoOutlined: !!demo && getComputedStyle(demo).borderTopColor !== getComputedStyle(demo).backgroundColor && getComputedStyle(demo).borderTopWidth !== '0px' && !demo.className.includes('border-transparent'),
+        cut: buttons.filter((b) => b.scrollWidth > b.clientWidth + 1 || box(b).height > box(first).height + 1).map((b) => b.textContent.trim()),
+        scrolls: scroller ? scroller.scrollHeight > scroller.clientHeight + 1 : true,
+        text: cards.map((c) => c.innerText).join('\n'),
+      }
+    })
+  for (const lang of ['en', 'cs']) {
+    await win.evaluate((language) => window.mastermind.api.updateSettings({ language }), lang)
+    await win.reload()
+    await win.waitForTimeout(1200)
+    for (const [w, h] of [[1280, 800], [900, 560]]) {
+      await size(w, h)
+      await win.waitForTimeout(500)
+      const p = await startPage()
+      await win.screenshot({ path: join(out, `home-first-run-${lang}-${w}x${h}.png`) })
+      check(`start page ${lang} ${w}×${h}: the demo is an outlined button beside New connection`, p.demoBeside && p.demoOutlined, JSON.stringify(p))
+      check(`start page ${lang} ${w}×${h}: no button label cut or wrapped`, p.cut.length === 0, p.cut.join(' | '))
+      if (w === 1280) check(`start page ${lang} ${w}×${h}: fits without scrolling`, !p.scrolls)
+      const words = lang === 'en' ? ['docker-compose file on the window', 'Opens DBML, Prisma, Mermaid, drawDB, MySQL Workbench and DeZign files'] : ['docker-compose svého projektu', 'Otevře soubory DBML, Prisma, Mermaid, drawDB, MySQL Workbench a DeZign']
+      check(`start page ${lang}: the drop of a project file and the model formats are named`, words.every((x) => p.text.includes(x)), p.text)
+    }
+  }
+  await win.evaluate(() => window.mastermind.api.updateSettings({ language: 'en' }))
+  await win.reload()
+  await win.waitForTimeout(1200)
+  await size(1280, 800)
+  await win.waitForTimeout(500)
+  // A project's .env dropped on the start page brings its connection (the drop handler is on the window); with a
+  // connection the demo goes back among the quieter actions.
+  {
+    const env = join(dir, '.env')
+    writeFileSync(env, 'DATABASE_URL=postgres://postgres:mastermind@127.0.0.1:54329/mastermind\n')
+    await win.evaluate(() => {
+      const input = Object.assign(document.createElement('input'), { type: 'file', id: 'flow117-drop' })
+      input.style.display = 'none'
+      document.body.append(input)
+    })
+    await win.setInputFiles('#flow117-drop', env)
+    await win.evaluate(() => {
+      const data = new DataTransfer()
+      data.items.add(document.querySelector('#flow117-drop').files[0])
+      document.querySelector('main, #root').dispatchEvent(new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }))
+      document.querySelector('#flow117-drop').remove()
+    })
+    await win.getByText(/Imported 1 connection/).waitFor({ timeout: 10000 }).catch(() => {})
+    check('a .env dropped on the start page imports its connection', (await win.getByText(/Imported 1 connection/).count()) > 0, await win.locator('body').innerText().then((x) => x.slice(0, 300)))
+    const p = await startPage()
+    check('with a connection the demo is a quiet button again', !p.demoBeside && !p.demoOutlined, JSON.stringify({ ...p, text: '' }))
+    // (Its notice is dismissed: the toast checks below count their own.)
+    await win.getByRole('button', { name: 'Dismiss' }).first().click().catch(() => {})
+  }
 
   // The demo opens on rows.
   await win.getByRole('button', { name: 'Try the demo database' }).click()
