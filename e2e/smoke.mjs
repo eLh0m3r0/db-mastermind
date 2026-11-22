@@ -1,7 +1,7 @@
 // Smoke test of a packaged build: launches the real executable as an MCP server over stdio and
 // queries a SQLite database through it. Proves the app boots, finds its data folder and that the
 // SQLite worker and the DuckDB native binding run inside Electron on this platform.
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -43,6 +43,11 @@ const duck = text(
   await client.callTool({ name: 'run_query', arguments: { connection: 'Duck', sql: `SELECT sum(amount) AS total FROM read_csv('${csvPath.replaceAll("'", "''")}', decimal_separator = ',')` } }),
 )
 const refused = text(await client.callTool({ name: 'run_query', arguments: { connection: 'Duck', sql: `SELECT * FROM read_csv('${otherPath.replaceAll("'", "''")}')` } }))
+// AI turned off for Smoke in the app while the agent is connected: its next call is refused (the server asks the app's
+// saved permissions for every call).
+writeFileSync(join(dir, 'connections.json'), JSON.stringify(JSON.parse(readFileSync(join(dir, 'connections.json'), 'utf8')).map((c) => (c.id === 's1' ? { ...c, ai: { access: 'off' } } : c))))
+const revoked = text(await client.callTool({ name: 'run_query', arguments: { connection: 'Smoke', sql: 'SELECT COUNT(*) AS n FROM fruit' } }))
+console.log(revoked)
 console.log(tables)
 console.log(count)
 console.log(duck)
@@ -50,7 +55,7 @@ console.log(refused)
 await client.close()
 clearTimeout(timer)
 const sentence = `"${otherPath}" can't be read here: open it in DB Mastermind with Query a file, or allow it with --allow-files (dbmastermind-mcp, dbm).`
-if (!tables.includes('fruit') || !/^n\n3\b/m.test(count) || !/^total\n30\.5\b/m.test(duck) || !refused.includes(sentence)) {
+if (!tables.includes('fruit') || !/^n\n3\b/m.test(count) || !/^total\n30\.5\b/m.test(duck) || !refused.includes(sentence) || !revoked.startsWith('"Smoke" is no longer shared with AI agents')) {
   console.error('Unexpected output')
   process.exit(1)
 }

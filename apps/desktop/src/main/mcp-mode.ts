@@ -3,12 +3,14 @@ import { join } from 'node:path'
 import { app } from 'electron'
 import { listConnections, loadConnections } from './connections'
 import type { McpChildConfig } from './mcp-server'
+import type { McpChildRequest, McpParentAnswer } from './mcp-live'
 import { MCP_HISTORY_FILE } from './library'
 import { agentConnections } from './ai-access'
-import { managed } from './managed'
+import { managed, reloadManaged } from './managed'
 import { dataPath } from './storage'
 import { PROPOSALS_FOLDER } from './connection-proposals'
 import { getSettings, loadSettings } from './settings'
+import { invalidateTeam } from './team'
 
 export const isMcpMode = process.argv.includes('--mcp')
 
@@ -42,9 +44,8 @@ export async function runMcpMode(): Promise<void> {
   const only = argValue('--connection')
   const settings = getSettings()
   const config: McpChildConfig = {
-    connections: agentConnections(listConnections()).filter((c) => !only || c.id === only || c.name === only),
+    connections: sharedWithAgents(only),
     allowWrites: settings.mcp.allowWrites,
-    schemaOnly: settings.ai.dataSharing === 'schema',
     version: app.getVersion(),
     historyFile: dataPath(MCP_HISTORY_FILE),
     knownHostsFile: dataPath('known-hosts.json'),
@@ -55,5 +56,34 @@ export async function runMcpMode(): Promise<void> {
     stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
   })
   child.send(config)
+  // The child asks before each request that uses a connection: what the app saved since (a connection's AI turned
+  // off or lowered, the organization's or the team's settings) applies to the next call. Answers go in order.
+  let reading = Promise.resolve()
+  child.on('message', (m: McpChildRequest) => {
+    if (m?.type !== 'refresh') return
+    reading = reading.then(async () => {
+      let answer: McpParentAnswer
+      try {
+        answer = { type: 'connections', seq: m.seq, connections: await currentlyShared(only) }
+      } catch {
+        answer = { type: 'connections', seq: m.seq, error: 'Could not read the saved permissions' }
+      }
+      if (child.connected) child.send(answer)
+    })
+  })
   child.on('exit', (code) => app.exit(code ?? 0))
+}
+
+/** The connections agents may use, with their effective permissions (`aiAccess` decides), `--connection` applied. */
+function sharedWithAgents(only: string | undefined) {
+  return agentConnections(listConnections()).filter((c) => !only || c.id === only || c.name === only)
+}
+
+/** The same, read again from what the app saved: this process outlives changes made in the app. */
+export async function currentlyShared(only: string | undefined) {
+  reloadManaged()
+  invalidateTeam()
+  await loadSettings()
+  await loadConnections()
+  return sharedWithAgents(only)
 }
