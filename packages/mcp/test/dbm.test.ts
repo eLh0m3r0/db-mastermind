@@ -71,6 +71,16 @@ describe('dbm query', () => {
     expect((await dbm('query', '--url', url, 'SELECT count(*) AS n FROM customers')).stdout).toBe('n\n3\n')
   })
 
+  it("without --allow-writes takes the agent's profile: no session statements, no refused functions (review round 4)", async () => {
+    // (The user's own profile would take a PRAGMA that reads; scripts and CI get the strictest one.)
+    for (const sql of ['SELECT load_extension(\'x\')', 'PRAGMA query_only = 0', "SELECT 1 /*x*/"]) {
+      const r = await dbm('query', '--url', url, sql)
+      expect(r.code, sql).toBe(1)
+      expect(r.stderr, sql).toMatch(/Only reads are allowed here/)
+    }
+    expect(await dbm('--help')).toMatchObject({ stdout: expect.stringMatching(/SQL nobody confirmed/) })
+  })
+
   it('waits for a slow output and reports a file it can not write (review findings)', async () => {
     let text = ''
     let pending = 0

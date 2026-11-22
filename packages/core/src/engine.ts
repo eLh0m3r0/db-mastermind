@@ -52,6 +52,8 @@ const GRID_LOCK_TIMEOUT_MS = 5000
 const READ_LOCK_TIMEOUT_MS = 10000
 /** A time limit for SQL nobody confirmed where the session has none of its own. */
 const UNCONFIRMED_TIMEOUT_MS = 60_000
+/** (SQL Server's limit is the app's own timer: tests shorten it with DBM_UNCONFIRMED_TIMEOUT_MS.) */
+const mssqlUnconfirmedTimeoutMs = () => Number(process.env.DBM_UNCONFIRMED_TIMEOUT_MS) || UNCONFIRMED_TIMEOUT_MS
 
 /** Whether a filter has free-form SQL of its own (typed in the grid, or written by AI). */
 const hasRawFilter = (node: FilterNode | undefined): boolean => !!node && (node.kind === 'raw' ? !!node.sql.trim() : node.kind === 'group' ? node.children.some(hasRawFilter) : false)
@@ -506,7 +508,7 @@ export class DatabaseService {
       const sql =
         driver === 'postgres'
           ? `${dialect.beginReadOnly}; SELECT set_config('statement_timeout', CASE WHEN current_setting('statement_timeout') = '0' THEN '${UNCONFIRMED_TIMEOUT_MS}ms' ELSE current_setting('statement_timeout') END, true)`
-          : driver === 'mssql' && own
+          : driver === 'mssql' && (own || session.startsWith('readonly-shared-'))
             ? `SET LOCK_TIMEOUT ${READ_LOCK_TIMEOUT_MS}; ${dialect.beginReadOnly}`
             : dialect.beginReadOnly
       await entry.driver.execute(sql, { session })
@@ -524,6 +526,12 @@ export class DatabaseService {
       }
       await entry.driver.execute(dialect.rollback, { session }).catch(() => {})
     }
+    // SQL Server has no statement time limit of its own: a guarded batch is cancelled after the same 60 s as the other
+    // engines' limit, unless the connection has a request timeout of its own. (Cancelling is safe: what runs here
+    // reads, or writes #temp tables only, and is rolled back.)
+    const ownTimeout = Number((entry.config.options as { requestTimeout?: unknown } | undefined)?.requestTimeout ?? 0)
+    const limit = driver === 'mssql' && !ownTimeout ? AbortSignal.timeout(mssqlUnconfirmedTimeoutMs()) : undefined
+    const signal = limit ? (options.signal ? AbortSignal.any([options.signal, limit]) : limit) : options.signal
     try {
       // MySQL's sql_mode decides how its strings read (backslashes, double quotes): asked of this session.
       let modes: LexModes = {}
@@ -562,12 +570,13 @@ export class DatabaseService {
         }
         let failed = false
         try {
-          const results = await entry.driver.execute(text, { session, maxRows: options.maxRows, signal: options.signal, params, unconfirmed: true })
+          const results = await entry.driver.execute(text, { session, maxRows: options.maxRows, signal, params, unconfirmed: true })
           const messages = results.flatMap((r) => r.messages ?? [])
           outcomes.push({ sql: s.text, start: s.start, end: s.end, results: results.filter((r) => !r.messagesOnly), durationMs: Date.now() - started, ...(messages.length ? { messages } : {}) })
         } catch (err) {
           failed = true
-          outcomes.push({ sql: s.text, start: s.start, end: s.end, error: describeError(err), durationMs: Date.now() - started })
+          const timedOut = limit?.aborted && !options.signal?.aborted
+          outcomes.push({ sql: s.text, start: s.start, end: s.end, error: timedOut ? { message: `Stopped after ${Math.round(mssqlUnconfirmedTimeoutMs() / 1000)} s: SQL nobody confirmed has a time limit here.` } : describeError(err), durationMs: Date.now() - started })
         }
         // (SQL Server's last batch is checked as it is rolled back, in end().)
         const last = s === verdict.statements.at(-1)
@@ -631,7 +640,8 @@ export class DatabaseService {
       if (READS.has(type!)) continue
       // A write the user profile may do: every object it touches a #temp table.
       const objects = [...whole.matchAll(/<Object [^>]*?Table="([^"]+)"/g)].map((m) => m[1]!)
-      if (profile === 'user' && TEMP_WRITES.has(type!) && objects.length && objects.every((o) => o.startsWith('[#'))) continue
+      // (Local #temp only: a ##global one is shared with other sessions.)
+      if (profile === 'user' && TEMP_WRITES.has(type!) && objects.length && objects.every((o) => /^\[#[^#]/.test(o))) continue
       throw new ReadOnlyViolationError(profile === 'user' ? `This connection is read-only: SQL Server plans this batch with ${type}, which can't be run here. Open the connection's settings to allow writes.` : `Only reads are allowed here (read-only): SQL Server plans this batch with ${type}.`)
     }
   }

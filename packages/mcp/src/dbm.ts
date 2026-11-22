@@ -49,7 +49,11 @@ export writes code for the model's tables: a Prisma schema, a Drizzle schema, SQ
 types. The database is the connection's, or for a .dbml file the one its Project block names (database_type),
 else --database, else PostgreSQL.
 
-Read-only unless --allow-writes: the database itself refuses writes where it can.
+Read-only unless --allow-writes. query then runs its SQL as SQL nobody confirmed, like an AI agent's: reads only
+(SELECT, WITH, VALUES, SHOW, EXPLAIN, DESCRIBE; SQL Server batches whose plan only reads), no session statements
+(SET, USE), no functions with effects outside the data (server files, locks, other sessions, the network), inside a
+read-only transaction that is always rolled back; the result is held in memory. --allow-writes runs it as written
+(a single read is streamed, any size).
 diff never changes the database. To compare the conditions of checks that keep their name, it needs a writable
 connection (--allow-writes): it puts them on a temporary table, which a read-only connection may not create.
 `
@@ -210,8 +214,10 @@ async function query(o: Options, db: DatabaseService, io: DbmIo): Promise<number
   const out = output(o, io)
   try {
     const statements = splitStatements(sql, config.driver).filter((s) => s.text)
-    // One read: streamed, any size. Anything else runs as a script; the last result set is written.
-    if (statements.length === 1 && isReadOnlyScript(statements[0]!.text, config.driver)) {
+    // Scripts and CI are not a person at a keyboard: without --allow-writes the SQL takes the guarded path's
+    // strictest profile (runScript readOnly: true). With it, one read is streamed, any size; anything else runs as a
+    // script; the last result set is written.
+    if (o.allowWrites && statements.length === 1 && isReadOnlyScript(statements[0]!.text, config.driver)) {
       let first = true
       let headed = false
       let n = 0
@@ -230,7 +236,7 @@ async function query(o: Options, db: DatabaseService, io: DbmIo): Promise<number
       io.stderr(`${n} row${n === 1 ? '' : 's'}\n`)
       return 0
     }
-    const outcomes = await db.runScript(config.id, sql)
+    const outcomes = await db.runScript(config.id, sql, o.allowWrites ? {} : { readOnly: true })
     const failed = outcomes.find((x) => x.error)
     if (failed) throw new Error(`${failed.error!.message}\n  in: ${failed.sql.slice(0, 200)}`)
     const last = outcomes.flatMap((x) => x.results ?? []).filter((r) => r.fields.length).at(-1)
@@ -240,7 +246,9 @@ async function query(o: Options, db: DatabaseService, io: DbmIo): Promise<number
       await out.write(fmt.tail())
     }
     const affected = outcomes.reduce((sum, x) => sum + (x.results ?? []).reduce((s, r) => s + (r.affectedRows ?? 0), 0), 0)
-    io.stderr(`${outcomes.length} statement${outcomes.length === 1 ? '' : 's'}${affected ? `, ${affected} rows changed` : ''}\n`)
+    // (One read reports its rows, as a streamed one does.)
+    if (outcomes.length === 1 && last && !affected) io.stderr(`${last.rows.length} row${last.rows.length === 1 ? '' : 's'}\n`)
+    else io.stderr(`${outcomes.length} statement${outcomes.length === 1 ? '' : 's'}${affected ? `, ${affected} rows changed` : ''}\n`)
     return 0
   } finally {
     await out.close()
