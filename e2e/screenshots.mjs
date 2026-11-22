@@ -1,6 +1,12 @@
 // The website's and the README's screenshots, light and dark, from a clean profile with the demo database:
 //
-//   node e2e/screenshots.mjs <out-folder> [name…]
+//   node e2e/screenshots.mjs <out-folder> [name…] [--variants]
+//
+// --variants: the home page's shots (VARIANT_SHOTS) are also taken in the other five accents (light and dark) and
+// in the six looks, from the same state, as <name>-<accent>[-dark].png and <name>-<look>.png; the look is switched
+// in the app's own Settings → Appearance. `node scripts/site-images.mjs <out-folder> --variants` makes the website's
+// files from them (docs/screenshots/variants/). The whole set:
+//   DBM_AI_ENV=<openrouter.env> node e2e/screenshots.mjs <out> hero hero-phone table-filters modeler dashboard ai --variants
 //
 // Each name is written as <name>.png (light) and <name>-dark.png: a 1440×900 window at the display's scale (2880×1800
 // on a Retina Mac). `node scripts/site-images.mjs <out-folder>` then makes the files the website uses. The shot list
@@ -81,21 +87,60 @@ const PHONE_CROPS = {
   'ai-phone': { x: 918, y: 45, w: 480, h: 360 },
 }
 
+// --variants: the shots on the home page, which follow the visitor's choice in its "Make it yours" section.
+let variants = false
+export const VARIANT_SHOTS = ['hero', 'hero-phone', 'table-filters', 'modeler', 'dashboard', 'ai']
+export const VARIANT_ACCENTS = ['blue', 'teal', 'green', 'orange', 'rose']
+export const VARIANT_LOOKS = ['retro2001', 'terminal', 'halloween', 'christmas', 'medieval', 'fantasy']
+
+/** Picks a look (or accent) the way a user does: Settings → Appearance, then the dialog closed again. */
+async function chooseLook(win, id) {
+  await win.keyboard.press(`${mod}+,`)
+  await win.locator('[role=dialog] nav button', { hasText: 'Appearance' }).click()
+  await win.locator(`[role=dialog] button[data-look="${id}"]`).click()
+  await win.waitForTimeout(300)
+  await win.keyboard.press('Escape')
+  await win.locator('[role=dialog]').first().waitFor({ state: 'detached', timeout: 5000 }).catch(() => {})
+  // Closing the dialog hands the focus back to a button, which then shows a focus ring the default shots don't have.
+  await win.evaluate(() => {
+    if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur()
+  })
+  // The swatch was clicked in the middle of the window: the mouse goes back where the shots keep it (a diagram
+  // table under it would light up and dim the others).
+  await park(win)
+  // A look may bring its own font.
+  await win.evaluate(() => document.fonts.ready)
+  await win.waitForTimeout(300)
+}
+
 /** Writes <name>.png and <name>-dark.png of the current state; `again` restores an overlay the switch closed. */
 async function capture({ win }, name, { again, mouse } = {}) {
   if (only.size && !only.has(name)) return
-  for (const scheme of ['light', 'dark']) {
+  const take = async (scheme, suffix) => {
     await win.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' })
     await win.waitForTimeout(500)
     if (again) await again()
     if (mouse) await win.mouse.move(mouse.x, mouse.y)
     await win.waitForTimeout(400)
-    const file = join(out, `${name}${scheme === 'dark' ? '-dark' : ''}.png`)
+    const file = join(out, `${name}${suffix}.png`)
     await win.screenshot({ path: file })
     const width = readFileSync(file).readUInt32BE(16)
-    if (width !== 2880) console.warn(`${name}: ${width} px wide, not 2880`)
+    if (width !== 2880) console.warn(`${name}${suffix}: ${width} px wide, not 2880`)
     // (hero-phone is a state of its own; the section images' phone sources are the same windows.)
-    if (name !== 'hero' && PHONE_CROPS[`${name}-phone`]) copyFileSync(file, join(out, `${name}-phone${scheme === 'dark' ? '-dark' : ''}.png`))
+    if (name !== 'hero' && PHONE_CROPS[`${name}-phone`]) copyFileSync(file, join(out, `${name}-phone${suffix}.png`))
+  }
+  for (const scheme of ['light', 'dark']) await take(scheme, scheme === 'dark' ? '-dark' : '')
+  if (variants && VARIANT_SHOTS.includes(name)) {
+    // Accents follow light / dark; a look brings its own colors, so it is taken once.
+    for (const accent of VARIANT_ACCENTS) {
+      await chooseLook(win, accent)
+      for (const scheme of ['light', 'dark']) await take(scheme, `-${accent}${scheme === 'dark' ? '-dark' : ''}`)
+    }
+    for (const look of VARIANT_LOOKS) {
+      await chooseLook(win, look)
+      await take('light', `-${look}`)
+    }
+    await chooseLook(win, 'violet')
   }
   await win.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' })
   console.log(name)
@@ -383,6 +428,7 @@ export async function lineChart({ win }, columns) {
 
 export async function main(args = process.argv.slice(2)) {
   const names = args.filter((a) => !a.startsWith('--'))
+  variants = args.includes('--variants')
   out = resolve(names[0] ?? process.env.SHOTS_DIR ?? 'docs/screenshots')
   only = new Set(names.slice(1))
   mkdirSync(out, { recursive: true })

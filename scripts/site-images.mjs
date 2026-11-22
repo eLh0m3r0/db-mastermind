@@ -3,6 +3,10 @@
 // AVIF, the system Chrome (through Playwright, sandboxed, local data only) resizes, crops and writes WebP and PNG.
 //
 //   node scripts/site-images.mjs <folder> [--placeholders]
+//   node scripts/site-images.mjs <folder> --variants
+//                                            the home page's pictures in the other accents and the looks (taken by
+//                                            `node e2e/screenshots.mjs <folder> … --variants`): AVIF only, 1440 wide and
+//                                            the 960 phone crop, in docs/screenshots/variants/ (site.js swaps them in)
 //   node scripts/site-images.mjs --og        renders docs/og.html into docs/og.png (1200×630) and the icon into
 //                                            docs/apple-touch-icon.png (180×180, opaque: iOS rounds the corners)
 //
@@ -30,6 +34,7 @@ const FALLBACK = { hero: 'table-filters', dashboard: 'chart', connect: 'home', '
 
 const args = process.argv.slice(2)
 const placeholders = args.includes('--placeholders')
+const variants = args.includes('--variants')
 const folder = args.find((a) => !a.startsWith('--'))
 const og = args.includes('--og')
 if (!folder && !og) {
@@ -122,6 +127,37 @@ const encode = async (file, region, width) => {
 const avif = (pngFile, target) => execFileSync('sips', ['-s', 'format', 'avif', '-s', 'formatOptions', '70', pngFile, '--out', target], { stdio: 'ignore' })
 
 let written = 0
+if (variants) {
+  // Same names and suffixes as e2e/screenshots.mjs (VARIANT_SHOTS, VARIANT_ACCENTS, VARIANT_LOOKS).
+  const shots = ['hero', 'table-filters', 'modeler', 'dashboard', 'ai', ...Object.keys(PHONE_CROPS)]
+  const accents = ['blue', 'teal', 'green', 'orange', 'rose']
+  const looks = ['retro2001', 'terminal', 'halloween', 'christmas', 'medieval', 'fantasy']
+  const suffixes = [...accents.flatMap((a) => [`-${a}`, `-${a}-dark`]), ...looks.map((l) => `-${l}`)]
+  const dir = join(out, 'variants')
+  mkdirSync(dir, { recursive: true })
+  let bytes = 0
+  for (const name of shots) {
+    for (const suffix of suffixes) {
+      const file = join(folder, `${name}${suffix}.png`)
+      if (!existsSync(file)) {
+        console.warn(`missing: ${name}${suffix}.png`)
+        continue
+      }
+      const crop = PHONE_CROPS[name]
+      const r = crop ? await encode(file, { x: crop.x * 2, y: crop.y * 2, w: crop.w * 2, h: crop.h * 2 }, 960) : await encode(file, null, 1440)
+      const png = join(scratch, `${name}${suffix}.png`)
+      writeFileSync(png, r.png)
+      const target = join(dir, `${name}${suffix}-${crop ? 960 : 1440}.avif`)
+      avif(png, target)
+      bytes += readFileSync(target).length
+      written++
+    }
+  }
+  rmSync(scratch, { recursive: true, force: true })
+  await browser.close()
+  console.log(`${written} files in docs/screenshots/variants/, ${(bytes / 1024 / 1024).toFixed(1)} MB`)
+  process.exit(0)
+}
 for (const name of [...SHOTS, ...Object.keys(PHONE_CROPS)]) {
   for (const dark of [false, true]) {
     const file = source(name, dark)

@@ -454,7 +454,7 @@ pre { margin: 0; padding: 14px 16px; background: var(--chrome); border: 1px soli
 
 /* Their characteristic touches, as in the app. */
 :root.look-terminal body { text-shadow: 0 0 4px rgba(51, 255, 102, 0.35); }
-:root.look-terminal .shot img, :root.look-terminal .brand img { filter: grayscale(1) sepia(1) hue-rotate(70deg) saturate(2.2) brightness(0.9); }
+:root.look-terminal .brand img { filter: grayscale(1) sepia(1) hue-rotate(70deg) saturate(2.2) brightness(0.9); }
 /* Title bars: blue (Retro 2001), holly red (Christmas), wood (Medieval); a gold rule under the header (Fantasy). */
 :root.look-retro2001 .top { background-color: #1f5fd6; background-image: linear-gradient(#3a80f3, #1f5fd6); border-bottom-color: #1941a5; --band-fg: #ffffff; }
 :root.look-christmas .top { background-color: #a91f17; border-bottom-color: #8a1912; --band-fg: #ffffff; }

@@ -154,6 +154,86 @@ const route = (child, ci, parent, pi) => {
     }
   }
 
+  // --- Make it yours: the app's pictures in the chosen colors -------------------------------------------------
+  // Each home page picture exists in every accent (light and dark) and look as one AVIF, 1440 wide and the phone
+  // crop (docs/screenshots/variants/, from `node scripts/site-images.mjs <shots> --variants`). Nothing is fetched
+  // before a choice; a picture near the viewport gets its variant once that has loaded (the old one stays until
+  // then), the latest choice wins, and without AVIF or with Save-Data the default pictures stay.
+  const pictures = (() => {
+    const shots = [...document.querySelectorAll('.shot picture')].flatMap((pic) => {
+      const m = /screenshots\/([a-z-]+?)(-dark)?-1440\.png$/.exec(pic.querySelector('img')?.getAttribute('src') ?? '')
+      return m ? [{ pic, name: m[1], dark: Boolean(m[2]) }] : []
+    })
+    const saveData = navigator.connection?.saveData === true || matchMedia('(prefers-reduced-data: reduce)').matches
+    if (!shots.length || saveData || !('IntersectionObserver' in window)) return { choose() {} }
+    const phone = matchMedia('(max-width: 719px)')
+    let avif
+    const avifShows = () =>
+      (avif ??= new Promise((done) => {
+        const probe = new Image()
+        probe.onload = () => done(probe.width > 0)
+        probe.onerror = () => done(false)
+        probe.src = 'data:image/avif;base64,AAAAIGZ0eXBhdmlmAAAAAE1pUHJhdmlmbWlhZm1pZjEAAAEhbWV0YQAAAAAAAAAhaGRscgAAAAAAAAAAcGljdAAAAAAAAAAAAAAAAAAAAAAkZGluZgAAABxkcmVmAAAAAAAAAAEAAAAMdXJsIAAAAAEAAAAOcGl0bQAAAAAAAQAAACNpaW5mAAAAAAABAAAAFWluZmUCAAAAAAEAAGF2MDEAAAAAgWlwcnAAAABgaXBjbwAAABNjb2xybmNseAACAAIABoAAAAAMY2xsaQDLAEAAAAAUaXNwZQAAAAAAAAACAAAAAgAAAAlpcm90AAAAABBwaXhpAAAAAAMICAgAAAAMYXYxQ4EADAAAAAAZaXBtYQAAAAAAAAABAAEGgQIDBYaEAAAAHmlsb2MAAAAARAAAAQABAAAAAQAAAVEAAAAkAAAAAW1kYXQAAAAAAAAANBIACgwAAAAABn/8CBAQNCAyEhABkgAIIIIgAGjTD5rWSAfEIA=='
+      }))
+    const url = (shot, choice, small) =>
+      `screenshots/variants/${shot.name}${small ? '-phone' : ''}${choice.look ? `-${choice.look}` : `-${choice.accent}${shot.dark ? '-dark' : ''}`}-${small ? 960 : 1440}.avif`
+    // Two sources in front of the picture's own (phone crop and window), the same sizes as theirs: no layout shift.
+    const show = (shot, choice) => {
+      shot.pic.querySelectorAll('source[data-variant]').forEach((s) => s.remove())
+      if (!choice) return
+      const wide = document.createElement('source')
+      Object.assign(wide, { type: 'image/avif', srcset: url(shot, choice, false), width: 1440, height: 900 })
+      const small = document.createElement('source')
+      Object.assign(small, { type: 'image/avif', media: '(max-width: 719px)', srcset: url(shot, choice, true), width: 960, height: 720 })
+      wide.dataset.variant = small.dataset.variant = ''
+      shot.pic.prepend(small, wide)
+    }
+    let current = null
+    let turn = 0
+    const near = new Set()
+    const swap = async (shot, t) => {
+      // Only the picture the page shows (light or dark) gets one; the other keeps its default until it is shown.
+      if (!current || getComputedStyle(shot.pic).display === 'none') return show(shot, null)
+      if (!(await avifShows())) return
+      const img = new Image()
+      img.src = url(shot, current, phone.matches)
+      try {
+        await img.decode()
+      } catch {
+        return
+      }
+      if (t === turn) show(shot, current)
+    }
+    const refresh = () => {
+      const t = ++turn
+      for (const shot of shots) {
+        if (!current) show(shot, null)
+        else if (near.has(shot.pic.parentElement)) swap(shot, t)
+      }
+    }
+    const watch = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (!e.isIntersecting) continue
+          near.add(e.target)
+          if (current) for (const shot of shots) if (shot.pic.parentElement === e.target) swap(shot, turn)
+        }
+      },
+      { rootMargin: '400px 0px' },
+    )
+    new Set(shots.map((s) => s.pic.parentElement)).forEach((figure) => watch.observe(figure))
+    // Light / dark switched (the toggle or the system) or the phone crop applies: the shown pictures change.
+    document.querySelectorAll('.theme-toggle button').forEach((b) => b.addEventListener('click', () => setTimeout(refresh)))
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', refresh)
+    phone.addEventListener('change', refresh)
+    return {
+      choose(choice) {
+        current = choice
+        refresh()
+      },
+    }
+  })()
+
   // --- Make it yours: the six accents and the six looks, one choice as in the app ------------------------------
   const root = document.documentElement
   const swatches = document.querySelector('.swatches')
@@ -175,6 +255,7 @@ const route = (child, ci, parent, pi) => {
       // A look has its own colors: light / dark doesn't apply to it (the app says the same).
       hint.hidden = !look
       theme.forEach((t) => (t.disabled = Boolean(look)))
+      pictures.choose(look ? { look } : accent && accent !== 'violet' ? { accent } : null)
     }
     accents.forEach((b) => b.addEventListener('click', () => choose(b.dataset.accent, null)))
     // Pressing the look that is on turns it off again.
