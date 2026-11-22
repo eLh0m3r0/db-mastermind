@@ -26,9 +26,19 @@ for (const engine of engines) {
           expect(storage.statsSince).toBeTruthy()
         }
 
-        // Something to count right before reading the statistics (a small server's plan cache forgets cheap plans).
+        // Something to find in the statistics, run right before reading them. The list is the 50 statements with
+        // the most time in this database: on SQL Server, where the other test files' statements are in it too and a
+        // small server forgets cheap plans, the statement is made to cost enough to be among them.
+        const ordersTable = svc.qualifiedName(config.id, { schema: engine.id === 'postgres' || engine.id === 'mssql' ? 'shop' : undefined, name: 'orders' })
         const count = async () => {
-          for (let i = 0; i < 3; i++) await svc.runScript(config.id, `SELECT COUNT(*) FROM ${svc.qualifiedName(config.id, { schema: engine.id === 'postgres' || engine.id === 'mssql' ? 'shop' : undefined, name: 'orders' })} WHERE total > ${i}`)
+          for (let i = 0; i < 3; i++) {
+            await svc.runScript(
+              config.id,
+              engine.id === 'mssql'
+                ? `SELECT COUNT_BIG(*) FROM ${ordersTable} o CROSS JOIN sys.all_columns a CROSS JOIN (SELECT TOP 300 1 AS n FROM sys.all_columns) b WHERE o.total > ${i}`
+                : `SELECT COUNT(*) FROM ${ordersTable} WHERE total > ${i}`,
+            )
+          }
           return topQueries(svc, config.id)
         }
         let top = await count()
