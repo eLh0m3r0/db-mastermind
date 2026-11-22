@@ -40,3 +40,34 @@ known state that downloads from GitHub are not signed with a certificate Windows
 3. A secret is sent only to the database, SSH server or AI provider it belongs to; exports, shared connections and team folders never include it.
 4. `dbmastermind-mcp` keeps no secrets of its own: it reads `${VARIABLE}` placeholders from the environment when it starts.
 5. There is no telemetry and no account; the only network access the app makes on its own is the update check with GitHub, which can be turned off ([privacy policy](https://dbmastermind.app/privacy.html)).
+
+## What the read-only guard promises
+
+SQL nobody confirmed (the AI assistant, MCP agents) and everything on a connection marked read-only runs through
+the same guard. What it promises: **no data is changed or deleted, and no transaction escapes.** It does not rely
+on the app reading the SQL right: the app reads every character as the database does or refuses the text, allows
+only what reads, refuses functions that act outside the data (below), and then lets the database itself decide.
+
+| Database | What the database itself enforces |
+|---|---|
+| PostgreSQL | one statement per message (extended protocol), a read-only transaction that is always rolled back, its state checked after every statement, a time limit where the session has none; the session is reset afterwards |
+| MySQL, MariaDB | one statement per query, a read-only transaction that is always rolled back, a time limit; the connection is closed afterwards |
+| SQL Server | the server plans each batch first and it may contain only reads; a transaction that is always rolled back and checked |
+| Oracle | one statement per call, a read-only transaction |
+| SQLite | one statement per call, `query_only` |
+| DuckDB | one read statement by its own parser, a read-only copy with no access to other files, URLs or extensions |
+| ClickHouse | one query per request, `readonly` |
+| BigQuery | a dry run must report a query |
+| Trino | one statement per request; nothing more: only the app's own checks |
+
+What it doesn't stop: things a function can do that a read-only transaction allows. The app refuses the ones it
+knows by name (reading or writing server files, locks that outlive the statement, ending other sessions, the
+network, `pg_sleep`, MySQL `OUTFILE` / `DUMPFILE` / `LOAD_FILE` anywhere in the text), but a name list only closes
+the doors it knows: a user-defined function that does such a thing under another name, an Oracle function with an
+autonomous transaction, or an extension's function can still do it. Reading is still reading: SQL nobody confirmed
+sees what the login sees.
+
+**So give a login used with AI or agents only the rights it needs:** no superuser or DBA role, no `FILE` privilege
+(MySQL, MariaDB), no `pg_read_server_files` / `pg_write_server_files` / `pg_execute_server_program` (PostgreSQL),
+no `sysadmin` or `xp_cmdshell` (SQL Server), and read access to the tables it should answer about. A read-only
+replica, where you have one, is better still.
