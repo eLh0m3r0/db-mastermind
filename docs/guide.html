@@ -33,7 +33,7 @@
      privacy, 404): a change goes into all six. -->
 <a class="skip" href="#main">Skip to content</a>
 <!-- Drawings the page refers to with url(#…) and <use>: the ends of relationship lines, copied from the app's
-     ER diagram (DiagramView.tsx), and three Lucide icons (ISC license) the app uses: table, key, link. -->
+     ER diagram (DiagramView.tsx), and the Lucide icons (ISC license) the app uses for a table, a key, a link, copy and done. -->
 <svg class="sprite" aria-hidden="true" focusable="false">
   <defs>
     <marker id="crow-many" viewBox="0 0 16 16" refX="15" refY="8" markerWidth="16" markerHeight="16" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M3 8 L15 1 M3 8 L15 8 M3 8 L15 15" fill="none" stroke="currentColor" stroke-width="1.2"/></marker>
@@ -45,6 +45,8 @@
   <symbol id="i-table" viewBox="0 0 24 24"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></symbol>
   <symbol id="i-key" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r="1" fill="currentColor"/></symbol>
   <symbol id="i-link" viewBox="0 0 24 24"><path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 1 1 0 10h-2M8 12h8"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
 </svg>
 <header class="top">
   <div class="wrap top-in">
@@ -134,12 +136,12 @@
         <picture class="theme-light">
           <source type="image/avif" srcset="screenshots/connect-1440.avif 1440w, screenshots/connect-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
           <source type="image/webp" srcset="screenshots/connect-1440.webp 1440w, screenshots/connect-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
-          <img src="screenshots/connect-1440.png" width="1440" height="900" alt="The new connection form with a pasted connection string; the app recognized the hosted service and turned TLS on." loading="lazy" decoding="async">
+          <img src="screenshots/connect-1440.png" width="1440" height="900" alt="The new connection form after pasting a Supabase connection string: name, host, port, user and database filled in, the service named under the host, and TLS turned on (the dot on the SSL / TLS tab)." loading="lazy" decoding="async">
         </picture>
         <picture class="theme-dark">
           <source type="image/avif" srcset="screenshots/connect-dark-1440.avif 1440w, screenshots/connect-dark-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
           <source type="image/webp" srcset="screenshots/connect-dark-1440.webp 1440w, screenshots/connect-dark-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
-          <img src="screenshots/connect-dark-1440.png" width="1440" height="900" alt="The new connection form with a pasted connection string; the app recognized the hosted service and turned TLS on." loading="lazy" decoding="async">
+          <img src="screenshots/connect-dark-1440.png" width="1440" height="900" alt="The new connection form after pasting a Supabase connection string: name, host, port, user and database filled in, the service named under the host, and TLS turned on (the dot on the SSL / TLS tab)." loading="lazy" decoding="async">
         </picture>
         <figcaption>A pasted connection string fills the form.</figcaption>
       </figure>
@@ -229,12 +231,12 @@
         <picture class="theme-light">
           <source type="image/avif" srcset="screenshots/diagram-1440.avif 1440w, screenshots/diagram-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
           <source type="image/webp" srcset="screenshots/diagram-1440.webp 1440w, screenshots/diagram-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
-          <img src="screenshots/diagram-1440.png" width="1440" height="900" alt="The ER diagram of the demo database: eight tables with keys and crow’s-foot relationships." loading="lazy" decoding="async">
+          <img src="screenshots/diagram-1440.png" width="1440" height="900" alt="The ER diagram of the demo database: seven tables and a view, with keys and crow’s-foot relationships." loading="lazy" decoding="async">
         </picture>
         <picture class="theme-dark">
           <source type="image/avif" srcset="screenshots/diagram-dark-1440.avif 1440w, screenshots/diagram-dark-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
           <source type="image/webp" srcset="screenshots/diagram-dark-1440.webp 1440w, screenshots/diagram-dark-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
-          <img src="screenshots/diagram-dark-1440.png" width="1440" height="900" alt="The ER diagram of the demo database: eight tables with keys and crow’s-foot relationships." loading="lazy" decoding="async">
+          <img src="screenshots/diagram-dark-1440.png" width="1440" height="900" alt="The ER diagram of the demo database: seven tables and a view, with keys and crow’s-foot relationships." loading="lazy" decoding="async">
         </picture>
         <figcaption>The ER diagram of a live database.</figcaption>
       </figure>
@@ -255,12 +257,12 @@
         <picture class="theme-light">
           <source type="image/avif" srcset="screenshots/migration-1440.avif 1440w, screenshots/migration-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
           <source type="image/webp" srcset="screenshots/migration-1440.webp 1440w, screenshots/migration-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
-          <img src="screenshots/migration-1440.png" width="1440" height="900" alt="The migration dialog: the changes, the checks against current data, and the SQL script with a Rollback tab." loading="lazy" decoding="async">
+          <img src="screenshots/migration-1440.png" width="1440" height="900" alt="The migration dialog: two changes, a warning that orders.shipped_at becomes NOT NULL, a check that finds 535 rows where it is NULL, and the SQL script with a Rollback tab." loading="lazy" decoding="async">
         </picture>
         <picture class="theme-dark">
           <source type="image/avif" srcset="screenshots/migration-dark-1440.avif 1440w, screenshots/migration-dark-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
           <source type="image/webp" srcset="screenshots/migration-dark-1440.webp 1440w, screenshots/migration-dark-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
-          <img src="screenshots/migration-dark-1440.png" width="1440" height="900" alt="The migration dialog: the changes, the checks against current data, and the SQL script with a Rollback tab." loading="lazy" decoding="async">
+          <img src="screenshots/migration-dark-1440.png" width="1440" height="900" alt="The migration dialog: two changes, a warning that orders.shipped_at becomes NOT NULL, a check that finds 535 rows where it is NULL, and the SQL script with a Rollback tab." loading="lazy" decoding="async">
         </picture>
         <figcaption>A migration, checked against the data before it runs.</figcaption>
       </figure>
@@ -291,12 +293,12 @@
         <picture class="theme-light">
           <source type="image/avif" srcset="screenshots/mcp-settings-1440.avif 1440w, screenshots/mcp-settings-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
           <source type="image/webp" srcset="screenshots/mcp-settings-1440.webp 1440w, screenshots/mcp-settings-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
-          <img src="screenshots/mcp-settings-1440.png" width="1440" height="900" alt="Settings, MCP server: buttons that add DB Mastermind to Claude Code, Claude Desktop, Codex, Cursor and VS Code." loading="lazy" decoding="async">
+          <img src="screenshots/mcp-settings-1440.png" width="1440" height="900" alt="Settings, MCP server: buttons that add DB Mastermind to Claude Code, Claude Desktop, Codex, Cursor and VS Code, and the command for each agent with a Copy button." loading="lazy" decoding="async">
         </picture>
         <picture class="theme-dark">
           <source type="image/avif" srcset="screenshots/mcp-settings-dark-1440.avif 1440w, screenshots/mcp-settings-dark-2880.avif 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
           <source type="image/webp" srcset="screenshots/mcp-settings-dark-1440.webp 1440w, screenshots/mcp-settings-dark-2880.webp 2880w" sizes="(min-width: 800px) 720px, calc(100vw - 48px)">
-          <img src="screenshots/mcp-settings-dark-1440.png" width="1440" height="900" alt="Settings, MCP server: buttons that add DB Mastermind to Claude Code, Claude Desktop, Codex, Cursor and VS Code." loading="lazy" decoding="async">
+          <img src="screenshots/mcp-settings-dark-1440.png" width="1440" height="900" alt="Settings, MCP server: buttons that add DB Mastermind to Claude Code, Claude Desktop, Codex, Cursor and VS Code, and the command for each agent with a Copy button." loading="lazy" decoding="async">
         </picture>
         <figcaption>Adding the MCP server to an agent.</figcaption>
       </figure>

@@ -308,11 +308,21 @@ h3 { font-size: 18px; line-height: 1.25; font-weight: 600; }
 .seg.os button[aria-pressed="true"] { background: var(--chrome); box-shadow: inset 0 0 0 1px var(--hair); }
 .mcp-where { margin: 14px 0 8px; color: var(--slate); }
 .mcp-note { font-size: 14px; color: var(--slate); margin: 10px 0 12px; }
-.code { display: grid; grid-template-columns: minmax(0, 1fr); }
-.code .copy { justify-self: end; margin: 0 0 6px; }
+/* A command: it scrolls sideways inside its block, never wraps inside a word. The copy button (shown by site.js)
+   is a column of its own at the right edge, so no character ever scrolls under it; at the top it sits centred on
+   a one-line command and at the top right of a longer one. */
 pre { margin: 0; padding: 14px 16px; background: var(--chrome); border: 1px solid var(--hair); border-radius: 6px; font-size: 14px; line-height: 1.5; overflow-x: auto; white-space: pre; color: var(--ink); }
-.copy { font: 600 13px/1 var(--font); color: var(--ink); background: var(--node); border: 1px solid var(--rule); border-radius: 6px; padding: 7px 10px; cursor: pointer; }
-.copy:hover { background: var(--hover); }
+.code { display: flex; align-items: stretch; background: var(--chrome); border: 1px solid var(--hair); border-radius: 6px; }
+.code pre { flex: 1 1 auto; min-width: 0; background: none; border: 0; border-radius: 6px 0 0 6px; }
+.copy { flex: none; display: grid; justify-items: center; align-content: start; width: 44px; padding: 8px 0 0; margin: 0; background: none; border: 0; border-left: 1px solid var(--hair); border-radius: 0 6px 6px 0; color: var(--slate); cursor: pointer; }
+.copy svg { width: 32px; height: 32px; padding: 8px; border-radius: 6px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.copy:hover { color: var(--ink); }
+.copy:hover svg { background: var(--hover); }
+.copy:focus-visible { outline: none; }
+.copy:focus-visible svg { outline: 2px solid var(--accent); outline-offset: -1px; }
+.copy .g-check, .copy.done .g-copy { display: none; }
+.copy.done .g-check { display: block; color: var(--accent-text); }
+.os-cols .copy { padding-top: 7px; }
 .npx { margin-top: 28px; }
 .npx .code { margin: 10px 0; }
 .tools { margin-top: 24px; color: var(--slate); }
@@ -335,13 +345,16 @@ pre { margin: 0; padding: 14px 16px; background: var(--chrome); border: 1px soli
 .os-cols pre { font-size: 13px; }
 @media (min-width: 1000px) { .os-cols { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
-/* Make it yours */
-.swatches { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 20px; }
+/* Make it yours: six accent dots, then six looks drawn as tiny windows (page, title bar, accent button). */
+.swatches { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 28px; margin-top: 20px; }
+.sw-group { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .sw { width: 32px; height: 32px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12); }
-.sw[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 3px; }
 .sw-violet { background: #6d4aff; } .sw-blue { background: #2563eb; } .sw-teal { background: #0f8f8a; }
 .sw-green { background: #16803c; } .sw-orange { background: #c2410c; } .sw-rose { background: #d6336c; }
-.sw-look { margin-left: 16px; background: #000; box-shadow: inset 0 0 0 1px #33ff66; }
+.sw-look { width: 36px; height: 28px; padding: 0; border: 1px solid var(--rule); border-radius: 5px; cursor: pointer;
+  background: linear-gradient(var(--bar), var(--bar)) top / 100% 7px no-repeat, linear-gradient(var(--acc), var(--acc)) right 4px bottom 4px / 12px 6px no-repeat, var(--page); }
+.sw[aria-pressed="true"], .sw-look[aria-pressed="true"] { outline: 2px solid var(--ink); outline-offset: 3px; }
+.sw:focus-visible, .sw-look:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .look-hint { margin-top: 14px; }
 
 .links { list-style: none; padding: 0; margin: 20px 0 0; display: flex; flex-wrap: wrap; gap: 8px 24px; font-weight: 600; }
@@ -375,10 +388,23 @@ pre { margin: 0; padding: 14px 16px; background: var(--chrome); border: 1px soli
 .notfound .grid thead th { font-weight: 400; color: var(--ink); }
 .notfound .grid td { color: var(--slate); }
 
-/* --- Looks (the swatch after the six accents): the app's own Green terminal and Retro 2001 tokens ------------ */
+/* --- The app's six looks (Settings → Appearance), tried from "Make it yours" ------------------------------------
+   Each maps the app's tokens (styles.css, :root.look-*) onto the site's: --bg → paper, --bg-subtle → chrome,
+   --bg-elevated → node, --border(-strong) → hair / rule, --text(-muted/-faint) → ink / slate / faint,
+   --warning → key, --info → link. Only the touches the app itself has are added: title-bar colors, the
+   terminal's glow, a look's own font. Dark looks show the dark screenshots, light ones the light. */
+:root.look-retro2001 {
+  --ink: #000000; --slate: #3d3d3d; --faint: #4f4f4f;
+  --paper: #ece9d8; --chrome: #e3dfca; --node: #fdfcf6;
+  --rule: #8f8b75; --hair: #c4c0aa; --dots: #d2cdb6;
+  --accent: #245edb; --accent-text: #1c4fbf; --accent-fg: #ffffff; --accent-soft: rgba(36, 94, 219, 0.14);
+  --key: #8f5a0a; --link: #00639c; --hover: rgba(49, 106, 197, 0.1);
+  --font: Tahoma, "Segoe UI", Verdana, sans-serif;
+  color-scheme: light;
+}
 :root.look-terminal {
   --ink: #33ff66; --slate: #26c24d; --faint: #26c24d;
-  --paper: #000000; --chrome: #050d07; --node: #000000;
+  --paper: #000000; --chrome: #050d07; --node: #06100a;
   --rule: #1a8a3c; --hair: #0f5f28; --dots: #0f3d1c;
   --accent: #33ff66; --accent-text: #66ff8c; --accent-fg: #000000; --accent-soft: rgba(51, 255, 102, 0.14);
   --key: #ffd75f; --link: #5fd7ff; --hover: rgba(51, 255, 102, 0.08);
@@ -386,27 +412,61 @@ pre { margin: 0; padding: 14px 16px; background: var(--chrome); border: 1px soli
   --font: var(--mono);
   color-scheme: dark;
 }
-:root.look-terminal body { text-shadow: 0 0 4px rgba(51, 255, 102, 0.35); }
-:root.look-terminal .shot img, :root.look-terminal .brand img { filter: grayscale(1) sepia(1) hue-rotate(70deg) saturate(2.2) brightness(0.9); }
-:root.look-terminal .sw-look { box-shadow: inset 0 0 0 2px #33ff66; }
-:root.look-retro {
-  --ink: #000000; --slate: #3d3d3d; --faint: #4f4f4f;
-  --paper: #ece9d8; --chrome: #e3dfca; --node: #fdfcf6;
-  --rule: #8f8b75; --hair: #c4c0aa; --dots: #d2cdb6;
-  --accent: #245edb; --accent-text: #1c4fbf; --accent-fg: #ffffff; --accent-soft: rgba(36, 94, 219, 0.14);
-  --key: #8b1a1a; --link: #00639c; --hover: rgba(49, 106, 197, 0.1);
-  --font: Tahoma, "Segoe UI", Verdana, sans-serif;
+:root.look-halloween {
+  --ink: #f3e6d0; --slate: #c7b293; --faint: #a08a6b;
+  --paper: #14100c; --chrome: #1d1610; --node: #221a12;
+  --rule: #55391f; --hair: #3a2a1a; --dots: #2e2216;
+  --accent: #ff7518; --accent-text: #ff8c3f; --accent-fg: #140b02; --accent-soft: rgba(255, 117, 24, 0.16);
+  --key: #f2d43c; --link: #a77bff; --hover: rgba(255, 117, 24, 0.08);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.5); --shadow-shot: 0 1px 3px rgba(0, 0, 0, 0.5), 0 10px 32px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+:root.look-christmas {
+  --ink: #2a1d14; --slate: #6b5847; --faint: #6f5b4b;
+  --paper: #fffdf9; --chrome: #f6f1e9; --node: #ffffff;
+  --rule: #cdbd9f; --hair: #e2d7c3; --dots: #e2d7c3;
+  --accent: #17602f; --accent-text: #124d26; --accent-fg: #ffffff; --accent-soft: rgba(23, 96, 47, 0.1);
+  --key: #8f5a0a; --link: #8a6508; --hover: rgba(15, 23, 42, 0.05);
   color-scheme: light;
 }
-:root.look-retro .top { background-color: #1f5fd6; background-image: linear-gradient(#3a80f3, #1f5fd6); border-bottom-color: #1941a5; }
-:root.look-retro .top .brand, :root.look-retro .top .nav a, :root.look-retro .top .menu summary { color: #ffffff; }
-:root.look-retro .top .nav a:hover { background: rgba(255, 255, 255, 0.16); }
-:root.look-retro .top .theme-toggle, :root.look-retro .top .menu summary { border-color: rgba(255, 255, 255, 0.5); }
-:root.look-retro .top .theme-toggle button { color: #ffffff; }
-:root.look-retro .btn.primary { background-color: #2f7d24; background-image: linear-gradient(#3c9a35, #2f7d24); border-color: #2a6e20; color: #ffffff; }
-:root.look-retro .node-h { background-color: #1f5fd6; background-image: linear-gradient(#3a80f3, #1f5fd6); }
-:root.look-retro .sw-look { box-shadow: inset 0 0 0 2px #245edb; background: #ece9d8; }
-:root.look-retro .shot img { border-radius: 0; }
+:root.look-medieval {
+  --ink: #3b2a17; --slate: #6b5434; --faint: #6a5435;
+  --paper: #f8f0dc; --chrome: #efe2c3; --node: #fbf5e6;
+  --rule: #a8895a; --hair: #cfb88a; --dots: #e2cfa6;
+  --accent: #8b5a2b; --accent-text: #74481f; --accent-fg: #fff6e0; --accent-soft: rgba(139, 90, 43, 0.14);
+  --key: #85600a; --link: #2f6b70; --hover: rgba(139, 90, 43, 0.09);
+  --font: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  color-scheme: light;
+}
+:root.look-fantasy {
+  --ink: #e8dcc0; --slate: #b3a58a; --faint: #958a76;
+  --paper: #0f0d14; --chrome: #17141f; --node: #1c1826;
+  --rule: #5a4a2a; --hair: #3a2f4a; --dots: #2a2236;
+  --accent: #c9a227; --accent-text: #ddb63a; --accent-fg: #1a1405; --accent-soft: rgba(201, 162, 39, 0.16);
+  --key: #f0b445; --link: #3fa7a0; --hover: rgba(201, 162, 39, 0.08);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.5); --shadow-shot: 0 1px 3px rgba(0, 0, 0, 0.5), 0 10px 32px rgba(0, 0, 0, 0.4);
+  --font: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  color-scheme: dark;
+}
+
+/* Their characteristic touches, as in the app. */
+:root.look-terminal body { text-shadow: 0 0 4px rgba(51, 255, 102, 0.35); }
+:root.look-terminal .shot img, :root.look-terminal .brand img { filter: grayscale(1) sepia(1) hue-rotate(70deg) saturate(2.2) brightness(0.9); }
+/* Title bars: blue (Retro 2001), holly red (Christmas), wood (Medieval); a gold rule under the header (Fantasy). */
+:root.look-retro2001 .top { background-color: #1f5fd6; background-image: linear-gradient(#3a80f3, #1f5fd6); border-bottom-color: #1941a5; --band-fg: #ffffff; }
+:root.look-christmas .top { background-color: #a91f17; border-bottom-color: #8a1912; --band-fg: #ffffff; }
+:root.look-medieval .top { background-color: #5e3c1c; background-image: linear-gradient(#7a4f27, #5e3c1c); border-bottom-color: #4a2f15; --band-fg: #f8e7c2; }
+:root:is(.look-retro2001, .look-christmas, .look-medieval) .top :is(.brand, .nav a, .menu summary, .top-in > .theme-toggle button) { color: var(--band-fg); }
+:root:is(.look-retro2001, .look-christmas, .look-medieval) .top .nav a:hover { background: rgba(255, 255, 255, 0.16); }
+:root:is(.look-retro2001, .look-christmas, .look-medieval) .top :is(.top-in > .theme-toggle, .menu summary) { border-color: rgba(255, 255, 255, 0.5); }
+:root:is(.look-retro2001, .look-christmas, .look-medieval) .top .theme-toggle button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.18); box-shadow: none; }
+:root.look-fantasy .top { border-bottom: 1px solid #c9a227; }
+:root.look-retro2001 .shot img { border-radius: 0; }
+/* Screenshots follow the look's own light or dark. */
+:root:is(.look-terminal, .look-halloween, .look-fantasy) .shot picture.theme-dark { display: block; }
+:root:is(.look-terminal, .look-halloween, .look-fantasy) .shot picture.theme-light { display: none; }
+:root:is(.look-retro2001, .look-christmas, .look-medieval) .shot picture.theme-light { display: block; }
+:root:is(.look-retro2001, .look-christmas, .look-medieval) .shot picture.theme-dark { display: none; }
 
 @media print {
   .top, .foot, .hero-shot, .dg-lines, .swatches, .copy, .dg-reset { display: none !important; }
