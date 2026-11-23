@@ -393,6 +393,22 @@ textarea,
 
 /* Diagram connection points show on the table under the pointer (and the selected one), not on every row. */
 .react-flow__node:not(:hover):not(.selected) .react-flow__handle { opacity: 0; }
+/* React Flow's own controls, minimap, edge labels and selection box in the appearance's colours (its defaults are
+   white and blue). Set on :root: .react-flow sets only the -default variables, which these override. */
+:root {
+  --xy-controls-button-background-color: var(--bg-elevated);
+  --xy-controls-button-background-color-hover: var(--bg-muted);
+  --xy-controls-button-color: var(--text-muted);
+  --xy-controls-button-color-hover: var(--text);
+  --xy-controls-button-border-color: var(--border);
+  --xy-controls-box-shadow: 0 0 0 1px var(--border);
+  --xy-minimap-background-color: var(--bg-subtle);
+  --xy-edge-label-background-color: var(--bg-elevated);
+  --xy-edge-label-color: var(--text);
+  --xy-selection-background-color: var(--accent-soft);
+  --xy-selection-border: 1px dotted var(--accent);
+  --xy-attribution-background-color: transparent;
+}
 
 /* On a colored title bar, accent-colored icons (the AI sparkle) take the bar's text color. */
 :root:is(.look-retro2001, .look-christmas, .look-medieval) :is(.drag-region, .title-band) .text-accent:not([role='tab'][aria-selected='true'] *) { color: inherit; }

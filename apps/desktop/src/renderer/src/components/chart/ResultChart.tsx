@@ -15,7 +15,8 @@ export interface ChartConfig {
 const MAX_SERIES = 8
 const BASE_PAD = { top: 16, right: 16, bottom: 36, left: 56 }
 
-const seriesColor = (i: number) => `var(--series-${(i % MAX_SERIES) + 1})`
+// The appearance's own series (lib/chart-palette.ts sets --chart-N); the fixed palette until it has.
+const seriesColor = (i: number) => `var(--chart-${(i % MAX_SERIES) + 1}, var(--series-${(i % MAX_SERIES) + 1}))`
 
 function numeric(v: CellValue): number | null {
   if (v === null) return null

@@ -1,6 +1,6 @@
 // Screens for a design review, in several looks: home, query with results and an open transaction, a table with an
 // edit, the ER diagram, a new model, Settings (General, Appearance), the connection form, the AI panel, the command
-// palette and the close-tab question. `node e2e/review-shots.mjs <dir>` → <look>-<nn>.png and a sheet <look>.png.
+// palette, the close-tab question and a dashboard with charts. `node e2e/review-shots.mjs <dir>` → <look>-<nn>.png and a sheet <look>.png.
 import { _electron as electron } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync } from 'node:fs'
@@ -32,11 +32,57 @@ const settings = async (section) => {
   await win.waitForTimeout(300)
 }
 let n = 0
-const shot = async (name) => win.screenshot({ path: `${out}/${name}-${String(++n).padStart(2, '0')}.png` })
+/**
+ * SWEEP=1: elements of the screen that keep a default colour (white, the default violet, the default chart blue)
+ * where the look has its own, by computed values (not class names).
+ */
+const found = new Map()
+async function sweep(look) {
+  const hits = await win.evaluate(() => {
+    // Colours as the browser computes them (the build may write #fff for #ffffff).
+    const probe = document.createElement('div')
+    document.body.append(probe)
+    const resolve = (value) => {
+      probe.style.color = ''
+      probe.style.color = value
+      return getComputedStyle(probe).color
+    }
+    const [bg, elevated, subtle, accent] = ['--bg', '--bg-elevated', '--bg-subtle', '--accent'].map((v) => resolve(`var(${v})`))
+    const defaults = new Map()
+    if (![bg, elevated, subtle].includes('rgb(255, 255, 255)')) for (const w of ['rgb(255, 255, 255)', 'rgb(254, 254, 254)']) defaults.set(w, 'white')
+    if (![resolve('#6d4aff'), resolve('#8b6dff')].includes(accent)) for (const v of ['#6d4aff', '#8b6dff', '#5b37f0']) defaults.set(resolve(v), 'default violet')
+    for (const v of ['#2a78d6', '#3987e5']) defaults.set(resolve(v), 'default chart blue')
+    probe.remove()
+    defaults.delete('')
+    const out = []
+    for (const el of document.querySelectorAll('body *')) {
+      if (!(el instanceof HTMLElement || el instanceof SVGElement)) continue
+      const r = el.getBoundingClientRect()
+      if (!r.width || !r.height) continue
+      const s = getComputedStyle(el)
+      if (s.visibility === 'hidden' || s.display === 'none' || Number(s.opacity) === 0) continue
+      for (const [prop, value] of [['background', s.backgroundColor], ['text', el.textContent?.trim() ? s.color : ''], ['border', s.borderTopWidth !== '0px' && s.borderTopStyle !== 'none' ? s.borderTopColor : ''], ['fill', s.fill], ['stroke', s.stroke], ['outline', s.outlineStyle !== 'none' ? s.outlineColor : '']]) {
+        const what = value ? defaults.get(value) : undefined
+        if (!what) continue
+        const name = `${el.tagName.toLowerCase()}${typeof el.className === 'string' && el.className ? `.${el.className.split(/\s+/).filter((c) => !/[[:\]/]/.test(c)).slice(0, 3).join('.')}` : ''}${el.getAttribute('aria-label') ? `[${el.getAttribute('aria-label')}]` : ''}`
+        out.push(`${prop} ${what}: ${name}`)
+      }
+    }
+    return [...new Set(out)]
+  })
+  for (const h of hits) found.set(h, [...(found.get(h) ?? []), `${look}-${String(n).padStart(2, '0')}`])
+}
+const shot = async (name) => {
+  await win.screenshot({ path: `${out}/${name}-${String(++n).padStart(2, '0')}.png` })
+  if (process.env.SWEEP) await sweep(name)
+}
 try {
   await win.waitForTimeout(800)
   await win.getByRole('button', { name: /demo database|ukázkovou/ }).first().click()
-  await win.waitForTimeout(2000)
+  // The demo opens on its orders table: the script's statements go into a query tab of their own.
+  await win.getByPlaceholder(/Filter .+ tables|Filtrovat/).waitFor({ timeout: 20000 })
+  await win.keyboard.press(`${mod}+t`)
+  await win.waitForTimeout(800)
   await win.locator('.cm-content:visible').first().click()
   await win.keyboard.press(`${mod}+a`)
   await win.keyboard.insertText("BEGIN;\nUPDATE products SET price = price + 1 WHERE id = 1;\n-- top products\nSELECT p.id, p.name, p.price, c.name AS category FROM products p JOIN categories c ON c.id = p.category_id ORDER BY p.price DESC LIMIT 30;")
@@ -57,6 +103,25 @@ try {
   await win.locator('.cm-content:visible').first().click().catch(() => {})
   await win.keyboard.insertText('Table shop.customer {\n  id bigint [pk]\n  name text [not null]\n  email text\n}\n\nTable shop.invoice {\n  id bigint [pk]\n  customer_id bigint [ref: > shop.customer.id]\n  total numeric(12,2)\n}\n')
   await win.waitForTimeout(1500)
+  // A dashboard with charts of several series (bars and lines) and a single value: the series take the look's colours.
+  {
+    const connectionId = await win.evaluate(() => window.mastermind.api.listConnections().then((l) => l[0].id))
+    const by = 'FROM products p JOIN categories c ON c.id = p.category_id GROUP BY c.name ORDER BY c.name'
+    await win.evaluate((d) => window.mastermind.api.saveDashboard(d), {
+      connectionId,
+      name: 'Looks review',
+      refreshSeconds: 0,
+      tiles: [
+        { id: 't1', title: 'Prices by category', span: 2, chart: { kind: 'bar', x: 0, ys: [1, 2, 3, 4, 5, 6] }, sql: `SELECT c.name AS category, count(*) AS items, min(p.price) AS min_price, avg(p.price) AS avg_price, max(p.price) AS max_price, sum(p.price) / 10 AS total_tenth, count(*) * 2 AS double_items ${by}` },
+        { id: 't2', title: 'Price lines', span: 1, chart: { kind: 'line', x: 0, ys: [1, 2, 3] }, sql: 'SELECT id, price, price * 0.8 AS sale, price * 1.25 AS list FROM products ORDER BY id LIMIT 20' },
+        { id: 't3', title: 'Products', span: 1, chart: null, sql: 'SELECT count(*) AS products FROM products' },
+      ],
+    })
+    await tab(/(Query|Dotaz) 1/).click()
+    await palette('Dashboards')
+    await win.locator('[data-testid="dashboard-card"]', { hasText: 'Looks review' }).first().click()
+    await win.waitForTimeout(1500)
+  }
 
   for (const name of looks) {
     n = 0
@@ -102,6 +167,9 @@ try {
     await shot(name) // 11 connection form
     await win.keyboard.press('Escape')
     await win.waitForTimeout(200)
+    await tab(/Looks review/).click()
+    await win.waitForTimeout(800)
+    await shot(name) // 12 dashboard (chart series, single value)
   }
   execFileSync('python3', ['-I', '-c', `
 import sys, glob
@@ -118,6 +186,7 @@ for look in sys.argv[2].split(','):
     sheet.save(f'{out}/{look}.png')
 `, out, looks.join(',')])
   console.log('errors:', errors.length ? errors : 'none')
+  if (process.env.SWEEP) for (const [hit, where] of found) console.log(`SWEEP ${hit}  (${where.slice(0, 6).join(' ')}${where.length > 6 ? ` +${where.length - 6}` : ''})`)
 } catch (err) {
   await win.screenshot({ path: `${out}/failure.png` }).catch(() => {})
   throw err
@@ -125,5 +194,13 @@ for look in sys.argv[2].split(','):
   await app.evaluate(({ dialog }) => {
     dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false })
   }).catch(() => {})
-  await app.close()
+  // The new model is unsaved and the query's transaction open: quitting asks about both, and the review discards them.
+  let closed = false
+  const closing = app.close().then(() => (closed = true))
+  for (let i = 0; i < 4 && !closed; i++) {
+    await win.getByRole('dialog').getByRole('button', { name: /^(Discard changes|Zahodit změny|Roll back|Rollback|Vrátit zpět|Vrátit)$/ }).first().click({ timeout: 3000 }).catch(() => {})
+  }
+  // (A question nobody can answer from here: the shots are taken, the app is ended.)
+  await Promise.race([closing, new Promise((r) => setTimeout(r, 15000))])
+  if (!closed) app.process().kill()
 }

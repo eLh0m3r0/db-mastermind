@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { AppInfo, AppSettings } from '@shared/api'
 import { api, bridge } from '@/lib/api'
 import { lookById } from '@/lib/looks'
+import { applyChartPalette } from '@/lib/chart-palette'
 
 interface SettingsState {
   settings?: AppSettings
@@ -29,6 +30,8 @@ function applyTheme(settings: AppSettings | undefined): boolean {
   // A look with its own palette ignores contrast (its colors are chosen together).
   document.documentElement.classList.toggle('high-contrast', look.dark === undefined && (contrast === 'high' || (contrast === 'system' && moreContrast.matches)))
   document.documentElement.style.setProperty('--editor-font-size', `${settings?.editorFontSize ?? 13}px`)
+  // Chart series follow the appearance: computed from the accent and backgrounds just set (lib/chart-palette.ts).
+  applyChartPalette(root, dark)
   return dark
 }
 
