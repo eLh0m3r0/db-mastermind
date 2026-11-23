@@ -206,7 +206,9 @@ relations:
 `status` P = paid, S = shipped, X = cancelled (excluded from revenue).
 ```
 
-Dashboards of the connection are files `dashboards/<name>.md`: a `# ` title, then per tile a `## ` heading and one
+New dashboards and saved queries stay on your computer; *Share with the team* puts one into the knowledge base:
+saved queries as `queries/<folder>/<name>.sql` (a `-- description:` line, then the SQL), dashboards as
+`dashboards/<name>.md`: a `# ` title, then per tile a `## ` heading and one
 fenced `sql` block (one read-only query; tiles run as guarded reads). Options on the block: `chart=bar|line|scatter`
 with `x=` and `y=` naming result columns (`#2` for a column without a name), `wide` for the full width; front matter
 `refresh: <seconds>` sets auto-refresh. Text between tiles is kept. The assistant writes them with `write_knowledge`.
