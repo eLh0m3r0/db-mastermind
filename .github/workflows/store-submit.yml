@@ -8,9 +8,6 @@ name: Store submit
 # Not part of release.yml on purpose: the owner submits to the Store after his own testing.
 
 on:
-  # TEMPORARY (removed in the next commit): workflow_dispatch needs the file on main, so the first plan runs on push.
-  push:
-    branches: [store-submit]
   workflow_dispatch:
     inputs:
       tag:
@@ -51,7 +48,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ inputs.listing || (github.event_name == 'push' && github.sha) || steps.tag.outputs.tag }}
+          ref: ${{ inputs.listing || steps.tag.outputs.tag }}
           path: release
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -74,9 +71,9 @@ jobs:
           MSSTORE_IDENTITY_NAME: ${{ vars.MSSTORE_IDENTITY_NAME }}
           MSSTORE_PUBLISHER: ${{ vars.MSSTORE_PUBLISHER }}
           GH_TOKEN: ${{ github.token }}
-          MODE: ${{ inputs.mode || 'plan' }}
+          MODE: ${{ inputs.mode }}
           TAG: ${{ steps.tag.outputs.tag }}
-          LISTING: ${{ inputs.listing || (github.event_name == 'push' && github.sha) || '' }}
+          LISTING: ${{ inputs.listing }}
         run: |
           set +x
           echo "Texts and screenshots from ${LISTING:-$TAG} ($(git -C release rev-parse --short HEAD))"
