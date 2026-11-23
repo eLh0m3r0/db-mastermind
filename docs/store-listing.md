@@ -102,8 +102,8 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 13. Opens DeZign for Databases (and saves back), MySQL Workbench, drawDB, Mermaid and Prisma models; exports Prisma, Drizzle, SQLAlchemy and TypeScript
 14. Transactions you can see, with manual commit per connection
 15. Server activity: sessions, slowest queries, storage and unused indexes
-16. Copy tables between databases and run a script on several connections
-17. Passwords from 1Password, Bitwarden or Vault; SSH jump hosts
+16. Copy tables between databases, run a script on several connections; passwords from 1Password, Bitwarden or Vault; SSH jump hosts
+17. Customizable appearance and skins, dark mode, and compact mode
 18. PostgreSQL in depth: every function in completions, partitions, triggers, row-level security, server messages
 19. Charts from any result, and dashboards you keep for yourself or share with your team
 20. AI permissions per connection: off, schema only, read, or changes after your confirmation
@@ -211,8 +211,8 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 13. Otevře modely z DeZign for Databases (i uloží zpět), MySQL Workbench, drawDB, Mermaid a Prisma; exportuje Prisma, Drizzle, SQLAlchemy a TypeScript
 14. Transakce pod kontrolou, ruční potvrzování pro každé připojení
 15. Aktivita serveru: relace, nejnáročnější dotazy, úložiště a nepoužívané indexy
-16. Kopírování tabulek mezi databázemi a skript na více připojeních
-17. Hesla z 1Password, Bitwardenu nebo Vaultu; SSH přes jump host
+16. Kopírování tabulek mezi databázemi, skript na více připojeních; hesla z 1Password, Bitwardenu nebo Vaultu; SSH přes jump host
+17. Konfigurovatelný vzhled a skiny, dark mode a kompaktní režim
 18. PostgreSQL do hloubky: všechny funkce v našeptávači, partitions, triggery, zabezpečení řádků, zprávy serveru
 19. Grafy z jakéhokoli výsledku a dashboardy jen pro vás nebo sdílené s týmem
 20. Oprávnění AI pro každé připojení: vypnuto, jen schéma, čtení, nebo změny po vašem potvrzení
