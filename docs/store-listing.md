@@ -108,13 +108,13 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 19. Charts from any result, and dashboards you keep for yourself or share with your team
 20. AI permissions per connection: off, schema only, read, or changes after your confirmation
 
-**Search terms** (7): `database client` · `SQL editor` · `PostgreSQL` · `SQL Server` · `data modeling` · `ER diagram` · `database AI`
+**Search terms** (7): `SQL editor` · `PostgreSQL` · `SQL Server` · `ER diagram` · `database AI` · `db client` · `data modeling`
 
 **What's new in this version** (1.5.4, since 1.4.0, the last version in the Store; at most 1500 characters): New since 1.4: drop a project's .env, docker-compose file or folder on the window and its databases become connections; Supabase, Neon, Amazon RDS, Azure and Google Cloud SQL are recognised. Open models from MySQL Workbench, drawDB, Mermaid and Prisma, and export a model or a live database as Prisma, Drizzle, SQLAlchemy or TypeScript. Dashboards are in the Saved tab; dashboards and saved queries stay on your computer until you share them with your team, and the knowledge base shows notes, dashboards, queries and AI tools apart. Charts follow your accent color or look. AI on a model works without a database. Easier at first sight: the + for a new tab is always in view, tabs can scroll or shrink, a tab's menu closes the tabs to its left or right, errors say what to do, and unsaved changes in a table are never dropped without a question. Safer: SQL from the AI assistant, from agents and on read-only connections runs behind a guard the database itself enforces, AI permissions are checked at every step, and files from other people are read with limits and never run.
 
-**Copyright and trademark info:** © 2026 Václav Mudra. MIT license. DeZign for Databases is a trademark of Datanamic; DB Mastermind is not affiliated with or endorsed by Datanamic.
+**Copyright and trademark info:** © 2026 Václav Mudra
 
-**Additional license terms:** Open source under the MIT license: https://github.com/eLh0m3r0/db-mastermind/blob/main/LICENSE
+**Additional license terms:** Open source under the MIT license. DeZign for Databases is a trademark of Datanamic; DB Mastermind is not affiliated with or endorsed by Datanamic.
 
 **Developed by:** Václav Mudra
 
@@ -217,11 +217,13 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 19. Grafy z jakéhokoli výsledku a dashboardy jen pro vás nebo sdílené s týmem
 20. Oprávnění AI pro každé připojení: vypnuto, jen schéma, čtení, nebo změny po vašem potvrzení
 
-**Search terms:** `databázový klient` · `SQL editor` · `PostgreSQL` · `SQL Server` · `datové modelování` · `ER diagram` · `databáze AI`
+**Search terms:** `SQL editor` · `PostgreSQL` · `SQL Server` · `ER diagram` · `databáze AI` · `datový model` · `databázový klient`
 
 **What's new in this version:** Novinky od verze 1.4: přetáhněte do okna soubor .env, docker-compose nebo složku projektu a jejich databáze se stanou připojeními; Supabase, Neon, Amazon RDS, Azure a Google Cloud SQL aplikace pozná. Modely z MySQL Workbench, drawDB, Mermaid a Prisma otevřete a model nebo živou databázi vyexportujete jako Prisma, Drizzle, SQLAlchemy nebo TypeScript. Dashboardy jsou v záložce Uložené; dashboardy i uložené dotazy zůstávají ve vašem počítači, dokud je nenasdílíte týmu, a znalostní báze ukazuje zvlášť poznámky, dashboardy, dotazy a nástroje AI. Grafy se řídí zvolenou barvou nebo vzhledem. AI nad modelem funguje i bez databáze. Srozumitelnější na první pohled: tlačítko + pro novou záložku je vždy vidět, záložky se mohou posouvat nebo zužovat, nabídka záložky zavře záložky vlevo nebo vpravo, chyby říkají, co dělat, a neuložené změny v tabulce se nikdy nezahodí bez dotazu. Bezpečnější: SQL od AI asistenta, od agentů a na připojeních jen pro čtení hlídá sama databáze, oprávnění AI se ověřují při každém kroku a soubory od cizích lidí se čtou s limity a nikdy se nespouštějí.
 
-**Copyright and trademark info:** © 2026 Václav Mudra. MIT license. DeZign for Databases is a trademark of Datanamic; DB Mastermind is not affiliated with or endorsed by Datanamic.
+**Copyright and trademark info:** © 2026 Václav Mudra
+
+**Additional license terms:** Open source pod MIT licencí. DeZign for Databases is a trademark of Datanamic; DB Mastermind is not affiliated with or endorsed by Datanamic.
 
 **Screenshots:** the same files; captions:
 
