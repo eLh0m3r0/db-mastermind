@@ -32,5 +32,37 @@ From the next release on, `DB-Mastermind-<version>-store.appx` is attached to th
 4. **Submit to the Store**. Certification usually takes a few days. Store installs update through the Store; the
    app's own updater is off for them.
 
-Submissions can later be automated from GitHub Actions with the Microsoft Store CLI (`msstore`), using an Entra ID
-app registration's credentials as repository secrets.
+## Submitting from GitHub
+
+After testing a release, one workflow sends it to the Store: first see what would change, then send it.
+
+```bash
+gh workflow run store-submit.yml -f tag=v1.5.4 -f mode=plan     # prints the changes; sends nothing
+gh workflow run store-submit.yml -f tag=v1.5.4 -f mode=submit   # creates, uploads and commits the submission
+```
+
+The plan lists, per language, each text (changed or not, with its length), the features added and removed, the
+screenshots before and after with their captions, and the package version before and after. Every Store limit is
+checked before anything is sent.
+
+- **From the repository** (at the tag; `-f listing=main` when the texts were finished after tagging): short
+  description, description, product features, search terms, What's new, copyright, and the screenshots with their
+  captions, all from [store-listing.md](store-listing.md) and `docs/screenshots/`. The package is the release's
+  `DB-Mastermind-<version>-store.appx`; its identity must match `MSSTORE_IDENTITY_NAME` and `MSSTORE_PUBLISHER`.
+- **Kept from Partner Center** (as the last published submission has it): the product name, privacy policy, website,
+  support contact, additional license terms, Developed by, logos and trailers, hardware, pricing and availability,
+  properties and age ratings. Change those in Partner Center.
+- **Refused**: while another submission is in progress in Partner Center (finish or delete it there). If anything
+  fails before the commit, the workflow deletes the draft it made.
+
+Secrets (**Settings → Secrets and variables → Actions → Secrets**), from an app registration in Microsoft Entra ID
+that has the **Manager** role in Partner Center (**Account settings → User management → Microsoft Entra
+applications**):
+
+| Secret | Where it comes from |
+|---|---|
+| `MSSTORE_TENANT_ID` | Entra ID → the app registration → Directory (tenant) ID |
+| `MSSTORE_CLIENT_ID` | the app registration's Application (client) ID |
+| `MSSTORE_CLIENT_SECRET` | the app registration → Certificates & secrets → a client secret (renew before it expires) |
+| `MSSTORE_SELLER_ID` | Partner Center → Account settings → Legal info → Seller ID |
+

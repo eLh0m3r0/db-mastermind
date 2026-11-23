@@ -1,0 +1,155 @@
+{
+  "id": "1152921505702427765",
+  "applicationCategory": "DeveloperTools_Database",
+  "pricing": {
+    "trialPeriod": "NoFreeTrial",
+    "marketSpecificPricings": {
+      "LB": "NotAvailable",
+      "EH": "NotAvailable"
+    },
+    "sales": [],
+    "priceId": "Free",
+    "isAdvancedPricingModel": true
+  },
+  "visibility": "Public",
+  "targetPublishMode": "Immediate",
+  "status": "Published",
+  "applicationPackages": [
+    {
+      "fileName": "DB-Mastermind-1.4.0-store.appx",
+      "fileStatus": "Uploaded",
+      "id": "2000000000100823126",
+      "version": "1.4.0.0",
+      "architecture": "x64",
+      "targetPlatform": "Windows10",
+      "languages": [
+        "cs-CZ",
+        "en-US"
+      ],
+      "capabilities": [
+        "Microsoft.storeFilter.core.notSupported_8wekyb3d8bbwe",
+        "runFullTrust"
+      ],
+      "minimumDirectXVersion": "None",
+      "minimumSystemRam": "None",
+      "targetDeviceFamilies": [
+        "Windows.Desktop min version 10.0.14316.0"
+      ]
+    }
+  ],
+  "friendlyName": "Submission 6",
+  "allowTargetFutureDeviceFamilies": {
+    "Desktop": true,
+    "Mobile": false,
+    "Xbox": false,
+    "Team": false,
+    "Holographic": false,
+    "7": false
+  },
+  "listings": {
+    "en-us": {
+      "baseListing": {
+        "copyrightAndTrademarkInfo": "© 2026 Václav Mudra",
+        "keywords": [
+          "SQL editor",
+          "PostgreSQL",
+          "SQL Server",
+          "ER diagram",
+          "database AI",
+          "db client",
+          "data modeling"
+        ],
+        "licenseTerms": "Open source under the MIT license. DeZign for Databases is a trademark of Datanamic; DB Mastermind is not affiliated with or endorsed by Datanamic.",
+        "privacyPolicy": "",
+        "supportContact": "",
+        "websiteUrl": "",
+        "description": "DB Mastermind is a free, open-source database client with no paid tier and no feature limits.\n\nEVERYDAY WORK, DONE WELL \n• Data browser for millions of rows with advanced filters: nested AND/OR groups",
+        "features": [
+          "Data browser with nested AND/OR filters and no row limits",
+          "SQL editor with JOIN autocomplete from foreign keys",
+          "Inline editing with a reviewed change set"
+        ],
+        "releaseNotes": "PostgreSQL polished for daily work: completions know every function (extensions too) and offer columns without the table name; any number of query tabs without the app stalling; NOTICE and RAISE messages in Messages; partitions, sequences, types, triggers and row-level security in the explorer; definitions that re-create what the server has; tables without a primary key edited through a unique index; EXPLAIN of INSERT, UPDATE and DELETE; default schema and query timeout per connection. Server messages on SQL Server, MySQL, MariaDB and Oracle too. And a full review of the last releases: manual commit now holds in the cases it missed, unsaved cell edits survive Commit and Roll back, a grid save can never change more than the edited row, Copy tables asks before replacing rows, the data modeler no longer deletes or renames by accident, and many more fixes.",
+        "title": "DB Mastermind",
+        "shortDescription": "Free, open-source database client and data modeler for PostgreSQL, SQL Server, Oracle, MySQL, SQLite and more. Browse and filter data, write SQL, model new databases (DeZign projects open too), design changes with migrations, and ask an AI.",
+        "devStudio": "Václav Mudra · vaclavmudra.com",
+        "images": [
+          {
+            "fileName": "table-filters.png",
+            "fileStatus": "Uploaded",
+            "id": "1152922700029693808",
+            "description": "Browse and filter data without limits",
+            "imageType": "Screenshot"
+          },
+          {
+            "fileName": "query.png",
+            "fileStatus": "Uploaded",
+            "id": "1152922700029693574",
+            "description": "SQL editor with schema-aware autocomplete",
+            "imageType": "Screenshot"
+          },
+          {
+            "fileName": "tile.png",
+            "fileStatus": "Uploaded",
+            "id": "1",
+            "description": "",
+            "imageType": "StoreLogo300x300"
+          }
+        ]
+      },
+      "platformOverrides": {}
+    },
+    "cs-cz": {
+      "baseListing": {
+        "copyrightAndTrademarkInfo": "© 2026 Václav Mudra",
+        "keywords": [
+          "SQL editor",
+          "PostgreSQL",
+          "SQL Server",
+          "ER diagram",
+          "databáze AI",
+          "datový model",
+          "databázový klient"
+        ],
+        "licenseTerms": "Open source pod MIT licencí. DeZign for Databases is a trademark of Datanamic; DB Mastermind is not affiliated with or endorsed by Datanamic.",
+        "privacyPolicy": "",
+        "supportContact": "",
+        "websiteUrl": "",
+        "description": "DB Mastermind je bezplatný open-source databázový klient bez placené verze a bez omezení funkcí.\n\nKAŽDODENNÍ PRÁCE \n• Prohlížení milionů řádků s pokročilými filtry: vnořené skupiny AND/OR, přes 25 ope",
+        "features": [
+          "Prohlížení dat s vnořenými filtry AND/OR, bez limitu řádků",
+          "SQL editor, který z cizích klíčů napíše JOIN",
+          "Úpravy v tabulce s kontrolou změn před uložením"
+        ],
+        "releaseNotes": "PostgreSQL vyladěný pro každodenní práci: našeptávač zná všechny funkce (i z rozšíření) a nabízí sloupce bez jména tabulky; libovolný počet záložek s dotazy bez zamrznutí aplikace; zprávy NOTICE a RAISE ve Zprávách; partitions, sekvence, typy, triggery a zabezpečení na úrovni řádků v průzkumníku; definice, které znovu vytvoří to, co server má; tabulky bez primárního klíče upravíte přes unikátní index; EXPLAIN pro INSERT, UPDATE a DELETE; výchozí schéma a časový limit dotazu u připojení. Zprávy serveru také na SQL Serveru, MySQL, MariaDB a Oracle. A důkladná kontrola posledních verzí: ruční potvrzování změn drží i v případech, které dřív minulo, neuložené úpravy buněk přežijí Commit i Roll back, uložení v mřížce nikdy nezmění víc než upravený řádek, kopírování tabulek se před nahrazením řádků zeptá, modelář už nic nesmaže ani nepřejmenuje omylem, a řada dalších oprav.",
+        "title": "DB Mastermind",
+        "shortDescription": "Bezplatný open-source databázový klient a datový modelář pro PostgreSQL, SQL Server, Oracle, MySQL, SQLite a další. Filtrování dat, SQL editor, modelování nových databází (otevře i projekty DeZign), návrh změn s migrací a AI.",
+        "devStudio": "Václav Mudra · vaclavmudra.com",
+        "images": [
+          {
+            "fileName": "table-filters.png",
+            "fileStatus": "Uploaded",
+            "id": "1152922700029693234",
+            "description": "Prohlížení a filtrování dat bez omezení",
+            "imageType": "Screenshot"
+          },
+          {
+            "fileName": "query.png",
+            "fileStatus": "Uploaded",
+            "id": "1152922700029693235",
+            "description": "SQL editor s našeptávačem podle schématu",
+            "imageType": "Screenshot"
+          },
+          {
+            "fileName": "tile.png",
+            "fileStatus": "Uploaded",
+            "id": "1",
+            "description": "",
+            "imageType": "StoreLogo300x300"
+          }
+        ]
+      },
+      "platformOverrides": {}
+    }
+  }
+}

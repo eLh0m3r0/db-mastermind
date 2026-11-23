@@ -1,0 +1,74 @@
+name: Store submit
+
+# Sends a release to the Microsoft Store through the Store submission API: texts and screenshots from
+# docs/store-listing.md and docs/screenshots/ at the release's tag, the package from its release assets.
+#   plan (default): shows what would change and sends nothing.
+#   submit:         creates the submission, uploads the package and screenshots, commits it.
+# Run by hand after testing the release: gh workflow run store-submit.yml -f tag=v1.5.4 -f mode=plan
+# Not part of release.yml on purpose: the owner submits to the Store after his own testing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (empty = the latest release)
+        required: false
+        default: ''
+      listing:
+        description: Where the texts and screenshots come from (empty = the tag; a branch or commit when they were finished after tagging)
+        required: false
+        default: ''
+      mode:
+        description: plan shows the changes; submit sends them
+        required: true
+        default: plan
+        type: choice
+        options: [plan, submit]
+
+permissions:
+  contents: read
+
+jobs:
+  store:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Release tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WANTED: ${{ inputs.tag }}
+        run: |
+          set +x
+          tag="${WANTED:-$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)}"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Not a release tag: $tag"; exit 1; }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      # The script runs from this ref; the texts and pictures come from the tag (or `listing`), the package from the
+      # tag's release.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.listing || steps.tag.outputs.tag }}
+          path: release
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      # Only the script's one dependency (fflate, as the repository pins it); no install scripts.
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      # The Store credentials exist only in this step. Never printed: the log of this public repository is public.
+      - name: Store ${{ inputs.mode }} for ${{ steps.tag.outputs.tag }}
+        env:
+          MSSTORE_TENANT_ID: ${{ secrets.MSSTORE_TENANT_ID }}
+          MSSTORE_CLIENT_ID: ${{ secrets.MSSTORE_CLIENT_ID }}
+          MSSTORE_CLIENT_SECRET: ${{ secrets.MSSTORE_CLIENT_SECRET }}
+          MSSTORE_SELLER_ID: ${{ secrets.MSSTORE_SELLER_ID }}
+          MSSTORE_IDENTITY_NAME: ${{ vars.MSSTORE_IDENTITY_NAME }}
+          MSSTORE_PUBLISHER: ${{ vars.MSSTORE_PUBLISHER }}
+          GH_TOKEN: ${{ github.token }}
+          MODE: ${{ inputs.mode }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          LISTING: ${{ inputs.listing }}
+        run: |
+          set +x
+          echo "Texts and screenshots from ${LISTING:-$TAG} ($(git -C release rev-parse --short HEAD))"
+          node scripts/store-submit.mjs "$MODE" --tag "$TAG" --repo release

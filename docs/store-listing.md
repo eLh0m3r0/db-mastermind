@@ -1,6 +1,8 @@
 # Microsoft Store listing
 
 Texts and answers for Partner Center, ready to paste. The steps are in [microsoft-store.md](microsoft-store.md).
+`scripts/store-submit.mjs` reads the two "Store listing" sections below (quote blocks, numbered lists, the search
+terms in backticks, What's new on its label's line, the screenshot list): keep their labels and shapes.
 
 ## Properties
 
@@ -218,6 +220,8 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 **Search terms:** `databázový klient` · `SQL editor` · `PostgreSQL` · `SQL Server` · `datové modelování` · `ER diagram` · `databáze AI`
 
 **What's new in this version:** Novinky od verze 1.4: přetáhněte do okna soubor .env, docker-compose nebo složku projektu a jejich databáze se stanou připojeními; Supabase, Neon, Amazon RDS, Azure a Google Cloud SQL aplikace pozná. Modely z MySQL Workbench, drawDB, Mermaid a Prisma otevřete a model nebo živou databázi vyexportujete jako Prisma, Drizzle, SQLAlchemy nebo TypeScript. Dashboardy jsou v záložce Uložené; dashboardy i uložené dotazy zůstávají ve vašem počítači, dokud je nenasdílíte týmu, a znalostní báze ukazuje zvlášť poznámky, dashboardy, dotazy a nástroje AI. Grafy se řídí zvolenou barvou nebo vzhledem. AI nad modelem funguje i bez databáze. Srozumitelnější na první pohled: tlačítko + pro novou záložku je vždy vidět, záložky se mohou posouvat nebo zužovat, nabídka záložky zavře záložky vlevo nebo vpravo, chyby říkají, co dělat, a neuložené změny v tabulce se nikdy nezahodí bez dotazu. Bezpečnější: SQL od AI asistenta, od agentů a na připojeních jen pro čtení hlídá sama databáze, oprávnění AI se ověřují při každém kroku a soubory od cizích lidí se čtou s limity a nikdy se nespouštějí.
+
+**Copyright and trademark info:** © 2026 Václav Mudra. MIT license. DeZign for Databases is a trademark of Datanamic; DB Mastermind is not affiliated with or endorsed by Datanamic.
 
 **Screenshots:** the same files; captions:
 
