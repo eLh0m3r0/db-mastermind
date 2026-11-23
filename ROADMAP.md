@@ -966,6 +966,11 @@ now before the user saves a secret, and a Mac without a login keychain is never 
 the Saved tab, and with a knowledge base a dashboard is a Markdown file in it (`dashboards/<name>.md`), shared with
 the folder; every tile runs behind the read-only guard; the assistant knows the format (e2e/flow119).
 
+1.5.4 (2026-11-23), decided with the owner: a dashboard and a saved query are mine (this computer) or the team's
+(a file in the connection's knowledge base, by *Share with the team*); the Saved tab shows the two groups and the
+Knowledge tab its sections; charts follow the accent or look (a palette derived per appearance, measured in
+chart-palette.test.ts).
+
 Not done, known: a terminal start of the `.deb` on a system without user namespaces still stops with Chromium's
 error (only the menu entry falls back); a real drag of a folder from Finder was never automated (the import
 behind it is tested); BigQuery and Trino guards are not tested against the services.

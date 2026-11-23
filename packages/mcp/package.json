@@ -1,6 +1,6 @@
 {
   "name": "dbmastermind-mcp",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "mcpName": "io.github.eLh0m3r0/dbmastermind-mcp",
   "description": "MCP server and command line for databases: PostgreSQL, SQL Server, Oracle, MySQL, MariaDB, SQLite, DuckDB, ClickHouse, BigQuery, Trino and CockroachDB. Read-only by default; schema tools, queries and a Markdown knowledge base for Claude Code, Codex, Cursor and other agents. Part of DB Mastermind.",
   "license": "MIT",

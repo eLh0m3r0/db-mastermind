@@ -1,5 +1,3 @@
-import { readdir, readFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import { formatResultForModel, modelError, type DbTool, type JsonSchema } from './ai-tools.js'
 import { describeError } from './engine.js'
 import type { KnowledgeBase } from './knowledge.js'
@@ -101,12 +99,20 @@ export function sqlTool(spec: SqlToolSpec): DbTool {
 /** Tool plugins of a knowledge base (invalid files are reported in `errors`, the rest still load). */
 export async function loadSqlTools(kb: KnowledgeBase | undefined, reserved: string[] = []): Promise<{ tools: DbTool[]; errors: string[] }> {
   if (!kb) return { tools: [], errors: [] }
-  const dir = join(kb.root, TOOLS_FOLDER)
-  const files = await readdir(dir).catch(() => [] as string[])
+  // Read as every other file of a knowledge base is (a shared or cloned folder is untrusted): inside it, never
+  // through a link, capped in size. Only the files directly in tools/ are tools, as before.
+  const files = (await kb.listSql(TOOLS_FOLDER).catch(() => [])).map((f) => f.path).filter((path) => path.split('/').length === 2)
   const tools: DbTool[] = []
   const errors: string[] = []
-  for (const file of files.filter((f) => f.toLowerCase().endsWith('.sql')).sort()) {
-    const spec = parseSqlTool(await readFile(join(dir, file), 'utf8'), `${TOOLS_FOLDER}/${file}`)
+  for (const path of files) {
+    let text: string
+    try {
+      text = await kb.readText(path)
+    } catch (err) {
+      errors.push(`${path}: ${(err as Error).message}`)
+      continue
+    }
+    const spec = parseSqlTool(text, path)
     if ('error' in spec) errors.push(spec.error)
     else if (reserved.includes(spec.name) || tools.some((t) => t.name === spec.name)) errors.push(`${spec.file}: the name "${spec.name}" is already used`)
     else tools.push(sqlTool(spec))
