@@ -46,22 +46,30 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 > • Messages from the server next to the results (PostgreSQL NOTICE and RAISE, SQL Server PRINT, MySQL warnings, Oracle DBMS_OUTPUT); tables without a primary key are edited through a unique index.
 > • PostgreSQL in depth: partitions, sequences, types, triggers and row-level security in the explorer, and definitions that re-create what the server has.
 >
+> CHARTS AND DASHBOARDS
+> • Turn any result into a bar, line or scatter chart in one click; the colors follow your theme.
+> • Pin charts and single numbers to a dashboard that refreshes itself. Yours stay on your computer until you share one with your team.
+>
 > MODEL, UNDERSTAND AND REDESIGN
 > • Model a new database without one: draw tables and relationships, rename and retype right on the diagram; models are DBML text files you can keep in Git, with SQL for any supported database.
-> • Opens and saves DeZign for Databases projects (.dez, .dezproj) with their diagrams, domains, subtypes, triggers and versions, without DeZign installed.
+> • Opens the models you already have: DeZign for Databases projects (.dez, .dezproj, saved back with their diagrams, domains, subtypes, triggers and versions), MySQL Workbench, drawDB, Mermaid, Prisma and DBML.
+> • Code for your application from a model or a live database: Prisma or Drizzle schema, SQLAlchemy models, TypeScript types.
 > • Interactive ER diagrams with automatic layout, saved diagrams and the join path between any two tables.
 > • Design tables, columns, keys and indexes right on the diagram; DB Mastermind writes the migration, checks your data first and gives you the rollback.
 > • Compare schemas and data between databases.
 >
-> SERVERS AND TEAMS
+> CONNECTIONS, SERVERS AND TEAMS
+> • Drop a project's .env or docker-compose file on the window and its databases become connections; Supabase, Neon, Amazon RDS, Azure and Google Cloud SQL are recognised.
+> • Share notes, dashboards and saved queries with your team through a folder in Git, OneDrive or on a network drive.
 > • Server activity: running sessions, the slowest queries and storage, including unused and duplicate indexes.
 > • Copy tables to another database (even another engine), run one script on several connections, import JSON and Parquet.
 > • Passwords from your password manager (1Password, Bitwarden, Vault), SSH through a jump host, SQL Server with Microsoft Entra ID.
 >
 > AI THAT KNOWS YOUR DATABASE
 > • Use your own API key (Anthropic, OpenAI, OpenRouter, Gemini, Azure), a local Ollama model, or your Claude Code / Codex subscription.
+> • You decide per connection what AI may do: nothing, see the schema only, read data, or change it after you confirm. Read-only is enforced by the database itself.
 > • The assistant explores the schema and runs read-only queries; it asks before any change.
-> • A Markdown knowledge base teaches it what your tables and codes mean.
+> • A Markdown knowledge base, shared with your team, teaches it what your tables and codes mean.
 > • Built-in MCP server for Claude Code, Codex, Cursor, VS Code and other agents.
 >
 > PRIVATE BY DESIGN
@@ -84,21 +92,23 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 5. Schema designer that writes and checks the migration
 6. Schema and data compare between databases
 7. AI assistant with your own Claude Code / Codex subscription, your own API key or with local models
-8. Markdown knowledge base about your data model
+8. Markdown knowledge base about your data model, shared with your team through Git or OneDrive
 9. MCP server for Claude Code, Codex, Cursor and VS Code
 10. Query CSV, Parquet, JSON and Excel files with SQL
 11. SSH tunnels, SSL and SQL Server Windows authentication
 12. No telemetry, no account, no feature limits. Free and open source
-13. Data modeler that opens and saves DeZign for Databases projects
+13. Opens DeZign for Databases (and saves back), MySQL Workbench, drawDB, Mermaid and Prisma models; exports Prisma, Drizzle, SQLAlchemy and TypeScript
 14. Transactions you can see, with manual commit per connection
 15. Server activity: sessions, slowest queries, storage and unused indexes
 16. Copy tables between databases and run a script on several connections
 17. Passwords from 1Password, Bitwarden or Vault; SSH jump hosts
 18. PostgreSQL in depth: every function in completions, partitions, triggers, row-level security, server messages
+19. Charts from any result, and dashboards you keep for yourself or share with your team
+20. AI permissions per connection: off, schema only, read, or changes after your confirmation
 
 **Search terms** (7): `database client` · `SQL editor` · `PostgreSQL` · `SQL Server` · `data modeling` · `ER diagram` · `database AI`
 
-**What's new in this version** (1.5.4, since 1.4.0; if the Store still has an older version, put that version's text from the release notes after this one): More ways in: drop a .env, a docker-compose file or a project folder on the window and its databases become connections; connection strings from Supabase, Neon, Amazon RDS, Azure and Google Cloud SQL are recognised; open Mermaid, drawDB, MySQL Workbench and Prisma files as models; export a model or a live database as a Prisma schema, Drizzle schema, SQLAlchemy models or TypeScript types. Easier at first sight: the + for a new tab is always in view, tabs can scroll or shrink (Settings → Appearance), a tab's menu closes the tabs to its left or right; the demo opens on a table with data; toolbars keep their labels; connection and AI errors say what to do; AI is ready as soon as a provider has its key; unsaved changes in a table show on its tab and are never dropped without a question. Safer: the guard for SQL from the AI assistant and from agents, and for read-only connections, now relies on what the database itself confirms; files from other people are read with limits and never run. Also: MySQL models from scripts, MySQL Workbench and live databases compare as the same; DBML from other tools reads as in dbdiagram.io; SQL Server connection URLs with a user and password. AI on a model (Design with AI, Review the model) works without a database. Dashboards are listed in the Saved tab; dashboards and saved queries stay on your computer until you share them with the team. Charts follow your accent color or look.
+**What's new in this version** (1.5.4, since 1.4.0, the last version in the Store; at most 1500 characters): New since 1.4: drop a project's .env, docker-compose file or folder on the window and its databases become connections; Supabase, Neon, Amazon RDS, Azure and Google Cloud SQL are recognised. Open models from MySQL Workbench, drawDB, Mermaid and Prisma, and export a model or a live database as Prisma, Drizzle, SQLAlchemy or TypeScript. Dashboards are in the Saved tab; dashboards and saved queries stay on your computer until you share them with your team, and the knowledge base shows notes, dashboards, queries and AI tools apart. Charts follow your accent color or look. AI on a model works without a database. Easier at first sight: the + for a new tab is always in view, tabs can scroll or shrink, a tab's menu closes the tabs to its left or right, errors say what to do, and unsaved changes in a table are never dropped without a question. Safer: SQL from the AI assistant, from agents and on read-only connections runs behind a guard the database itself enforces, AI permissions are checked at every step, and files from other people are read with limits and never run.
 
 **Copyright and trademark info:** © 2026 Václav Mudra. MIT license. DeZign for Databases is a trademark of Datanamic; DB Mastermind is not affiliated with or endorsed by Datanamic.
 
@@ -108,16 +118,18 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 
 **Screenshots** (from `docs/screenshots/`, 2880×1800; in this order, with captions):
 
-1. `hero-1440.png` (or a fresh full-size capture of the same split view) — Design, query and chart in one app
-1. `table-filters.png` — Browse and filter data without limits
-2. `query.png` — SQL editor with schema-aware autocomplete
-3. `diagram.png` — Interactive ER diagrams
-4. `modeler.png` — Model a new database right on the diagram
-5. `designer.png` — Design changes right on the diagram
-6. `migration.png` — Reviewed migration with a rollback script
-7. `ai.png` — AI assistant that knows your database
-8. `query-file.png` — Query CSV and Excel files with SQL
-9. `chart.png` — Chart any result in one click
+1. `hero-1440.png` — Design, query and chart in one app
+2. `table-filters.png` — Browse and filter data without limits
+3. `query.png` — SQL editor with schema-aware autocomplete
+4. `diagram.png` — Interactive ER diagrams
+5. `modeler.png` — Model a new database right on the diagram
+6. `designer.png` — Design changes right on the diagram
+7. `migration.png` — Reviewed migration with a rollback script
+8. `ai.png` — AI assistant that knows your database
+9. `query-file.png` — Query CSV and Excel files with SQL
+10. `dashboard-1440.png` — Charts and dashboards you can share with your team
+
+**Trailer** (optional, in the Store listing's trailers): `dbm-launch-87s.mp4` with `dbm-launch-poster.png` as its thumbnail, both 1920×1080, from the launch video folder. Title: *DB Mastermind in 90 seconds*.
 
 ## Store listing — Czech (cs-cz)
 
@@ -142,22 +154,30 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 > • Zprávy serveru hned u výsledků (PostgreSQL NOTICE a RAISE, SQL Server PRINT, varování MySQL, Oracle DBMS_OUTPUT); tabulky bez primárního klíče upravíte přes unikátní index.
 > • PostgreSQL do hloubky: partitions, sekvence, typy, triggery a zabezpečení na úrovni řádků v průzkumníku a definice, které znovu vytvoří to, co server má.
 >
+> GRAFY A DASHBOARDY
+> • Z jakéhokoli výsledku sloupcový, čárový nebo bodový graf jedním kliknutím; barvy se řídí vaším vzhledem.
+> • Grafy a jednotlivá čísla připnete na dashboard, který se sám obnovuje. Vaše dashboardy zůstávají ve vašem počítači, dokud je nenasdílíte týmu.
+>
 > DATOVÝ MODEL
 > • Interaktivní ER diagramy s automatickým rozložením, uloženými pohledy a cestou JOIN mezi libovolnými tabulkami.
 > • Návrh tabulek, sloupců, klíčů a indexů přímo v diagramu; DB Mastermind napíše migraci, předem zkontroluje data a připraví i vrácení změn.
 > • Porovnání schémat i dat mezi databázemi.
 > • Model nové databáze bez databáze: tabulky a vztahy kreslíte, přejmenujete a měníte typy přímo v diagramu; modely jsou textové soubory DBML vhodné pro Git, s SQL pro kteroukoli podporovanou databázi.
-> • Otevírá a ukládá projekty DeZign for Databases (.dez, .dezproj) včetně diagramů, domén, podtypů, triggerů a verzí, i bez nainstalovaného DeZignu.
+> • Otevře modely, které už máte: projekty DeZign for Databases (.dez, .dezproj, uloží je i zpět včetně diagramů, domén, podtypů, triggerů a verzí), MySQL Workbench, drawDB, Mermaid, Prisma a DBML.
+> • Kód pro vaši aplikaci z modelu nebo živé databáze: schéma Prisma nebo Drizzle, modely SQLAlchemy, typy TypeScriptu.
 >
-> SERVERY A TÝMY
+> PŘIPOJENÍ, SERVERY A TÝMY
+> • Přetáhněte do okna soubor .env nebo docker-compose projektu a jeho databáze se stanou připojeními; Supabase, Neon, Amazon RDS, Azure a Google Cloud SQL aplikace pozná.
+> • Poznámky, dashboardy a uložené dotazy sdílíte s týmem přes složku v Gitu, na OneDrivu nebo na síťovém disku.
 > • Aktivita serveru: běžící relace, nejnáročnější dotazy a úložiště včetně nepoužívaných a duplicitních indexů.
 > • Kopírování tabulek do jiné databáze (i jiného typu), jeden skript na více připojeních, import JSON a Parquet.
 > • Hesla ze správce hesel (1Password, Bitwarden, Vault), SSH přes jump host, SQL Server s Microsoft Entra ID.
 >
 > AI, KTERÁ ZNÁ VAŠI DATABÁZI
 > • Vlastní API klíč (Anthropic, OpenAI, OpenRouter, Gemini, Azure), lokální model v Ollamě nebo předplatné Claude Code / Codex.
+> • Pro každé připojení určíte, co AI smí: nic, jen vidět schéma, číst data, nebo měnit po vašem potvrzení. Čtení hlídá sama databáze.
 > • Asistent prozkoumá schéma a spouští jen čtecí dotazy; před každou změnou se zeptá.
-> • Znalostní báze v Markdownu ho naučí, co znamenají vaše tabulky a kódy.
+> • Znalostní báze v Markdownu, sdílená s týmem, ho naučí, co znamenají vaše tabulky a kódy.
 > • Vestavěný MCP server pro Claude Code, Codex, Cursor, VS Code a další agenty.
 >
 > SOUKROMÍ
@@ -185,26 +205,31 @@ Category: *Productivity / utility (not a game)*. Answer **No** to violence, sexu
 9. MCP server pro Claude Code, Codex, Cursor a VS Code
 10. SQL dotazy nad soubory CSV, Parquet, JSON a Excel
 11. SSH tunely, SSL a přihlášení do SQL Serveru přes Windows
-12. Žádná telemetrie, žádný účet, žádná omezení funkcí. Zdarma a open source navždy
-13. Nástroj pro datové modelování, který otevírá a ukládá i projekty DeZign for Databases
+12. Žádná telemetrie, žádný účet, žádná omezení funkcí. Zdarma a open source
+13. Otevře modely z DeZign for Databases (i uloží zpět), MySQL Workbench, drawDB, Mermaid a Prisma; exportuje Prisma, Drizzle, SQLAlchemy a TypeScript
 14. Transakce pod kontrolou, ruční potvrzování pro každé připojení
 15. Aktivita serveru: relace, nejnáročnější dotazy, úložiště a nepoužívané indexy
 16. Kopírování tabulek mezi databázemi a skript na více připojeních
 17. Hesla z 1Password, Bitwardenu nebo Vaultu; SSH přes jump host
 18. PostgreSQL do hloubky: všechny funkce v našeptávači, partitions, triggery, zabezpečení řádků, zprávy serveru
+19. Grafy z jakéhokoli výsledku a dashboardy jen pro vás nebo sdílené s týmem
+20. Oprávnění AI pro každé připojení: vypnuto, jen schéma, čtení, nebo změny po vašem potvrzení
 
 **Search terms:** `databázový klient` · `SQL editor` · `PostgreSQL` · `SQL Server` · `datové modelování` · `ER diagram` · `databáze AI`
 
-**What's new in this version:** Víc cest dovnitř: přetáhněte do okna soubor .env, docker-compose nebo složku projektu a jejich databáze se stanou připojeními; připojovací řetězce ze Supabase, Neonu, Amazon RDS, Azure a Google Cloud SQL aplikace pozná; soubory Mermaid, drawDB, MySQL Workbench a Prisma se otevřou jako model; model nebo živou databázi vyexportujete jako schéma Prisma, schéma Drizzle, modely SQLAlchemy nebo typy TypeScriptu. Srozumitelnější na první pohled: tlačítko + pro novou záložku je vždy vidět, záložky se mohou posouvat nebo zužovat (Nastavení → Vzhled), nabídka záložky zavře záložky vlevo nebo vpravo; ukázková databáze se otevře na tabulce s daty; lišty si nechávají popisky; chyby připojení a AI říkají, co dělat; AI je připravené, jakmile má poskytovatel klíč; neuložené změny v tabulce jsou vidět na záložce a nikdy se nezahodí bez dotazu. Bezpečnější: ochrana pro SQL od AI asistenta a agentů a pro připojení jen pro čtení se teď opírá o to, co potvrdí sama databáze; soubory od cizích lidí se čtou s limity a nikdy se nespouštějí. Dále: modely MySQL ze skriptů, z MySQL Workbench a z živé databáze se porovnají jako stejné; DBML z jiných nástrojů se čte jako v dbdiagram.io; připojovací URL pro SQL Server s uživatelem a heslem. AI nad modelem (Navrhnout s AI, Zhodnotit model) funguje i bez databáze. Dashboardy jsou v záložce Uložené; dashboardy i uložené dotazy zůstávají ve vašem počítači, dokud je nenasdílíte týmu. Grafy se řídí zvolenou barvou nebo vzhledem.
+**What's new in this version:** Novinky od verze 1.4: přetáhněte do okna soubor .env, docker-compose nebo složku projektu a jejich databáze se stanou připojeními; Supabase, Neon, Amazon RDS, Azure a Google Cloud SQL aplikace pozná. Modely z MySQL Workbench, drawDB, Mermaid a Prisma otevřete a model nebo živou databázi vyexportujete jako Prisma, Drizzle, SQLAlchemy nebo TypeScript. Dashboardy jsou v záložce Uložené; dashboardy i uložené dotazy zůstávají ve vašem počítači, dokud je nenasdílíte týmu, a znalostní báze ukazuje zvlášť poznámky, dashboardy, dotazy a nástroje AI. Grafy se řídí zvolenou barvou nebo vzhledem. AI nad modelem funguje i bez databáze. Srozumitelnější na první pohled: tlačítko + pro novou záložku je vždy vidět, záložky se mohou posouvat nebo zužovat, nabídka záložky zavře záložky vlevo nebo vpravo, chyby říkají, co dělat, a neuložené změny v tabulce se nikdy nezahodí bez dotazu. Bezpečnější: SQL od AI asistenta, od agentů a na připojeních jen pro čtení hlídá sama databáze, oprávnění AI se ověřují při každém kroku a soubory od cizích lidí se čtou s limity a nikdy se nespouštějí.
 
 **Screenshots:** the same files; captions:
 
-1. Prohlížení a filtrování dat bez omezení
-2. SQL editor s našeptávačem podle schématu
-3. Interaktivní ER diagramy
-4. Model nové databáze přímo v diagramu
-5. Návrh změn přímo v diagramu
-6. Migrace ke kontrole i se skriptem pro vrácení
-7. AI asistent, který zná vaši databázi
-8. SQL dotazy nad soubory CSV a Excel
-9. Graf z výsledku jedním kliknutím
+1. Návrh, dotaz a graf v jedné aplikaci
+2. Prohlížení a filtrování dat bez omezení
+3. SQL editor s našeptávačem podle schématu
+4. Interaktivní ER diagramy
+5. Model nové databáze přímo v diagramu
+6. Návrh změn přímo v diagramu
+7. Migrace ke kontrole i se skriptem pro vrácení
+8. AI asistent, který zná vaši databázi
+9. SQL dotazy nad soubory CSV a Excel
+10. Grafy a dashboardy, které můžete sdílet s týmem
+
+**Trailer:** the same video; title: *DB Mastermind za 90 sekund*.

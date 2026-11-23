@@ -21,6 +21,8 @@ Works with hosted databases too: Supabase · Neon · Timescale · Amazon RDS and
 
 ![DB Mastermind in split view: the ER diagram of a coffee shop database beside an SQL query and a line chart of its result](docs/screenshots/hero-1440.png)
 
+[![DB Mastermind in 90 seconds: the video on YouTube](docs/video/tour-poster.jpg)](https://youtu.be/TxRbh4-CeLQ)
+
 ![Table browser with nested filters and row details](docs/screenshots/table-filters.png)
 
 ## Highlights
