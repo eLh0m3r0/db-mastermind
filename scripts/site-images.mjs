@@ -5,8 +5,8 @@
 //   node scripts/site-images.mjs <folder> [--placeholders]
 //   node scripts/site-images.mjs <folder> --variants
 //                                            the home page's pictures in the other accents and the looks (taken by
-//                                            `node e2e/screenshots.mjs <folder> … --variants`): AVIF only, 1440 wide and
-//                                            the 960 phone crop, in docs/screenshots/variants/ (site.js swaps them in)
+//                                            `node e2e/screenshots.mjs <folder> … --variants`): AVIF only, 1440 wide,
+//                                            in docs/screenshots/variants/ (site.js swaps them in)
 //   node scripts/site-images.mjs --og        renders docs/og.html into docs/og.png (1200×630) and the icon into
 //                                            docs/apple-touch-icon.png (180×180, opaque: iOS rounds the corners)
 //
@@ -20,17 +20,8 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 const SHOTS = ['hero', 'table-filters', 'query', 'chart', 'dashboard', 'modeler', 'migration', 'diagram', 'ai', 'home', 'connect', 'mcp-settings']
-// Phone versions of the home page's pictures: <name>.png is a whole window like the others, and only this rectangle
-// of it (CSS px of the 1440×900 window) is kept, written at 960 px wide. e2e/screenshots.mjs uses the same table
-// (PHONE_CROPS there): change both together.
-const PHONE_CROPS = {
-  'hero-phone': { x: 268, y: 70, w: 480, h: 360 },
-  'table-filters-phone': { x: 330, y: 75, w: 480, h: 360 },
-  'modeler-phone': { x: 520, y: 280, w: 480, h: 360 },
-  'dashboard-phone': { x: 270, y: 60, w: 480, h: 360 },
-  'ai-phone': { x: 918, y: 45, w: 480, h: 360 },
-}
-const FALLBACK = { hero: 'table-filters', dashboard: 'chart', connect: 'home', 'mcp-settings': 'home', ...Object.fromEntries(Object.keys(PHONE_CROPS).map((n) => [n, n.replace(/-phone$/, '')])) }
+// (Phones show the whole window too: the 480×360 crops cut controls in half.)
+const FALLBACK = { hero: 'table-filters', dashboard: 'chart', connect: 'home', 'mcp-settings': 'home' }
 
 const args = process.argv.slice(2)
 const placeholders = args.includes('--placeholders')
@@ -129,7 +120,7 @@ const avif = (pngFile, target) => execFileSync('sips', ['-s', 'format', 'avif', 
 let written = 0
 if (variants) {
   // Same names and suffixes as e2e/screenshots.mjs (VARIANT_SHOTS, VARIANT_ACCENTS, VARIANT_LOOKS).
-  const shots = ['hero', 'table-filters', 'modeler', 'dashboard', 'ai', ...Object.keys(PHONE_CROPS)]
+  const shots = ['hero', 'table-filters', 'modeler', 'dashboard', 'ai']
   const accents = ['blue', 'teal', 'green', 'orange', 'rose']
   const looks = ['retro2001', 'terminal', 'halloween', 'christmas', 'medieval', 'fantasy']
   const suffixes = [...accents.flatMap((a) => [`-${a}`, `-${a}-dark`]), ...looks.map((l) => `-${l}`)]
@@ -143,11 +134,10 @@ if (variants) {
         console.warn(`missing: ${name}${suffix}.png`)
         continue
       }
-      const crop = PHONE_CROPS[name]
-      const r = crop ? await encode(file, { x: crop.x * 2, y: crop.y * 2, w: crop.w * 2, h: crop.h * 2 }, 960) : await encode(file, null, 1440)
+      const r = await encode(file, null, 1440)
       const png = join(scratch, `${name}${suffix}.png`)
       writeFileSync(png, r.png)
-      const target = join(dir, `${name}${suffix}-${crop ? 960 : 1440}.avif`)
+      const target = join(dir, `${name}${suffix}-1440.avif`)
       avif(png, target)
       bytes += readFileSync(target).length
       written++
@@ -158,22 +148,12 @@ if (variants) {
   console.log(`${written} files in docs/screenshots/variants/, ${(bytes / 1024 / 1024).toFixed(1)} MB`)
   process.exit(0)
 }
-for (const name of [...SHOTS, ...Object.keys(PHONE_CROPS)]) {
+for (const name of SHOTS) {
   for (const dark of [false, true]) {
     const file = source(name, dark)
     const base = `${name}${dark ? '-dark' : ''}`
     if (!file) {
       console.warn(`missing: ${base}.png`)
-      continue
-    }
-    const crop = PHONE_CROPS[name]
-    if (crop) {
-      const region = { x: crop.x * 2, y: crop.y * 2, w: crop.w * 2, h: crop.h * 2 }
-      const r = await encode(file, region, 960)
-      writeFileSync(join(out, `${base}-960.webp`), r.webp)
-      writeFileSync(join(out, `${base}-960.png`), r.png)
-      avif(join(out, `${base}-960.png`), join(out, `${base}-960.avif`))
-      written += 3
       continue
     }
     const small = await encode(file, null, 1440)

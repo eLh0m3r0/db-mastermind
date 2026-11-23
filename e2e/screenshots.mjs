@@ -6,7 +6,7 @@
 // in the six looks, from the same state, as <name>-<accent>[-dark].png and <name>-<look>.png; the look is switched
 // in the app's own Settings → Appearance. `node scripts/site-images.mjs <out-folder> --variants` makes the website's
 // files from them (docs/screenshots/variants/). The whole set:
-//   DBM_AI_ENV=<openrouter.env> node e2e/screenshots.mjs <out> hero hero-phone table-filters modeler dashboard ai --variants
+//   DBM_AI_ENV=<openrouter.env> node e2e/screenshots.mjs <out> hero table-filters modeler dashboard ai --variants
 //
 // Each name is written as <name>.png (light) and <name>-dark.png: a 1440×900 window at the display's scale (2880×1800
 // on a Retina Mac). `node scripts/site-images.mjs <out-folder>` then makes the files the website uses. The shot list
@@ -21,7 +21,7 @@
 //   DBM_SHOTS_TMP     where the throwaway profiles go (default: the system temp folder)
 //   SHOTS_DIR         the output folder when none is given (the UI tour workflow uses it); DBM_LANGUAGE the language
 import { _electron as electron } from '@playwright/test'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -76,20 +76,9 @@ export async function session({ width = 1440, height = 900, scale = 2, theme = '
   return ctx
 }
 
-// The home page's section images on phones: the most telling 480×360 CSS px of the window (shown at 2×), as
-// hero-phone is. Each is written as <name>-phone[-dark].png (the whole window, like hero-phone.png) and the rectangles
-// go to phone-crops.json for scripts/site-images.mjs.
-const PHONE_CROPS = {
-  'hero-phone': { x: 268, y: 70, w: 480, h: 360 },
-  'table-filters-phone': { x: 330, y: 75, w: 480, h: 360 },
-  'modeler-phone': { x: 520, y: 280, w: 480, h: 360 },
-  'dashboard-phone': { x: 270, y: 60, w: 480, h: 360 },
-  'ai-phone': { x: 918, y: 45, w: 480, h: 360 },
-}
-
 // --variants: the shots on the home page, which follow the visitor's choice in its "Make it yours" section.
 let variants = false
-export const VARIANT_SHOTS = ['hero', 'hero-phone', 'table-filters', 'modeler', 'dashboard', 'ai']
+export const VARIANT_SHOTS = ['hero', 'table-filters', 'modeler', 'dashboard', 'ai']
 export const VARIANT_ACCENTS = ['blue', 'teal', 'green', 'orange', 'rose']
 export const VARIANT_LOOKS = ['retro2001', 'terminal', 'halloween', 'christmas', 'medieval', 'fantasy']
 
@@ -126,8 +115,6 @@ async function capture({ win }, name, { again, mouse } = {}) {
     await win.screenshot({ path: file })
     const width = readFileSync(file).readUInt32BE(16)
     if (width !== 2880) console.warn(`${name}${suffix}: ${width} px wide, not 2880`)
-    // (hero-phone is a state of its own; the section images' phone sources are the same windows.)
-    if (name !== 'hero' && PHONE_CROPS[`${name}-phone`]) copyFileSync(file, join(out, `${name}-phone${suffix}.png`))
   }
   for (const scheme of ['light', 'dark']) await take(scheme, scheme === 'dark' ? '-dark' : '')
   if (variants && VARIANT_SHOTS.includes(name)) {
@@ -432,7 +419,6 @@ export async function main(args = process.argv.slice(2)) {
   out = resolve(names[0] ?? process.env.SHOTS_DIR ?? 'docs/screenshots')
   only = new Set(names.slice(1))
   mkdirSync(out, { recursive: true })
-  writeFileSync(join(out, 'phone-crops.json'), `${JSON.stringify(PHONE_CROPS, null, 2)}\n`)
 
   await group(['home', 'connect'], async (ctx) => {
     const { win } = ctx
@@ -468,12 +454,11 @@ export async function main(args = process.argv.slice(2)) {
     await capture(ctx, 'mcp-settings')
   })
 
-  await group(['hero-phone', 'table-filters'], async (ctx) => {
+  await group(['table-filters'], async (ctx) => {
     const { win } = ctx
     await openDemo(ctx)
     await filteredOrders(ctx)
     await park(win)
-    await capture(ctx, 'hero-phone')
     await win.locator('[role=row]').nth(1).locator('[role=gridcell]').nth(3).click()
     await win.getByRole('button', { name: 'Row details' }).click()
     await win.waitForTimeout(500)
