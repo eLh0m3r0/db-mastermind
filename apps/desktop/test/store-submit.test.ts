@@ -148,4 +148,9 @@ describe('the package', () => {
     expect(checkManifest(manifest('<Identity Name="Someone.Else" Publisher="CN=Other" Version="1.5.4.0"/>'), expected)).toHaveLength(2)
     expect(checkManifest(manifest(''), expected)).toEqual(['AppxManifest.xml: no <Identity>'])
   })
+
+  it('reads the identity as electron-builder writes it (Publisher in single quotes, one attribute a line)', () => {
+    const identity = `<Identity Name="VclavMudra.DBMastermind"\n    ProcessorArchitecture="x64"\n    Publisher='CN=A8660A1C-7BE1-41EA-A371-924E1A49FE31'\n    Version="1.5.4.0" />`
+    expect(checkManifest(manifest(identity), expected)).toEqual([])
+  })
 })

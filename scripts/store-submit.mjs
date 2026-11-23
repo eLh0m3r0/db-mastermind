@@ -169,7 +169,12 @@ export function checkLimits(listing, images = {}) {
 export function manifestIdentity(xml) {
   const tag = /<Identity\b[^>]*>/.exec(xml)?.[0]
   if (!tag) return undefined
-  const attr = (name) => new RegExp(`\\b${name}="([^"]*)"`).exec(tag)?.[1]
+  // electron-builder writes Publisher in single quotes, the rest in double quotes, one attribute a line.
+  const entities = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }
+  const attr = (name) => {
+    const m = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`).exec(tag)
+    return m ? (m[1] ?? m[2]).replace(/&(amp|lt|gt|quot|apos);/g, (_, e) => entities[e]) : undefined
+  }
   return { name: attr('Name'), publisher: attr('Publisher'), version: attr('Version') }
 }
 
