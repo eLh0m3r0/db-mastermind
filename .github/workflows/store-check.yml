@@ -1,8 +1,11 @@
 name: Store check
 
-# Reads DB Mastermind's Microsoft Store entry through the Store API and changes nothing: proves the MSSTORE_*
-# secrets work and keeps the submission's JSON as an artifact, the shape an automated listing update has to follow.
-# Run it by hand: gh workflow run store-check.yml
+# Reads DB Mastermind's Microsoft Store entry through the Store submission API and changes nothing: proves the
+# MSSTORE_* secrets work and keeps the app's and its submissions' JSON as an artifact, the shape an automated
+# listing update has to follow. Run it by hand: gh workflow run store-check.yml
+#
+# It speaks the API directly (curl): the msstore CLI's own configuration test refused these credentials although
+# Microsoft Entra signs in and the API answers for this app.
 
 on:
   workflow_dispatch:
@@ -12,61 +15,45 @@ permissions:
 
 env:
   PRODUCT_ID: 9P0GRD7BZ4NF
-  # (A pinned CLI release, published at least two weeks before it was chosen.)
-  MSSTORE_CLI: v0.4.4
+  API: https://manage.devcenter.microsoft.com/v1.0/my
 
 jobs:
   read:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
-      - uses: microsoft/setup-msstore-cli@cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0 # v1.4
-        with:
-          version: ${{ env.MSSTORE_CLI }}
-      # Which part of the sign-in fails, if any: Microsoft Entra's answer (error codes only) and the Store API's HTTP
-      # status. Never prints a token; the log of this public repository is public.
-      - name: Check the credentials
+      # The credentials exist only in this step. Never prints a token: the log of this public repository is public.
+      - name: Read the app and its submissions (nothing is changed)
         env:
           TENANT: ${{ secrets.MSSTORE_TENANT_ID }}
           CLIENT: ${{ secrets.MSSTORE_CLIENT_ID }}
           SECRET: ${{ secrets.MSSTORE_CLIENT_SECRET }}
+          SELLER: ${{ secrets.MSSTORE_SELLER_ID }}
         run: |
-          for value in TENANT CLIENT SECRET; do [ -n "${!value}" ] || echo "::error::$value is empty"; done
-          echo "tenant id looks like a GUID: $([[ "$TENANT" =~ ^[0-9a-fA-F-]{36}$ ]] && echo yes || echo no)"
-          echo "client id looks like a GUID: $([[ "$CLIENT" =~ ^[0-9a-fA-F-]{36}$ ]] && echo yes || echo no)"
-          echo "client secret length: ${#SECRET}"
+          echo "seller id: digits only $([[ "$SELLER" =~ ^[0-9]+$ ]] && echo yes || echo no), length ${#SELLER}"
           answer=$(curl -s -X POST "https://login.microsoftonline.com/$TENANT/oauth2/token" \
             --data-urlencode grant_type=client_credentials --data-urlencode "client_id=$CLIENT" \
             --data-urlencode "client_secret=$SECRET" --data-urlencode resource=https://manage.devcenter.microsoft.com)
-          if echo "$answer" | jq -e '.access_token' > /dev/null; then
-            echo "Microsoft Entra: signed in"
-            token=$(echo "$answer" | jq -r '.access_token'); echo "::add-mask::$token"
-            code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $token" "https://manage.devcenter.microsoft.com/v1.0/my/applications/$PRODUCT_ID")
-            echo "Store API, this app: HTTP $code"
-          else
-            echo "Microsoft Entra refused: $(echo "$answer" | jq -c '{error, error_codes}')"
-            echo "$answer" | jq -r '.error_description' | head -1 | cut -c1-200
+          token=$(echo "$answer" | jq -r '.access_token // empty')
+          if [ -z "$token" ]; then
+            echo "::error::Microsoft Entra refused: $(echo "$answer" | jq -c '{error, error_codes}')"
+            exit 1
           fi
-      # The credentials exist only in this step.
-      - name: Sign in to Partner Center
-        env:
-          TENANT: ${{ secrets.MSSTORE_TENANT_ID }}
-          SELLER: ${{ secrets.MSSTORE_SELLER_ID }}
-          CLIENT: ${{ secrets.MSSTORE_CLIENT_ID }}
-          SECRET: ${{ secrets.MSSTORE_CLIENT_SECRET }}
-        run: msstore reconfigure --tenantId "$TENANT" --sellerId "$SELLER" --clientId "$CLIENT" --clientSecret "$SECRET"
-      - name: Read the app and its submission (nothing is changed)
-        run: |
+          echo "::add-mask::$token"
           mkdir -p store
-          status=0
-          msstore apps get "$PRODUCT_ID" --output-stream stderr > store/app.json || status=$?
-          echo "apps get: exit $status"
-          msstore submission status "$PRODUCT_ID" > store/status.txt 2>&1 || true
-          cat store/status.txt
-          msstore submission get "$PRODUCT_ID" --output-stream stderr > store/submission.json || echo "submission get: no draft submission (exit $?)"
-          msstore submission getListingAssets "$PRODUCT_ID" --output-stream stderr > store/listing-assets.json || echo "getListingAssets: none (exit $?)"
+          get() { curl -s -f -H "Authorization: Bearer $token" "$API/$1"; }
+          # (Upload URLs carry a signature: never kept.)
+          clean() { jq 'del(.. | .fileUploadUrl?)'; }
+          get "applications/$PRODUCT_ID" | clean > store/app.json
+          jq '{id, primaryName, packageFamilyName, pendingApplicationSubmission, lastPublishedApplicationSubmission}' store/app.json
+          for which in lastPublishedApplicationSubmission pendingApplicationSubmission; do
+            sid=$(jq -r ".$which.id // empty" store/app.json)
+            [ -n "$sid" ] || { echo "$which: none"; continue; }
+            get "applications/$PRODUCT_ID/submissions/$sid" | clean > "store/$which.json"
+            echo "$which $sid: status $(jq -r '.status' "store/$which.json"), listings $(jq -c '.listings | keys' "store/$which.json"), packages $(jq '.applicationPackages | length' "store/$which.json")"
+            jq -c '.listings | to_entries[] | {lang: .key, images: [.value.baseListing.images[]? | {imageType, fileName, fileStatus}] | length}' "store/$which.json"
+          done
           ls -la store
-          exit $status
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
