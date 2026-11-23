@@ -1076,6 +1076,12 @@ build, the MSI and the managed config; transactions you can see in every tab.
 ### Still not planned after this review
 - A stored procedure debugger, a JVM / JDBC driver bridge, a plugin marketplace, MongoDB / Redis / DynamoDB
   (see Milestone 7 and 8); a cloud / web edition (CloudBeaver): the app is local-first
+- A rewrite in Tauri (considered 2026-11-23, the owner decided against it): the engine (11 database drivers, the
+  read-only guard, migrations, DeZign, the MCP server and `dbm`) is TypeScript on Node, Tauri's backend is Rust, so
+  it means rewriting the product or shipping Node beside it (which takes back most of the smaller download); three
+  web engines instead of one, the e2e flows and every package and update channel redone; no new feature for users.
+  The security gain (a narrow window ↔ main interface) comes from Milestone 13 in Electron. Revisit only if users
+  keep reporting size or memory as a problem.
 
 ---
 
