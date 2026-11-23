@@ -1,0 +1,51 @@
+name: Store check
+
+# Reads DB Mastermind's Microsoft Store entry through the Store API and changes nothing: proves the MSSTORE_*
+# secrets work and keeps the submission's JSON as an artifact, the shape an automated listing update has to follow.
+# Run it by hand: gh workflow run store-check.yml
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PRODUCT_ID: 9P0GRD7BZ4NF
+  # (A pinned CLI release, published at least two weeks before it was chosen.)
+  MSSTORE_CLI: v0.4.4
+
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: microsoft/setup-msstore-cli@cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0 # v1.4
+        with:
+          version: ${{ env.MSSTORE_CLI }}
+      # The credentials exist only in this step.
+      - name: Sign in to Partner Center
+        env:
+          TENANT: ${{ secrets.MSSTORE_TENANT_ID }}
+          SELLER: ${{ secrets.MSSTORE_SELLER_ID }}
+          CLIENT: ${{ secrets.MSSTORE_CLIENT_ID }}
+          SECRET: ${{ secrets.MSSTORE_CLIENT_SECRET }}
+        run: msstore reconfigure --tenantId "$TENANT" --sellerId "$SELLER" --clientId "$CLIENT" --clientSecret "$SECRET"
+      - name: Read the app and its submission (nothing is changed)
+        run: |
+          mkdir -p store
+          status=0
+          msstore apps get "$PRODUCT_ID" --output-stream stderr > store/app.json || status=$?
+          echo "apps get: exit $status"
+          msstore submission status "$PRODUCT_ID" > store/status.txt 2>&1 || true
+          cat store/status.txt
+          msstore submission get "$PRODUCT_ID" --output-stream stderr > store/submission.json || echo "submission get: no draft submission (exit $?)"
+          msstore submission getListingAssets "$PRODUCT_ID" --output-stream stderr > store/listing-assets.json || echo "getListingAssets: none (exit $?)"
+          ls -la store
+          exit $status
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: store-check
+          path: store/
+          retention-days: 7
