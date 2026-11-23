@@ -1,7 +1,7 @@
 /**
- * Where dashboards live: a connection with a knowledge base keeps new ones there (`dashboards/<name>.md`, shared with
- * everyone who uses the folder, read by the assistant and agents); otherwise on this computer (`dashboards.json`).
- * Local ones stay local until the user moves one (sharing its SQL is the user's act). A dashboard always belongs to
+ * Where dashboards live: on this computer (`dashboards.json`), or shared with the team in the connection's knowledge
+ * base (`dashboards/<name>.md`, read by the assistant and agents too). New ones are always local: sharing is the
+ * user's act ("Share with the team"), and so is taking one back ("Keep on this computer only"). A dashboard always belongs to
  * one connection (another database's dashboards make no sense on it): knowledge base ones through its folder, with the
  * id `kb:<connection id>:<path>`; two connections that share a folder on purpose (dev and prod) see the same files.
  */
@@ -87,11 +87,6 @@ export async function saveDashboard(d: NewDashboard): Promise<Dashboard> {
     const written = await writeShared(kb, d, path)
     return (await readShared(kb, d.connectionId, written, new Date().toISOString()))
   }
-  // A new dashboard of a connection with a knowledge base goes there; one kept on this computer stays here.
-  if (!d.id && kb) {
-    const written = await writeShared(kb, d, undefined)
-    return readShared(kb, d.connectionId, written, new Date().toISOString())
-  }
   if (d.id && !library.listDashboards().some((x) => x.id === d.id)) throw new Error(GONE)
   const { shared: _s, problem: _p, intro: _i, ...local } = d
   return library.saveDashboard(local)
@@ -106,8 +101,8 @@ export async function deleteDashboard(id: string): Promise<void> {
   await kb.remove(file.path)
 }
 
-/** Moves a dashboard kept on this computer into the connection's knowledge base. */
-export async function moveDashboardToKnowledge(id: string): Promise<Dashboard> {
+/** Shares a dashboard of this computer with the team: a file in the connection's knowledge base; the local one goes. */
+export async function shareDashboard(id: string): Promise<Dashboard> {
   const local = library.listDashboards().find((d) => d.id === id)
   if (!local) throw new Error('Dashboard not found')
   const kb = knowledgeOf(local.connectionId)
@@ -115,4 +110,17 @@ export async function moveDashboardToKnowledge(id: string): Promise<Dashboard> {
   const written = await writeShared(kb, local, undefined)
   library.deleteDashboard(id)
   return readShared(kb, local.connectionId, written, new Date().toISOString())
+}
+
+/** Keeps a shared dashboard on this computer only: a local copy, and its file removed from the knowledge base. */
+export async function unshareDashboard(id: string): Promise<Dashboard> {
+  const file = fileOf(id)
+  if (!file) throw new Error('Not a dashboard of a knowledge base')
+  const kb = knowledgeOf(file.connectionId)
+  if (!kb) throw new Error('This connection has no knowledge base folder')
+  const shared = await readShared(kb, file.connectionId, file.path, '')
+  if (shared.problem) throw new Error(shared.problem)
+  const local = library.saveDashboard({ connectionId: file.connectionId, name: shared.name, refreshSeconds: shared.refreshSeconds, tiles: shared.tiles.map((t, i) => ({ ...t, id: `tile-${Date.now().toString(36)}-${i}` })) })
+  await kb.remove(file.path)
+  return local
 }

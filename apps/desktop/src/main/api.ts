@@ -83,6 +83,7 @@ import { buildMenu, setMenuContext } from './menu'
 import { forgetEditorSession, forgetEditorSessionsOf, openTransactions, trackEditorSession } from './transactions'
 import * as library from './library'
 import * as dashboards from './dashboards'
+import * as kbQueries from './kb-queries'
 import { getSettings, updateSettings } from './settings'
 import { checkSqlFilePath, LARGE_SQL_FILE, readSqlFile, rememberChosenSqlFile, sqlFileSize, sqlFileTime, writeSqlFile } from './sql-files'
 import { withCommandPassword } from './password-command'
@@ -934,13 +935,21 @@ export const api: MastermindApi = {
     library.clearHistory(connectionId)
   },
   async listSavedQueries() {
-    return library.listSavedQueries()
+    return [...library.listSavedQueries(), ...(await kbQueries.listKnowledgeQueries())]
   },
   async saveQuery(query) {
+    if (query.id && kbQueries.isKnowledgeQuery(query.id)) return kbQueries.saveKnowledgeQuery({ ...query, id: query.id })
     return library.saveQuery(query)
   },
   async deleteSavedQuery(id) {
-    library.deleteSavedQuery(id)
+    if (kbQueries.isKnowledgeQuery(id)) await kbQueries.deleteKnowledgeQuery(id)
+    else library.deleteSavedQuery(id)
+  },
+  async shareSavedQuery(id, connectionId) {
+    return kbQueries.shareQuery(id, connectionId)
+  },
+  async unshareSavedQuery(id) {
+    return kbQueries.unshareQuery(id)
   },
   async listDashboards(connectionId) {
     return dashboards.listDashboards(connectionId)
@@ -948,8 +957,11 @@ export const api: MastermindApi = {
   async saveDashboard(dashboard) {
     return dashboards.saveDashboard(dashboard)
   },
-  async moveDashboardToKnowledge(id) {
-    return dashboards.moveDashboardToKnowledge(id)
+  async shareDashboard(id) {
+    return dashboards.shareDashboard(id)
+  },
+  async unshareDashboard(id) {
+    return dashboards.unshareDashboard(id)
   },
   async deleteDashboard(id) {
     await dashboards.deleteDashboard(id)
@@ -1096,6 +1108,14 @@ export const api: MastermindApi = {
   },
   async kbList(connectionId) {
     return knowledge(connectionId).list()
+  },
+  async kbListSql(connectionId, folder) {
+    if (folder !== 'tools' && folder !== 'queries') throw new Error('Unknown folder')
+    return (await knowledge(connectionId).listSql(folder)).map((f) => f.path)
+  },
+  async kbReadSql(connectionId, path) {
+    if (!/^(tools|queries)\/.+\.sql$/i.test(path)) throw new Error('Not a SQL file of the knowledge base')
+    return knowledge(connectionId).readText(path)
   },
   async kbRead(connectionId, path) {
     return (await knowledge(connectionId).read(path)).content

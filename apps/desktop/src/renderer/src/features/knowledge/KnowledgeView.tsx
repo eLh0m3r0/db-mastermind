@@ -4,8 +4,10 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { EditorState } from '@codemirror/state'
 import { searchKeymap } from '@codemirror/search'
 import { EditorView, keymap, placeholder } from '@codemirror/view'
-import { AlertTriangle, BookOpen, Eye, FilePlus2, FileText, FolderOpen, Pencil, RefreshCw, Save, Search, Sparkles, Trash2, Wrench } from 'lucide-react'
-import type { KnowledgeFileInfo } from '@shared/api'
+import { AlertTriangle, BookMarked, BookOpen, LayoutDashboard, Eye, FilePlus2, FileText, FolderOpen, Pencil, RefreshCw, Save, Search, Sparkles, Trash2, Wrench } from 'lucide-react'
+import type { KnowledgeFileInfo, SavedQuery } from '@shared/api'
+import { openDashboard, useDashboards } from '@/lib/dashboards'
+import { knowledgeSections } from './sections'
 import { Button, IconButton } from '@/components/ui/Button'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -108,10 +110,16 @@ export function KnowledgeView({ tab, active, focused = active }: { tab: Knowledg
   const { location, reload: reloadLocation } = useKnowledgeLocation(connection?.id, folder)
   const current = tab.file
 
+  const [queries, setQueries] = useState<SavedQuery[]>([])
+  const [tools, setTools] = useState<string[]>([])
+  const dashboards = useDashboards(tab.connectionId)
   const refresh = useCallback(async () => {
     if (!folder) return
     try {
       setFiles(await api.kbList(tab.connectionId))
+      // The other kinds of the folder: shared queries and the AI tools (dashboards come with their own hook).
+      void api.listSavedQueries().then((all) => setQueries(all.filter((q) => q.shared && q.connectionId === tab.connectionId)), () => setQueries([]))
+      void api.kbListSql(tab.connectionId, 'tools').then(setTools, () => setTools([]))
       // Staleness needs the live schema; a failed check just shows no warnings.
       void api.kbIssues(tab.connectionId).then(setIssues, () => setIssues([]))
     } catch (err) {
@@ -223,7 +231,24 @@ export function KnowledgeView({ tab, active, focused = active }: { tab: Knowledg
     )
   }
 
-  const visible = files.filter((f) => !search.trim() || fuzzyScore(`${f.path} ${f.title}`, search) >= 0)
+  const find = (text: string) => !search.trim() || fuzzyScore(text, search) >= 0
+  // Notes, then what else the folder holds, each kind on its own: a dashboard file is a dashboard, not a note.
+  const { notes: visible, dashboards: shownDashboards, queries: shownQueries, tools: shownTools } = knowledgeSections({ files, dashboards, queries, tools }, find)
+  const section = (label: string, count: number) => (
+    <div className="flex items-center gap-1.5 px-2 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-fg-muted uppercase">
+      {label}
+      <span className="font-normal text-fg-faint">{count}</span>
+    </div>
+  )
+  const openSqlFile = async (path: string, title: string, savedQueryId?: string) => {
+    try {
+      const sql = savedQueryId ? (queries.find((q) => q.id === savedQueryId)?.sql ?? '') : await api.kbReadSql(tab.connectionId, path)
+      // Opened as text in a query tab; nothing runs.
+      useWorkspace.getState().open({ kind: 'query', connectionId: tab.connectionId, title, sql, ...(savedQueryId ? { savedQueryId, savedSql: sql } : {}) }, { reuse: false })
+    } catch (err) {
+      toast({ kind: 'error', message: t('This file can’t be read'), detail: errorMessage(err) })
+    }
+  }
 
   return (
     <div className="flex h-full min-h-0">
@@ -270,9 +295,10 @@ export function KnowledgeView({ tab, active, focused = active }: { tab: Knowledg
         </div>
         {location && <KnowledgeLocationBar connection={connection} location={location} onChanged={reloadLocation} />}
         <div className="p-2">
-          <Input inputSize="sm" placeholder={t('Find note…')} value={search} onChange={(e) => setSearch(e.target.value)} leading={<Search size={12} />} />
+          <Input inputSize="sm" placeholder={t('Search the knowledge base…')} value={search} onChange={(e) => setSearch(e.target.value)} leading={<Search size={12} />} />
         </div>
-        <div className="min-h-0 flex-1 overflow-auto px-1 pb-2">
+        <div className="min-h-0 flex-1 overflow-auto px-1 pb-2" data-testid="kb-sections">
+          {(shownDashboards.length > 0 || shownQueries.length > 0 || shownTools.length > 0) && visible.length > 0 && section(t('Notes'), visible.length)}
           {visible.map((f) => (
             <button
               key={f.path}
@@ -297,6 +323,27 @@ export function KnowledgeView({ tab, active, focused = active }: { tab: Knowledg
             </button>
           ))}
           {files.length === 0 && <div className="p-3 text-[12px] text-fg-faint">{t('No notes yet.')}</div>}
+          {shownDashboards.length > 0 && section(t('Dashboards'), shownDashboards.length)}
+          {shownDashboards.map((d) => (
+            <button key={d.id} type="button" data-testid="kb-dashboard" onClick={() => openDashboard(tab.connectionId, d.id, d.name)} className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[12.5px] hover:bg-hover">
+              <LayoutDashboard size={12} className="shrink-0 text-fg-faint" />
+              <span className="truncate">{d.name}</span>
+            </button>
+          ))}
+          {shownQueries.length > 0 && section(t('Queries'), shownQueries.length)}
+          {shownQueries.map((q) => (
+            <button key={q.id} type="button" data-testid="kb-query" title={q.problem} onClick={() => (q.problem ? toast({ kind: 'error', message: t('This file can’t be read'), detail: q.problem }) : void openSqlFile('', q.name, q.id))} className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[12.5px] hover:bg-hover">
+              <BookMarked size={12} className="shrink-0 text-fg-faint" />
+              <span className="truncate">{q.folder ? `${q.folder}/` : ''}{q.name}</span>
+            </button>
+          ))}
+          {shownTools.length > 0 && section(t('AI tools'), shownTools.length)}
+          {shownTools.map((path) => (
+            <button key={path} type="button" data-testid="kb-tool" onClick={() => void openSqlFile(path, path.slice('tools/'.length).replace(/\.sql$/i, ''))} className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[12.5px] hover:bg-hover">
+              <Wrench size={12} className="shrink-0 text-fg-faint" />
+              <span className="truncate">{path.slice('tools/'.length)}</span>
+            </button>
+          ))}
         </div>
         {issues.length > 0 && (
           <div className="border-t border-line bg-warning-soft px-3 py-2 text-[11.5px] text-warning">

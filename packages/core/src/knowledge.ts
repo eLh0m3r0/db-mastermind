@@ -139,7 +139,7 @@ function titleOf(path: string, body: string, data: Record<string, unknown>): str
   return h ? h[1]!.trim() : path.replace(/\.md$/i, '').split('/').pop()!
 }
 
-async function walk(root: string, dir: string, out: string[]): Promise<void> {
+async function walk(root: string, dir: string, out: string[], kind: RegExp = /\.(md|markdown|mdx)$/i): Promise<void> {
   if (out.length >= MAX_FILES) return
   let entries
   try {
@@ -152,8 +152,8 @@ async function walk(root: string, dir: string, out: string[]): Promise<void> {
     // (Links are not followed: a shared folder could link to anywhere.)
     if (e.isSymbolicLink()) continue
     const full = join(dir, e.name)
-    if (e.isDirectory()) await walk(root, full, out)
-    else if (e.isFile() && /\.(md|markdown|mdx)$/i.test(e.name)) out.push(full)
+    if (e.isDirectory()) await walk(root, full, out, kind)
+    else if (e.isFile() && kind.test(e.name)) out.push(full)
   }
 }
 
@@ -200,6 +200,49 @@ export class KnowledgeBase {
     let full = await realInside(this.root, path, { write: true })
     await mkdir(dirname(full), { recursive: true })
     // (Again after the folders exist: one of them could have been a link made meanwhile.)
+    full = await realInside(this.root, path, { write: true })
+    const handle = await open(full, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0)).catch((err: NodeJS.ErrnoException) => {
+      throw err.code === 'ELOOP' ? new KnowledgeError('A link inside the knowledge base is not written through') : err
+    })
+    try {
+      await handle.writeFile(content, 'utf8')
+    } finally {
+      await handle.close()
+    }
+    return relative(this.root, full).split(sep).join('/')
+  }
+
+  /**
+   * SQL files under a folder of the knowledge base (`queries/`, `tools/`): path, size and time. The same walk as notes
+   * (no links, no hidden folders, at most MAX_FILES).
+   */
+  async listSql(folder: string): Promise<{ path: string; size: number; modifiedAt: string }[]> {
+    // (A folder that is a link is not followed, as in the walk.)
+    const start = resolveInside(this.root, folder)
+    const isFolder = await lstat(start).then((i) => i.isDirectory(), () => false)
+    if (!isFolder) return []
+    const files: string[] = []
+    await walk(this.root, start, files, /\.sql$/i)
+    const out = []
+    for (const full of files) {
+      const info = await lstat(full)
+      out.push({ path: relative(this.root, full).split(sep).join('/'), size: info.size, modifiedAt: info.mtime.toISOString() })
+    }
+    return out.sort((a, b) => a.path.localeCompare(b.path))
+  }
+
+  /** A text file of the knowledge base (an .sql file): inside it, never through a link, capped like notes. */
+  async readText(path: string): Promise<string> {
+    const full = await realInside(this.root, path)
+    if ((await lstat(full)).size > MAX_FILE_BYTES) throw new KnowledgeError('File is too large')
+    return readNote(full)
+  }
+
+  /** Writes a text file other than a note (an .sql file), with the same checks as `write`. */
+  async writeText(path: string, content: string): Promise<string> {
+    if (!/\.sql$/i.test(path)) throw new KnowledgeError('Only .sql files are written this way')
+    let full = await realInside(this.root, path, { write: true })
+    await mkdir(dirname(full), { recursive: true })
     full = await realInside(this.root, path, { write: true })
     const handle = await open(full, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0)).catch((err: NodeJS.ErrnoException) => {
       throw err.code === 'ELOOP' ? new KnowledgeError('A link inside the knowledge base is not written through') : err

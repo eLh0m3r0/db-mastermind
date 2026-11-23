@@ -10,7 +10,7 @@ import { Spinner } from '@/components/ui/Spinner'
 import { api } from '@/lib/api'
 import { deleteDashboard, onDashboardsChanged, openDashboard, resolveChart, saveDashboard, tileRequest, useDashboards } from '@/lib/dashboards'
 import { useConnections } from '@/store/connections'
-import { formatDate, useT } from '@/lib/i18n'
+import { formatDate, tp, useT } from '@/lib/i18n'
 import { cn, debounce, errorMessage, formatDuration, uid } from '@/lib/utils'
 import { toast } from '@/store/ui'
 import { useWorkspace, type DashboardTab } from '@/store/workspace'
@@ -138,7 +138,7 @@ function DashboardList({ tab }: { tab: DashboardTab }) {
           <span className="flex items-center gap-2 text-[13px] font-semibold">
             <LayoutDashboard size={14} className="text-accent" /> {d.name}
           </span>
-          <span className="text-[12px] text-fg-muted">{d.problem ? d.problem : t('{n} tiles', { n: String(d.tiles.length) })}</span>
+          <span className="text-[12px] text-fg-muted">{d.problem ? d.problem : tp(d.tiles.length, { one: '{n} tile', many: '{n} tiles' })}</span>
         </button>
       ))}
     </div>

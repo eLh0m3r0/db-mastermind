@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BookMarked, BookOpen, Copy, FileText, LayoutDashboard, Pencil, Search, Trash2, XCircle } from 'lucide-react'
-import type { HistoryEntry, SavedQuery } from '@shared/api'
+import { BookMarked, Copy, FileText, FolderOpen, HardDrive, LayoutDashboard, Pencil, Search, Share2, Trash2, XCircle } from 'lucide-react'
+import type { Dashboard, HistoryEntry, SavedQuery } from '@shared/api'
 import { openMenu } from '@/components/ui/ContextMenu'
 import { Input } from '@/components/ui/Input'
 import { api, keys } from '@/lib/api'
@@ -8,8 +8,9 @@ import { copyText, cn, errorMessage, formatDuration, fuzzyScore } from '@/lib/ut
 import { toast } from '@/store/ui'
 import { useWorkspace } from '@/store/workspace'
 import { formatDate, t, tp, useT } from '@/lib/i18n'
-import { confirmAction } from '@/components/ui/ConfirmDialog'
-import { deleteDashboard, moveToKnowledge, openDashboard, renameDashboard, useDashboards } from '@/lib/dashboards'
+import { askText, confirmAction } from '@/components/ui/ConfirmDialog'
+import { deleteDashboard, openDashboard, renameDashboard, shareDashboard, unshareDashboard, useDashboards } from '@/lib/dashboards'
+import { useSettings } from '@/store/settings'
 import { useConnections } from '@/store/connections'
 
 function relativeTime(iso: string): string {
@@ -101,6 +102,21 @@ export function HistoryPanel({ connectionId }: { connectionId: string }) {
   )
 }
 
+/** A saved query of the app-wide team folder ("Team/…"). */
+const inTeamFolder = (q: SavedQuery) => q.folder === 'Team' || !!q.folder?.startsWith('Team/')
+const folderName = (path: string | undefined) => path?.split(/[\\/]/).filter(Boolean).pop() ?? ''
+
+/** Queries by folder (no folder last), each sorted by name. */
+function byFolder(list: SavedQuery[], folderOf: (q: SavedQuery) => string): [string, SavedQuery[]][] {
+  const map = new Map<string, SavedQuery[]>()
+  for (const x of [...list].sort((a, b) => a.name.localeCompare(b.name))) map.set(folderOf(x), [...(map.get(folderOf(x)) ?? []), x])
+  return [...map.entries()].sort(([a], [b]) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)))
+}
+
+/**
+ * The connection's saved dashboards and queries in their two places: "This computer" (only you have them) and
+ * "Team" (its knowledge base, and the team folder's queries). Headings only when something is shared.
+ */
 export function SavedQueriesPanel({ connectionId }: { connectionId: string }) {
   const [queries, setQueries] = useState<SavedQuery[]>([])
   const [search, setSearch] = useState('')
@@ -112,25 +128,117 @@ export function SavedQueriesPanel({ connectionId }: { connectionId: string }) {
     const timer = setInterval(load, 4000)
     return () => clearInterval(timer)
   }, [load])
-  const grouped = useMemo(() => {
-    const q = search.trim()
-    const visible = queries
-      .filter((x) => !x.connectionId || x.connectionId === connectionId)
-      .filter((x) => !q || fuzzyScore(`${x.name} ${x.folder ?? ''}`, q) >= 0 || x.sql.toLowerCase().includes(q.toLowerCase()))
-      .sort((a, b) => a.name.localeCompare(b.name))
-    const map = new Map<string, SavedQuery[]>()
-    for (const x of visible) map.set(x.folder ?? '', [...(map.get(x.folder ?? '') ?? []), x])
-    return [...map.entries()].sort(([a], [b]) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)))
-  }, [queries, search, connectionId])
+  const knowledgePath = useConnections((s) => s.list.find((c) => c.id === connectionId)?.knowledgeBasePath)
+  const teamFolder = useSettings((s) => s.settings?.teamFolder)
   const allDashboards = useDashboards(connectionId)
-  const hasKnowledge = useConnections((s) => !!s.list.find((c) => c.id === connectionId)?.knowledgeBasePath)
-  const dashboards = useMemo(() => {
-    const q = search.trim()
-    return allDashboards.filter((d) => !q || fuzzyScore(d.name, q) >= 0 || d.tiles.some((x) => x.title.toLowerCase().includes(q.toLowerCase()))).sort((a, b) => a.name.localeCompare(b.name))
-  }, [allDashboards, search])
 
-  const open = (q: SavedQuery) =>
+  const matches = (text: string) => {
+    const q = search.trim()
+    return !q || fuzzyScore(text, q) >= 0 || text.toLowerCase().includes(q.toLowerCase())
+  }
+  const mine = queries.filter((x) => (!x.connectionId || x.connectionId === connectionId) && matches(`${x.name} ${x.folder ?? ''} ${x.sql}`))
+  const local = {
+    dashboards: allDashboards.filter((d) => !d.shared && matches(d.name)).sort((a, b) => a.name.localeCompare(b.name)),
+    queries: byFolder(mine.filter((x) => !x.shared && !inTeamFolder(x)), (x) => x.folder ?? ''),
+  }
+  const team = {
+    dashboards: allDashboards.filter((d) => d.shared && matches(d.name)).sort((a, b) => a.name.localeCompare(b.name)),
+    queries: byFolder(mine.filter((x) => x.shared || inTeamFolder(x)), (x) => (inTeamFolder(x) ? (x.folder ?? '').replace(/^Team\/?/, '') : (x.folder ?? ''))),
+  }
+  const hasLocal = local.dashboards.length + local.queries.length > 0
+  const hasTeam = team.dashboards.length + team.queries.length > 0
+  const sources = [
+    ...(knowledgePath && (team.dashboards.length || team.queries.some(([, l]) => l.some((x) => x.shared))) ? [knowledgePath] : []),
+    ...(teamFolder && team.queries.some(([, l]) => l.some(inTeamFolder)) ? [teamFolder] : []),
+  ]
+
+  const open = (q: SavedQuery) => {
+    if (q.problem) return toast({ kind: 'error', message: t('This file can’t be read'), detail: q.problem })
     openTab({ kind: 'query', connectionId, title: q.name, sql: q.sql, savedQueryId: q.id, savedSql: q.sql }, { reuse: false })
+  }
+  const share = async (q: SavedQuery) => {
+    if (!(await confirmAction({ title: t('Share “{name}” with the team?', { name: q.name }), message: t('Everyone who uses this connection’s knowledge base will have it.'), confirmLabel: t('Share') }))) return
+    await api.shareSavedQuery(q.id, connectionId).then(load, (err: unknown) => toast({ kind: 'error', message: t('Could not share the query'), detail: errorMessage(err) }))
+  }
+  const keepLocal = async (q: SavedQuery) => {
+    if (!(await confirmAction({ title: t('Keep “{name}” on this computer only?', { name: q.name }), message: t('Your colleagues will no longer have it.'), confirmLabel: t('Keep on this computer only') }))) return
+    // A team folder query leaves the team folder by losing its "Team" folder.
+    const done = q.shared ? api.unshareSavedQuery(q.id) : api.saveQuery({ ...q, folder: undefined, connectionId: q.connectionId ?? connectionId })
+    await done.then(load, (err: unknown) => toast({ kind: 'error', message: t('Could not move the query'), detail: errorMessage(err) }))
+  }
+  const rename = async (q: SavedQuery) => {
+    const name = (await askText({ title: t('Rename query'), value: q.name, confirmLabel: t('Rename') }))?.trim()
+    if (name && name !== q.name) await api.saveQuery({ ...q, name }).then(load, (err: unknown) => toast({ kind: 'error', message: t('Could not rename the query'), detail: errorMessage(err) }))
+  }
+
+  const dashboardRow = (d: Dashboard) => (
+    <button
+      key={d.id}
+      type="button"
+      className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[12.5px] hover:bg-hover"
+      onClick={() => openDashboard(connectionId, d.id, d.name)}
+      title={d.problem}
+      data-testid="saved-dashboard"
+      onContextMenu={(e) =>
+        openMenu(e, [
+          { label: t('Open'), icon: <LayoutDashboard size={13} />, onClick: () => openDashboard(connectionId, d.id, d.name) },
+          { label: t('Rename…'), icon: <Pencil size={13} />, onClick: () => void renameDashboard(d) },
+          ...(!d.shared && knowledgePath ? [{ label: t('Share with the team'), icon: <Share2 size={13} />, onClick: () => void shareDashboard(d) }] : []),
+          ...(d.shared ? [{ label: t('Keep on this computer only'), icon: <HardDrive size={13} />, onClick: () => void unshareDashboard(d) }] : []),
+          'separator',
+          { label: t('Delete'), icon: <Trash2 size={13} />, danger: true, onClick: () => void deleteDashboard(d) },
+        ])
+      }
+    >
+      <LayoutDashboard size={12} className="shrink-0 text-accent" />
+      <span className="truncate">{d.name}</span>
+      <span className="ml-auto shrink-0 text-[10.5px] text-fg-faint">{d.problem ? t('can’t be read') : tp(d.tiles.length, { one: '{n} tile', many: '{n} tiles' })}</span>
+    </button>
+  )
+  const queryRow = (q: SavedQuery) => (
+    <button
+      key={q.id}
+      type="button"
+      className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[12.5px] hover:bg-hover"
+      onClick={() => open(q)}
+      title={q.problem ?? q.sql.slice(0, 2000)}
+      data-testid="saved-query"
+      onContextMenu={(e) =>
+        openMenu(e, [
+          { label: t('Open'), icon: <FileText size={13} />, onClick: () => open(q) },
+          { label: t('Copy SQL'), icon: <Copy size={13} />, onClick: () => void copyText(q.sql) },
+          ...(q.problem ? [] : [{ label: t('Rename…'), icon: <Pencil size={13} />, onClick: () => void rename(q) }]),
+          ...(!q.shared && !inTeamFolder(q) && knowledgePath ? [{ label: t('Share with the team'), icon: <Share2 size={13} />, onClick: () => void share(q) }] : []),
+          ...((q.shared && !q.problem) || inTeamFolder(q) ? [{ label: t('Keep on this computer only'), icon: <HardDrive size={13} />, onClick: () => void keepLocal(q) }] : []),
+          'separator',
+          {
+            label: t('Delete'),
+            icon: <Trash2 size={13} />,
+            danger: true,
+            onClick: () => {
+              void confirmAction({ title: t('Delete saved query “{name}”?', { name: q.name }), confirmLabel: t('Delete'), danger: true }).then((ok) => ok && api.deleteSavedQuery(q.id).then(load))
+            },
+          },
+        ])
+      }
+    >
+      <BookMarked size={12} className="shrink-0 text-accent" />
+      <span className="truncate">{q.name}</span>
+      {q.problem && <span className="ml-auto shrink-0 text-[10.5px] text-danger">{t('can’t be read')}</span>}
+    </button>
+  )
+  const group = (g: typeof local) => (
+    <>
+      {g.dashboards.map(dashboardRow)}
+      {g.queries.map(([folder, items]) => (
+        <div key={folder} className="mb-1">
+          {folder && <div className="px-2 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-fg-faint uppercase">{folder}</div>}
+          {items.map(queryRow)}
+        </div>
+      ))}
+    </>
+  )
+  const heading = (text: string) => <div className="px-2 pt-2 pb-0.5 text-[11px] font-semibold tracking-wide text-fg-muted uppercase">{text}</div>
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -138,68 +246,31 @@ export function SavedQueriesPanel({ connectionId }: { connectionId: string }) {
         <Input inputSize="sm" placeholder={t('Search saved…')} value={search} onChange={(e) => setSearch(e.target.value)} leading={<Search size={12} />} />
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-1 pb-2">
-        {/* The connection's dashboards, only when it has some (pinned results; Add to dashboard above a result). */}
-        {dashboards.length > 0 && (
-          <div className="mb-1" data-testid="saved-dashboards">
-            <div className="px-2 pt-1 pb-1 text-[11px] font-semibold tracking-wide text-fg-faint uppercase">{t('Dashboards')}</div>
-            {dashboards.map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[12.5px] hover:bg-hover"
-                onClick={() => openDashboard(connectionId, d.id, d.name)}
-                title={d.shared ? t('In the knowledge base: shared with everyone who uses it') : undefined}
-                onContextMenu={(e) =>
-                  openMenu(e, [
-                    { label: t('Open'), icon: <LayoutDashboard size={13} />, onClick: () => openDashboard(connectionId, d.id, d.name) },
-                    { label: t('Rename…'), icon: <Pencil size={13} />, onClick: () => void renameDashboard(d) },
-                    ...(hasKnowledge && !d.shared ? [{ label: t('Move to the knowledge base'), icon: <BookOpen size={13} />, onClick: () => void moveToKnowledge(d) }] : []),
-                    'separator',
-                    { label: t('Delete'), icon: <Trash2 size={13} />, danger: true, onClick: () => void deleteDashboard(d) },
-                  ])
-                }
-              >
-                {d.shared ? <BookOpen size={12} className="shrink-0 text-accent" /> : <LayoutDashboard size={12} className="shrink-0 text-accent" />}
-                <span className="truncate">{d.name}</span>
-                <span className="ml-auto shrink-0 text-[10.5px] text-fg-faint">{tp(d.tiles.length, { one: '{n} tile', many: '{n} tiles' })}</span>
-              </button>
-            ))}
+        {/* Only local things: the plain lists, no heading (as calm as before anything was shared). */}
+        {hasLocal && (
+          <div data-testid="saved-local">
+            {hasTeam && heading(t('This computer'))}
+            {group(local)}
           </div>
         )}
-        {dashboards.length > 0 && grouped.length > 0 && <div className="px-2 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-fg-faint uppercase">{t('Queries')}</div>}
-        {grouped.map(([folder, items]) => (
-          <div key={folder} className="mb-1">
-            {folder && <div className="px-2 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-fg-faint uppercase">{folder}</div>}
-            {items.map((q) => (
+        {hasTeam && (
+          <div data-testid="saved-team">
+            {heading(t('Team'))}
+            {sources.map((path) => (
               <button
-                key={q.id}
+                key={path}
                 type="button"
-                className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[12.5px] hover:bg-hover"
-                onClick={() => open(q)}
-                title={q.sql}
-                onContextMenu={(e) =>
-                  openMenu(e, [
-                    { label: t('Open'), icon: <FileText size={13} />, onClick: () => open(q) },
-                    { label: t('Copy SQL'), icon: <Copy size={13} />, onClick: () => void copyText(q.sql) },
-                    'separator',
-                    {
-                      label: t('Delete'),
-                      icon: <Trash2 size={13} />,
-                      danger: true,
-                      onClick: () => {
-                        void confirmAction({ title: t('Delete saved query “{name}”?', { name: q.name }), confirmLabel: t('Delete'), danger: true }).then((ok) => ok && api.deleteSavedQuery(q.id).then(load))
-                      },
-                    },
-                  ])
-                }
+                className="block max-w-full truncate px-2 pb-1 text-left text-[11px] text-fg-faint hover:text-fg"
+                title={path}
+                onClick={(e) => openMenu(e.currentTarget, [{ label: t('Show in folder'), icon: <FolderOpen size={13} />, onClick: () => void api.showItemInFolder(path) }])}
               >
-                <BookMarked size={12} className="shrink-0 text-accent" />
-                <span className="truncate">{q.name}</span>
+                {folderName(path)}
               </button>
             ))}
+            {group(team)}
           </div>
-        ))}
-        {grouped.length === 0 && dashboards.length === 0 && (
+        )}
+        {!hasLocal && !hasTeam && (
           <div className="p-4 text-center text-[12px] text-fg-faint">{search ? t('No matches') : t('Save a query with {key} to keep it here.', { key: keys('⌘S') })}</div>
         )}
       </div>

@@ -380,6 +380,10 @@ export interface SavedQuery {
   description?: string
   createdAt: string
   updatedAt: string
+  /** In the connection's knowledge base (`queries/…/<name>.sql`), shared with the team. */
+  shared?: boolean
+  /** A shared file that can't be read: what is wrong (listed, never opened as SQL). */
+  problem?: string
 }
 
 export type ExportFormat = 'csv' | 'tsv' | 'json' | 'jsonl' | 'sql' | 'markdown' | 'xlsx'
@@ -860,8 +864,14 @@ export interface MastermindApi {
   listDashboards(connectionId: string): Promise<Dashboard[]>
   saveDashboard(dashboard: Omit<Dashboard, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<Dashboard>
   deleteDashboard(id: string): Promise<void>
-  /** Moves a dashboard kept on this computer into the connection's knowledge base (shared with everyone who uses it). */
-  moveDashboardToKnowledge(id: string): Promise<Dashboard>
+  /** Shares a dashboard of this computer with the team (a file in the connection's knowledge base). */
+  shareDashboard(id: string): Promise<Dashboard>
+  /** Keeps a shared dashboard on this computer only (its file leaves the knowledge base). */
+  unshareDashboard(id: string): Promise<Dashboard>
+  /** Shares a saved query of this computer with the team (a file in the connection's knowledge base). */
+  shareSavedQuery(id: string, connectionId: string): Promise<SavedQuery>
+  /** Keeps a shared saved query on this computer only (its file leaves the knowledge base). */
+  unshareSavedQuery(id: string): Promise<SavedQuery>
 
   exportResult(request: ExportRequest): Promise<string | null>
   exportResults(request: ExportResultsRequest): Promise<string | null>
@@ -886,6 +896,10 @@ export interface MastermindApi {
   /** Points the knowledge base elsewhere; `copy` copies the current notes into an empty target folder. */
   kbSetLocation(connectionId: string, target: KbTarget, copy: boolean): Promise<KbLocation>
   kbList(connectionId: string): Promise<KnowledgeFileInfo[]>
+  /** Paths of the .sql files under tools/ or queries/ of the knowledge base. */
+  kbListSql(connectionId: string, folder: 'tools' | 'queries'): Promise<string[]>
+  /** One .sql file of tools/ or queries/, as text (never run). */
+  kbReadSql(connectionId: string, path: string): Promise<string>
   /** Notes mentioning tables, columns or relationships the database no longer has. */
   kbIssues(connectionId: string): Promise<{ path: string; message: string }[]>
   kbRead(connectionId: string, path: string): Promise<string>
@@ -1027,7 +1041,10 @@ export const API_METHODS = [
   'listDashboards',
   'saveDashboard',
   'deleteDashboard',
-  'moveDashboardToKnowledge',
+  'shareDashboard',
+  'unshareDashboard',
+  'shareSavedQuery',
+  'unshareSavedQuery',
   'exportResult',
   'exportTable',
   'exportQuery',
@@ -1044,6 +1061,8 @@ export const API_METHODS = [
   'kbInspectFolder',
   'kbSetLocation',
   'kbList',
+  'kbListSql',
+  'kbReadSql',
   'kbIssues',
   'kbRead',
   'kbWrite',

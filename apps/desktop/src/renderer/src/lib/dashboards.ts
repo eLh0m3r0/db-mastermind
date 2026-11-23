@@ -69,17 +69,34 @@ export async function saveDashboard(dashboard: Parameters<typeof api.saveDashboa
   return saved
 }
 
-/** Moves a dashboard kept on this computer into the connection's knowledge base (its SQL is then shared). */
-export async function moveToKnowledge(d: Dashboard): Promise<void> {
+/** Shares a dashboard of this computer with the team (the connection's knowledge base), after asking once. */
+export async function shareDashboard(d: Dashboard): Promise<void> {
+  if (!(await confirmAction({ title: t('Share “{name}” with the team?', { name: d.name }), message: t('Everyone who uses this connection’s knowledge base will have it.'), confirmLabel: t('Share') }))) return
   try {
-    const moved = await api.moveDashboardToKnowledge(d.id)
-    const ws = useWorkspace.getState()
-    for (const tab of ws.tabs) if (tab.kind === 'dashboard' && tab.dashboardId === d.id) ws.update(tab.id, { dashboardId: moved.id })
-    dashboardsChanged(d.connectionId, moved.id)
-    toast({ kind: 'success', message: t('“{name}” is in the knowledge base', { name: moved.name }), detail: t('Everyone who uses the knowledge base folder sees it.') })
+    const shared = await api.shareDashboard(d.id)
+    retarget(d.id, shared.id)
+    dashboardsChanged(d.connectionId, shared.id)
+  } catch (err) {
+    toast({ kind: 'error', message: t('Could not share the dashboard'), detail: errorMessage(err) })
+  }
+}
+
+/** Keeps a shared dashboard on this computer only (its file leaves the knowledge base), after asking once. */
+export async function unshareDashboard(d: Dashboard): Promise<void> {
+  if (!(await confirmAction({ title: t('Keep “{name}” on this computer only?', { name: d.name }), message: t('Your colleagues will no longer have it.'), confirmLabel: t('Keep on this computer only') }))) return
+  try {
+    const local = await api.unshareDashboard(d.id)
+    retarget(d.id, local.id)
+    dashboardsChanged(d.connectionId, local.id)
   } catch (err) {
     toast({ kind: 'error', message: t('Could not move the dashboard'), detail: errorMessage(err) })
   }
+}
+
+/** Open tabs of a dashboard follow it to its new id. */
+function retarget(from: string, to: string) {
+  const ws = useWorkspace.getState()
+  for (const tab of ws.tabs) if (tab.kind === 'dashboard' && tab.dashboardId === from) ws.update(tab.id, { dashboardId: to })
 }
 
 /** Renames a dashboard (asked in a dialog) and the tabs that show it. */

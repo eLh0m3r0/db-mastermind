@@ -31,8 +31,7 @@ async function launch(profile) {
 let s = await launch('data')
 const errors = []
 s.win.on('pageerror', (e) => errors.push(e.message))
-const saved = () => s.win.locator('[data-testid="saved-dashboards"]')
-const savedRow = (name) => saved().locator('button', { hasText: name })
+const savedRow = (name) => s.win.getByTestId('saved-dashboard').filter({ hasText: name })
 const tabTitles = () => s.win.locator('[data-tab-id], [role="tab"]').allInnerTexts()
 const bigNumber = () => s.win.locator('.text-\\[34px\\]').first().innerText().catch(() => '')
 
@@ -89,66 +88,109 @@ try {
   await s.win.waitForTimeout(600)
   check('Delete in the Saved tab removes it', (await savedRow('Dashboard 1').count()) === 0 && (await s.win.getByTestId('dashboard-card').count()) === 1)
 
-  // The demo comes with a knowledge base: its dashboards are files there, readable.
-  const demoFile = join(demo.knowledgeBasePath ?? '', 'dashboards', 'Order counts.md')
-  const demoText = existsSync(demoFile) ? readFileSync(demoFile, 'utf8') : ''
-  check('with a knowledge base a dashboard is a readable file in it', demoText.startsWith('---\ndashboard: true\n---\n# Order counts\n\n## ') && demoText.includes('```sql\nselect count(*) as orders from orders\n```\n'), JSON.stringify(demoText))
-
-  // B. Another connection without a knowledge base: none of the demo's dashboards; a pin there stays on this computer.
-  const other = await s.api('saveConnection', { id: '', name: 'Other', driver: 'sqlite', filePath: demo.filePath })
-  check('another connection without the folder lists no dashboard', (await s.api('listDashboards', other.id)).length === 0)
-  await s.win.reload()
-  await s.win.waitForTimeout(1200)
-  await s.win.getByText('Demo coffee shop', { exact: true }).first().click()
-  await s.win.getByText('Other', { exact: true }).first().dblclick()
-  await s.win.getByPlaceholder(/Filter .+ tables/).waitFor({ timeout: 20000 })
+  // B. Two places: new ones stay on this computer, also with a knowledge base; Share with the team writes the files.
+  const kbDir = demo.knowledgeBasePath
+  check('a new dashboard stays on this computer (the demo has a knowledge base)', !existsSync(join(kbDir, 'dashboards', 'Order counts.md')) && (await s.api('listDashboards', demo.id)).every((d) => !d.shared))
+  await s.api('saveQuery', { name: 'Paid orders', sql: "select * from orders where status = 'paid'", connectionId: demo.id })
+  await s.api('saveQuery', { name: 'Scratch', sql: 'select 1', connectionId: demo.id })
   await s.menu('saved-queries')
-  await s.win.waitForTimeout(500)
-  check('…and its Saved tab shows none', (await saved().count()) === 0)
-  await pin('select count(*) as orders from orders')
-  const local = (await s.api('listDashboards', other.id))[0]
-  check('a pin there is kept on this computer (not shared)', !!local && !local.shared && local.name === 'Dashboard 1')
+  await s.win.waitForTimeout(4500)
+  check('with nothing shared the Saved tab has no headings', (await s.win.getByTestId('saved-team').count()) === 0 && !(await s.win.getByTestId('saved-local').innerText()).includes('THIS COMPUTER'))
+  const share = async (row) => {
+    await row.click({ button: 'right' })
+    await s.win.getByRole('menuitem', { name: 'Share with the team' }).click()
+    await s.win.getByRole('dialog').getByRole('button', { name: 'Share' }).click()
+    await s.win.waitForTimeout(900)
+  }
+  await share(s.win.getByTestId('saved-dashboard').filter({ hasText: 'Order counts' }))
+  await share(s.win.getByTestId('saved-query').filter({ hasText: 'Paid orders' }))
+  await s.win.waitForTimeout(4500)
+  const dashText = existsSync(join(kbDir, 'dashboards', 'Order counts.md')) ? readFileSync(join(kbDir, 'dashboards', 'Order counts.md'), 'utf8') : ''
+  const queryText = existsSync(join(kbDir, 'queries', 'Paid orders.sql')) ? readFileSync(join(kbDir, 'queries', 'Paid orders.sql'), 'utf8') : ''
+  check('Share with the team writes the dashboard file', dashText.startsWith('---\ndashboard: true\n---\n# Order counts\n'), JSON.stringify(dashText.slice(0, 80)))
+  check('…and the query file, plain SQL', queryText === "select * from orders where status = 'paid'\n", JSON.stringify(queryText))
+  const teamText = await s.win.getByTestId('saved-team').innerText().catch(() => '')
+  const localText = await s.win.getByTestId('saved-local').innerText().catch(() => '')
+  check('the Saved tab shows This computer and Team, each with its own', /THIS COMPUTER/.test(localText) && /Scratch/.test(localText) && !/Order counts|Paid orders/.test(localText) && /TEAM/.test(teamText) && /Order counts/.test(teamText) && /Paid orders/.test(teamText), `${localText} || ${teamText}`)
+  check('…the Team heading names the folder', teamText.includes(kbDir.split('/').pop()))
+  await s.win.screenshot({ path: join(out, 'r119-saved-two-places.png') })
 
-  // C. That connection gets a knowledge base folder: its local dashboard moves there as a file, by the user's choice.
-  await s.api('saveConnection', { ...other, knowledgeBasePath: kb })
+  // C. The Knowledge tab by kind; each row opens as what it is.
+  await s.win.keyboard.press('ControlOrMeta+k')
+  await s.win.keyboard.insertText('Open knowledge base')
+  await s.win.keyboard.press('Enter')
+  await s.win.getByTestId('kb-sections').waitFor({ timeout: 10000 })
+  await s.win.waitForTimeout(1200)
+  const sections = await s.win.getByTestId('kb-sections').innerText()
+  check('the Knowledge tab shows Notes, Dashboards and Queries apart', /NOTES/.test(sections) && /DASHBOARDS/.test(sections) && /QUERIES/.test(sections) && !/^Order counts$/m.test(sections.split('DASHBOARDS')[0] ?? ''), sections.slice(0, 300))
+  await s.win.screenshot({ path: join(out, 'r119-knowledge-sections.png') })
+  await s.win.getByTestId('kb-dashboard').first().click()
+  await s.win.waitForTimeout(1200)
+  check('a dashboard row opens the dashboard', (await s.win.getByTestId('dashboard-name').count()) === 1)
+  await s.win.keyboard.press('ControlOrMeta+k')
+  await s.win.keyboard.insertText('Open knowledge base')
+  await s.win.keyboard.press('Enter')
+  await s.win.getByTestId('kb-query').first().click()
+  await s.win.waitForTimeout(1000)
+  check('a query row opens a query tab (nothing runs)', ((await s.win.locator('.cm-content:visible').first().innerText()) ?? '').includes("status = 'paid'") && (await s.win.getByText(/rows? ·|\d+ rows/).count()) === 0)
+
+  // The same two screens in a look, for the review.
+  await s.api('updateSettings', { look: 'medieval' })
   await s.win.reload()
   await s.win.waitForTimeout(1500)
   await s.menu('saved-queries')
-  await s.win.waitForTimeout(500)
-  check('the local one stays local until moved', (await s.api('listDashboards', other.id)).map((d) => [d.name, !!d.shared]).join() === 'Dashboard 1,false')
-  await savedRow('Dashboard 1').click({ button: 'right' })
-  await s.win.getByRole('menuitem', { name: 'Move to the knowledge base' }).click()
-  await s.win.waitForTimeout(800)
-  const file = join(kb, 'dashboards', 'Dashboard 1.md')
-  const text = existsSync(file) ? readFileSync(file, 'utf8') : ''
-  check('Move to the knowledge base writes it there', text.startsWith('---\ndashboard: true\n---\n# Dashboard 1\n') && (await s.api('listDashboards', other.id))[0]?.shared === true, JSON.stringify(text))
-  await s.win.screenshot({ path: join(out, 'r119-saved.png') })
+  await s.win.waitForTimeout(1500)
+  await s.win.screenshot({ path: join(out, 'r119-saved-medieval.png') })
+  await s.win.keyboard.press('ControlOrMeta+k')
+  await s.win.keyboard.insertText('Open knowledge base')
+  await s.win.keyboard.press('Enter')
+  await s.win.waitForTimeout(1500)
+  await s.win.screenshot({ path: join(out, 'r119-knowledge-medieval.png') })
+  await s.api('updateSettings', { look: 'violet' })
 
-  // D. A hand edit of the file (a pull, OneDrive): the open dashboard follows when the window comes back.
-  await savedRow('Dashboard 1').click()
-  await s.win.waitForTimeout(1200)
-  writeFileSync(file, text.replace(/\n## [^\n]+\n/, '\n## All orders\n'))
-  await s.win.evaluate(() => window.dispatchEvent(new Event('focus')))
-  await s.win.waitForTimeout(1200)
-  check('the open dashboard follows a change of its file', (await s.win.locator('input[value="All orders"]').count()) === 1)
+  // D. A connection of another database lists neither.
+  const other = await s.api('saveConnection', { id: '', name: 'Other', driver: 'sqlite', filePath: demo.filePath })
+  check('another connection lists none of them', (await s.api('listDashboards', other.id)).length === 0 && (await s.api('listSavedQueries')).every((q) => q.connectionId !== other.id))
   await s.app.close()
 
-  // E. Another profile with a connection on the same folder sees and opens it.
+  // E. Another profile on the same folder sees both under Team and opens them.
   s = await launch('data-2')
   s.win.on('pageerror', (e) => errors.push(e.message))
-  const teammate = await s.api('saveConnection', { id: '', name: 'Shop (teammate)', driver: 'sqlite', filePath: demo.filePath, knowledgeBasePath: kb })
-  check('another profile on the same folder lists it', (await s.api('listDashboards', teammate.id)).map((d) => d.name).join('|') === 'Dashboard 1')
+  const teammate = await s.api('saveConnection', { id: '', name: 'Shop (teammate)', driver: 'sqlite', filePath: demo.filePath, knowledgeBasePath: kbDir })
   await s.win.reload()
   await s.win.waitForTimeout(1200)
   await s.win.getByText('Shop (teammate)', { exact: true }).first().dblclick()
   await s.win.getByPlaceholder(/Filter .+ tables/).waitFor({ timeout: 20000 })
   await s.menu('saved-queries')
-  await s.win.waitForTimeout(600)
-  check('…shown with the knowledge base icon', (await savedRow('Dashboard 1').locator('svg.lucide-book-open').count()) === 1)
-  await savedRow('Dashboard 1').click()
   await s.win.waitForTimeout(1500)
-  check('…and opens with its tiles', /^\d+$/.test((await bigNumber()).trim()), await bigNumber())
-  await s.win.screenshot({ path: join(out, 'r119-teammate.png') })
+  const theirs = await s.win.getByTestId('saved-team').innerText().catch(() => '')
+  check('another profile on the same folder sees both under Team', /Order counts/.test(theirs) && /Paid orders/.test(theirs) && (await s.win.getByTestId('saved-local').count()) === 0, theirs)
+  await s.win.getByTestId('saved-dashboard').filter({ hasText: 'Order counts' }).click()
+  await s.win.waitForTimeout(1500)
+  check('…and opens the dashboard with its tiles', /^\d+$/.test((await bigNumber()).trim()), await bigNumber())
+  await s.win.getByTestId('saved-query').filter({ hasText: 'Paid orders' }).click()
+  await s.win.waitForTimeout(800)
+  check('…and the query', ((await s.win.locator('.cm-content:visible').first().innerText()) ?? '').includes("status = 'paid'"))
+  void teammate
+  await s.app.close()
+
+  // F. Keep on this computer only takes each back and removes its file.
+  s = await launch('data')
+  s.win.on('pageerror', (e) => errors.push(e.message))
+  await s.menu('saved-queries')
+  await s.win.waitForTimeout(1500)
+  const keep = async (row) => {
+    await row.click({ button: 'right' })
+    await s.win.getByRole('menuitem', { name: 'Keep on this computer only' }).click()
+    await s.win.getByRole('dialog').getByRole('button', { name: 'Keep on this computer only' }).click()
+    await s.win.waitForTimeout(900)
+  }
+  await s.win.screenshot({ path: join(out, 'r119-saved-light.png') })
+  await keep(s.win.getByTestId('saved-dashboard').filter({ hasText: 'Order counts' }))
+  await keep(s.win.getByTestId('saved-query').filter({ hasText: 'Paid orders' }))
+  await s.win.waitForTimeout(4500)
+  check('Keep on this computer only removes the files', !existsSync(join(kbDir, 'dashboards', 'Order counts.md')) && !existsSync(join(kbDir, 'queries', 'Paid orders.sql')))
+  check('…and both are back under This computer', (await s.win.getByTestId('saved-team').count()) === 0 && /Order counts/.test(await s.win.getByTestId('saved-local').innerText()) && /Paid orders/.test(await s.win.getByTestId('saved-local').innerText()))
   check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '))
 } catch (err) {
   console.log('FLOW ERROR', err.message.split('\n')[0])

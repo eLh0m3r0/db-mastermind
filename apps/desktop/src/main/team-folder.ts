@@ -69,7 +69,7 @@ function walkSql(root: string, dir = root, out: string[] = []): string[] {
 }
 
 /** `-- connection: ERP` / `-- description: …` lines at the top of a team query. */
-function parseHeader(text: string): { sql: string; connection?: string; description?: string } {
+export function parseHeader(text: string): { sql: string; connection?: string; description?: string } {
   const lines = text.replace(/\r\n/g, '\n').split('\n')
   const meta: Record<string, string> = {}
   let i = 0
@@ -160,14 +160,19 @@ export function isTeamQuery(q: { id?: string; folder?: string }): boolean {
 
 const safe = (s: string) => s.replace(/[\\/:*?"<>|]+/g, '_').trim() || 'query'
 
+/** A saved query as a .sql file: `-- connection:` / `-- description:` header lines, then the SQL. */
+export function sqlFileText(sql: string, description?: string, connectionName?: string): string {
+  const header = [connectionName && `-- connection: ${connectionName}`, description && `-- description: ${description.replace(/\n/g, ' ')}`].filter(Boolean)
+  return `${[...header, sql.trimEnd()].join('\n')}\n`
+}
+
 /** Writes a team query as a .sql file; renaming or moving removes the old file. Returns the new id. */
 export function writeTeamQuery(dir: string, q: { id?: string; name: string; sql: string; folder?: string; connectionId?: string; description?: string }, connectionName?: string): string {
   const sub = (q.folder ?? TEAM_FOLDER_NAME).split('/').slice(1).map(safe)
   const rel = [...sub, `${safe(q.name)}.sql`].join('/')
   const path = join(dir, TEAM_QUERIES, ...rel.split('/'))
-  const header = [connectionName && `-- connection: ${connectionName}`, q.description && `-- description: ${q.description.replace(/\n/g, ' ')}`].filter(Boolean)
   mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, `${[...header, q.sql.trimEnd()].join('\n')}\n`, 'utf8')
+  writeFileSync(path, sqlFileText(q.sql, q.description, connectionName), 'utf8')
   const id = `${TEAM_QUERY_PREFIX}${rel}`
   if (q.id?.startsWith(TEAM_QUERY_PREFIX) && q.id !== id) deleteTeamQuery(dir, q.id)
   return id

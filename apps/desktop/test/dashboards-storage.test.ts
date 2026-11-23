@@ -29,6 +29,8 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }))
 let kb = ''
 const tile = (title: string, sql: string) => ({ id: '', title, sql, chart: null, span: 1 as const })
 const files = () => (existsSync(join(kb, 'dashboards')) ? readdirSync(join(kb, 'dashboards')).sort() : [])
+/** A dashboard made (on this computer, as every new one) and then shared with the team. */
+const shareNew = async (d: Parameters<typeof storage.saveDashboard>[0]) => storage.shareDashboard((await storage.saveDashboard(d)).id)
 
 beforeEach(() => {
   kb = mkdtempSync(join(dir, 'kb-'))
@@ -37,8 +39,11 @@ beforeEach(() => {
 })
 
 describe('dashboards in a knowledge base', () => {
-  it('a new dashboard of a connection with a knowledge base is a readable file there', async () => {
-    const d = await storage.saveDashboard({ connectionId: 'shop', name: 'Sales overview', refreshSeconds: 60, tiles: [tile('Customers', 'select count(*) as customers from customers')] })
+  it('a new dashboard stays on this computer, also with a knowledge base; Share with the team makes it a readable file', async () => {
+    const local = await storage.saveDashboard({ connectionId: 'shop', name: 'Sales overview', refreshSeconds: 60, tiles: [tile('Customers', 'select count(*) as customers from customers')] })
+    expect(local.shared).toBeUndefined()
+    expect(files()).toEqual([])
+    const d = await storage.shareDashboard(local.id)
     expect(d).toMatchObject({ shared: true, name: 'Sales overview' })
     expect(files()).toEqual(['Sales overview.md'])
     expect(readFileSync(join(kb, 'dashboards', 'Sales overview.md'), 'utf8')).toBe('---\ndashboard: true\nrefresh: 60\n---\n# Sales overview\n\n## Customers\n\n```sql\nselect count(*) as customers from customers\n```\n')
@@ -46,7 +51,7 @@ describe('dashboards in a knowledge base', () => {
   })
 
   it('belongs to its connection: one without the folder never lists it; one sharing the folder on purpose does', async () => {
-    const d = await storage.saveDashboard({ connectionId: 'shop', name: 'Ops', refreshSeconds: 0, tiles: [] })
+    const d = await shareNew({ connectionId: 'shop', name: 'Ops', refreshSeconds: 0, tiles: [] })
     await storage.saveDashboard({ connectionId: 'other', name: 'Mine', refreshSeconds: 0, tiles: [] })
     expect((await storage.listDashboards('other')).map((x) => x.name)).toEqual(['Mine'])
     expect((await storage.listDashboards('prod')).map((x) => x.name)).toEqual(['Ops'])
@@ -55,7 +60,7 @@ describe('dashboards in a knowledge base', () => {
   })
 
   it('saving without a change leaves the file alone; a rename renames the file; delete removes it', async () => {
-    const d = await storage.saveDashboard({ connectionId: 'shop', name: 'Ops', refreshSeconds: 0, tiles: [tile('A', 'select 1')] })
+    const d = await shareNew({ connectionId: 'shop', name: 'Ops', refreshSeconds: 0, tiles: [tile('A', 'select 1')] })
     const file = join(kb, 'dashboards', 'Ops.md')
     utimesSync(file, new Date(2000, 0, 1), new Date(2000, 0, 1))
     await storage.saveDashboard(d)
@@ -64,19 +69,19 @@ describe('dashboards in a knowledge base', () => {
     expect(files()).toEqual(['Operations.md'])
     expect(renamed.id).not.toBe(d.id)
     // Another dashboard of the same name gets its own file.
-    await storage.saveDashboard({ connectionId: 'shop', name: 'Operations', refreshSeconds: 0, tiles: [] })
+    await shareNew({ connectionId: 'shop', name: 'Operations', refreshSeconds: 0, tiles: [] })
     expect(files()).toEqual(['Operations 2.md', 'Operations.md'])
     await storage.deleteDashboard(renamed.id)
     expect(files()).toEqual(['Operations 2.md'])
   })
 
   it('a late save never brings a deleted dashboard back (the file, or one kept on this computer)', async () => {
-    const shared = await storage.saveDashboard({ connectionId: 'shop', name: 'Gone', refreshSeconds: 0, tiles: [tile('A', 'select 1')] })
+    const shared = await shareNew({ connectionId: 'shop', name: 'Gone', refreshSeconds: 0, tiles: [tile('A', 'select 1')] })
     await storage.deleteDashboard(shared.id)
     await expect(storage.saveDashboard({ ...shared, tiles: [tile('B', 'select 2')] })).rejects.toThrow(/no longer exists/)
     expect(files()).not.toContain('Gone.md')
     // A teammate's delete (the file is simply not there any more) counts the same.
-    const other = await storage.saveDashboard({ connectionId: 'shop', name: 'Theirs', refreshSeconds: 0, tiles: [] })
+    const other = await shareNew({ connectionId: 'shop', name: 'Theirs', refreshSeconds: 0, tiles: [] })
     rmSync(join(kb, 'dashboards', 'Theirs.md'))
     await expect(storage.saveDashboard({ ...other, refreshSeconds: 60 })).rejects.toThrow(/no longer exists/)
     expect(files()).not.toContain('Theirs.md')
@@ -99,15 +104,16 @@ describe('dashboards in a knowledge base', () => {
     ])
   })
 
-  it('a dashboard kept on this computer stays there until moved into the knowledge base', async () => {
-    state.connections = [{ id: 'shop' }]
+  it('one kept on this computer stays there until shared; Keep on this computer only takes it back and removes the file', async () => {
     const local = await storage.saveDashboard({ connectionId: 'shop', name: 'Dashboard 1', refreshSeconds: 0, tiles: [tile('A', 'select 1')] })
-    expect(local.shared).toBeUndefined()
-    state.connections = [{ id: 'shop', knowledgeBasePath: kb }]
     expect((await storage.listDashboards('shop')).map((d) => [d.name, !!d.shared])).toEqual([['Dashboard 1', false]])
-    const moved = await storage.moveDashboardToKnowledge(local.id)
-    expect(moved.shared).toBe(true)
+    const shared = await storage.shareDashboard(local.id)
+    expect(shared.shared).toBe(true)
     expect(files()).toEqual(['Dashboard 1.md'])
     expect(state.local).toEqual([])
+    const back = await storage.unshareDashboard(shared.id)
+    expect(back.shared).toBeUndefined()
+    expect(files()).toEqual([])
+    expect((await storage.listDashboards('shop')).map((d) => [d.name, !!d.shared, d.tiles.map((t) => t.sql)])).toEqual([['Dashboard 1', false, ['select 1']]])
   })
 })
