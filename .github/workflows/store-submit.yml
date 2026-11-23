@@ -56,8 +56,14 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-      # Only the script's one dependency (fflate, as the repository pins it); no install scripts.
-      - run: npm ci --ignore-scripts --no-audit --no-fund
+      # Only the script's one dependency (fflate, the version in package-lock.json), next to a copy of the script; no
+      # install scripts. Not `npm ci`: the whole monorepo isn't needed, and the lock file lacks esbuild's other-platform
+      # packages, which npm ci refuses.
+      - run: |
+          mkdir -p "$RUNNER_TEMP/store"
+          cp scripts/store-submit.mjs "$RUNNER_TEMP/store/"
+          cd "$RUNNER_TEMP/store"
+          npm install --ignore-scripts --no-audit --no-fund --no-save "fflate@$(node -p "require('$GITHUB_WORKSPACE/package-lock.json').packages['node_modules/fflate'].version")"
       # The Store credentials exist only in this step. Never printed: the log of this public repository is public.
       - name: Store ${{ inputs.mode }} for ${{ steps.tag.outputs.tag }}
         env:
@@ -74,4 +80,4 @@ jobs:
         run: |
           set +x
           echo "Texts and screenshots from ${LISTING:-$TAG} ($(git -C release rev-parse --short HEAD))"
-          node scripts/store-submit.mjs "$MODE" --tag "$TAG" --repo release
+          node "$RUNNER_TEMP/store/store-submit.mjs" "$MODE" --tag "$TAG" --repo "$GITHUB_WORKSPACE/release"
