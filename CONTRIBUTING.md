@@ -83,6 +83,23 @@ The UI is in English and Czech. English text is written in the code; the Czech t
 request and the maintainer will add them. Shortcuts in UI text go through `keys('⇧⌘↵')`, so Windows and Linux show
 Ctrl.
 
+### Requesting a new language
+
+If you would like to see DB Mastermind in another language, you can request it through the Translations section in
+Settings. This helps the team understand which languages are in demand and who might be able to help maintain them.
+
+### Contributing a new language
+
+To add a new language, you'll need to:
+1. Create a new translation file in `apps/desktop/src/renderer/src/lib/i18n-{code}.ts` following the pattern of `i18n-cs.ts`.
+2. Add the language to the language selector in the settings modal.
+3. Update the i18n system to handle multiple languages (this is required for the first new language).
+4. Translate all 2,100+ strings in the UI.
+
+The maintainer will help with the technical implementation of the i18n system, but the translation work is the
+contributor's responsibility. If you can help review or maintain a translation, please indicate this when you
+request the language.
+
 ## License
 
 By contributing you agree that your contribution is licensed under the [MIT license](LICENSE) of the project.

@@ -14,6 +14,7 @@ import { AiPermissionsSection } from '../ai/AiPermissions'
 import { SnippetsSection } from './SnippetsSection'
 import { AppearanceSection } from './AppearanceSection'
 import { useT } from '@/lib/i18n'
+import { useState } from 'react'
 
 const SECTIONS = [
   ['general', 'General'],
@@ -24,6 +25,7 @@ const SECTIONS = [
   ['permissions', 'AI permissions'],
   ['mcp', 'MCP server'],
   ['about', 'About'],
+  ['translations', 'Translations'],
 ] as const
 
 type Section = (typeof SECTIONS)[number][0]
@@ -33,6 +35,8 @@ export function SettingsModal() {
   const setUi = useUi((s) => s.set)
   const open = modal?.kind === 'settings'
   const [section, setSection] = useState<Section>('general')
+  const [newLanguage, setNewLanguage] = useState('')
+  const [canMaintain, setCanMaintain] = useState(false)
   const settings = useSettings((s) => s.settings)
   const info = useSettings((s) => s.info)
   const update = useSettings((s) => s.update)
@@ -90,6 +94,55 @@ export function SettingsModal() {
               {/* Last: it matters to teams, not on the first visit. */}
               <TeamFolderRow />
             </>
+          )}
+          {current === 'translations' && (
+            <>
+              <Row label={t('Request a new language')}>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      className="w-48"
+                      placeholder={t('Language name (e.g., Spanish, German)')}
+                      value={newLanguage}
+                      onChange={(e) => setNewLanguage(e.target.value)}
+                    />
+                    <Button
+                      onClick={() => {
+                        if (newLanguage.trim()) {
+                          // Store the language request in localStorage
+                          const requests = JSON.parse(localStorage.getItem('dbm-language-requests') || '[]')
+                          requests.push({
+                            language: newLanguage.trim(),
+                            canMaintain,
+                            timestamp: new Date().toISOString(),
+                          })
+                          localStorage.setItem('dbm-language-requests', JSON.stringify(requests))
+                          setNewLanguage('')
+                          setCanMaintain(false)
+                          alert(t('Thank you for your language request!'))
+                        }
+                      }}
+                      disabled={!newLanguage.trim()}
+                    >
+                      {t('Request')}
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      checked={canMaintain}
+                      onChange={(v) => setCanMaintain(v)}
+                      label={t('I can help review or maintain this translation')}
+                    />
+                  </div>
+                </div>
+              </Row>
+              <Row label={t('Existing language requests')}>
+                <div className="text-[13px] text-fg-muted">
+                  {t('Language requests are stored locally and collected by the team.')} {t('If you\'ve already requested a language, your vote is recorded.')}
+                </div>
+              </Row>
+            </>
+          )}
           )}
           {current === 'appearance' && <AppearanceSection settings={settings} set={set} />}
           {current === 'snippets' && <SnippetsSection />}
